@@ -21,7 +21,7 @@ npm run build-page     # junta o jogo numa só página, em dist/pocket-basketbal
 
 Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. Usa o Edge; noutra máquina, define `BROWSER_CHANNEL=chrome`.
 
-Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 2 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
+Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 4 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 
 ## Regras da simulação (`src/sim/`)
 
@@ -36,8 +36,9 @@ Um teste automático faz cumprir as regras de proibição e de importação.
 
 ## Interface (`src/ui/`)
 
-- A interface lê o estado da simulação e nunca o altera. Só `step()` faz o jogo avançar.
-- A resolução base é 360×640, sempre escalada por múltiplos inteiros de píxeis do ecrã.
+- A interface lê o estado da simulação e só a muda pelos comandos do treinador (`requestTimeout`, `queueSubstitution`, `cancelSubstitution`, `setAutoRotation`, `setTactics`). Ficam registados em `commands`, para o jogo se poder repetir.
+- Só `step()` faz o jogo avançar.
+- Há dois esquemas: vertical (360×640, com o campo por cima do painel) e horizontal (o campo ao lado do painel), escolhido pela proporção da janela. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
 - Toda a arte é gerada por código. Os sons são sintetizados, por isso não há ficheiros de áudio.
 
 ## Trabalho a dois

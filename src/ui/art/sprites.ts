@@ -1,4 +1,5 @@
-import type { Player, Position } from '../../sim/types.ts';
+import type { Player } from '../../sim/types.ts';
+import { buildOf, pixelsForHeight } from './body.ts';
 
 export const INK = '#1b2230';
 
@@ -7,6 +8,7 @@ const HAIRS = ['#2a2230', '#5a3a22', '#a8642a', '#e0b94f', '#1b2230', '#7a3a2a']
 export const KITS = {
   blue: { jersey: '#2b5fd9', shade: '#1d43a3', trim: '#ffffff', shorts: '#f4f4f4' },
   cream: { jersey: '#f4efe0', shade: '#cfc7ae', trim: '#cf3a2c', shorts: '#cf3a2c' },
+  coach: { jersey: '#3a4252', shade: '#2a3040', trim: '#f4efe0', shorts: '#2c3345' },
 } as const;
 export type KitName = keyof typeof KITS;
 
@@ -27,6 +29,12 @@ const POSES = {
   run2: (L: number): PoseShape => ({ a: [3, 3], b: [-3, 3], f: [3, L - 1], g: [-3, L], jump: 1 }),
   drib0: (L: number): PoseShape => ({ a: [-2, 4], b: [4, 3], f: [-2, L], g: [3, L], ball: [7, L - 2] }),
   drib1: (L: number): PoseShape => ({ a: [-2, 4], b: [4, 2], f: [-2, L], g: [3, L], ball: [7, L - 6] }),
+  dribRun0: (L: number): PoseShape => ({ a: [-3, 2], b: [4, 3], f: [-3, L - 1], g: [3, L], jump: 1, ball: [7, L - 2] }),
+  dribRun1: (L: number): PoseShape => ({ a: [-1, 4], b: [4, 2], f: [-1, L], g: [1, L - 1], ball: [7, L - 6] }),
+  dribRun2: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [3, L - 1], g: [-3, L], jump: 1, ball: [7, L - 2] }),
+  dribRun3: (L: number): PoseShape => ({ a: [-1, 4], b: [4, 2], f: [1, L], g: [-1, L - 1], ball: [7, L - 6] }),
+  crossover: (L: number): PoseShape => ({ a: [-4, 3], b: [3, 4], f: [-4, L], g: [4, L], ball: [-5, L - 3] }),
+  stumble: (L: number): PoseShape => ({ a: [-5, 0], b: [4, 5], f: [-1, L], g: [5, L - 1] }),
   gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
   dunk: (L: number): PoseShape => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], jump: 10, ball: [6, -19] }),
@@ -35,23 +43,29 @@ const POSES = {
   pass: (L: number): PoseShape => ({ a: [4, 0], b: [5, 1], f: [-2, L], g: [3, L], ball: [8, -6] }),
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
+  sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
 };
 export type PoseName = keyof typeof POSES;
 
-export type HeightClass = 'base' | 'mid' | 'big';
-export const HEIGHTS: Record<HeightClass, { L: number; T: number }> = {
-  base: { L: 5, T: 5 },
-  mid: { L: 6, T: 6 },
-  big: { L: 7, T: 7 },
-};
-const HEIGHT_OF: Record<Position, HeightClass> = { BAS: 'base', ESC: 'mid', EXT: 'mid', EXP: 'big', POS: 'big' };
+/** Proporções do corpo, em píxeis. `shoulder` e `waist` são larguras do tronco; `arm` e `leg` são espessuras. */
+export const BUILDS = {
+  slim: { shoulder: 5, waist: 4, hips: 5, arm: 1, leg: 1, jaw: 0 },
+  athletic: { shoulder: 6, waist: 6, hips: 6, arm: 2, leg: 2, jaw: 0 },
+  muscular: { shoulder: 8, waist: 6, hips: 6, arm: 3, leg: 3, jaw: 0 },
+  heavy: { shoulder: 7, waist: 8, hips: 8, arm: 3, leg: 3, jaw: 1 },
+} as const;
+export type Build = keyof typeof BUILDS;
 
 export interface Look {
   kit: KitName;
   skin: number;
   hair: number;
   style: number;
-  height: HeightClass;
+  legs: number;
+  torso: number;
+  build: Build;
+  /** Escolhe os traços do retrato: forma da cara, sobrancelhas, barba. */
+  face: number;
 }
 
 /** A aparência vem do nome: o mesmo jogador tem sempre a mesma cara. */
@@ -61,13 +75,19 @@ export function lookOf(player: Player, kit: KitName): Look {
   return {
     kit,
     skin: hash % SKINS.length,
-    hair: (hash >> 3) % HAIRS.length,
-    style: (hash >> 6) % 5,
-    height: HEIGHT_OF[player.position],
+    // Com >>> o resultado nunca é negativo, o que daria uma cor de cabelo inexistente.
+    hair: (hash >>> 3) % HAIRS.length,
+    style: (hash >>> 6) % 5,
+    ...pixelsForHeight(player.heightCm),
+    build: buildOf(player.heightCm, player.weightKg, player.attributes.strength),
+    face: hash >>> 9,
   };
 }
 
-export const spriteHeight = (height: HeightClass): number => HEIGHTS[height].L + HEIGHTS[height].T + 12;
+export const skinColors = (look: Look): readonly [string, string] => SKINS[look.skin]!;
+export const hairColor = (look: Look): string => HAIRS[look.hair]!;
+
+export const spriteHeight = (look: Look): number => look.legs + look.torso + 12;
 
 const SPRITE_W = 34;
 const SPRITE_H = 46;
@@ -85,70 +105,94 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const rect = (x: number, y: number, w: number, h: number, color: string): void => {
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(x + i, y + j, color);
   };
-  const limb = (x0: number, y0: number, x1: number, y1: number, colorAt: (k: number) => string): void => {
+  const limb = (x0: number, y0: number, x1: number, y1: number, thickness: number, colorAt: (k: number) => string): void => {
     const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
     for (let i = 0; i <= steps; i++) {
       const k = i / steps;
-      rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), 2, 2, colorAt(k));
+      rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), thickness, 2, colorAt(k));
     }
   };
-  const { L, T } = HEIGHTS[look.height];
+  const L = look.legs;
+  const T = look.torso;
+  const body = BUILDS[look.build];
   const shape = POSES[pose](L);
   const kit = KITS[look.kit];
   const [skin, skinShade] = SKINS[look.skin]!;
   const hair = HAIRS[look.hair]!;
   const hipY = ANCHOR_Y - L - (shape.jump ?? 0);
   const hx = ANCHOR_X;
-  const leg = ([dx, dy]: Offset, side: number): void => {
+  const hipLeft = hx - (body.hips >> 1);
+  const leg = ([dx, dy]: Offset, x0: number, shaded: boolean): void => {
     const x1 = hx + dx - 1;
     const y1 = hipY + dy - 2;
-    limb(hx + side, hipY, x1, y1, k => (k < 0.5 ? kit.shorts : side < 0 ? skinShade : skin));
-    rect(x1 - 1, y1 + 2, 4, 2, '#f4f4f4');
+    limb(x0, hipY, x1, y1, body.leg, k => (k < 0.5 ? kit.shorts : shaded ? skinShade : skin));
+    rect(x1 - 1, y1 + 2, body.leg + 2, 2, '#f4f4f4');
     put(x1 - 1, y1 + 3, kit.jersey);
   };
-  leg(shape.f, -2);
-  leg(shape.g, 0);
-  rect(hx - 3, hipY - 1, 6, 4, kit.shorts);
-  rect(hx - 3, hipY + 2, 2, 1, kit.trim);
-  rect(hx + 1, hipY + 2, 2, 1, kit.trim);
+  leg(shape.f, hipLeft + 1, true);
+  leg(shape.g, hipLeft + body.hips - body.leg - 1, false);
+  rect(hipLeft, hipY - 1, body.hips, 4, kit.shorts);
+  rect(hipLeft, hipY + 2, 2, 1, kit.trim);
+  rect(hipLeft + body.hips - 2, hipY + 2, 2, 1, kit.trim);
   const top = hipY - T;
-  rect(hx - 3, top, 6, T, kit.jersey);
-  rect(hx + 2, top + 1, 1, T - 1, kit.shade);
+  // O tronco é desenhado linha a linha, dos ombros à cintura.
+  for (let row = 0; row < T; row++) {
+    const width = Math.round(body.shoulder + ((body.waist - body.shoulder) * row) / Math.max(1, T - 1));
+    const left = hx - (width >> 1);
+    rect(left, top + row, width, 1, kit.jersey);
+    if (row > 0) put(left + width - 1, top + row, kit.shade);
+  }
   if (back) {
     rect(hx - 1, top + 1, 2, 3, kit.trim);
   } else {
     rect(hx - 1, top, 2, 1, skin);
     rect(hx - 1, top + 2, 2, 2, kit.trim);
   }
+  // A cabeça tem o topo e o queixo arredondados: linhas de 6, 8, 8, ... 8 e 6 píxeis.
   const headX = hx - 4;
   const headY = top - 7;
-  rect(headX, headY, 8, 7, skin);
-  rect(headX, headY + 5, 8, 1, skinShade);
-  for (const [x, y] of [[0, 0], [7, 0], [0, 6], [7, 6]] as const) put(headX + x, headY + y, null);
+  const bald = look.style === 3;
+  rect(headX + 1, headY - 1, 6, 1, bald ? skin : hair);
+  rect(headX, headY, 8, 6, skin);
+  rect(headX + 1, headY + 6, 6, 1, skinShade);
+  if (body.jaw > 0) {
+    rect(headX - body.jaw, headY + 3, 8 + body.jaw * 2, 3, skin);
+    rect(headX - body.jaw + 1, headY + 6, 6 + body.jaw * 2 - 2, 1, skinShade);
+  }
   if (look.style === 2) {
-    rect(headX - 1, headY - 2, 10, 4, hair);
+    rect(headX + 1, headY - 3, 6, 1, hair);
+    rect(headX, headY - 2, 8, 1, hair);
+    rect(headX - 1, headY - 1, 10, 3, hair);
     rect(headX - 1, headY + 2, 2, 2, hair);
     rect(headX + 7, headY + 2, 2, 2, hair);
   } else if (look.style === 1) {
-    rect(headX, headY - 2, 8, 4, hair);
-  } else if (look.style !== 3) {
-    rect(headX, headY - 1, 8, 3, hair);
+    rect(headX + 2, headY - 3, 4, 1, hair);
+    rect(headX + 1, headY - 2, 6, 1, hair);
+  }
+  if (!bald && look.style !== 2) {
+    rect(headX, headY, 8, 2, hair);
     put(headX, headY + 2, hair);
     put(headX + 7, headY + 2, hair);
   }
   if (look.style === 4) rect(headX, headY + 1, 8, 1, kit.trim);
   if (back) {
-    rect(headX, headY, 8, 5, hair);
-    if (look.style !== 1) {
-      put(headX, headY, null);
-      put(headX + 7, headY, null);
-    }
+    if (!bald) rect(headX, headY, 8, 5, hair);
   } else {
     rect(headX + 3, headY + 3, 1, 2, INK);
     rect(headX + 6, headY + 3, 1, 2, INK);
   }
-  limb(hx - 4, top + 1, hx - 4 + shape.a[0], top + 1 + shape.a[1], () => skinShade);
-  limb(hx + 2, top + 1, hx + 2 + shape.b[0], top + 1 + shape.b[1], () => skin);
+  const shoulderLeft = hx - (body.shoulder >> 1);
+  const shoulderRight = shoulderLeft + body.shoulder - 1;
+  const overlap = body.arm > 1 ? 1 : 0;
+  const leftArm = shoulderLeft - body.arm + overlap;
+  const rightArm = shoulderRight + 1 - overlap;
+  limb(leftArm, top + 1, leftArm + shape.a[0], top + 1 + shape.a[1], body.arm, () => skinShade);
+  limb(rightArm, top + 1, rightArm + shape.b[0], top + 1 + shape.b[1], body.arm, () => skin);
+  // A camisola tapa os ombros: o braço só aparece a partir da cava.
+  rect(shoulderLeft - 1, top, body.shoulder + 2, 1, kit.jersey);
+  rect(shoulderLeft, top + 1, body.shoulder, 1, kit.jersey);
+  put(shoulderRight, top + 1, kit.shade);
+  if (!back) rect(hx - 1, top, 2, 1, skin);
   if (withBall && shape.ball) {
     const bx = hx + shape.ball[0];
     const by = hipY + shape.ball[1];
@@ -181,7 +225,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
 }
 
 export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean): void {
-  const key = `${pose}|${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.height}|${back}|${withBall}`;
+  const key = `${pose}|${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}`;
   let sprite = cache.get(key);
   if (!sprite) {
     sprite = buildSprite(pose, look, back, withBall);
@@ -198,12 +242,42 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
   }
 }
 
-export function drawShadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 6): void {
-  x |= 0;
+/** A sombra é uma oval por degraus, ligeiramente deslocada, como se a luz viesse de cima e da frente. */
+export function drawShadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 7): void {
+  x = (x | 0) + 1;
   y |= 0;
-  g.fillStyle = 'rgba(20,20,30,.33)';
+  g.fillStyle = 'rgba(20,16,30,.34)';
   g.fillRect(x - radius, y - 1, radius * 2, 2);
-  g.fillRect(x - radius + 2, y - 2, radius * 2 - 4, 4);
+  g.fillRect(x - radius + 2, y - 2, radius * 2 - 4, 1);
+  g.fillRect(x - radius + 2, y + 1, radius * 2 - 4, 1);
+}
+
+/** O reflexo no chão polido é o próprio boneco, virado ao contrário e quase transparente. */
+export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, strength: number): void {
+  g.save();
+  g.globalAlpha = strength;
+  g.translate(0, (y | 0) * 2 + 1);
+  g.scale(1, -1);
+  drawSprite(g, pose, look, x, y, flip, back, false);
+  g.restore();
+}
+
+const faceCache = new Map<string, string>();
+
+/** Retrato do jogador para o painel, recortado do próprio boneco. */
+export function faceImage(look: Look): string {
+  const key = `${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}`;
+  let url = faceCache.get(key);
+  if (!url) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 14;
+    canvas.height = 14;
+    const g = canvas.getContext('2d')!;
+    drawSprite(g, 'idle', look, 7, look.legs + look.torso + 11, false, false, false);
+    url = canvas.toDataURL();
+    faceCache.set(key, url);
+  }
+  return url;
 }
 
 export function drawBall(g: CanvasRenderingContext2D, x: number, y: number): void {

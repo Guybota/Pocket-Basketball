@@ -21,6 +21,8 @@ export interface ShotContext {
   fatigue: number;
   clutch: boolean;
   away: boolean;
+  /** Vantagem física e de movimentos especiais, somada à probabilidade. */
+  bonus?: number;
 }
 
 /** Perto do cesto conta a força, o salto e a técnica. Longe conta o lançamento. */
@@ -34,6 +36,7 @@ export function shotChance(attributes: Attributes, context: ShotContext): number
   chance += (close ? B.closeSkillSlope : B.farSkillSlope) * (skill / 20 - B.skillPivot);
   chance -= B.pressurePenalty * context.pressure * (1 - B.composureSlope * will);
   chance -= B.fatiguePenalty * context.fatigue;
+  chance += context.bonus ?? 0;
   if (context.clutch) chance += B.clutchSlope * will;
   if (context.away) chance += B.awaySlope * will;
   return clamp(chance, B.minChance, B.maxChance);

@@ -1,6 +1,6 @@
-import { attributeWinRate, betterTeamWinRate, fullBonusWinRate, summarize } from '../sim/batch.ts';
+import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize } from '../sim/batch.ts';
 import { DIVISIONS, generateLeagueTeam } from '../sim/teamgen.ts';
-import { ATTRIBUTE_KEYS } from '../sim/types.ts';
+import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES } from '../sim/types.ts';
 
 const matches = Number(process.argv[2] ?? 1000);
 if (!Number.isInteger(matches) || matches < 1) {
@@ -31,6 +31,7 @@ console.log(`Ressaltos ofensivos      ${percent(s.offensiveReboundPercent)}`);
 console.log(`Bolas perdidas           ${s.turnoversPerTeam.toFixed(1)} por equipa`);
 console.log(`Faltas                   ${s.foulsPerTeam.toFixed(1)} por equipa`);
 console.log(`Desarmes                 ${s.blocksPerTeam.toFixed(1)} por equipa`);
+console.log(`Movimentos especiais     ${s.movesPerGame.toFixed(1)} por jogo`);
 console.log(`Prolongamentos          ${percent(s.overtimes)}`);
 console.log(`Diferença média          ${s.meanMargin.toFixed(1)} pontos`);
 
@@ -46,3 +47,15 @@ console.log(`\nUma nota acima num só atributo (${Math.min(matches, 1000)} jogos
 for (const key of ATTRIBUTE_KEYS) {
   console.log(`  ${key.padEnd(10)} ${percent(attributeWinRate(key, 17, Math.min(matches, 1000)))}`);
 }
+
+const sample = Math.min(matches, 600);
+console.log(`\nCorpo de toda a equipa (${sample} jogos cada)`);
+console.log(`  10 cm mais altos        ${percent(bodyWinRate(10, 0, sample))}`);
+console.log(`  15 kg mais pesados      ${percent(bodyWinRate(0, 15, sample))}`);
+console.log(`  10 cm e 15 kg a mais    ${percent(bodyWinRate(10, 15, sample))}`);
+console.log(`\nToda a equipa com um movimento (${sample} jogos cada)`);
+for (const move of MOVES) console.log(`  ${move.padEnd(12)} ${percent(movesWinRate([move], sample))}`);
+console.log(`\nDois titulares com um comportamento sem bola (${sample} jogos cada)`);
+for (const offBall of OFF_BALL_STYLES) console.log(`  ${offBall.padEnd(12)} ${percent(styleWinRate({ offBall }, sample))}`);
+console.log(`\nDois titulares com um comportamento com bola (${sample} jogos cada)`);
+for (const onBall of ON_BALL_STYLES) console.log(`  ${onBall.padEnd(12)} ${percent(styleWinRate({ onBall }, sample))}`);

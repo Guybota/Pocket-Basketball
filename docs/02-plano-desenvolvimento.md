@@ -127,6 +127,8 @@ ganho = valor_carta × multiplicador_potencial × (1 − fadiga_atual) + bónus_
 
 **Porquê a vertical:** reproduz diretamente os dois ecrãs do original, com o jogo em cima e o painel tátil em baixo, e permite jogar com uma só mão. A resolução base é **360×640**, escalada por múltiplos inteiros.
 
+**No computador:** quando a janela é mais larga do que alta, o campo fica grande à esquerda e o painel à direita. A arte continua em píxeis grandes, entre 240 e 290 de altura, conforme o ecrã.
+
 As regras de trabalho para os dois agentes estão em [AGENTS.md](../AGENTS.md).
 
 ## 7. Fases
@@ -162,14 +164,84 @@ Resultados de `npm run sim` com 1000 jogos:
 
 ### Estado da Fase 1: construída, à espera do teste com pessoas
 
-O jogo corre no browser, com câmara a seguir a bola, velocidades ×1, ×2 e ×4, som sintetizado, e os quatro campos. `npm run browser-check` confirma:
+O jogo corre no browser, com câmara a seguir a bola, velocidades ×1, ×2 e ×4, som sintetizado, e os quatro campos. Funciona em vertical e em horizontal, com o campo ao lado do painel no computador. `npm run browser-check` confirma:
 
 - **Repetições:** o mesmo jogo dá o mesmo resultado em Node e no Edge.
 - **Desempenho:** menos de 16 ms por frame com o processador 4× mais lento.
 
-**Falta o critério da fase:** 3 pessoas verem um jogo inteiro sem pedir para saltar. Só isto decide se avançamos para a Fase 2.
+**Falta o critério da fase:** 3 pessoas verem um jogo inteiro sem pedir para saltar. A Fase 2 começou por decisão do dono do projeto, sem este teste, que continua por fazer.
 
 **Ainda por confirmar:** telemóveis reais, Safari e Firefox, e se o som é agradável. Os testes não conseguem ouvir nem sentir o ritmo do jogo.
+
+### Estado da Fase 2: construída, à espera de alguém a ver
+
+O clube fica guardado no browser. Cada semana tem um treino e um jogo: 20 cartas em 4 categorias, 3 espaços por jogador, 30 combos, potencial e cansaço. As cartas ganham-se nas jogadas da equipa, e mesmo a perder se ganha uma. As táticas (pressão, ataque e ritmo) mudam-se antes e durante o jogo.
+
+Medições com um treinador automático simples, 60 clubes de 30 semanas na Liga Avançada:
+
+| Medida | Resultado |
+|---|---|
+| Contra a mesma equipa sem treino, depois de 5 semanas | Ganha 66,9% (480 jogos) |
+| Contra a mesma equipa sem treino, depois de 10 semanas | Ganha 81,0% (480 jogos) |
+| Contra a mesma equipa sem treino, depois de 20 semanas | Ganha 94,8% (480 jogos) |
+| Cartas ganhas por jogo | Cerca de 8 |
+| Combos descobertos ao fim de 29 semanas | Cerca de 19 em 30 |
+| Vitórias na liga | 53% na semana 1, 72% na semana 9, 98% na semana 29 |
+
+**Falta o critério da fase:** alguém ver um jogo e notar a diferença entre o jogador treinado e o mesmo por treinar. Os números acima dizem que o treino pesa no resultado, mas não que se vê.
+
+**Limite conhecido:** os adversários não melhoram. Sem subidas de divisão, ao fim de cerca de 20 semanas o clube é demasiado forte para a sua liga. Resolve-se na Fase 3, com a liga e as subidas: as divisões estão a 11 pontos de nível, e o clube sobe cerca de 0,6 por semana.
+
+**Uma simplificação:** abandonar um jogo a meio não custa nada, porque só o fim do jogo é guardado. A semana repete-se com a mesma semente.
+
+## 7A. Decisões durante o jogo
+
+- **Descontos de tempo:** 2 por parte e 1 no prolongamento. Entram logo se a equipa tiver a bola, ou na bola parada seguinte. O relógio para e os jogadores recuperam um pouco de energia. A equipa adversária pede um quando sofre um parcial de 8 pontos ou mais.
+- **Substituições:** entram na bola parada seguinte. Uma troca manual desliga a rotação automática da equipa, que se pode voltar a ligar. Quem é excluído por faltas é sempre trocado.
+- **Repetições:** as decisões do treinador ficam registadas com o momento em que aconteceram, por isso semente, equipas e comandos repetem o jogo exatamente.
+- **Tempo de posse:** ao fim de 11 segundos sem lançamento, a bola passa para o adversário, com buzzer.
+
+## 7B. Corpo e movimentos especiais
+
+**Corpo:** cada jogador tem altura e peso. Com o físico, decidem o tipo de corpo que se vê em campo e no retrato. Também contam no jogo: a altura ajuda nos ressaltos, nos desarmes, na finalização perto do cesto e na pressão sobre quem lança; o peso ajuda no contacto e nos ressaltos, mas faz correr mais devagar e cansar mais depressa.
+
+**Movimentos especiais:** aprendem-se no treino, e os jogadores do clube começam sem nenhum. Os adversários gerados já trazem alguns.
+
+| Movimento | O que faz | Combinação de cartas |
+|---|---|---|
+| Crossover | Deixa o defensor parado e abre caminho para o cesto | Drible + Sprints + Ler a Defesa |
+| Step-back | Recua antes de lançar para ganhar espaço | Lançamento + Drible + Bailarico |
+| Alley-oop | Passe alto para um colega afundar, sem desarme possível | Passe Picado + Saltos + Pick & Roll |
+| Afundanço de Força | Perto do cesto, não pode ser desarmado | Pesos + Saltos + Sopa da Avó |
+| Mão Rápida | Rouba a bola muito mais vezes | Sprints + Ler a Defesa + Sesta |
+
+**Comportamentos em campo:** cada jogador tem um comportamento sem bola e outro com bola. Já existem na simulação e mudam mesmo o posicionamento e as decisões. O manual do original confirma o princípio para o movimento sem bola: há 12 tipos, que mudam com o treino. O comportamento com bola é uma extensão nossa.
+
+| Sem bola | O que faz | Combinação de cartas |
+|---|---|---|
+| Atirador Parado | Espera aberto na linha de 3 | Lançamento + Ler a Defesa + Sesta |
+| Cortador | Corta para o cesto vezes sem conta | Sprints + Passe Picado + Ler a Defesa |
+| Poste Baixo | Fica sempre perto do cesto | Pesos + Saltos + Pick & Roll |
+| Ressaltador | Corre para o cesto em cada lançamento | Saltos + Sprints + Pesos |
+| Contra-ataque | Larga a defesa em lançamentos longos e corre para o outro lado | Sprints + Bailarico + Passe Picado |
+| Bloqueador | Faz bloqueios para o colega com a bola | Pick & Roll + Pesos + Ler a Defesa |
+| Sombra | Defende colado ao adversário direto | Ler a Defesa + Sprints + Massagem |
+
+| Com bola | O que faz | Combinação de cartas |
+|---|---|---|
+| Organizador | Procura primeiro o passe | Passe Picado + Ler a Defesa + Pick & Roll |
+| Solista | Prefere resolver sozinho | Drible + Lançamento + Sopa da Avó |
+| Penetrador | Ataca o cesto em drible | Drible + Sprints + Pesos |
+| Lançador | Procura o lançamento de 3 | Lançamento + Lances Livres + Sesta |
+| Poste de Costas | Joga perto do cesto, de costas | Pesos + Passe Picado + Saltos |
+
+Regras:
+
+- Uma combinação certa desbloqueia o movimento de forma permanente. Cada jogador sabe no máximo 2.
+- Uma combinação de comportamento substitui o comportamento atual, como os tipos do original.
+- Só conta um combo por jogador em cada semana: o maior que as cartas formarem.
+- Um combo novo só se revela ao treinar. A lista mostra apenas as categorias das cartas de cada um.
+- Tudo isto vive em dados, em `src/sim/training.ts`, para acrescentar combinações sem mexer no resto do código.
 
 ## 8. Riscos
 

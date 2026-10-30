@@ -6,7 +6,7 @@ export const BALANCE = {
   periodBreakSeconds: 2,
   shotClockSeconds: 11,
   offensiveReboundShotClockSeconds: 7,
-  deadBallSeconds: 0.9,
+  deadBallSeconds: 1.15,
   freeThrowSeconds: 1,
   freeThrowSetupSeconds: 1,
   freeThrowFlightSeconds: 0.6,
@@ -21,10 +21,10 @@ export const BALANCE = {
 
   // Decisões do portador da bola
   decisionMinSeconds: 0.35,
-  decisionMaxSeconds: 0.7,
+  decisionMaxSeconds: 0.85,
   shootingRangeU: 10,
   forcedShotSeconds: 1,
-  holdWeight: 0.22,
+  holdWeight: 0.32,
   shootWeight: 1,
   passWeight: 1.15,
   driveWeight: 0.9,
@@ -36,12 +36,12 @@ export const BALANCE = {
   minPassSeconds: 0.2,
 
   // Lançamento
-  rimChance: 0.87,
+  rimChance: 0.82,
   rimDistance: 1.2,
   midDistance: 3,
-  midChance: 0.69,
-  longChance: 0.63,
-  threeChance: 0.55,
+  midChance: 0.65,
+  longChance: 0.62,
+  threeChance: 0.54,
   threeFalloffPerMeter: 0.03,
   skillPivot: 3,
   closeSkillSlope: 0.035,
@@ -60,6 +60,8 @@ export const BALANCE = {
   shotArcPerMeter: 1.2,
   ballFallSpeed: 6,
   ballRestHeight: 0.15,
+  rimMissOffset: 0.34,
+  blockedTravel: 0.12,
 
   // Pressão do defensor
   pressureRange: 2.5,
@@ -97,7 +99,7 @@ export const BALANCE = {
   freeThrowSlope: 0.09,
 
   // Ressalto
-  reboundDefenseBonus: 1.9,
+  reboundDefenseBonus: 2.5,
 
   // Cansaço, por segundo
   fatigueGain: 0.0085,
@@ -110,5 +112,80 @@ export const BALANCE = {
   maxStintSeconds: 60,
   stintStaggerSeconds: 7,
   subInFatigue: 0.4,
+
+  // Corpo: referência de 195 cm, 95 kg e índice de massa corporal 25
+  referenceHeight: 195,
+  referenceWeight: 95,
+  referenceBmi: 25,
+  speedLossPerBmi: 0.06,
+  fatiguePerBmi: 0.03,
+  reboundPerCm: 0.012,
+  reboundPerKg: 0.002,
+  blockPerCm: 0.003,
+  finishPerCm: 0.0015,
+  finishPerKg: 0.0006,
+  contestPerCm: 0.002,
+
+  // Movimentos especiais
+  crossoverChance: 0.7,
+  crossoverMinPressure: 0.3,
+  crossoverStunSeconds: 1.5,
+  stepBackChance: 0.6,
+  stepBackMinPressure: 0.3,
+  stepBackMinDistance: 3.5,
+  stepBackMaxDistance: 8.5,
+  stepBackMeters: 1.3,
+  alleyOopChance: 0.06,
+  alleyOopRange: 2.6,
+  alleyOopMaxPressure: 0.4,
+  alleyOopMinJumping: 55,
+  alleyOopBonus: 0.05,
+  powerDunkMaxDistance: 2,
+  powerDunkBonus: 0.12,
+  pickpocketFactor: 2.5,
+
+  // Comportamentos sem bola
+  cutterCutFactor: 0.6,
+  shadowGap: 0.8,
+  screenDistance: 1.1,
+  screenSlowRange: 0.9,
+  screenSlowdown: 0.55,
+  leakU: 11,
+  leakMinShotDistance: 5,
+  spotUpBonus: 0.06,
+  catchAndShootSeconds: 1.2,
+  slasherFinishBonus: 0.07,
+
+  // Comportamentos com bola: multiplicam a vontade de lançar, lançar de 3, passar, ir para o cesto e esperar
+  onBall: {
+    balanced: { shoot: 1, three: 1, pass: 1, drive: 1, hold: 1 },
+    playmaker: { shoot: 0.7, three: 0.8, pass: 1.6, drive: 1, hold: 1 },
+    scorer: { shoot: 1.5, three: 1.2, pass: 0.6, drive: 1.2, hold: 0.7 },
+    slasher: { shoot: 0.8, three: 0.4, pass: 0.8, drive: 1.8, hold: 0.8 },
+    shooter: { shoot: 1.1, three: 2.2, pass: 1, drive: 0.4, hold: 1 },
+    postUp: { shoot: 1.2, three: 0.2, pass: 0.9, drive: 1.5, hold: 1 },
+  },
   starterReturnFatigue: 0.25,
+
+  // Táticas: efeito de cada uma no seu extremo
+  tacticThree: 0.6,
+  tacticInsideDrive: 0.35,
+  tacticSpacingSpot: 0.1,
+  tacticPaceShoot: 0.25,
+  tacticPaceHold: 0.4,
+  tacticPacePass: 0.15,
+  tacticPaceDecision: 0.2,
+  tacticPaceFatigue: 0.15,
+  tacticPressureGap: 0.4,
+  tacticPressureSteal: 0.6,
+  tacticPressureFoul: 0.6,
+  tacticPressureFatigue: 0.2,
+
+  // Descontos de tempo
+  timeoutsPerHalf: 2,
+  timeoutsInOvertime: 1,
+  timeoutSeconds: 3,
+  afterTimeoutSeconds: 2.5,
+  timeoutRecovery: 0.12,
+  aiTimeoutRun: 8,
 } as const;

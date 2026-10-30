@@ -15,7 +15,8 @@
     "dev": "vite",
     "build": "vite build",
     "browser-check": "node src/tools/browser-check.ts",
-    "build-page": "node src/tools/build-page.ts"
+    "build-page": "node src/tools/build-page.ts",
+    "build-mock": "node src/tools/build-mock.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

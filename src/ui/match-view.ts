@@ -1,10 +1,12 @@
-import { createMatch, step, type Body, type MatchEvent, type MatchState } from '../sim/match.ts';
+import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { Team } from '../sim/types.ts';
-import { Camera, VIEW_H, VIEW_W, courtTextures, drawHoop, type CourtTextures } from './art/court.ts';
-import { text, textWidth } from './art/font.ts';
+import { MOVE_INFO } from './narrate.ts';
+import { Camera, courtTextures, drawBox, drawHoopBack, drawHoopFront, type CourtTextures } from './art/court.ts';
+import { text } from './art/font.ts';
 import {
   drawBall,
   drawCarrierArrow,
+  drawReflection,
   drawShadow,
   drawSprite,
   lookOf,
@@ -12,18 +14,39 @@ import {
   type Look,
   type PoseName,
 } from './art/sprites.ts';
-import { clockText } from './narrate.ts';
 
 const HOOP_LEFT = 1.575;
 const HOOP_RIGHT = 26.425;
 const RUN_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
+const DRIBBLE_RUN_FRAMES: readonly PoseName[] = ['dribRun0', 'dribRun1', 'dribRun2', 'dribRun3'];
 const DUNK_MAX_DISTANCE = 1.7;
 const DUNK_MIN_JUMPING = 45;
 const RUN_BANNERS = [8, 12, 16];
+const BENCH_Y = -8.5;
+const COACH_Y = -7.9;
+const SWISH_TICKS = 10;
+const TRAIL_LENGTH = 6;
+const HOOP_FRONT_OFFSET = 0.5;
+const BALL_IN_HOOP_RANGE = 0.7;
+// Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
+const TURN_LOCK_TICKS = 12;
+const IDLE_TURN_MARGIN = 24;
 
 interface Point {
   x: number;
   y: number;
+}
+/** Direção estável de um jogador: um movimento médio, e não o de um único instante. */
+interface Motion {
+  vx: number;
+  vy: number;
+  speed: number;
+  moving: boolean;
+  back: boolean;
+  flip: boolean;
+  backLock: number;
+  flipLock: number;
+  lastBackChange: number;
 }
 interface Floater {
   label: string;
@@ -33,7 +56,7 @@ interface Floater {
   born: number;
 }
 
-export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'bounce' | 'steal' | 'block' | 'cheer' | 'bigCheer';
+export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card';
 
 export interface ViewCallbacks {
   announce(message: string): void;
@@ -47,35 +70,56 @@ export class MatchView {
   readonly periodScores: [number[], number[]] = [[], []];
   private readonly camera = new Camera();
   private readonly textures: CourtTextures;
-  private readonly image: ImageData;
-  private readonly pixels: Uint32Array;
+  private image: ImageData;
+  private pixels: Uint32Array;
   private readonly looks = new Map<Body, Look>();
+  private readonly coaches: [Look, Look];
   private readonly previous = new Map<Body, Point>();
-  private readonly facing = new Map<Body, boolean>();
-  private readonly backs = new Map<Body, boolean>();
-  private readonly overrides = new Map<Body, { pose: PoseName; until: number }>();
+  private readonly motions = new Map<Body, Motion>();
+  private backChanges = 0;
+  private shortestBackInterval = Infinity;
+  private readonly overrides = new Map<Body, { pose: PoseName; until: number; withBall?: boolean }>();
   private readonly floaters: Floater[] = [];
+  private readonly trail: [number, number][] = [];
   private ball = { x: 14, y: 0, z: 1 };
   private ballPrevious = { x: 14, y: 0, z: 1 };
   private seenEvents = 0;
   private run = { team: 0 as 0 | 1, points: 0 };
   private nextDribbleTick = 0;
+  private lastHornTick = -1;
+  private excitedUntil = 0;
+  private benchCheerUntil: [number, number] = [0, 0];
+  private swishUntil = 0;
+  private swishHoop = HOOP_LEFT;
+  private shakeUntil = 0;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
+  private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false]) {
     this.g = g;
     this.callbacks = callbacks;
-    this.s = createMatch(home, away, seed);
+    this.s = createMatch(home, away, seed, controlled);
     this.textures = courtTextures(division);
-    this.image = g.createImageData(VIEW_W, VIEW_H);
+    this.image = g.createImageData(g.canvas.width, g.canvas.height);
     this.pixels = new Uint32Array(this.image.data.buffer);
+    this.camera.setViewport(g.canvas.width, g.canvas.height);
     for (const b of this.s.bodies) {
       this.looks.set(b, lookOf(b.player, b.team === 0 ? 'blue' : 'cream'));
       this.previous.set(b, { x: b.x, y: b.y });
     }
+    const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'coach'), style: 0, legs: 6, torso: 6, build: 'athletic' });
+    this.coaches = [coachLook(home), coachLook(away)];
     this.camera.aim(this.cameraTarget());
     this.processEvents();
+  }
+
+  /** Chamado quando a janela muda de tamanho. */
+  resize(): void {
+    const { canvas } = this.g;
+    this.image = this.g.createImageData(canvas.width, canvas.height);
+    this.pixels = new Uint32Array(this.image.data.buffer);
+    this.camera.setViewport(canvas.width, canvas.height);
   }
 
   private cameraTarget(): number {
@@ -103,7 +147,7 @@ export class MatchView {
           break;
         case 'shot': {
           if (!body) break;
-          const dunk = e.points === 2 && e.distance! <= DUNK_MAX_DISTANCE && body.player.attributes.jumping >= DUNK_MIN_JUMPING;
+          const dunk = e.dunk === true || (e.points === 2 && e.distance! <= DUNK_MAX_DISTANCE && body.player.attributes.jumping >= DUNK_MIN_JUMPING);
           this.overrides.set(body, { pose: dunk ? 'dunk' : 'shoot', until: s.tick + (dunk ? 12 : 16) });
           break;
         }
@@ -114,6 +158,8 @@ export class MatchView {
           break;
         case 'freeThrowMade':
           this.addPoints(e, 1);
+          this.swishUntil = s.tick + SWISH_TICKS;
+          this.swishHoop = this.attackedHoop(e.team);
           callbacks.sound('swish');
           break;
         case 'missed':
@@ -122,6 +168,7 @@ export class MatchView {
           break;
         case 'block':
           if (body) this.overrides.set(body, { pose: 'block', until: s.tick + 12 });
+          this.excitedUntil = s.tick + 24;
           callbacks.sound('block');
           callbacks.announce('Desarme!');
           break;
@@ -134,11 +181,35 @@ export class MatchView {
         case 'foul':
           callbacks.sound('whistle');
           break;
-        case 'end':
+        case 'periodEnd':
           callbacks.sound('buzzer');
           break;
+        case 'end':
+          this.excitedUntil = s.tick + 100000;
+          break;
+        case 'timeout':
+          callbacks.sound('whistle');
+          callbacks.sound('horn');
+          callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
+          break;
+        case 'shotClockViolation':
+          callbacks.sound('shotClockBuzzer');
+          callbacks.sound('whistle');
+          callbacks.announce('Tempo de posse!');
+          break;
+        case 'move':
+          if (body && e.move === 'crossover') this.overrides.set(body, { pose: 'crossover', until: s.tick + 8, withBall: true });
+          this.excitedUntil = s.tick + 30;
+          callbacks.sound('bigCheer');
+          callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
+          break;
         case 'turnover':
+          callbacks.sound('whistle');
+          break;
         case 'substitution':
+          // Várias trocas na mesma paragem só dão um toque de buzzer.
+          if (this.lastHornTick !== s.tick) callbacks.sound('horn');
+          this.lastHornTick = s.tick;
           break;
       }
     }
@@ -165,19 +236,26 @@ export class MatchView {
     const { s, callbacks } = this;
     const hoopX = this.attackedHoop(e.team);
     this.floaters.push({ label: `+${e.points}`, x: hoopX, y: 0, z: 3.05, born: s.tick });
+    this.swishUntil = s.tick + SWISH_TICKS;
+    this.swishHoop = hoopX;
+    this.benchCheerUntil[e.team] = s.tick + 24;
     const dunk = this.overrides.get(body!)?.pose === 'dunk';
     const loud = e.points === 3 || dunk;
+    this.excitedUntil = s.tick + (loud ? 44 : 18);
+    if (dunk) this.shakeUntil = s.tick + 8;
     callbacks.sound('swish');
     callbacks.sound(loud ? 'bigCheer' : 'cheer');
     if (dunk) callbacks.announce('Afundanço!');
-    if (s.clock <= 20) callbacks.announce('Sobre o apito!');
-    else if (s.period >= 4 && s.clock < 600) {
+    if (s.clock <= 20) {
+      callbacks.announce('Sobre o apito!');
+      this.excitedUntil = s.tick + 60;
+    } else if (s.period >= 4 && s.clock < 600) {
       const lead = s.score[e.team] - s.score[e.team === 0 ? 1 : 0];
       if (lead > 0 && lead <= e.points!) callbacks.announce('Reviravolta!');
     }
   }
 
-  private attackedHoop(team: 0 | 1): number {
+  private attackedHoop(team: TeamIndex): number {
     return (team === 0) !== this.s.period >= 3 ? HOOP_RIGHT : HOOP_LEFT;
   }
 
@@ -205,6 +283,7 @@ export class MatchView {
       this.ball.y += (target.y - this.ball.y) * 0.45;
       this.ball.z += (target.z - this.ball.z) * 0.45;
     }
+    this.updateMotion();
     if (s.holder && s.tick >= this.nextDribbleTick) {
       this.nextDribbleTick = s.tick + 8;
       this.callbacks.sound('bounce');
@@ -212,7 +291,54 @@ export class MatchView {
     this.processEvents();
   }
 
-  private poseOf(b: Body, speed: number): { pose: PoseName; withBall: boolean } {
+  private motionOf(b: Body): Motion {
+    let motion = this.motions.get(b);
+    if (!motion) {
+      motion = { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0 };
+      this.motions.set(b, motion);
+    }
+    return motion;
+  }
+
+  /** Corre uma vez por passo da simulação, e não por imagem desenhada. */
+  private updateMotion(): void {
+    const { s, camera } = this;
+    const ballX = camera.project(this.ball.x, this.ball.y)[0];
+    for (const b of [...s.court[0], ...s.court[1]]) {
+      const m = this.motionOf(b);
+      const prev = this.previous.get(b)!;
+      const [sx, sy] = camera.project(b.x, b.y);
+      const [px, py] = camera.project(prev.x, prev.y);
+      const speed = Math.sqrt((b.x - prev.x) * (b.x - prev.x) + (b.y - prev.y) * (b.y - prev.y)) * 20;
+      m.vx = m.vx * 0.75 + (sx - px) * 0.25;
+      m.vy = m.vy * 0.75 + (sy - py) * 0.25;
+      m.speed = m.speed * 0.7 + speed * 0.3;
+      // Limites diferentes para arrancar e para parar, para não alternar entre correr e estar parado.
+      m.moving = m.moving ? m.speed > 0.4 : m.speed > 1;
+      // Parado, só se vira quando a bola passa claramente para o outro lado.
+      const idleFlip = ballX < sx - IDLE_TURN_MARGIN ? true : ballX > sx + IDLE_TURN_MARGIN ? false : m.flip;
+      const wantFlip = m.moving ? (m.vx < -0.8 ? true : m.vx > 0.8 ? false : m.flip) : idleFlip;
+      const wantBack = m.moving && (m.back ? m.vy < -0.4 : m.vy < -1.4);
+      if (wantFlip !== m.flip && s.tick >= m.flipLock) {
+        m.flip = wantFlip;
+        m.flipLock = s.tick + TURN_LOCK_TICKS;
+      }
+      if (wantBack !== m.back && s.tick >= m.backLock) {
+        if (m.lastBackChange > 0) this.shortestBackInterval = Math.min(this.shortestBackInterval, s.tick - m.lastBackChange);
+        m.lastBackChange = s.tick;
+        m.back = wantBack;
+        m.backLock = s.tick + TURN_LOCK_TICKS;
+        this.backChanges++;
+      }
+    }
+  }
+
+  /** Trocas entre frente e costas. Serve para a verificação no browser. */
+  backChangeStats(): { changes: number; shortestTicks: number } {
+    return { changes: this.backChanges, shortestTicks: this.shortestBackInterval };
+  }
+
+  private poseOf(b: Body, moving: boolean): { pose: PoseName; withBall: boolean } {
     const { s } = this;
     const frame = Math.floor(s.tick / 2.5);
     if (s.phase === 'end') {
@@ -220,76 +346,152 @@ export class MatchView {
       return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'idle', withBall: false };
     }
     const override = this.overrides.get(b);
-    if (override && override.until > s.tick) return { pose: override.pose, withBall: false };
+    if (b.stunnedUntil > s.tick) return { pose: 'stumble', withBall: false };
+    if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
     if (s.phase === 'freeThrow') {
       const shooting = s.freeThrow?.shooter === b && s.timer < 12;
       return { pose: shooting ? 'shoot' : 'idle', withBall: false };
     }
     if (s.flight?.kind === 'pass' && s.flight.passer === b) return { pose: 'pass', withBall: false };
-    if (s.holder === b) return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
-    if (speed > 0.6) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
+    if (s.holder === b) {
+      // A correr, as pernas acompanham o drible; parado, só a bola mexe.
+      if (moving) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
+      return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
+    }
+    if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
     return { pose: b.team === s.offense ? 'idle' : 'defend', withBall: false };
+  }
+
+  /** Quem está no banco, a mesa de oficiais e os treinadores. */
+  private addSideline(drawables: { y: number; draw: () => void }[], time: number): void {
+    const { g, s, camera } = this;
+    // A mesa e os bancos estão encostados à parede, por isso desenham-se antes de tudo o resto.
+    drawables.push({
+      y: -Infinity,
+      draw: () => {
+        drawBox(g, camera, 12.4, 15.6, -9.05, -8.45, 0.75, '#efe3c2', '#2a3040');
+        drawBox(g, camera, 4, 11.4, -8.95, -8.7, 0.4, '#3a4252', '#1b2230');
+        drawBox(g, camera, 16.6, 24, -8.95, -8.7, 0.4, '#3a4252', '#1b2230');
+      },
+    });
+    for (const team of [0, 1] as const) {
+      const benchers = s.bodies.filter(b => b.team === team && b.slot === -1);
+      const startX = team === 0 ? 4.4 : 16.9;
+      const cheering = s.tick < this.benchCheerUntil[team] || (s.phase === 'end' && s.score[team] > s.score[team === 0 ? 1 : 0]);
+      benchers.forEach((b, i) => {
+        const x = startX + i * 0.95;
+        const [sx, sy] = camera.project(x, BENCH_Y);
+        const pose: PoseName = cheering ? (Math.floor(s.tick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : 'sit';
+        drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.looks.get(b)!, sx, sy, false, false, false) });
+      });
+      // O treinador anda de um lado para o outro à frente do banco.
+      const coachBase = team === 0 ? 8 : 20;
+      const [cx, cy] = camera.project(coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, COACH_Y);
+      const walking = Math.abs(Math.cos(time * 0.5 + team * 2)) > 0.3;
+      const coachFrame = Math.floor(time * 6) % 4;
+      drawables.push({
+        y: cy,
+        draw: () => {
+          drawShadow(g, cx, cy);
+          drawSprite(g, walking ? RUN_FRAMES[coachFrame]! : 'idle', this.coaches[team], cx, cy, Math.cos(time * 0.5 + team * 2) < 0, false, false);
+        },
+      });
+    }
   }
 
   /** Desenha um frame. `alpha` é a fração entre dois passos da simulação e `simSeconds` o tempo decorrido no jogo. */
   render(alpha: number, simSeconds: number): void {
     const { g, s, camera } = this;
-    camera.aim(camera.lookX + (this.cameraTarget() - camera.lookX) * (1 - Math.exp(-simSeconds * 2.2)));
-    camera.drawScene(this.pixels, this.textures);
-    g.putImageData(this.image, 0, 0);
+    const time = s.tick / 20;
     const { theme } = this.textures;
+    camera.aim(camera.lookX + (this.cameraTarget() - camera.lookX) * (1 - Math.exp(-simSeconds * 2.2)));
+    const excited = s.tick < this.excitedUntil;
+    const crowdFrame = excited ? (s.tick >> 2) % 2 ? 2 : 1 : (s.tick >> 5) % 3 === 0 ? 1 : 0;
+    camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame);
+    if (excited && theme.flashes && !this.reducedMotion) {
+      // Flashes de fotografia nas bancadas.
+      const { width, height } = camera;
+      for (let i = 0; i < 6; i++) {
+        const y = Math.floor(Math.random() * height * 0.25);
+        const x = Math.floor(Math.random() * width);
+        this.pixels[y * width + x] = 0xffffffff;
+      }
+    }
+    g.putImageData(this.image, 0, 0);
     const drawables: { y: number; draw: () => void }[] = [];
+    this.addSideline(drawables, time);
     for (const hoopX of [HOOP_LEFT, HOOP_RIGHT]) {
       const outward = hoopX < 14 ? -1 : 1;
-      drawables.push({ y: camera.project(hoopX + outward * 0.5, 0, 0)[1], draw: () => drawHoop(g, camera, theme, hoopX) });
+      const swish = hoopX === this.swishHoop && s.tick < this.swishUntil ? (this.swishUntil - s.tick) / SWISH_TICKS : 0;
+      const hoopY = camera.project(hoopX + outward * 0.5, 0, 0)[1];
+      drawables.push({ y: hoopY, draw: () => drawHoopBack(g, camera, theme, hoopX, swish) });
+      drawables.push({ y: hoopY + HOOP_FRONT_OFFSET, draw: () => drawHoopFront(g, camera, hoopX, swish) });
     }
-    const s0 = s.court[0];
-    const s1 = s.court[1];
-    for (const b of [...s0, ...s1]) {
+    const onCourt = [...s.court[0], ...s.court[1]];
+    const placed = onCourt.map(b => {
       const prev = this.previous.get(b)!;
       const x = prev.x + (b.x - prev.x) * alpha;
       const y = prev.y + (b.y - prev.y) * alpha;
       const [sx, sy] = camera.project(x, y);
-      const [px, py] = camera.project(prev.x, prev.y);
-      const speed = Math.sqrt((b.x - prev.x) * (b.x - prev.x) + (b.y - prev.y) * (b.y - prev.y)) * 20;
+      const motion = this.motionOf(b);
       const look = this.looks.get(b)!;
-      const { pose, withBall } = this.poseOf(b, speed);
-      if (speed > 0.6) {
-        if (Math.abs(sx - px) > 0.05) this.facing.set(b, sx < px);
-        this.backs.set(b, sy < py - 0.2);
-      } else {
-        this.facing.set(b, camera.project(this.ball.x, this.ball.y)[0] < sx);
-        this.backs.set(b, false);
-      }
-      const flip = this.facing.get(b) ?? false;
-      const back = (this.backs.get(b) ?? false) && pose.startsWith('run');
+      const { pose, withBall } = this.poseOf(b, motion.moving);
+      const flip = motion.flip;
+      const back = motion.back && pose.startsWith('run');
+      return { x: sx, y: sy, pose, withBall, look, flip, back };
+    });
+    // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
+    if (theme.reflection > 0) {
+      for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection);
+    }
+    for (const p of placed) {
       drawables.push({
-        y: sy,
+        y: p.y,
         draw: () => {
-          drawShadow(g, sx, sy);
-          drawSprite(g, pose, look, sx, sy, flip, back, withBall);
+          drawShadow(g, p.x, p.y);
+          drawSprite(g, p.pose, p.look, p.x, p.y, p.flip, p.back, p.withBall);
         },
       });
     }
-    const holderDrawsBall = s.holder !== null && !(this.overrides.get(s.holder)?.until! > s.tick);
+    const holderOverride = s.holder ? this.overrides.get(s.holder) : undefined;
+    const holderDrawsBall = s.holder !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
     if (!holderDrawsBall) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
       const z = this.ballPrevious.z + (this.ball.z - this.ballPrevious.z) * alpha;
       const [gx, gy] = camera.project(x, y);
       const [bx, by] = camera.project(x, y, z);
+      if (s.flight?.kind === 'shot') {
+        this.trail.push([bx, by]);
+        if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
+      } else {
+        this.trail.length = 0;
+      }
+      // Junto ao cesto, a bola fica entre a parte de trás e a da frente, para atravessar o aro.
+      const nearbyHoop = [HOOP_LEFT, HOOP_RIGHT].find(hoopX => Math.abs(x - hoopX) < BALL_IN_HOOP_RANGE && Math.abs(y) < BALL_IN_HOOP_RANGE);
+      const ballLayer = nearbyHoop === undefined ? gy : camera.project(nearbyHoop + (nearbyHoop < 14 ? -0.5 : 0.5), 0, 0)[1] + HOOP_FRONT_OFFSET / 2;
       drawables.push({
-        y: gy,
+        y: ballLayer,
         draw: () => {
           drawShadow(g, gx, gy, 3);
+          this.trail.forEach(([tx, ty], i) => {
+            g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
+            g.fillRect((tx | 0) - 1, (ty | 0) - 1, 3, 3);
+          });
           drawBall(g, bx, by);
         },
       });
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
-    this.drawHud(alpha);
+    this.drawCarrier(alpha);
     this.drawFloaters();
+    if (!this.reducedMotion && s.tick < this.shakeUntil) {
+      const dx = s.tick % 2 ? 2 : -2;
+      g.canvas.style.transform = `translate(${dx}px, ${s.tick % 3 === 0 ? 1 : -1}px)`;
+    } else if (g.canvas.style.transform) {
+      g.canvas.style.transform = '';
+    }
   }
 
   private drawFloaters(): void {
@@ -304,43 +506,38 @@ export class MatchView {
       const [x, y] = camera.project(f.x, f.y, f.z);
       // À frente do aro e com um limite no topo, para o marcador nunca tapar o número.
       const rise = Math.min(10, age);
-      const top = Math.max(30, (y | 0) - 14 - rise);
-      const left = (x | 0) + (x < VIEW_W / 2 ? 14 : -38);
+      const top = Math.max(40, (y | 0) - 14 - rise);
+      const left = (x | 0) + (x < camera.width / 2 ? 14 : -38);
       text(g, f.label, left + 1, top + 1, '#1b2230', 3);
       text(g, f.label, left, top, '#f2c230', 3);
     }
   }
 
-  private drawHud(alpha: number): void {
+  private drawCarrier(alpha: number): void {
     const { g, s, camera } = this;
-    const holder = s.holder ?? (s.flight?.kind === 'pass' ? s.flight.target : null);
-    if (holder) {
-      const prev = this.previous.get(holder)!;
-      const [x, y] = camera.project(prev.x + (holder.x - prev.x) * alpha, prev.y + (holder.y - prev.y) * alpha);
-      drawCarrierArrow(g, x, y - spriteHeight(this.looks.get(holder)!.height) - 3);
-      const name = holder.player.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
-      g.fillStyle = 'rgba(27,34,48,.88)';
-      g.fillRect(6, VIEW_H - 24, textWidth(name) + 8, 18);
-      text(g, name, 10, VIEW_H - 20, '#fbf6e2');
-    }
-    const [home, away] = s.teams;
-    g.fillStyle = 'rgba(27,34,48,.88)';
-    g.fillRect(6, 6, 174, 20);
-    g.fillStyle = '#2b5fd9';
-    g.fillRect(9, 9, 8, 14);
-    text(g, home.short, 21, 11, '#fbf6e2');
-    const score = `${String(s.score[0]).padStart(2, '0')}-${String(s.score[1]).padStart(2, '0')}`;
-    text(g, score, 58, 11, '#fbf6e2');
-    text(g, away.short, 124, 11, '#fbf6e2');
-    g.fillStyle = '#f4efe0';
-    g.fillRect(164, 9, 8, 14);
-    g.fillStyle = '#cf3a2c';
-    g.fillRect(164, 16, 8, 2);
-    const period = s.period <= 4 ? `P${s.period}` : 'PR';
-    const clock = `${period} ${clockText(s.clock)}`;
-    const width = textWidth(clock) + 8;
-    g.fillStyle = 'rgba(27,34,48,.88)';
-    g.fillRect(VIEW_W - width - 6, 6, width, 20);
-    text(g, clock, VIEW_W - width - 2, 11, '#fbf6e2');
+    const holder = this.carrier();
+    if (!holder) return;
+    const prev = this.previous.get(holder)!;
+    const [x, y] = camera.project(prev.x + (holder.x - prev.x) * alpha, prev.y + (holder.y - prev.y) * alpha);
+    const bob = (s.tick >> 3) % 2;
+    drawCarrierArrow(g, x, y - spriteHeight(this.looks.get(holder)!) - 3 - bob);
+  }
+
+  /** A pose do portador da bola neste instante. Serve para a verificação no browser. */
+  carrierPose(): { pose: PoseName; moving: boolean } | null {
+    const b = this.s.holder;
+    if (!b) return null;
+    const { moving } = this.motionOf(b);
+    return { pose: this.poseOf(b, moving).pose, moving };
+  }
+
+  /** O jogador com a bola, ou para quem ela vai a caminho. */
+  carrier(): Body | null {
+    const { s } = this;
+    return s.holder ?? (s.flight?.kind === 'pass' ? s.flight.target : null);
+  }
+
+  lookFor(b: Body): Look {
+    return this.looks.get(b)!;
   }
 }

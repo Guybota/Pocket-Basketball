@@ -39,6 +39,13 @@ export const FREE_THROW_SPOTS: readonly (readonly [number, number])[] = [
   [4.3, -2.9], [7.8, 0], [8.2, 3], [8.2, -3],
 ];
 
+/** Pontos de quem espera aberto na linha de 3. `v` é multiplicado pelo lado do jogador. */
+export const ARC_SPOTS: readonly (readonly [number, number])[] = [[1.3, 6.8], [5, 6.2], [7.8, 3.2]];
+/** Pontos de quem joga de costas para o cesto. */
+export const LOW_POST_SPOTS: readonly (readonly [number, number])[] = [[2.6, 1.9], [2.2, 1.4], [3.2, 2.2]];
+/** Pontos de quem corta: uma posição aberta e duas junto ao cesto. */
+export const CUT_SPOTS: readonly (readonly [number, number])[] = [[5.2, 5.5], [1.9, 0.9], [2.4, 0.3]];
+
 /** Pontos de ataque de cada posição, em (u, v). O primeiro é o ponto base. */
 export const SPOTS: readonly (readonly (readonly [number, number])[])[] = [
   [[8.4, 0], [7.8, -3], [7.8, 3]],

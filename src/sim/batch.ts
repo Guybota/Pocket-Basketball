@@ -1,6 +1,6 @@
 import { simulateMatch } from './match.ts';
-import { generateLeagueTeam, generateTeam, teamRating, withBonus } from './teamgen.ts';
-import { ATTRIBUTE_KEYS, type Attributes, type Team } from './types.ts';
+import { generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles } from './teamgen.ts';
+import { ATTRIBUTE_KEYS, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Team } from './types.ts';
 
 export interface Summary {
   matches: number;
@@ -18,6 +18,7 @@ export interface Summary {
   turnoversPerTeam: number;
   foulsPerTeam: number;
   blocksPerTeam: number;
+  movesPerGame: number;
   overtimes: number;
   meanMargin: number;
 }
@@ -27,13 +28,14 @@ const POINTS_MAX = 50;
 
 export function summarize(makeTeams: (i: number) => [Team, Team], matches: number, seedBase = 1): Summary {
   let points = 0, inRange = 0, possessions = 0, ticks = 0, overtimes = 0, margin = 0;
-  let twoA = 0, twoM = 0, threeA = 0, threeM = 0, ftA = 0, ftM = 0, oreb = 0, dreb = 0, to = 0, fouls = 0, blocks = 0;
+  let twoA = 0, twoM = 0, threeA = 0, threeM = 0, ftA = 0, ftM = 0, oreb = 0, dreb = 0, to = 0, fouls = 0, blocks = 0, moves = 0;
   for (let i = 0; i < matches; i++) {
     const [home, away] = makeTeams(i);
     const s = simulateMatch(home, away, seedBase + i);
     margin += Math.abs(s.score[0] - s.score[1]);
     if (s.period > 4) overtimes++;
     ticks += s.tick;
+    moves += s.events.filter(e => e.type === 'move').length;
     for (const team of [0, 1] as const) {
       const line = s.lines[team];
       const score = s.score[team];
@@ -70,6 +72,7 @@ export function summarize(makeTeams: (i: number) => [Team, Team], matches: numbe
     turnoversPerTeam: to / teamGames,
     foulsPerTeam: fouls / teamGames,
     blocksPerTeam: blocks / teamGames,
+    movesPerGame: moves / matches,
     overtimes: overtimes / matches,
     meanMargin: margin / matches,
   };
@@ -110,4 +113,24 @@ export function fullBonusWinRate(bonus: number, matches: number, level = 55, see
 /** Duas equipas iguais, com um único atributo subido numa delas. Mostra se algum domina ou não serve para nada. */
 export function attributeWinRate(key: keyof Attributes, bonus: number, matches: number, level = 55, seedBase = 1): number {
   return winRate(i => [withBonus(mirror(i, level), [key], bonus), mirror(i, level)], matches, seedBase);
+}
+
+/** Duas equipas iguais, com o corpo de todos os jogadores de uma delas mudado. */
+export function bodyWinRate(heightCm: number, weightKg: number, matches: number, level = 55, seedBase = 1): number {
+  return winRate(i => [withBody(mirror(i, level), heightCm, weightKg), mirror(i, level)], matches, seedBase);
+}
+
+/** Duas equipas iguais em tudo, mas só uma tem movimentos especiais. */
+export function movesWinRate(moves: readonly MoveId[], matches: number, level = 55, seedBase = 1): number {
+  return winRate(i => [withMoves(mirror(i, level), moves), withMoves(mirror(i, level), [])], matches, seedBase);
+}
+
+/** Dois titulares e os seus suplentes com um comportamento, contra a mesma equipa sem nenhum. Cinco iguais não seria realista. */
+export function styleWinRate(styles: { offBall?: OffBallStyle; onBall?: OnBallStyle }, matches: number, level = 55, seedBase = 1): number {
+  const plain = (i: number): Team => withStyles(mirror(i, level), { offBall: 'balanced', onBall: 'balanced' });
+  const styled = (i: number): Team => {
+    const team = plain(i);
+    return { ...team, roster: team.roster.map((player, index) => ([1, 2, 6, 7].includes(index) ? { ...player, ...styles } : player)) };
+  };
+  return winRate(i => [styled(i), plain(i)], matches, seedBase);
 }
