@@ -30,7 +30,8 @@ console.log(`Lances livres            ${percent(s.freeThrowPercent)}, ${s.freeTh
 console.log(`Ressaltos ofensivos      ${percent(s.offensiveReboundPercent)}`);
 console.log(`Bolas perdidas           ${s.turnoversPerTeam.toFixed(1)} por equipa`);
 console.log(`Faltas                   ${s.foulsPerTeam.toFixed(1)} por equipa`);
-console.log(`Prolongamentos           ${percent(s.overtimes)}`);
+console.log(`Desarmes                 ${s.blocksPerTeam.toFixed(1)} por equipa`);
+console.log(`Prolongamentos          ${percent(s.overtimes)}`);
 console.log(`Diferença média          ${s.meanMargin.toFixed(1)} pontos`);
 
 console.log(`\nPontos por divisão (${Math.min(matches, 300)} jogos cada)`);

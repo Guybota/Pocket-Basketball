@@ -6,8 +6,10 @@ export const BALANCE = {
   periodBreakSeconds: 2,
   shotClockSeconds: 11,
   offensiveReboundShotClockSeconds: 7,
-  deadBallSeconds: 0.8,
+  deadBallSeconds: 0.9,
   freeThrowSeconds: 1,
+  freeThrowSetupSeconds: 1,
+  freeThrowFlightSeconds: 0.6,
   reboundSeconds: 0.4,
 
   // Movimento
@@ -52,8 +54,12 @@ export const BALANCE = {
   awaySlope: 0.015,
   minChance: 0.03,
   maxChance: 0.95,
-  shotMinSeconds: 0.7,
-  shotMaxSeconds: 1.1,
+  shotMinSeconds: 0.35,
+  shotSecondsPerMeter: 0.08,
+  shotArcBase: 0.5,
+  shotArcPerMeter: 1.2,
+  ballFallSpeed: 6,
+  ballRestHeight: 0.15,
 
   // Pressão do defensor
   pressureRange: 2.5,
@@ -72,9 +78,9 @@ export const BALANCE = {
   badPassPerMeter: 0.0004,
 
   // Desarme de lançamento
-  blockPressureMin: 0.6,
+  blockPressureMin: 0.4,
   blockMaxDistance: 4,
-  blockBase: 0.05,
+  blockBase: 0.09,
   blockSlope: 0.003,
 
   // Faltas

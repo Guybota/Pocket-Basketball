@@ -160,7 +160,16 @@ Resultados de `npm run sim` com 1000 jogos:
 
 **Ainda não está na simulação:** táticas, os 12 tipos de jogador e as cartas, que pertencem às Fases 2 e 4. O movimento dos jogadores só foi verificado por testes, e será visto pela primeira vez na Fase 1.
 
-**A confirmar na Fase 1:** as repetições só foram testadas em Node. É preciso confirmar que o mesmo jogo dá o mesmo resultado nos browsers e nos telemóveis.
+### Estado da Fase 1: construída, à espera do teste com pessoas
+
+O jogo corre no browser, com câmara a seguir a bola, velocidades ×1, ×2 e ×4, som sintetizado, e os quatro campos. `npm run browser-check` confirma:
+
+- **Repetições:** o mesmo jogo dá o mesmo resultado em Node e no Edge.
+- **Desempenho:** menos de 16 ms por frame com o processador 4× mais lento.
+
+**Falta o critério da fase:** 3 pessoas verem um jogo inteiro sem pedir para saltar. Só isto decide se avançamos para a Fase 2.
+
+**Ainda por confirmar:** telemóveis reais, Safari e Firefox, e se o som é agradável. Os testes não conseguem ouvir nem sentir o ritmo do jogo.
 
 ## 8. Riscos
 

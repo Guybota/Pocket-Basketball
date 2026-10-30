@@ -33,6 +33,12 @@ export function segmentDistance(px: number, py: number, x0: number, y0: number, 
   return distance(px, py, x0 + dx * t, y0 + dy * t);
 }
 
+/** Lugares no lance livre, em (u, v): primeiro os defensores, junto ao cesto. */
+export const FREE_THROW_SPOTS: readonly (readonly [number, number])[] = [
+  [1.9, 2.9], [1.9, -2.9], [3.1, 2.9], [3.1, -2.9], [4.3, 2.9],
+  [4.3, -2.9], [7.8, 0], [8.2, 3], [8.2, -3],
+];
+
 /** Pontos de ataque de cada posição, em (u, v). O primeiro é o ponto base. */
 export const SPOTS: readonly (readonly (readonly [number, number])[])[] = [
   [[8.4, 0], [7.8, -3], [7.8, 3]],

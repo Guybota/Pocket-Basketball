@@ -39,7 +39,7 @@ describe('regras da simulação', () => {
     }));
 
   it.each(sources.map(s => [s.file, s.text]))('%s não usa funções proibidas', (_file, text) => {
-    expect(text).not.toMatch(/Math\.(random|sin|cos|tan|asin|acos|atan|atan2|pow|exp|log|log2|log10|hypot|cbrt)\b|\bDate\b|\*\*/);
+    expect(text).not.toMatch(/Math\.(random|sin|cos|tan|asin|acos|atan|atan2|pow|exp|log|log2|log10|hypot|cbrt)\b|\b(Date|document|window|process)\b|\*\*/);
   });
 
   it.each(sources.map(s => [s.file, s.text]))('%s só importa de src/sim', (_file, text) => {
@@ -213,6 +213,9 @@ describe('critérios da Fase 0', () => {
     expect(summary.offensiveReboundPercent).toBeGreaterThan(0.18);
     expect(summary.offensiveReboundPercent).toBeLessThan(0.32);
     expect(summary.overtimes).toBeLessThan(0.1);
+    // Um desarme é um momento alto: tem de acontecer em quase todos os jogos, mas sem ser banal.
+    expect(summary.blocksPerTeam).toBeGreaterThan(0.5);
+    expect(summary.blocksPerTeam).toBeLessThan(3);
   });
 
   it('a melhor equipa do campeonato ganha cerca de 70% das vezes', () => {

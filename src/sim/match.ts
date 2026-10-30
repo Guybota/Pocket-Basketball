@@ -3,6 +3,7 @@ import {
   COURT_HALF_WIDTH,
   COURT_LENGTH,
   DT,
+  FREE_THROW_SPOTS,
   SPOTS,
   distance,
   hoopDistance,
@@ -353,7 +354,7 @@ function shoot(s: MatchState, shooter: Body): void {
     if (chance(s.rng, Math.max(0.005, (base + B.foulSkillSlope * edge) * pressure))) fouledBy = defender;
   }
   const made = !blockedBy && chance(s.rng, odds.chance);
-  const duration = blockedBy ? 0.2 : between(s.rng, B.shotMinSeconds, B.shotMaxSeconds);
+  const duration = blockedBy ? 0.2 : B.shotMinSeconds + odds.distance * B.shotSecondsPerMeter;
   s.flight = {
     kind: 'shot',
     ticks: 0,
@@ -381,7 +382,7 @@ function commitFoul(s: MatchState, fouler: Body): void {
 function startFreeThrows(s: MatchState, shooter: Body, count: number): void {
   s.freeThrow = { shooter, left: count };
   s.phase = 'freeThrow';
-  s.timer = seconds(B.freeThrowSeconds);
+  s.timer = seconds(B.freeThrowSetupSeconds + B.freeThrowSeconds);
   s.holder = null;
   s.flight = null;
 }
@@ -669,15 +670,39 @@ function updateBall(s: MatchState): void {
       s.ball.z = 1.3;
     } else {
       const hoopX = fromU(s, f.shooter.team, 1.575);
+      const arc = B.shotArcBase + distance(f.fromX, f.fromY, hoopX, 0) * B.shotArcPerMeter;
       s.ball.x = f.fromX + (hoopX - f.fromX) * t;
       s.ball.y = f.fromY * (1 - t);
-      s.ball.z = 2.2 + 0.85 * t + 10 * t * (1 - t);
+      s.ball.z = 2.2 + 0.85 * t + arc * t * (1 - t);
     }
   } else if (s.holder) {
     s.ball.x = s.holder.x;
     s.ball.y = s.holder.y;
     s.ball.z = 1;
+  } else if (s.freeThrow) {
+    const shooter = s.freeThrow.shooter;
+    const flightTicks = seconds(B.freeThrowFlightSeconds);
+    const t = s.timer < flightTicks ? 1 - s.timer / flightTicks : 0;
+    s.ball.x = shooter.x + (fromU(s, shooter.team, 1.575) - shooter.x) * t;
+    s.ball.y = shooter.y * (1 - t);
+    s.ball.z = 2 + 1.05 * t + (B.shotArcBase + 4 * B.shotArcPerMeter) * t * (1 - t);
+  } else {
+    s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
   }
+}
+
+/** No lance livre, o marcador vai para a linha e os outros alinham-se ao longo da área. */
+function updateFreeThrowTargets(s: MatchState): void {
+  const shooter = s.freeThrow!.shooter;
+  const team = shooter.team;
+  shooter.targetX = fromU(s, team, 5.9);
+  shooter.targetY = 0;
+  const others = [...s.court[other(team)], ...s.court[team].filter(b => b !== shooter)];
+  others.forEach((b, i) => {
+    const [u, v] = FREE_THROW_SPOTS[i]!;
+    b.targetX = fromU(s, team, u);
+    b.targetY = v;
+  });
 }
 
 function stepFreeThrow(s: MatchState): void {
@@ -712,6 +737,9 @@ export function step(s: MatchState): void {
     return;
   }
   if (s.phase === 'freeThrow') {
+    updateFreeThrowTargets(s);
+    movePlayers(s);
+    updateBall(s);
     stepFreeThrow(s);
     if (s.clock === 0 && s.phase !== 'freeThrow') endPeriod(s);
     return;

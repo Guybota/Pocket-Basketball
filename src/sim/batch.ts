@@ -17,6 +17,7 @@ export interface Summary {
   offensiveReboundPercent: number;
   turnoversPerTeam: number;
   foulsPerTeam: number;
+  blocksPerTeam: number;
   overtimes: number;
   meanMargin: number;
 }
@@ -26,7 +27,7 @@ const POINTS_MAX = 50;
 
 export function summarize(makeTeams: (i: number) => [Team, Team], matches: number, seedBase = 1): Summary {
   let points = 0, inRange = 0, possessions = 0, ticks = 0, overtimes = 0, margin = 0;
-  let twoA = 0, twoM = 0, threeA = 0, threeM = 0, ftA = 0, ftM = 0, oreb = 0, dreb = 0, to = 0, fouls = 0;
+  let twoA = 0, twoM = 0, threeA = 0, threeM = 0, ftA = 0, ftM = 0, oreb = 0, dreb = 0, to = 0, fouls = 0, blocks = 0;
   for (let i = 0; i < matches; i++) {
     const [home, away] = makeTeams(i);
     const s = simulateMatch(home, away, seedBase + i);
@@ -49,6 +50,7 @@ export function summarize(makeTeams: (i: number) => [Team, Team], matches: numbe
       dreb += line.defensiveRebounds;
       to += line.turnovers;
       fouls += line.fouls;
+      blocks += line.blocks;
     }
   }
   const teamGames = matches * 2;
@@ -67,6 +69,7 @@ export function summarize(makeTeams: (i: number) => [Team, Team], matches: numbe
     offensiveReboundPercent: oreb / (oreb + dreb),
     turnoversPerTeam: to / teamGames,
     foulsPerTeam: fouls / teamGames,
+    blocksPerTeam: blocks / teamGames,
     overtimes: overtimes / matches,
     meanMargin: margin / matches,
   };
