@@ -1,0 +1,999 @@
+<title>Estudo Visual Pocket Basketball</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&family=Rubik:wght@400;500;700&display=swap">
+<style>
+/* Layout: caderno do treinador. Folhas de papel com sombra dura sobre um chão de xadrez cor de pintura, com a arte do jogo sempre à escala inteira. */
+:root {
+  --ink: #1b2230; --paper: #f8f0d8; --paper-2: #efe3c2; --line: #cbb98e;
+  --court: #dca35c; --court-dk: #b87c3e; --ball: #e8622a; --paint: #17737a; --paint-dk: #0f5560; --paint-dkr: #0c4a54;
+  --muted: #5d5a4f; --on-dark: #f8f0d8; --on-dark-2: #b9d6d2; --gold: #f2c230; --good: #3f9d58; --bad: #cf4436;
+  --display: "Jersey 10", "Courier New", monospace; --ui: "Jersey 20", "Courier New", monospace; --ui-sm: "Jersey 15", "Courier New", monospace; --body: "Rubik", "Trebuchet MS", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background-color: var(--paint-dk);
+  background-image: conic-gradient(var(--paint-dkr) 25%, transparent 0 50%, var(--paint-dkr) 0 75%, transparent 0);
+  background-size: 64px 64px;
+  color: var(--on-dark); font: 400 16px/1.55 var(--body);
+  padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 48px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1; letter-spacing: .01em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(3.75rem, 11vw, 7.5rem); }
+h2 { font-size: clamp(2.5rem, 5vw, 3.75rem); }
+h3 { font-size: 1.875rem; }
+p { margin: 0; max-width: 68ch; }
+canvas { image-rendering: pixelated; display: block; max-width: 100%; }
+.eyebrow { font: 400 20px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
+header { display: grid; gap: 14px; }
+header p { font-size: 1.15rem; color: var(--on-dark); }
+section { display: grid; gap: 20px; }
+.sec-head { display: grid; gap: 8px; }
+.sec-head p { color: var(--on-dark-2); }
+.sheet { background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); padding: 20px; min-width: 0; }
+.sheet p { color: var(--ink); }
+.small { font-size: .875rem; color: var(--muted) !important; }
+.stage { background: var(--ink); border: 3px solid var(--ink); box-shadow: 6px 6px 0 #0a2d33; width: fit-content; max-width: 100%; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: 400 20px var(--ui); color: var(--ink); background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); padding: 6px 12px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--ball); color: #fff; }
+button:hover { background: var(--paper-2); }
+button[aria-pressed="true"]:hover { background: var(--ball); }
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.grid2 { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.grid3 { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.obs { display: grid; gap: 6px; align-content: start; }
+.obs b { font: 400 1.875rem/1 var(--display); }
+.obs .val { font: 400 3rem/1 var(--display); color: var(--ball); }
+
+.strip { display: flex; height: 36px; border: 2px solid var(--ink); }
+.strip i { display: block; height: 100%; }
+.strip-row { display: grid; gap: 4px; }
+.strip-row b { font-weight: 500; }
+
+.swatches { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.sw { display: grid; gap: 4px; align-content: start; }
+.sw i { display: block; height: 56px; border: 2px solid var(--ink); }
+.sw b { font-weight: 500; }
+.sw code { font: 400 20px var(--ui); color: var(--muted); }
+.sw span { font-size: .875rem; color: var(--muted); }
+
+.sprite-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.sp { display: grid; gap: 4px; justify-items: center; font-size: .875rem; }
+.sp canvas { background: var(--court); border: 2px solid var(--ink); }
+
+.courts { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 540px), 1fr)); }
+.court-card { padding: 0; display: flex; flex-wrap: wrap; }
+.court-card canvas { width: 360px; flex: none; }
+.court-card div { padding: 14px 16px; display: grid; gap: 6px; align-content: start; flex: 1 1 150px; min-width: 0; }
+.court-card .div { font: 400 20px var(--ui); color: var(--paint); letter-spacing: .04em; text-transform: uppercase; }
+
+/* Telemóveis: 360x640 reais, sem escalar, para mostrar o tamanho verdadeiro dos elementos. */
+.phones { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+.phone-wrap { display: grid; gap: 10px; justify-items: center; }
+.phone-wrap > p { color: var(--on-dark-2); font-size: .875rem; max-width: 360px; }
+.phone { width: 360px; height: 640px; position: relative; overflow: hidden; border: 3px solid var(--ink); box-shadow: 6px 6px 0 #0a2d33; box-sizing: content-box; background: var(--paper); color: var(--ink); font: 400 20px/1.1 var(--ui); }
+@media (max-width: 400px) { .phone { zoom: .86; } }
+.ui-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; background: var(--ink); color: var(--paper); }
+.chip { display: inline-block; padding: 2px 6px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); font-size: 20px; line-height: 1; white-space: nowrap; }
+.chip.dark { background: var(--ink); color: var(--paper); border-color: var(--paper); }
+.chip.town { position: absolute; transform: translateX(-50%); box-shadow: 2px 2px 0 var(--ink); }
+.big-btn { background: var(--ball); color: #fff; border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); padding: 9px; text-align: center; font-size: 20px; }
+.tabs { display: flex; background: var(--ink); gap: 2px; padding: 2px 2px 0; }
+.tabs span { flex: 1; text-align: center; padding: 6px 0; background: var(--paper-2); font-size: 20px; line-height: 1; }
+.tabs span.on { background: var(--paper); color: var(--ball); }
+.pnl { padding: 6px 10px; display: grid; gap: 4px; }
+.qt { display: grid; grid-template-columns: 1fr repeat(4, 26px) 34px; gap: 0 2px; font-size: 20px; line-height: 1; text-align: center; }
+.qt span:nth-child(6n+1) { text-align: left; }
+.qt .tot { color: var(--ball); }
+.row { display: grid; grid-template-columns: 34px 1fr 64px 24px; align-items: center; gap: 6px; font-size: 20px; line-height: 1; }
+.row.h { color: var(--muted); font: 400 15px/1 var(--ui-sm); }
+.bar { height: 8px; border: 1px solid var(--ink); background: var(--paper-2); }
+.bar i { display: block; height: 100%; }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tiny-cards { display: flex; gap: 4px; align-items: center; font-size: 20px; }
+.tcard { width: 18px; height: 20px; border: 2px solid var(--ink); }
+.pcard { display: grid; grid-template-columns: 60px 1fr; gap: 8px; padding: 8px 10px; background: var(--paper); border-bottom: 3px solid var(--ink); }
+.pcard canvas { width: 60px; height: 60px; border: 2px solid var(--ink); background: #7fb7d9; }
+.stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font: 400 15px/1 var(--ui-sm); margin-top: 4px; }
+.grade { display: block; font: 400 20px/1 var(--ui); color: #fff; border: 1px solid var(--ink); padding: 1px 0; }
+.slots { display: grid; grid-template-columns: repeat(3, 76px); justify-content: center; gap: 10px; padding: 6px 10px; background: var(--paper-2); border-bottom: 3px solid var(--ink); }
+.hand { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 10px; }
+.card { display: grid; border: 2px solid var(--ink); background: var(--paper); min-width: 0; }
+.card canvas { width: 100%; height: auto; }
+.card span { font: 400 15px/1 var(--ui-sm); text-align: center; padding: 2px 1px; line-height: 1.05; min-height: 25px; display: grid; place-items: center; }
+.slot-empty { border: 2px dashed var(--muted); display: grid; place-items: center; color: var(--muted); font-size: 20px; min-height: 80px; }
+.combo { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 16px; text-align: center; color: var(--ink); }
+.combo .bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; max-width: none; }
+.combo > *:not(.bg) { position: relative; z-index: 1; }
+.combo .burst { font: 400 50px/1 var(--display); color: var(--gold); text-shadow: 2px 2px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink); }
+.combo .three { display: flex; gap: 6px; }
+.combo .three .card { width: 84px; }
+.combo .name { background: var(--paper); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); padding: 10px 14px; display: grid; gap: 4px; width: 100%; }
+.combo .name b { font: 400 30px/1 var(--display); }
+.gain { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.gain .chip { background: var(--good); color: #fff; font: 400 15px/1.1 var(--ui-sm); }
+.gain .chip.neg { background: var(--bad); }
+table { border-collapse: collapse; width: 100%; font: 400 .95rem/1.5 var(--body); color: var(--ink); }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--line); vertical-align: top; }
+th { font: 400 1.5rem var(--display); }
+td:first-child { font-weight: 500; white-space: nowrap; }
+.tbl-wrap { overflow-x: auto; }
+.src { font-size: .875rem; color: var(--on-dark-2); }
+.src a { color: var(--gold); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">Estudo de estilo visual</div>
+  <h1>Pocket Basketball</h1>
+  <p>A mesma fórmula do Pocket Football Club: bonecos minúsculos de pixel, a correr num cenário em perspetiva, com o resto a cargo da imaginação de quem vê. Muda o chão. O verde da relva dá lugar ao mel da madeira, e o campo melhora à medida que o clube sobe de divisão.</p>
+</header>
+
+<section aria-label="Demonstração do jogo">
+  <div class="stage"><canvas id="hero" width="360" height="216" aria-label="Demonstração animada de uma jogada de basquetebol em pixel art"></canvas></div>
+  <div class="controls" id="themeBtns" role="group" aria-label="Escolher campo"></div>
+  <div class="controls">
+    <button id="playBtn" type="button" aria-pressed="false">Pausa</button>
+    <span class="small" style="color:var(--on-dark-2)!important">Toda a arte desta página é original e gerada por código. Nada vem do jogo da Nintendo.</span>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">O original</div>
+    <h2>O que faz o estilo do NPFC funcionar</h2>
+    <p>Medições feitas nas imagens do manual oficial. O criador explica a intenção: detalhe a mais trava a imaginação de quem vê, e é a imaginação que transforma pequenos bonecos num jogo emocionante.</p>
+  </div>
+  <div class="grid3">
+    <div class="sheet obs"><span class="val">≈ 24 px</span><b>Altura dos jogadores</b><p>Num ecrã de 240 px de altura, cerca de 16 px de largura. Um décimo do ecrã, com a cabeça a ocupar um terço do corpo.</p></div>
+    <div class="sheet obs"><span class="val">3D + 2D</span><b>Cenário e bonecos separados</b><p>Relvado em perspetiva e na diagonal, com sprites planos por cima. A diagonal dá movimento mesmo com a câmara parada.</p></div>
+    <div class="sheet obs"><span class="val">⅔ verde</span><b>Uma cor manda</b><p>Cerca de dois terços do ecrã de jogo são relva. Assim, os equipamentos e a bola saltam à vista sem esforço.</p></div>
+    <div class="sheet obs"><b>Contorno escuro de 1 px</b><p>Cada boneco tem contorno e sombra no chão. É o que os mantém legíveis em cima de um fundo cheio de textura.</p></div>
+    <div class="sheet obs"><b>O desgaste conta uma história</b><p>O relvado tem manchas de terra castanha. Dá vida a um cenário que, de outra forma, seria um retângulo liso.</p></div>
+    <div class="sheet obs"><b>Interface de papel</b><p>Fichas creme sobre verde, notas de S a E em quadrados coloridos e cartas com mini-cenas de pixel. Parece um caderno de treinador, sem nada de folha de cálculo.</p></div>
+  </div>
+  <div class="sheet" style="display:grid;gap:14px">
+    <h3>Cores amostradas das imagens do manual</h3>
+    <div class="strip-row"><b>Jogo</b><div class="strip" id="s1"></div></div>
+    <div class="strip-row"><b>Cidade</b><div class="strip" id="s2"></div></div>
+    <div class="strip-row"><b>Ficha de jogador</b><div class="strip" id="s3"></div></div>
+    <p class="small">As 12 cores dominantes de cada imagem, com largura proporcional à área. Valores aproximados: são imagens pequenas e comprimidas.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">A nossa direção</div>
+    <h2>Da relva à madeira</h2>
+    <p>Mantemos a regra de uma cor dominante, e trocamos o verde por uma paleta quente com contraste frio. A cidade fica em tons de pintura de campo, por isso o jogador sente a chegada ao pavilhão como uma mudança de ambiente.</p>
+  </div>
+  <div class="sheet"><div class="swatches" id="swatches"></div></div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">Jogadores</div>
+    <h2>Mesmo tamanho, silhueta nova</h2>
+    <p>Mantêm os 24 px e a cabeça grande. Os braços nus das camisolas de alças e os calções compridos distinguem-nos logo dos bonecos de futebol. No basquetebol, a altura também é informação, por isso cada posição tem o seu tamanho.</p>
+  </div>
+  <div class="sheet" style="display:grid;gap:18px">
+    <div style="display:grid;gap:8px"><h3>Poses principais, ampliadas 4×</h3><div class="sprite-row" id="poses"></div></div>
+    <div class="grid2">
+      <div style="display:grid;gap:8px"><h3>A altura mostra a posição</h3><div class="sprite-row" id="heights"></div></div>
+      <div style="display:grid;gap:8px"><h3>Variedade por troca de paleta</h3><div class="sprite-row" id="variety"></div></div>
+    </div>
+    <div style="display:grid;gap:8px"><h3>Teste de legibilidade: tamanho real, 10 jogadores na área</h3><div class="sprite-row" id="crowdtest"></div>
+    <p class="small">À esquerda, à escala de um telemóvel. À direita, o mesmo ampliado 3×. O contorno e o contraste azul e creme mantêm as equipas distintas mesmo em sobreposição. Uma etiqueta com o nome, como no original, taparia cabeças neste espaço, por isso o portador da bola tem uma seta dourada e o nome fica num canto fixo do ecrã.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">Progressão</div>
+    <h2>O campo sobe de divisão contigo</h2>
+    <p>Esta é a nossa maior diferença visual. Cada divisão tem o seu campo. Subir de divisão torna-se uma recompensa que se vê em todos os jogos, e dá identidade própria ao jogo.</p>
+  </div>
+  <div class="courts" id="courts"></div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">Ecrãs</div>
+    <h2>Dois ecrãs num só telemóvel</h2>
+    <p>O formato vertical replica a consola de dois ecrãs: em cima a ação, em baixo as decisões ao alcance do polegar. Estes ecrãs estão no tamanho real, em 360×640. Os nomes e valores são exemplos.</p>
+  </div>
+  <div class="phones">
+    <div class="phone-wrap"><div class="phone" id="phoneTown">
+      <canvas id="town" width="360" height="640" style="position:absolute;inset:0"></canvas>
+      <div class="ui-bar" style="position:absolute;top:0;left:0;right:0"><span>Outubro · Semana 3</span><span>Confiança 62%</span></div>
+      <span class="chip town" id="tPav">Pavilhão</span>
+      <span class="chip town" id="tOff">Escritório</span>
+      <span class="chip town" id="tTre">Treino</span>
+      <span class="chip town" id="tFed">Federação</span>
+      <span class="chip town" id="tTor">Torre</span>
+      <span class="chip town" id="tAir">Aeroporto</span>
+      <div style="position:absolute;left:10px;right:10px;bottom:10px;display:grid;gap:6px">
+        <div style="background:var(--paper);border:2px solid var(--ink);padding:6px 8px;font-size:20px;line-height:1">Secretária: Sábado jogamos fora, contra o Ribeirinha BC.</div>
+        <div class="big-btn">Próxima semana ▶</div>
+      </div>
+    </div><p>A cidade é o menu. Tal como no original, cada edifício é uma função, e faz o clube parecer um lugar.</p></div>
+
+    <div class="phone-wrap"><div class="phone" id="phoneMatch">
+      <canvas id="matchMirror" width="360" height="216"></canvas>
+      <div class="tabs"><span class="on">Banco</span><span>Campo</span><span>Stats</span><span>Cartas</span><span>Outros</span></div>
+      <div class="pnl">
+        <div class="qt">
+          <span></span><span>1</span><span>2</span><span>3</span><span>4</span><span class="tot">T</span>
+          <span>Vilar BC</span><span>11</span><span>9</span><span>12</span><span>4</span><span class="tot">36</span>
+          <span>Ribeirinha</span><span>8</span><span>13</span><span>9</span><span>5</span><span class="tot">35</span>
+        </div>
+        <div class="row h"><span>Pos</span><span>Em campo</span><span>Energia</span><span>Pts</span></div>
+        <div class="row"><span>BAS</span><span>Tavares</span><span class="bar"><i style="width:72%;background:var(--good)"></i></span><span>9</span></div>
+        <div class="row"><span>ESC</span><span>Alves</span><span class="bar"><i style="width:54%;background:var(--gold)"></i></span><span>11</span></div>
+        <div class="row"><span>EXT</span><span>Okafor</span><span class="bar"><i style="width:80%;background:var(--good)"></i></span><span>6</span></div>
+        <div class="row"><span>EXP</span><span>Rocha</span><span class="bar"><i style="width:24%;background:var(--bad)"></i></span><span>4</span></div>
+        <div class="row"><span>POS</span><span>Mendes</span><span class="bar"><i style="width:61%;background:var(--good)"></i></span><span>6</span></div>
+        <div class="tiny-cards" id="tinyCards"><span>Cartas:</span></div>
+        <div class="acts"><div class="big-btn">Desconto (2)</div><div class="big-btn" style="background:var(--paper);color:var(--ink)">Velocidade ×2</div></div>
+        <div style="display:grid;gap:3px;border-top:2px solid var(--line);padding-top:6px;font:400 15px/1 var(--ui-sm)"><span style="color:var(--muted)">Últimas jogadas</span><span>1:41 · Mendes ganha o ressalto</span><span>1:34 · Alves rouba a bola</span></div>
+      </div>
+    </div><p>O jogo corre sozinho. Por baixo vês o cansaço, os pontos e as cartas encontradas. O desconto de tempo e a velocidade são as duas novidades.</p></div>
+
+    <div class="phone-wrap"><div class="phone" id="phoneTrain">
+      <div class="ui-bar"><span>Treino</span><span>12 / 15 jogadores</span></div>
+      <div class="pcard">
+        <canvas id="portrait" width="20" height="20"></canvas>
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:6px"><span>#7 Alves</span><span class="chip">Escolta</span></div>
+          <div style="font:400 15px/1 var(--ui-sm);margin-top:2px">Oportunista · Potencial A · Salário 420</div>
+          <div class="stats" id="stats"></div>
+        </div>
+      </div>
+      <div class="slots" id="slots"></div>
+      <div class="tabs"><span class="on">Todas</span><span>Tática</span><span>Técnica</span><span>Físico</span><span>Apoio</span></div>
+      <div class="hand" id="hand"></div>
+      <div style="position:absolute;left:10px;right:10px;bottom:10px" class="big-btn">Treinar Alves</div>
+    </div><p>Três espaços e um baralho, como no original. As cartas são novas e têm humor local, e as cores das categorias ajudam a encontrá-las depressa.</p></div>
+
+    <div class="phone-wrap"><div class="phone" id="phoneCombo">
+      <div class="combo">
+        <canvas class="bg" id="comboBg" width="360" height="640"></canvas>
+        <div class="burst">Combo especial!</div>
+        <div class="three" id="comboCards"></div>
+        <canvas id="comboHero" width="48" height="48" style="width:144px;height:144px"></canvas>
+        <div class="name">
+          <b>Domingo Perfeito</b>
+          <span style="font:400 15px/1.1 var(--ui-sm)">Alves nem se lembra de que teve treino.</span>
+          <div class="gain"><span class="chip">Vontade +18</span><span class="chip">Físico +12</span><span class="chip">Resistência +6</span><span class="chip neg">Velocidade −2</span></div>
+        </div>
+      </div>
+    </div><p>A descoberta é o momento alto do treino, por isso ganha um ecrã só para si. Os nomes e o humor são o principal espaço para o jogo ter voz própria.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div class="eyebrow">Regras de produção</div>
+    <h2>As regras para desenhar tudo o resto</h2>
+  </div>
+  <div class="sheet tbl-wrap">
+    <table>
+      <thead><tr><th>Elemento</th><th>Regra</th></tr></thead>
+      <tbody>
+        <tr><td>Resolução base</td><td>360×640, escalada só por múltiplos inteiros. Painel de jogo de 360×216, a mesma proporção 5:3 do ecrã superior da 3DS.</td></tr>
+        <tr><td>Jogadores</td><td>Base 22 px, Escolta e Extremo 24 px, Extremo-Poste e Poste 26 px. Contorno de 1 px na cor tinta e sombra no chão.</td></tr>
+        <tr><td>Animações</td><td>Corrida 4 frames, drible 2, lançamento 2, festejo 2, e os restantes 1 frame. Dá cerca de 15 frames por boneco, mais as versões de costas.</td></tr>
+        <tr><td>Variedade</td><td>Equipamentos e aparência por troca de paleta. 4 tons de pele, 5 penteados e 6 cores de cabelo.</td></tr>
+        <tr><td>Cenário</td><td>Renderizado em perspetiva e reduzido a pixel, sem suavização, com a câmara na diagonal e inclinada cerca de 45°. O cesto e a bola em altura ficam sempre visíveis.</td></tr>
+        <tr><td>Portador da bola</td><td>Seta dourada sobre a cabeça, com o nome num canto fixo do painel de jogo.</td></tr>
+        <tr><td>Bola</td><td>5×5 px com sombra no chão. Sombra afastada da bola significa bola no ar.</td></tr>
+        <tr><td>Texto</td><td>Altura mínima de 10 px no ecrã. Tipo de letra bitmap desenhado à medida, com acentos portugueses.</td></tr>
+        <tr><td>Interface</td><td>Papel creme, contorno de 2 px e sombra dura sem desfoque. Áreas de toque de pelo menos 44 px.</td></tr>
+        <tr><td>Efeitos</td><td>Só em momentos raros: afundanço, triplo decisivo, combo novo. Um cesto normal não tem efeitos.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid2">
+    <div class="sheet" style="display:grid;gap:8px"><h3>O que mantemos do original</h3><p>Sprites de 24 px em cenário de perspetiva. Uma cor dominante. Fichas de papel, notas por letras e cartas ilustradas. A cidade como menu. Humor nas cartas.</p></div>
+    <div class="sheet" style="display:grid;gap:8px"><h3>O que fazemos diferente</h3><p>Madeira em vez de relva e uma paleta própria. Campos que evoluem por divisão. Silhueta e alturas de basquetebol. Seta no portador da bola, em vez de etiqueta. Humor português nas cartas. Personagens, emblemas e toda a arte desenhados de raiz. Assim fica claro que este não é um jogo da Nintendo.</p></div>
+  </div>
+  <p class="src">Fontes da análise: <a href="https://www.nintendo.com/eu/media/downloads/games_8/emanuals/nintendo_3ds_2/nintendo_pocket_football_club_2/ElectronicManual_Nintendo3DS_DS_NintendoPocketFootballClub_EN.pdf">manual oficial</a>, <a href="https://www.nintendo.com/eu/media/downloads/games_8/quick_start_guide/QuickStartGuide_3DS_NintendoPocketFootballClub_EN.pdf">guia rápido</a> e <a href="https://www.siliconera.com/nintendo-3ds-football-game-took-six-years-make/">entrevista ao criador na Siliconera</a>.</p>
+</section>
+</main>
+
+<script>
+'use strict';
+const INK = '#1b2230';
+const hash = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+/* ---------- Sprites: partes numa grelha, com contorno automático ---------- */
+const SKINS = [['#f2c7a0', '#d9a57c'], ['#c98d5e', '#a9713f'], ['#8d5a36', '#6f4326'], ['#5c3a24', '#472a18']];
+const HAIRS = ['#2a2230', '#5a3a22', '#a8642a', '#e0b94f', '#1b2230', '#8b8f9a'];
+const KITS = {
+  blue: { j: '#2b5fd9', d: '#1d43a3', t: '#ffffff', s: '#f4f4f4' },
+  cream: { j: '#f4efe0', d: '#cfc7ae', t: '#cf3a2c', s: '#cf3a2c' },
+  red: { j: '#cf3a2c', d: '#98281e', t: '#f2c230', s: '#1b2230' },
+  green: { j: '#2f9e5c', d: '#1f7342', t: '#f4efe0', s: '#f4efe0' },
+  purple: { j: '#7246c4', d: '#512f95', t: '#f2c230', s: '#f4efe0' },
+  black: { j: '#2c3345', d: '#1b2230', t: '#e8622a', s: '#e8622a' },
+};
+const POSES = {
+  idle: L => ({ a: [-1, 5], b: [1, 5], f: [-2, L], g: [2, L] }),
+  run0: L => ({ a: [-3, 2], b: [3, 4], f: [-3, L - 1], g: [3, L], j: 1 }),
+  run1: L => ({ a: [-1, 4], b: [2, 3], f: [-1, L], g: [1, L - 1] }),
+  run2: L => ({ a: [3, 3], b: [-3, 3], f: [3, L - 1], g: [-3, L], j: 1 }),
+  drib0: L => ({ a: [-2, 4], b: [4, 3], f: [-2, L], g: [3, L], ball: [7, L - 2] }),
+  drib1: L => ({ a: [-2, 4], b: [4, 2], f: [-2, L], g: [3, L], ball: [7, L - 6] }),
+  gather: L => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
+  shoot: L => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], j: 6, ball: [3, -18] }),
+  dunk: L => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], j: 10, ball: [6, -19] }),
+  block: L => ({ a: [-1, -8], b: [2, -8], f: [-2, L - 1], g: [2, L - 1], j: 6 }),
+  defend: L => ({ a: [-4, -2], b: [4, -2], f: [-3, L], g: [3, L] }),
+  pass: L => ({ a: [4, 0], b: [5, 1], f: [-2, L], g: [3, L], ball: [8, -6] }),
+  cheer0: L => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
+  cheer1: L => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], j: 4 }),
+};
+const HEIGHTS = { base: { L: 5, T: 5 }, mid: { L: 6, T: 6 }, big: { L: 7, T: 7 } };
+const SW = 34, SH = 46, AX = 17, AY = 43;
+const spriteCache = new Map();
+function drawBall(put, x, y) {
+  const o = '#e8622a', d = '#a93f14';
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+    put(x + dx, y + dy, dx === 0 || dy === 0 ? d : o);
+  }
+  put(x - 1, y - 1, '#ffb27a');
+}
+function sprite(poseName, o) {
+  const key = [poseName, o.kit, o.skin, o.hair, o.style, o.h, o.back ? 1 : 0, o.num].join();
+  if (spriteCache.has(key)) return spriteCache.get(key);
+  const grid = new Array(SW * SH).fill(null);
+  const put = (x, y, c) => { x |= 0; y |= 0; if (x >= 0 && y >= 0 && x < SW && y < SH) grid[y * SW + x] = c; };
+  const rect = (x, y, w, h, c) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(x + i, y + j, c); };
+  const seg = (x0, y0, x1, y1, colorAt, t = 2) => {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), t, t, colorAt(k));
+    }
+  };
+  const { L, T } = HEIGHTS[o.h];
+  const p = POSES[poseName](L);
+  const kit = KITS[o.kit], [sk, skd] = SKINS[o.skin], hair = HAIRS[o.hair];
+  const hipY = AY - L - (p.j || 0), hx = AX;
+  const leg = ([dx, dy], side) => {
+    const x0 = hx + side, y0 = hipY, x1 = hx + dx - 1, y1 = hipY + dy - 2;
+    seg(x0, y0, x1, y1, k => k < .5 ? kit.s : (side < 0 ? skd : sk));
+    rect(x1 - 1, y1 + 2, 4, 2, '#f4f4f4');
+    put(x1 - 1, y1 + 3, kit.j);
+  };
+  leg(p.f, -2); leg(p.g, 0);
+  rect(hx - 3, hipY - 1, 6, 4, kit.s);
+  rect(hx - 3, hipY + 2, 2, 1, kit.t); rect(hx + 1, hipY + 2, 2, 1, kit.t);
+  const top = hipY - T;
+  rect(hx - 3, top, 6, T, kit.j);
+  rect(hx + 2, top + 1, 1, T - 1, kit.d);
+  if (!o.back) { rect(hx - 1, top, 2, 1, sk); rect(hx - 1, top + 2, 2, 2, kit.t); }
+  else rect(hx - 1, top + 1, 2, 3, kit.t);
+  const headX = hx - 4, headY = top - 7;
+  rect(headX, headY, 8, 7, sk);
+  put(headX, headY, null); put(headX + 7, headY, null); put(headX, headY + 6, null); put(headX + 7, headY + 6, null);
+  rect(headX, headY + 5, 8, 1, skd); put(headX, headY + 6, null);
+  if (o.style !== 3) {
+    if (o.style === 2) { rect(headX - 1, headY - 2, 10, 4, hair); rect(headX - 1, headY + 2, 2, 2, hair); rect(headX + 7, headY + 2, 2, 2, hair); }
+    else if (o.style === 1) { rect(headX, headY - 2, 8, 4, hair); }
+    else { rect(headX, headY - 1, 8, 3, hair); put(headX, headY + 2, hair); put(headX + 7, headY + 2, hair); }
+  }
+  if (o.style === 4) rect(headX, headY + 1, 8, 1, kit.t);
+  if (o.back) rect(headX, headY, 8, 5, hair);
+  else { rect(headX + 3, headY + 3, 1, 2, INK); rect(headX + 6, headY + 3, 1, 2, INK); }
+  seg(hx - 4, top + 1, hx - 4 + p.a[0], top + 1 + p.a[1], () => skd);
+  seg(hx + 2, top + 1, hx + 2 + p.b[0], top + 1 + p.b[1], () => sk);
+  if (p.ball) drawBall(put, hx + p.ball[0], hipY + p.ball[1]);
+  const out = grid.slice();
+  for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+    if (grid[y * SW + x]) continue;
+    const near = (x > 0 && grid[y * SW + x - 1]) || (x < SW - 1 && grid[y * SW + x + 1]) || (y > 0 && grid[(y - 1) * SW + x]) || (y < SH - 1 && grid[(y + 1) * SW + x]);
+    if (near) out[y * SW + x] = INK;
+  }
+  const c = mk(SW, SH), g = c.getContext('2d');
+  out.forEach((col, i) => { if (col) { g.fillStyle = col; g.fillRect(i % SW, i / SW | 0, 1, 1); } });
+  spriteCache.set(key, c);
+  return c;
+}
+function blitSprite(g, poseName, o, x, y, flip) {
+  const s = sprite(poseName, o);
+  if (flip) { g.save(); g.translate(x | 0, 0); g.scale(-1, 1); g.drawImage(s, -AX, (y | 0) - AY); g.restore(); }
+  else g.drawImage(s, (x | 0) - AX, (y | 0) - AY);
+}
+function shadow(g, x, y, r = 6) {
+  g.fillStyle = 'rgba(20,20,30,.33)';
+  x |= 0; y |= 0;
+  g.fillRect(x - r, y - 1, r * 2, 2);
+  g.fillRect(x - r + 2, y - 2, r * 2 - 4, 4);
+}
+
+/* ---------- Fonte bitmap 3x5 (cada dígito é uma linha em binário) ---------- */
+const FONT = { 0:'75557',1:'26227',2:'71747',3:'71317',4:'55711',5:'74717',6:'74757',7:'71222',8:'75757',9:'75717',A:'25755',B:'65656',C:'34443',D:'65556',E:'74647',F:'74644',G:'34553',H:'55755',I:'72227',J:'11152',K:'55655',L:'44447',M:'57755',N:'65555',O:'25552',P:'65644',Q:'25563',R:'65655',S:'34216',T:'72222',U:'55557',V:'55552',W:'55775',X:'55255',Y:'55222',Z:'71247',':':'02020','-':'00700','+':'02720','.':'00002',' ':'00000' };
+function text(g, s, x, y, col, k = 2) {
+  g.fillStyle = col;
+  for (const ch of s) {
+    const f = FONT[ch] || FONT[' '];
+    for (let r = 0; r < 5; r++) for (let b = 0; b < 3; b++) if (f[r] >> (2 - b) & 1) g.fillRect(x + b * k, y + r * k, k, k);
+    x += 4 * k;
+  }
+}
+const textW = (s, k = 2) => s.length * 4 * k - k;
+
+/* ---------- Câmara e projeção ---------- */
+function makeCam(C, look, focal, W, H) {
+  const norm = v => { const l = Math.hypot(...v); return v.map(a => a / l); };
+  const fwd = norm([look[0] - C[0], look[1] - C[1], look[2] - C[2]]);
+  const right = norm([fwd[1], -fwd[0], 0]);
+  const up = [right[1] * fwd[2] - right[2] * fwd[1], right[2] * fwd[0] - right[0] * fwd[2], right[0] * fwd[1] - right[1] * fwd[0]];
+  const cx = W / 2, cy = H / 2;
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  return {
+    C, W, H,
+    ray: (sx, sy) => [0, 1, 2].map(i => fwd[i] * focal + right[i] * (sx - cx) + up[i] * (cy - sy)),
+    project: (x, y, z = 0) => {
+      const r = [x - C[0], y - C[1], z - C[2]];
+      const s = focal / dot(r, fwd);
+      return [cx + dot(r, right) * s, cy - dot(r, up) * s];
+    },
+  };
+}
+
+/* ---------- Campos por divisão ---------- */
+const THEMES = {
+  rua: {
+    name: 'Campo do Bairro', div: 'Liga Iniciados', note: 'Alcatrão rachado, tinta gasta e rede de vedação. Começa-se por aqui.',
+    floor: (x, y, n) => { const b = 70 + n * 14; let c = [b, b + 12, b + 24]; const crack = Math.abs(Math.sin(x * 1.3 + Math.sin(y * 2.1) * 1.4) * 3 + y * .3) < .05; return crack ? [40, 48, 58] : c; },
+    paint: n => n > .25 ? [158, 72, 44] : [120, 72, 58], line: n => n > .2 ? [226, 222, 200] : [130, 140, 150], apron: n => { const b = 60 + n * 10; return [b, b + 8, b + 18]; },
+    wall: (u, z) => {
+      if (z > 3.4) return [156, 206, 226];
+      const fence = (Math.abs(((u + z) * 3) % 1) < .12) || (Math.abs(((u - z) * 3) % 1) < .12);
+      const tree = Math.sin(u * .9) * 0.7 + 2.3 > z;
+      if (fence) return [176, 186, 190];
+      return tree ? [62, 134, 92] : [156, 206, 226];
+    },
+    pole: '#59626e', boardFill: '#e4e6e0',
+  },
+  escola: {
+    name: 'Pavilhão Escolar', div: 'Liga Avançada', note: 'Madeira clara e riscada, janelas altas, poucas bancadas.',
+    floor: (x, y, n, pl) => { const b = 214 + pl * 16; return [b + 8, b - 18, b - 76]; },
+    paint: () => [64, 158, 148], line: () => [248, 244, 228], apron: () => [58, 128, 124],
+    wall: (u, z) => {
+      if (z < 1.2) return Math.floor(u * 1.4) % 2 ? [226, 214, 182] : [214, 200, 164];
+      if (z > 2.6 && z < 4 && ((u * .6 % 1 + 1) % 1) < .7) return [186, 226, 240];
+      return [236, 226, 196];
+    },
+    pole: '#7f8a94', boardFill: '#f4f4ee',
+  },
+  municipal: {
+    name: 'Pavilhão Municipal', div: 'Pro Liga 2', note: 'Madeira cor de mel, publicidade à volta do campo e público a sério.',
+    floor: (x, y, n, pl) => { const b = 200 + pl * 18; return [b + 16, b - 34, b - 104]; },
+    paint: () => [23, 115, 122], line: () => [252, 246, 228], apron: () => [20, 88, 98],
+    wall: (u, z, seed) => {
+      if (z < 1) { const k = Math.floor(u / 2.4); return [[232, 98, 42], [248, 240, 216], [43, 95, 217], [242, 194, 48]][((k % 4) + 4) % 4]; }
+      const cu = Math.floor(u * 2.6), cz = Math.floor(z * 2.6);
+      const h = hash(cu, cz);
+      const seatBg = cz % 2 ? [150, 72, 56] : [132, 60, 50];
+      if (h < .55 && ((u * 2.6 % 1) + 1) % 1 > .25 && (z * 2.6 % 1) > .3) return [[240, 200, 160], [200, 140, 96], [120, 80, 54], [240, 200, 160]][Math.floor(h * 7) % 4];
+      return seatBg;
+    },
+    pole: '#3a4557', boardFill: '#f4f4ee',
+  },
+  arena: {
+    name: 'Grande Arena', div: 'Pro Liga 1', note: 'Madeira escura e polida com reflexos de luz, e casa cheia na escuridão.',
+    floor: (x, y, n, pl) => {
+      const d = Math.hypot(x - 6, y - 0);
+      const sheen = Math.max(0, 1 - d / 9) * 36;
+      const b = 138 + pl * 12 + sheen + (n > .5 ? 4 : 0);
+      return [b + 30, b - 26, b - 74];
+    },
+    paint: (n, x, y) => { const d = Math.max(0, 1 - Math.hypot(x - 4, y) / 7) * 34; return [18 + d * .4, 44 + d * .6, 104 + d]; }, line: () => [250, 240, 214], apron: () => [14, 26, 62],
+    wall: (u, z) => {
+      if (z < 1) { const k = Math.floor((u + 40) / 3.2); return k % 2 ? [16, 22, 44] : [232, 98, 42]; }
+      const cu = Math.floor(u * 3.2), cz = Math.floor(z * 3.2);
+      const h = hash(cu, cz);
+      if (h > .975) return [255, 250, 220];
+      if (h < .5 && ((u * 3.2 % 1) + 1) % 1 > .25 && (z * 3.2 % 1) > .3) return [[110, 80, 80], [76, 62, 84], [60, 74, 110], [130, 100, 90]][Math.floor(h * 8) % 4];
+      return [20, 24, 46];
+    },
+    pole: '#14182a', boardFill: '#e6ecf4',
+  },
+};
+function onLine(x, y, w = .075) {
+  const inX = x >= -w && x <= 28 + w, inY = Math.abs(y) <= 7.5 + w;
+  if (!inX || !inY) return false;
+  if (Math.abs(x) < w || Math.abs(Math.abs(y) - 7.5) < w) return true;
+  if (Math.abs(x - 14) < w) return true;
+  if (x < 5.8 + w && Math.abs(Math.abs(y) - 2.45) < w) return true;
+  if (Math.abs(x - 5.8) < w && Math.abs(y) < 2.45) return true;
+  if (Math.abs(Math.hypot(x - 5.8, y) - 1.8) < w && x > 5.8) return true;
+  if (Math.abs(Math.hypot(x - 1.575, y) - 1.25) < w && x > 1.575) return true;
+  const arc = Math.hypot(x - 1.575, y);
+  if (Math.abs(arc - 6.75) < w && Math.abs(y) < 6.6) return true;
+  if (Math.abs(Math.abs(y) - 6.6) < w && x < 3.0) return true;
+  if (Math.abs(Math.hypot(x - 14, y) - 1.8) < w) return true;
+  return false;
+}
+const WALL_X = -2.4, WALL_Y = -9.2;
+function renderCourt(themeKey, cam) {
+  const th = THEMES[themeKey], W = cam.W, H = cam.H;
+  const c = mk(W, H), g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
+  for (let sy = 0; sy < H; sy++) for (let sx = 0; sx < W; sx++) {
+    const r = cam.ray(sx + .5, sy + .5), C = cam.C;
+    let col;
+    let tFloor = r[2] < 0 ? -C[2] / r[2] : Infinity;
+    let tx = r[0] < 0 ? (WALL_X - C[0]) / r[0] : Infinity;
+    let ty = r[1] < 0 ? (WALL_Y - C[1]) / r[1] : Infinity;
+    const t = Math.min(tFloor, tx, ty);
+    if (t === tFloor) {
+      const x = C[0] + r[0] * t, y = C[1] + r[1] * t;
+      const n = hash(Math.floor(x * 5), Math.floor(y * 5));
+      const inB = x >= 0 && x <= 28 && Math.abs(y) <= 7.5;
+      if (onLine(x, y)) col = th.line(hash(Math.floor(x * 3), Math.floor(y * 3)));
+      else if (!inB) col = th.apron(n);
+      else if (x < 5.8 && Math.abs(y) < 2.45) col = th.paint(n, x, y);
+      else {
+        const row = Math.floor(y / .55), plank = Math.floor((x + hash(row, 3) * 4) / 3.1);
+        const pl = hash(row, plank) - .5;
+        const seam = ((y / .55) % 1 + 1) % 1 < .07;
+        col = th.floor(x, y, n, pl);
+        if (seam && themeKey !== 'rua') col = col.map(v => v - 16);
+      }
+    } else {
+      const isX = t === tx;
+      const z = C[2] + r[2] * t, u = isX ? C[1] + r[1] * t : C[0] + r[0] * t;
+      col = th.wall(u, z);
+    }
+    const i = (sy * W + sx) * 4;
+    d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+function line(g, x0, y0, x1, y1, col, t = 1) {
+  g.fillStyle = col;
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), t, t);
+}
+function poly(g, pts, col) {
+  g.fillStyle = col;
+  const ys = pts.map(p => p[1]), y0 = Math.ceil(Math.min(...ys)), y1 = Math.floor(Math.max(...ys));
+  for (let y = y0; y <= y1; y++) {
+    const xs = [];
+    pts.forEach((a, i) => { const b = pts[(i + 1) % pts.length]; if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) xs.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0])); });
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) g.fillRect(Math.round(xs[i]), y, Math.max(1, Math.round(xs[i + 1] - xs[i])), 1);
+  }
+}
+function drawHoop(g, cam, th) {
+  const P = (x, y, z) => cam.project(x, y, z);
+  const base = P(-1.1, 0, 0), top = P(-1.1, 0, 3.5), arm = P(1.15, 0, 3.5);
+  line(g, base[0] | 0, base[1] | 0, top[0] | 0, top[1] | 0, th.pole, 3);
+  line(g, top[0] | 0, top[1] | 0, arm[0] | 0, arm[1] | 0, th.pole, 2);
+  const a = P(1.2, -.9, 2.9), b = P(1.2, .9, 2.9), c = P(1.2, .9, 3.95), e = P(1.2, -.9, 3.95);
+  poly(g, [e, c, b, a], INK);
+  const inset = (p, q, k) => [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
+  poly(g, [inset(e, b, .05), inset(c, a, .05), inset(b, e, .05), inset(a, c, .05)], th.boardFill);
+  const s1 = P(1.2, -.3, 3.05), s2 = P(1.2, .3, 3.05), s3 = P(1.2, .3, 3.5), s4 = P(1.2, -.3, 3.5);
+  [[s1, s2], [s2, s3], [s3, s4], [s4, s1]].forEach(([p, q]) => line(g, p[0] | 0, p[1] | 0, q[0] | 0, q[1] | 0, '#e8622a'));
+  for (let i = 0; i < 12; i++) {
+    const an = i / 12 * Math.PI * 2;
+    const t = P(1.575 + Math.cos(an) * .28, Math.sin(an) * .28, 3.05), bt = P(1.575 + Math.cos(an) * .16, Math.sin(an) * .16, 2.62);
+    if (i % 2 === 0) line(g, t[0] | 0, t[1] | 0, bt[0] | 0, bt[1] | 0, '#f8f6ee');
+  }
+  for (let i = 0; i < 28; i++) {
+    const an = i / 28 * Math.PI * 2, t = P(1.575 + Math.cos(an) * .28, Math.sin(an) * .28, 3.05);
+    g.fillStyle = '#e8622a'; g.fillRect(t[0] | 0, t[1] | 0, 2, 2);
+  }
+}
+
+/* ---------- Jogada encenada ---------- */
+const CAM_W = 360, CAM_H = 216;
+const cam = makeCam([12.6, 9.6, 12.5], [5.4, -1, 0], 318, CAM_W, CAM_H);
+const courts = {};
+const getCourt = k => courts[k] || (courts[k] = renderCourt(k, cam));
+const HOME = [
+  { name: 'TAVARES', kit: 'blue', skin: 0, hair: 0, style: 0, h: 'base', num: 1 },
+  { name: 'ALVES', kit: 'blue', skin: 1, hair: 1, style: 4, h: 'mid', num: 7 },
+  { name: 'OKAFOR', kit: 'blue', skin: 3, hair: 4, style: 2, h: 'mid', num: 11 },
+  { name: 'ROCHA', kit: 'blue', skin: 0, hair: 2, style: 1, h: 'big', num: 4 },
+  { name: 'MENDES', kit: 'blue', skin: 2, hair: 4, style: 3, h: 'big', num: 5 },
+];
+const AWAY = [
+  { kit: 'cream', skin: 1, hair: 0, style: 0, h: 'base', num: 3 },
+  { kit: 'cream', skin: 0, hair: 3, style: 1, h: 'mid', num: 8 },
+  { kit: 'cream', skin: 2, hair: 4, style: 3, h: 'mid', num: 10 },
+  { kit: 'cream', skin: 3, hair: 4, style: 2, h: 'big', num: 14 },
+  { kit: 'cream', skin: 0, hair: 1, style: 0, h: 'big', num: 15 },
+];
+// Posições da equipa azul em segundos; a defesa segue-as com atraso.
+const KEYS = [
+  { t: 0, p: [[15, 1.5], [14, -5], [13, 5.2], [12.5, -2], [13.5, 2.5]] },
+  { t: 3.2, p: [[8.8, .6], [4, -6.4], [6.4, 5.8], [5.6, -2.8], [3.4, 2.8]] },
+  { t: 5, p: [[7.6, -1.2], [2.4, -6.4], [7.2, 4.6], [7.3, -.4], [3.4, 2.8]] },
+  { t: 6.4, p: [[4.8, -1.8], [1.6, -6.1], [7.4, 3.2], [7.3, -.8], [3.6, 2.2]] },
+  { t: 9, p: [[5.6, -2.6], [1.6, -6.1], [7.2, 2.8], [5.6, .6], [3.2, 1.4]] },
+  { t: 14, p: [[5.2, -3.6], [2.6, -5.4], [7, 2], [5.2, .2], [3.2, 1.2]] },
+];
+const LOOP = 13;
+const EVENTS = { pass1: [6.4, 7.0, 0, 1], shot: [7.8, 8.9], cheer: 9.1 };
+const ease = k => k * k * (3 - 2 * k);
+function posAt(i, t) {
+  if (t < 0) t = 0;
+  let a = KEYS[0], b = KEYS[KEYS.length - 1];
+  for (let k = 0; k < KEYS.length - 1; k++) if (t >= KEYS[k].t && t <= KEYS[k + 1].t) { a = KEYS[k]; b = KEYS[k + 1]; break; }
+  const q = ease((t - a.t) / (b.t - a.t || 1));
+  return [a.p[i][0] + (b.p[i][0] - a.p[i][0]) * q, a.p[i][1] + (b.p[i][1] - a.p[i][1]) * q];
+}
+function defPos(i, t) {
+  const o = posAt(i, t - .35), dx = 1.575 - o[0], dy = -o[1], l = Math.hypot(dx, dy) || 1;
+  return [o[0] + dx / l * 1.05 + (i % 2 ? .2 : -.2), o[1] + dy / l * 1.05];
+}
+function renderMatch(g, themeKey, t, opts = {}) {
+  g.imageSmoothingEnabled = false;
+  g.drawImage(getCourt(themeKey), 0, 0);
+  const th = THEMES[themeKey];
+  const ds = [];
+  ds.push({ y: cam.project(1.0, 0, 0)[1], draw: () => drawHoop(g, cam, th) });
+  const frame = Math.floor(t * 8);
+  const shooting = t >= EVENTS.shot[0] && t < EVENTS.shot[0] + .5;
+  const cheering = t >= EVENTS.cheer;
+  const holder = t < EVENTS.pass1[0] ? 0 : t < EVENTS.pass1[1] ? -1 : t < EVENTS.shot[0] + .15 ? 1 : -1;
+  const holderPose = shooting ? (t < EVENTS.shot[0] + .15 ? 'gather' : 'shoot') : null;
+  const groundP = (x, y) => cam.project(x, y, 0);
+  HOME.forEach((pl, i) => {
+    const q = posAt(i, t), q2 = posAt(i, t - .1), sp = Math.hypot(q[0] - q2[0], q[1] - q2[1]) * 10;
+    const sc = groundP(q[0], q[1]), sc2 = groundP(q2[0], q2[1]);
+    let pose = sp > .4 ? ['run0', 'run1', 'run2', 'run1'][frame % 4] : 'idle';
+    if (i === holder) pose = sp > .4 ? (frame % 4 < 2 ? 'drib0' : 'drib1') : 'drib0';
+    if (i === 1 && holderPose) pose = holderPose;
+    if (t >= EVENTS.pass1[0] - .3 && t < EVENTS.pass1[0] + .1 && i === 0) pose = 'pass';
+    if (cheering) pose = (frame + i * 2) % 4 < 2 ? 'cheer0' : 'cheer1';
+    const flip = sp > .4 ? sc[0] < sc2[0] : sc[0] > groundP(1.575, 0)[0];
+    ds.push({ y: sc[1], draw: () => { shadow(g, sc[0], sc[1]); blitSprite(g, pose, { ...pl, back: sc[1] < sc2[1] - .05 && !cheering }, sc[0], sc[1], flip); } });
+    if (i === holder || (i === 1 && holderPose)) ds.tag = { sc, name: pl.name, h: pl.h };
+  });
+  AWAY.forEach((pl, i) => {
+    const q = defPos(i, t), q2 = defPos(i, t - .1), sp = Math.hypot(q[0] - q2[0], q[1] - q2[1]) * 10;
+    const sc = groundP(q[0], q[1]), sc2 = groundP(q2[0], q2[1]);
+    let pose = sp > .7 ? ['run0', 'run1', 'run2', 'run1'][frame % 4] : 'defend';
+    if (i === 1 && t > EVENTS.shot[0] + .1 && t < EVENTS.shot[0] + .7) pose = 'block';
+    const flip = sp > .7 && sc[0] < sc2[0];
+    ds.push({ y: sc[1], draw: () => { shadow(g, sc[0], sc[1]); blitSprite(g, pose, pl, sc[0], sc[1], flip); } });
+  });
+  // Bola em voo: passe e lançamento, com a sombra no chão
+  let flying = null;
+  if (t >= EVENTS.pass1[0] && t < EVENTS.pass1[1]) {
+    const k = (t - EVENTS.pass1[0]) / (EVENTS.pass1[1] - EVENTS.pass1[0]);
+    const a = posAt(0, t), b = posAt(1, t);
+    flying = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, 1.3 + Math.sin(k * Math.PI) * .6];
+  } else if (t >= EVENTS.shot[0] + .15 && t < EVENTS.shot[1]) {
+    const k = (t - EVENTS.shot[0] - .15) / (EVENTS.shot[1] - EVENTS.shot[0] - .15);
+    const a = posAt(1, EVENTS.shot[0]);
+    flying = [a[0] + (1.575 - a[0]) * k, a[1] * (1 - k), 2.3 + (3.15 - 2.3) * k + Math.sin(k * Math.PI) * 2.6];
+  } else if (t >= EVENTS.shot[1]) {
+    const k = Math.min(1, (t - EVENTS.shot[1]) / .55), bounce = Math.abs(Math.cos(k * 5)) * (1 - k);
+    flying = [1.575 + k * .9, k * .8, (1 - k) * 3 * (1 - k) + bounce * .8];
+  }
+  if (flying) {
+    const sh = groundP(flying[0], flying[1]), bp = cam.project(flying[0], flying[1], flying[2]);
+    ds.push({ y: sh[1], draw: () => { shadow(g, sh[0], sh[1], 3); ballAt(g, bp[0] | 0, bp[1] | 0); } });
+  }
+  ds.sort((a, b) => a.y - b.y).forEach(d => d.draw());
+  if (ds.tag) {
+    const { sc, name, h } = ds.tag, w = textW(name) + 8;
+    carrierArrow(g, sc[0] | 0, (sc[1] | 0) - (HEIGHTS[h].L + HEIGHTS[h].T + 12) - 3);
+    g.fillStyle = 'rgba(27,34,48,.88)'; g.fillRect(6, CAM_H - 24, w, 18);
+    text(g, name, 10, CAM_H - 20, '#fbf6e2');
+  }
+  // Marcador
+  const made = t >= EVENTS.shot[1], a = 36 + (made ? 3 : 0), b = 35;
+  g.fillStyle = 'rgba(27,34,48,.88)'; g.fillRect(6, 6, 170, 20);
+  g.fillStyle = '#2b5fd9'; g.fillRect(9, 9, 8, 14);
+  text(g, 'VIL', 21, 11, '#fbf6e2');
+  text(g, String(a).padStart(2, '0') + '-' + String(b).padStart(2, '0'), 58, 11, '#fbf6e2');
+  text(g, 'RIB', 122, 11, '#fbf6e2');
+  g.fillStyle = '#f4efe0'; g.fillRect(160, 9, 8, 14); g.fillStyle = '#cf3a2c'; g.fillRect(160, 16, 8, 2);
+  const clk = 92 - Math.floor(t * 3);
+  g.fillStyle = 'rgba(27,34,48,.88)'; g.fillRect(CAM_W - 84, 6, 78, 20);
+  text(g, '4Q ' + Math.floor(clk / 60) + ':' + String(clk % 60).padStart(2, '0'), CAM_W - 80, 11, '#fbf6e2');
+  if (t > EVENTS.shot[1] && t < EVENTS.shot[1] + 1.6) {
+    const up = Math.min(8, (t - EVENTS.shot[1]) * 18) | 0, hp = cam.project(1.575, 0, 3.05);
+    text(g, '+3', (hp[0] | 0) - 8, (hp[1] | 0) - 22 - up, INK, 3);
+    text(g, '+3', (hp[0] | 0) - 9, (hp[1] | 0) - 23 - up, '#f2c230', 3);
+  }
+}
+function carrierArrow(g, x, y) {
+  g.fillStyle = INK; g.fillRect(x - 4, y - 5, 9, 2); g.fillRect(x - 3, y - 3, 7, 2); g.fillRect(x - 2, y - 1, 5, 2); g.fillRect(x - 1, y + 1, 3, 1);
+  g.fillStyle = '#f2c230'; g.fillRect(x - 3, y - 4, 7, 2); g.fillRect(x - 2, y - 2, 5, 2); g.fillRect(x - 1, y, 3, 1);
+}
+function ballAt(g, x, y) {
+  g.fillStyle = INK; g.fillRect(x - 2, y - 3, 5, 7); g.fillRect(x - 3, y - 2, 7, 5);
+  g.fillStyle = '#e8622a'; g.fillRect(x - 2, y - 2, 5, 5);
+  g.fillStyle = '#a93f14'; g.fillRect(x, y - 2, 1, 5); g.fillRect(x - 2, y, 5, 1);
+  g.fillStyle = '#ffb27a'; g.fillRect(x - 1, y - 1, 1, 1);
+}
+
+/* ---------- Herói animado ---------- */
+const hero = document.getElementById('hero'), hg = hero.getContext('2d');
+const mirror = document.getElementById('matchMirror'), mg = mirror.getContext('2d');
+let themeKey = 'municipal', playing = !matchMedia('(prefers-reduced-motion: reduce)').matches, clock = 3.4, last = 0;
+const stage = hero.parentElement;
+function fitHero() {
+  const avail = stage.parentElement.clientWidth - 6;
+  const s = Math.floor(avail / CAM_W);
+  hero.style.width = s >= 1 ? CAM_W * Math.min(s, 3) + 'px' : '100%';
+}
+addEventListener('resize', fitHero); fitHero();
+function paint() {
+  renderMatch(hg, themeKey, clock);
+  mg.drawImage(hero, 0, 0);
+}
+function tick(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (playing) { clock += dt; if (clock > LOOP) clock = 0; paint(); }
+  requestAnimationFrame(tick);
+}
+const playBtn = document.getElementById('playBtn');
+playBtn.textContent = playing ? 'Pausa' : 'Reproduzir';
+playBtn.addEventListener('click', () => { playing = !playing; playBtn.textContent = playing ? 'Pausa' : 'Reproduzir'; });
+const btnBox = document.getElementById('themeBtns');
+Object.entries(THEMES).forEach(([k, th]) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = th.name; b.setAttribute('aria-pressed', k === themeKey);
+  b.addEventListener('click', () => { themeKey = k; btnBox.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); paint(); });
+  btnBox.appendChild(b);
+});
+
+/* ---------- Amostras e paleta ---------- */
+const STRIPS = {
+  s1: [['#6ac42a', 12.8], ['#6bcb2b', 11.4], ['#69cb28', 10.3], ['#c9ce6b', 9.6], ['#78c334', 9.3], ['#4b5a40', 8.9], ['#6dcc31', 7.9], ['#82ca3d', 6.7], ['#86b254', 6.6], ['#daeeaf', 6.4], ['#acc358', 6.3], ['#8dd551', 3.7]],
+  s2: [['#06954d', 14.6], ['#84c163', 14.4], ['#028142', 12.5], ['#156134', 11.2], ['#b9d9bf', 9], ['#73c564', 8.4], ['#63be65', 7.3], ['#38ad59', 5.2], ['#267a43', 5.1], ['#8bd084', 4.8], ['#479756', 4.6], ['#00914a', 2.8]],
+  s3: [['#71c449', 20.6], ['#5b7997', 13.1], ['#303a36', 11.7], ['#efefcd', 7.9], ['#b6ae91', 7.7], ['#e2debf', 7.7], ['#fbfde3', 7.6], ['#9ca081', 7.4], ['#f6f7d0', 5.2], ['#709587', 4.8], ['#add09c', 4.7], ['#aabf91', 1.6]],
+};
+Object.entries(STRIPS).forEach(([id, arr]) => {
+  document.getElementById(id).innerHTML = arr.map(([c, p]) => `<i style="background:${c};width:${p}%" title="${c}"></i>`).join('');
+});
+const SW_DATA = [
+  ['#dca35c', 'Madeira', 'A cor dominante, cerca de ⅔ do ecrã de jogo'],
+  ['#b87c3e', 'Madeira escura', 'Juntas e sombras do chão'],
+  ['#17737a', 'Pintura', 'Área restrita e a cidade'],
+  ['#0f5560', 'Pintura escura', 'Fundo do menu e das bancadas'],
+  ['#e8622a', 'Bola', 'Só para a bola e as ações principais'],
+  ['#f8f0d8', 'Papel', 'Fichas, cartas e linhas do campo'],
+  ['#1b2230', 'Tinta', 'Contornos e texto. Nunca preto puro'],
+  ['#f2c230', 'Ouro', 'Nota S, combos e momentos raros'],
+];
+document.getElementById('swatches').innerHTML = SW_DATA.map(([c, n, u]) => `<div class="sw"><i style="background:${c}"></i><b>${n}</b><code>${c}</code><span>${u}</span></div>`).join('');
+
+/* ---------- Folha de sprites ---------- */
+function spriteCanvas(pose, o, k, bg, w = SW, h = SH, oy = 0) {
+  const c = mk(w, h), g = c.getContext('2d');
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, w, h); }
+  shadow(g, w / 2, AY + oy, 7);
+  blitSprite(g, pose, o, w / 2, AY + oy, false);
+  c.style.width = w * k + 'px'; c.style.height = h * k + 'px';
+  return c;
+}
+const labelled = (canvas, label) => { const d = document.createElement('div'); d.className = 'sp'; d.appendChild(canvas); const s = document.createElement('span'); s.textContent = label; d.appendChild(s); return d; };
+const demo = HOME[1];
+[['idle', 'Parado'], ['run0', 'Corrida'], ['drib0', 'Drible'], ['pass', 'Passe'], ['shoot', 'Lançamento'], ['dunk', 'Afundanço'], ['block', 'Desarme'], ['defend', 'Defesa'], ['cheer1', 'Festejo']].forEach(([p, l]) => {
+  document.getElementById('poses').appendChild(labelled(spriteCanvas(p, demo, 3, '#dca35c'), l));
+});
+[['base', 'Base · 22 px', HOME[0]], ['mid', 'Extremo · 24 px', HOME[2]], ['big', 'Poste · 26 px', HOME[4]]].forEach(([h, l, o]) => {
+  document.getElementById('heights').appendChild(labelled(spriteCanvas('idle', { ...o, h }, 3, '#dca35c', 24, 34, -11), l));
+});
+[['blue', 0, 0, 0], ['cream', 1, 1, 1], ['red', 2, 4, 2], ['green', 3, 4, 3], ['purple', 0, 3, 4], ['black', 1, 5, 0]].forEach(([kit, skin, hair, style]) => {
+  document.getElementById('variety').appendChild(labelled(spriteCanvas('idle', { kit, skin, hair, style, h: 'mid', num: 1 }, 2, '#dca35c', 24, 34, -11), ''));
+});
+(function crowdTest() {
+  const w = 120, h = 90, c = mk(w, h), g = c.getContext('2d');
+  g.fillStyle = '#dca35c'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#17737a'; g.fillRect(20, 0, 76, h);
+  g.fillStyle = '#f8f0d8'; g.fillRect(20, 0, 2, h); g.fillRect(94, 0, 2, h);
+  const spots = [[30, 42, 0], [44, 36, 1], [58, 40, 0], [72, 34, 1], [38, 58, 1], [52, 56, 0, 1], [66, 60, 1], [82, 52, 0], [46, 76, 0], [60, 82, 1]];
+  spots.slice().sort((a, b) => a[1] - b[1]).forEach(([x, y, tm, carrier], i) => {
+    shadow(g, x, y);
+    blitSprite(g, tm ? 'defend' : carrier ? 'drib0' : 'idle', tm ? AWAY[i % 5] : HOME[carrier ? 1 : i % 5], x, y, false);
+  });
+  carrierArrow(g, 52, 56 - (HEIGHTS.mid.L + HEIGHTS.mid.T + 12) - 3);
+  const a = mk(w, h); a.getContext('2d').drawImage(c, 0, 0); a.style.width = w + 'px';
+  c.style.width = w * 3 + 'px';
+  document.getElementById('crowdtest').append(labelled(a, 'Real'), labelled(c, 'Ampliado 3×'));
+})();
+
+/* ---------- Campos por divisão ---------- */
+Object.entries(THEMES).forEach(([k, th]) => {
+  const wrap = document.createElement('div'); wrap.className = 'sheet court-card';
+  const c = mk(CAM_W, CAM_H), g = c.getContext('2d');
+  renderMatch(g, k, 8.0);
+  wrap.appendChild(c);
+  const d = document.createElement('div');
+  d.innerHTML = `<span class="div">${th.div}</span><h3>${th.name}</h3><p>${th.note}</p>`;
+  wrap.appendChild(d);
+  document.getElementById('courts').appendChild(wrap);
+});
+
+/* ---------- Cidade isométrica ---------- */
+(function town() {
+  const c = document.getElementById('town'), g = c.getContext('2d');
+  const ox = 180, oy = 40, TW = 12, TH = 6;
+  const P = (i, j, k = 0) => [ox + (i - j) * TW, oy + (i + j) * TH - k * TH * 2];
+  for (let i = -30; i < 70; i++) for (let j = -30; j < 70; j++) {
+    const a = P(i, j), b = P(i + 1, j), cc = P(i + 1, j + 1), d = P(i, j + 1);
+    if (a[1] > 660 || cc[1] < -20 || b[0] < -20 || d[0] > 380) continue;
+    poly(g, [a, b, cc, d], (i + j) % 2 ? '#1a7f77' : '#17737a');
+  }
+  const plot = (i, j, a, b, col) => poly(g, [P(i, j), P(i + a, j), P(i + a, j + b), P(i, j + b)], col);
+  const prism = (i, j, a, b, h, top, l, r) => {
+    poly(g, [P(i, j + b), P(i + a, j + b), P(i + a, j + b, h), P(i, j + b, h)], l);
+    poly(g, [P(i + a, j), P(i + a, j + b), P(i + a, j + b, h), P(i + a, j, h)], r);
+    poly(g, [P(i, j, h), P(i + a, j, h), P(i + a, j + b, h), P(i, j + b, h)], top);
+  };
+  const tree = (i, j, big) => {
+    const p = P(i, j).map(v => v | 0); g.fillStyle = 'rgba(10,40,44,.4)'; g.fillRect(p[0] - 6, p[1] - 1, 12, 3);
+    g.fillStyle = '#5a3a22'; g.fillRect(p[0] - 1, p[1] - 5, 3, 5);
+    const col = big ? ['#2f8f5b', '#3ca86c', '#58c084'] : ['#35805a', '#459b6a', '#62b483'];
+    [[7, 11], [5, 15], [3, 18]].forEach(([w, y], n) => { g.fillStyle = col[n]; g.fillRect(p[0] - w, p[1] - y, w * 2 + 1, 6); });
+  };
+  const winL = (i, j, a, h, col) => {
+    for (let k = .5; k < h - .3; k += .8) for (let u = .3; u < a - .2; u += .8) {
+      const q = P(i + u, j, k).map(v => v | 0); g.fillStyle = col; g.fillRect(q[0], q[1], 3, 3);
+    }
+  };
+  const road = '#d9c79a', yard = '#c9b482', tarmac = '#6d7a86';
+  plot(0, 17.5, 44, 1.5, road); plot(0, 30, 44, 1.5, road);
+  plot(20, 3, 1.5, 44, road); plot(30.5, 3, 1.5, 44, road);
+  const ops = [];
+  const add = (d, f) => ops.push([d, f]);
+  // Pavilhão
+  plot(4, 4, 11, 11, yard);
+  add(20, () => {
+    prism(5, 5, 9, 9, 3.2, '#e8622a', '#c9622f', '#a44b22');
+    poly(g, [P(6.5, 6.5, 3.2), P(12.5, 6.5, 3.2), P(12.5, 12.5, 3.2), P(6.5, 12.5, 3.2)], '#dca35c');
+    poly(g, [P(6.5, 8.3, 3.2), P(8.5, 8.3, 3.2), P(8.5, 10.7, 3.2), P(6.5, 10.7, 3.2)], '#17737a');
+    poly(g, [P(10.5, 8.3, 3.2), P(12.5, 8.3, 3.2), P(12.5, 10.7, 3.2), P(10.5, 10.7, 3.2)], '#17737a');
+    const a = P(9.5, 6.5, 3.2), b = P(9.5, 12.5, 3.2); line(g, a[0] | 0, a[1] | 0, b[0] | 0, b[1] | 0, '#f8f0d8');
+  });
+  // Escritório
+  plot(22, 11, 6, 6, yard);
+  add(38, () => {
+    prism(23, 12, 4, 4, 5, '#f4efe0', '#c4c9d4', '#8f97ab');
+    winL(23, 16, 4, 5, '#2d6fa8');
+    const q = P(25, 14, 5.6).map(v => v | 0); ballAt(g, q[0], q[1]);
+  });
+  // Treino
+  plot(11, 20, 8, 8, yard);
+  poly(g, [P(12, 21), P(18, 21), P(18, 27), P(12, 27)], tarmac);
+  poly(g, [P(13, 22), P(17, 22), P(17, 26), P(13, 26)], '#dca35c');
+  add(45, () => {
+    prism(11.5, 20.2, 2, 1.2, 1.2, '#cf4436', '#efe3c2', '#d0c096');
+    const a = P(15, 22), b = P(15, 26); line(g, a[0] | 0, a[1] | 0, b[0] | 0, b[1] | 0, '#f8f0d8');
+  });
+  // Federação
+  plot(32.5, 23, 7, 6.5, yard);
+  add(60, () => {
+    prism(33.5, 24, 5, 5, .5, '#f4efe0', '#c4bea6', '#a39d84');
+    prism(34, 24.5, 4, 4, 2.4, '#d9d3bf', '#b0a98e', '#918a6f');
+    winL(34, 28.5, 4, 2.2, '#efe3c2');
+    poly(g, [P(33.5, 24, 3), P(38.5, 24, 3), P(38.5, 29, 3), P(33.5, 29, 3)], '#e8622a');
+  });
+  // Torre do relógio
+  plot(23.5, 32, 5, 5, yard);
+  add(60, () => {
+    prism(25, 33.5, 2, 2, 6.5, '#f8f0d8', '#dad3bc', '#b6ae93');
+    poly(g, [P(25, 33.5, 6.5), P(27, 33.5, 6.5), P(27, 35.5, 6.5), P(25, 35.5, 6.5)], '#cf4436');
+    const ck = P(26, 35.5, 5).map(v => v | 0);
+    g.fillStyle = INK; g.fillRect(ck[0] - 6, ck[1] - 5, 11, 11); g.fillStyle = '#f2c230'; g.fillRect(ck[0] - 5, ck[1] - 4, 9, 9);
+    g.fillStyle = INK; g.fillRect(ck[0] - 1, ck[1] - 3, 1, 4); g.fillRect(ck[0] - 1, ck[1], 3, 1);
+  });
+  // Aeroporto
+  plot(34, 33, 9, 9, tarmac);
+  poly(g, [P(34, 40), P(43, 40), P(43, 41.5), P(34, 41.5)], '#4b5564');
+  add(75, () => {
+    prism(35, 34.5, 4, 3, 1.4, '#f4efe0', '#c4c9d4', '#8f97ab');
+    prism(40, 34.5, 1.2, 1.2, 4.6, '#2d6fa8', '#dfe2ea', '#a9aebc');
+  });
+  // Casas e árvores nos espaços livres
+  [[1, 8], [2, 13], [17, 2], [23, 4], [27, 6], [2, 22], [7, 24], [23, 20], [26, 23], [22, 25], [3, 34], [14, 33], [17, 37], [34, 11], [37, 15], [34, 16], [11, 34], [8, 38]].forEach(([i, j], n) => {
+    const col = ['#efe3c2', '#e6d7ad', '#f4ebd0'][n % 3];
+    add(i + j + 3, () => prism(i, j, 2.4, 2.4, 1.2, n % 4 === 3 ? '#b55d3a' : '#c9622f', col, '#b8a981'));
+  });
+  [[16, 9], [17, 13], [1, 3], [8, 17], [12, 15], [16, 18], [28, 18], [23, 28], [27, 28], [17, 29], [30, 27], [30, 22], [25, 39], [22, 42], [31, 33], [33, 44], [40, 28], [42, 24], [11, 42], [15, 43]].forEach(([i, j], n) => add(i + j, () => tree(i, j, n % 2)));
+  ops.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
+  const place = (id, i, j, k) => {
+    const el = document.getElementById(id), [x, y] = P(i, j, k);
+    el.style.left = Math.max(46, Math.min(314, x)) + 'px'; el.style.top = (y - 26) + 'px';
+  };
+  place('tPav', 9.5, 9.5, 3.2); place('tOff', 25, 14, 6.4); place('tTre', 15, 24, 1.2);
+  place('tFed', 36, 26.5, 3); place('tTor', 26, 34.5, 6.5); place('tAir', 40.6, 35, 4.6);
+})();
+
+/* ---------- Cartas e Treino ---------- */
+const CATS = { tat: '#1f8a8c', tec: '#e8622a', fis: '#cf3a2c', apo: '#7246c4' };
+const PROPS = {
+  bowl: (g, x, y) => { g.fillStyle = INK; g.fillRect(x - 6, y - 2, 13, 6); g.fillStyle = '#f4efe0'; g.fillRect(x - 5, y - 1, 11, 4); g.fillStyle = '#e8b13e'; g.fillRect(x - 5, y - 1, 11, 1); g.fillStyle = '#fff'; g.fillRect(x - 3, y - 6, 1, 3); g.fillRect(x + 2, y - 7, 1, 4); },
+  zzz: (g, x, y) => { text(g, 'Z', x, y, '#fff', 1); text(g, 'Z', x + 5, y - 6, '#fff', 1); },
+  star: (g, x, y) => { g.fillStyle = '#f2c230'; g.fillRect(x - 1, y - 3, 3, 7); g.fillRect(x - 3, y - 1, 7, 3); },
+  arrow: (g, x, y) => { g.fillStyle = '#fff'; g.fillRect(x - 6, y, 10, 2); g.fillRect(x + 2, y - 2, 2, 6); g.fillRect(x + 4, y - 1, 2, 4); },
+  bar: (g, x, y) => { g.fillStyle = INK; g.fillRect(x - 9, y, 19, 2); g.fillRect(x - 10, y - 3, 3, 8); g.fillRect(x + 8, y - 3, 3, 8); },
+  note: (g, x, y) => { g.fillStyle = '#fff'; g.fillRect(x, y - 6, 1, 7); g.fillRect(x, y - 6, 4, 1); g.fillRect(x - 2, y, 3, 2); },
+  hands: (g, x, y) => { g.fillStyle = '#ffe8c8'; g.fillRect(x - 5, y, 4, 2); g.fillRect(x + 2, y, 4, 2); g.fillStyle = '#fff'; g.fillRect(x - 4, y - 5, 1, 3); g.fillRect(x + 3, y - 5, 1, 3); },
+};
+const CARDS = {
+  sopa: { n: 'Sopa da Avó', c: 'apo', pose: 'idle', prop: 'bowl' },
+  sesta: { n: 'Sesta', c: 'apo', pose: 'idle', prop: 'zzz' },
+  massagem: { n: 'Massagem', c: 'apo', pose: 'idle', prop: 'hands' },
+  bailarico: { n: 'Bailarico', c: 'apo', pose: 'cheer1', prop: 'note' },
+  lancar: { n: 'Lançamento', c: 'tec', pose: 'shoot' },
+  drible: { n: 'Drible', c: 'tec', pose: 'drib0' },
+  passe: { n: 'Passe Picado', c: 'tec', pose: 'pass' },
+  pesos: { n: 'Pesos', c: 'fis', pose: 'cheer0', prop: 'bar' },
+  sprints: { n: 'Sprints', c: 'fis', pose: 'run0', prop: 'arrow' },
+  saltos: { n: 'Saltos', c: 'fis', pose: 'block' },
+  pick: { n: 'Pick & Roll', c: 'tat', pose: 'defend', prop: 'arrow' },
+  leitura: { n: 'Ler a Defesa', c: 'tat', pose: 'idle', prop: 'star' },
+};
+function cardEl(key) {
+  const k = CARDS[key];
+  const c = mk(40, 44), g = c.getContext('2d');
+  g.fillStyle = CATS[k.c]; g.fillRect(0, 0, 40, 44);
+  for (let i = -44; i < 40; i += 8) line(g, i, 44, i + 44, 0, 'rgba(255,255,255,.14)');
+  const yFoot = 42;
+  shadow(g, 20, yFoot, 6);
+  blitSprite(g, k.pose, { ...HOME[1], kit: 'cream' }, 20, yFoot, false);
+  if (k.prop === 'bowl') PROPS.bowl(g, 30, 34);
+  if (k.prop === 'zzz') PROPS.zzz(g, 29, 14);
+  if (k.prop === 'hands') PROPS.hands(g, 20, 8);
+  if (k.prop === 'note') PROPS.note(g, 33, 10);
+  if (k.prop === 'bar') PROPS.bar(g, 20, 8);
+  if (k.prop === 'arrow') PROPS.arrow(g, 30, 14);
+  if (k.prop === 'star') PROPS.star(g, 32, 10);
+  const d = document.createElement('div'); d.className = 'card';
+  d.appendChild(c);
+  const s = document.createElement('span'); s.textContent = k.n; d.appendChild(s);
+  return d;
+}
+(function stats() {
+  const data = [['LAN', 'A'], ['VEL', 'B'], ['RES', 'C'], ['TEC', 'B'], ['FIS', 'D'], ['SAL', 'C'], ['VON', 'E']];
+  const col = { S: '#d9a400', A: '#cf3a2c', B: '#e8622a', C: '#3f9d58', D: '#2b7fb8', E: '#7a7a7a' };
+  document.getElementById('stats').innerHTML = data.map(([n, g]) => `<div>${n}<span class="grade" style="background:${col[g]}">${g}</span></div>`).join('');
+  const pc = document.getElementById('portrait').getContext('2d');
+  pc.imageSmoothingEnabled = false;
+  pc.drawImage(sprite('idle', HOME[1]), AX - 10, AY - 28, 20, 20, 0, 0, 20, 20);
+  const slots = document.getElementById('slots');
+  slots.appendChild(cardEl('lancar'));
+  slots.appendChild(cardEl('sesta'));
+  const e = document.createElement('div'); e.className = 'slot-empty'; e.textContent = 'Vazio'; slots.appendChild(e);
+  const hand = document.getElementById('hand');
+  ['sopa', 'massagem', 'bailarico', 'drible', 'passe', 'pesos', 'sprints', 'saltos'].forEach(k => hand.appendChild(cardEl(k)));
+  const combo = document.getElementById('comboCards');
+  ['sopa', 'sesta', 'massagem'].forEach(k => combo.appendChild(cardEl(k)));
+  const tc = document.getElementById('tinyCards');
+  ['tat', 'tec', 'apo'].forEach(c => { const i = document.createElement('i'); i.className = 'tcard'; i.style.background = CATS[c]; tc.appendChild(i); });
+  const label = document.createElement('span'); label.textContent = '+3 neste jogo'; tc.appendChild(label);
+  const ch = document.getElementById('comboHero').getContext('2d');
+  shadow(ch, 24, 44, 8); blitSprite(ch, 'cheer1', HOME[1], 24, 44, false);
+  const bg = document.getElementById('comboBg').getContext('2d');
+  bg.fillStyle = '#7246c4'; bg.fillRect(0, 0, 360, 640);
+  for (let i = 0; i < 16; i++) {
+    const a0 = i / 16 * Math.PI * 2, a1 = (i + .5) / 16 * Math.PI * 2, cx = 180, cy = 300, R = 700;
+    poly(bg, [[cx, cy], [cx + Math.cos(a0) * R, cy + Math.sin(a0) * R], [cx + Math.cos(a1) * R, cy + Math.sin(a1) * R]], '#8a5cdc');
+  }
+})();
+
+paint();
+requestAnimationFrame(t => { last = t; tick(t); });
+</script>

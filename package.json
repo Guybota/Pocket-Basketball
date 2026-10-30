@@ -1,0 +1,21 @@
+{
+  "name": "pocket-basketball",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "check": "tsc && vitest run",
+    "sim": "node src/tools/simulate.ts",
+    "watch-match": "node src/tools/watch.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
