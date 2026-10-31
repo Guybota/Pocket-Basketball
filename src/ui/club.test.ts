@@ -7,7 +7,9 @@ import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/typ
 import { BALANCE as B } from '../sim/balance.ts';
 import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
-import { PLAYER_CLUB, aiTeam, cardsLeft, clubTeam, currentFixture, finishMatch, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, runTraining, skipWeek, swapPlayers, totalCards, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { FREE_WEEK } from '../sim/league.ts';
+import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
 const base = generateTeam(1, 'A', 50).roster[0]!;
@@ -194,27 +196,33 @@ describe('clube', () => {
 
   it('o treino gasta as cartas e regista os combos novos', () => {
     const c = club();
-    const { club: after, reports } = runTraining(c, { 0: ['shooting', 'dribble'] });
+    const { club: after, isNewCombo } = trainOne(c, 0, ['shooting', 'dribble']);
+    expect(isNewCombo).toBe(false);
     expect(after.cards.shooting).toBe((c.cards.shooting ?? 0) - 1);
-    expect(reports).toHaveLength(1);
     expect(after.team.roster[0]!.attributes.shooting).toBeGreaterThan(c.team.roster[0]!.attributes.shooting);
-    const withCombo = runTraining({ ...c, cards: { ...c.cards, nap: 1, massage: 1 } }, { 1: ['nap', 'massage'] });
-    expect(withCombo.reports[0]!.isNewCombo).toBe(true);
+    expect(after.recentTraining[c.team.roster[0]!.name]).toEqual(['technique', 'technique']);
+    const withCombo = trainOne({ ...c, cards: { ...c.cards, nap: 1, massage: 1 } }, 1, ['nap', 'massage']);
+    expect(withCombo.isNewCombo).toBe(true);
     expect(withCombo.club.knownCombos).toContain('lazyWeekend');
   });
 
-  it('recusa treinar com cartas que não tem, ou duas vezes na mesma semana', () => {
-    const c = { ...club(), cards: { shooting: 1 } };
-    expect(() => runTraining(c, { 0: ['shooting'], 1: ['shooting'] })).toThrow();
-    expect(() => runTraining(c, { 0: ['fado'] })).toThrow();
-    const { club: trained } = runTraining(c, {});
-    expect(() => runTraining(trained, {})).toThrow();
+  it('cada jogador treina uma vez por semana, e nunca com cartas que não há', () => {
+    const c = { ...club(), cards: { shooting: 2 } };
+    expect(() => trainOne(c, 0, ['fado'])).toThrow();
+    expect(() => trainOne(c, 0, [])).toThrow();
+    const { club: one } = trainOne(c, 0, ['shooting']);
+    expect(() => trainOne(one, 0, ['shooting'])).toThrow();
+    const { club: two } = trainOne(one, 1, ['shooting']);
+    expect(() => trainOne(two, 2, ['shooting'])).toThrow();
+    expect(two.trainedThisWeek).toHaveLength(2);
   });
 
-  it('conta as cartas já escolhidas para outros jogadores', () => {
-    const c = { ...club(), cards: { shooting: 2 } };
-    expect(cardsLeft(c, { 0: ['shooting'] }, 'shooting')).toBe(1);
-    expect(cardsLeft(c, { 0: ['shooting'], 3: ['shooting'] }, 'shooting')).toBe(0);
+  it('quem não treinou com cartas treina sozinho, e quem treinou não', () => {
+    const c = club();
+    const { club: trained } = trainOne(c, 0, ['shooting']);
+    const after = playWeek(trained);
+    expect(after.team.roster[0]!.attributes).toEqual(trained.team.roster[0]!.attributes);
+    expect(after.team.roster.some((p, i) => JSON.stringify(p.attributes) !== JSON.stringify(c.team.roster[i]!.attributes))).toBe(true);
   });
 
   it('um jogo fecha a semana, com resultado, cartas e cansaço', () => {
@@ -225,7 +233,7 @@ describe('clube', () => {
     expect(after.wins + after.losses).toBe(1);
     expect(cards).toContain('fado');
     expect(after.cards.fado).toBeGreaterThanOrEqual(1);
-    expect(after.trainedThisWeek).toBe(false);
+    expect(after.trainedThisWeek).toEqual([]);
     for (const player of after.team.roster) {
       expect(player.fatigue).toBeGreaterThanOrEqual(0);
       expect(player.fatigue).toBeLessThanOrEqual(1);
@@ -239,7 +247,7 @@ describe('clube', () => {
   });
 
   it('guarda e lê um clube sem perder nada', () => {
-    const { club: c } = runTraining(club(), { 0: ['shooting'] });
+    const { club: c } = trainOne(club(), 0, ['shooting']);
     expect(parseClub(JSON.stringify(c))).toEqual(c);
   });
 
@@ -254,6 +262,58 @@ describe('clube', () => {
     expect(parseClub(JSON.stringify({ ...c, cards: { shooting: -1 } }))).toBeNull();
     expect(parseClub(JSON.stringify({ ...c, team: { ...c.team, roster: [] } }))).toBeNull();
   });
+
+  it('não aceita cores nem emblemas que possam meter HTML na página', () => {
+    const c = club();
+    const bad = '"><img src=x onerror=alert(1)>';
+    expect(parseClub(JSON.stringify({ ...c, kits: c.kits.map(kit => ({ ...kit, jersey: bad })) }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, emblem: { ...c.emblem, primary: bad } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, emblem: { ...c.emblem, letters: bad } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, kitChoice: 'nenhum' }))).toBeNull();
+  });
+
+  it('o emblema e os equipamentos ficam guardados', () => {
+    const c = club();
+    const edited: ClubState = { ...c, emblem: { ...c.emblem, shape: 'circle', letters: 'XY7' }, kits: c.kits.map(kit => ({ ...kit, pattern: 'stripes' })), kitChoice: 'gold' };
+    const read = parseClub(JSON.stringify(edited))!;
+    expect(read.emblem.letters).toBe('XY7');
+    expect(activeKit(read).id).toBe('gold');
+    expect(activeKit(read).pattern).toBe('stripes');
+  });
+
+  it('o número da camisola não muda com a troca no plantel', () => {
+    const c = club();
+    const swapped = swapPlayers(c, 0, 6);
+    expect(swapped.shirts[swapped.team.roster[6]!.name]).toBe(4);
+  });
+
+  it('um jogo-treino acaba ao fim de dois períodos e só conta para as cartas', () => {
+    const c = { ...club(), week: FREE_WEEK };
+    const rival = opponentOf(c);
+    const s = createMatch(clubTeam(c), rival, weekSeed(c), [true, false]);
+    while (!firstHalfOver(s)) step(s);
+    expect(s.period).toBe(2);
+    const { club: after, confidenceDelta, round } = finishPractice(c, s, ['fado']);
+    expect(after.week).toBe(FREE_WEEK + 1);
+    expect(after.cards.fado).toBeGreaterThanOrEqual(1);
+    expect(confidenceDelta).toBe(0);
+    expect(round).toBeNull();
+    expect(after.confidence).toBe(c.confidence);
+    expect(after.wins + after.losses).toBe(c.wins + c.losses);
+    expect(after.rounds).toEqual(c.rounds);
+    const full = finishMatch(c, simulateMatch(clubTeam(c), rival, weekSeed(c), [true, false]), []).club;
+    const tiredness = (x: ClubState): number => x.team.roster.reduce((sum, p) => sum + p.fatigue, 0);
+    expect(tiredness(after)).toBeLessThan(tiredness(full));
+    expect(() => finishPractice(club(), s, [])).toThrow();
+  });
+
+  it('a carreira do treinador passa de clube para clube', () => {
+    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [] };
+    const first = { ...club(), history: [record] };
+    const second = newClub(22, 0, careerOf(first));
+    expect(careerOf(second)).toEqual([{ ...record, club: first.team.name }]);
+    expect(parseClub(JSON.stringify(second))?.career).toHaveLength(1);
+  });
 });
 
 // O critério da Fase 2: treinar tem de se notar em campo.
@@ -267,12 +327,12 @@ describe('critério da Fase 2', () => {
       // O que um treinador faz com os combos que aprende: sobem atributos e ensinam movimentos e comportamentos.
       const rotation: CardId[][] = [['dribble', 'sprints', 'readDefense'], ['weights', 'jumps', 'soup'], ['shooting', 'freeThrows', 'nap'], ['bouncePass', 'readDefense', 'pickRoll'], ['shooting', 'readDefense', 'nap'], ['weights', 'jumps', 'pickRoll']];
       for (let week = 0; week < 10; week++) {
-        const plan: Record<number, CardId[]> = {};
         // 9 cartas por semana: pouco mais do que as 8 que um jogo costuma dar.
-        for (let p = 0; p < 3; p++) plan[(week + p) % 8] = rotation[(week + p) % rotation.length]!;
-        const cards: Partial<Record<CardId, number>> = {};
-        for (const list of Object.values(plan)) for (const card of list) cards[card] = (cards[card] ?? 0) + 1;
-        trained = { ...runTraining({ ...trained, cards, trainedThisWeek: false }, plan).club };
+        trained = { ...trained, trainedThisWeek: [] };
+        for (let p = 0; p < 3; p++) {
+          const list = rotation[(week + p) % rotation.length]!;
+          trained = trainOne({ ...trained, cards: Object.fromEntries(list.map(card => [card, 1])) }, (week + p) % 8, list).club;
+        }
       }
       const rest = (t: ClubState['team']): ClubState['team'] => ({ ...t, roster: t.roster.map(p => ({ ...p, fatigue: 0 })) });
       const home = i % 2 === 0;
@@ -412,13 +472,14 @@ describe('época', () => {
   });
 
   it('um clube guardado antes das épocas continua, com o que treinou', () => {
-    const { club: trained } = runTraining(newClub(71), { 0: ['shooting'] });
+    const { club: trained } = trainOne(newClub(71), 0, ['shooting']);
     const old = {
       version: 1, seed: trained.seed, division: 2, week: 7, wins: 4, losses: 2, team: trained.team, tactics: trained.tactics, cards: trained.cards, knownCombos: ['lazyWeekend'], trainedThisWeek: true,
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(3);
+    expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
     expect(migrated.wins).toBe(4);
@@ -428,6 +489,19 @@ describe('época', () => {
     expect(new Set(migrated.clubs.map(club => club.name)).size).toBe(40);
     expect(leaguePosition(migrated)).toBeGreaterThanOrEqual(0);
     expect(parseClub(JSON.stringify(migrated))).toEqual(migrated);
+  });
+
+  it('um clube guardado antes dos editores continua igual, com os valores novos', () => {
+    const c = trainOne(newClub(72), 0, ['shooting']).club;
+    const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
+    const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
+    expect(migrated.version).toBe(3);
+    expect(migrated.team).toEqual(c.team);
+    expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
+    expect(activeKit(migrated).id).toBe('home');
+    expect(migrated.emblem.letters).toBe(c.team.short);
+    expect(parseClub(JSON.stringify(migrated))).toEqual(migrated);
+    expect(parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: false }))!.trainedThisWeek).toEqual([]);
   });
 
   it('não aceita uma liga estragada', () => {

@@ -1,4 +1,4 @@
-import { BUILDS, INK, KITS, hairColor, skinColors, type Look } from './sprites.ts';
+import { BUILDS, INK, hairColor, kitColors, kitId, skinColors, type Look } from './sprites.ts';
 
 // Retrato da ficha de jogador: 28×28 píxeis. Cabeça grande, pele lisa e poucos traços.
 // A sombra fica só no nariz, na orelha e no pescoço: pintar a cara suja o maxilar a esta resolução.
@@ -27,7 +27,7 @@ function mix(a: string, b: string, k: number): string {
 }
 
 export function portraitImage(look: Look): string {
-  const key = `${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.build}|${look.face}`;
+  const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.build}|${look.face}`;
   const cached = cache.get(key);
   if (cached) return cached;
 
@@ -44,7 +44,7 @@ export function portraitImage(look: Look): string {
   const [skin, skinShade] = skinColors(look);
   const hair = hairColor(look);
   const hairLight = mix(hair, '#ffffff', 0.24);
-  const kit = KITS[look.kit];
+  const kit = kitColors(look);
   const build = BUILDS[look.build];
   const trait = (shift: number, options: number): number => (look.face >>> shift) % options;
 

@@ -1,7 +1,9 @@
 import type { Player } from '../../sim/types.ts';
 import { buildOf, pixelsForHeight } from './body.ts';
+import { kitKey, shadeOf, usesSecond, type ClubKit } from './kit.ts';
+import { INK } from './palette.ts';
 
-export const INK = '#1b2230';
+export { INK };
 
 const SKINS = [['#f2c7a0', '#d9a57c'], ['#c98d5e', '#a9713f'], ['#8d5a36', '#6f4326'], ['#5c3a24', '#472a18']] as const;
 const HAIRS = ['#2a2230', '#5a3a22', '#a8642a', '#e0b94f', '#1b2230', '#7a3a2a'] as const;
@@ -59,6 +61,8 @@ export type Build = keyof typeof BUILDS;
 
 export interface Look {
   kit: KitName;
+  /** O equipamento do nosso clube, feito pelo jogador. Quando existe, manda mais do que `kit`. */
+  custom?: ClubKit;
   skin: number;
   hair: number;
   style: number;
@@ -85,6 +89,15 @@ export function lookOf(player: Player, kit: KitName): Look {
   };
 }
 
+/** As cores que um boneco ou um retrato vestem. */
+export function kitColors(look: Look): { jersey: string; shade: string; trim: string; shorts: string } {
+  const { custom } = look;
+  return custom ? { jersey: custom.jersey, shade: shadeOf(custom.jersey), trim: custom.trim, shorts: custom.shorts } : KITS[look.kit];
+}
+
+/** Para as caches: dois bonecos só são iguais se tiverem a mesma roupa. */
+export const kitId = (look: Look): string => (look.custom ? kitKey(look.custom) : look.kit);
+
 export const skinColors = (look: Look): readonly [string, string] => SKINS[look.skin]!;
 export const hairColor = (look: Look): string => HAIRS[look.hair]!;
 
@@ -94,6 +107,8 @@ const SPRITE_W = 34;
 const SPRITE_H = 46;
 const ANCHOR_X = 17;
 const ANCHOR_Y = 43;
+const JERSEY_MARK = 'camisola';
+const SHADE_MARK = 'sombra';
 const cache = new Map<string, HTMLCanvasElement>();
 
 function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolean): HTMLCanvasElement {
@@ -117,7 +132,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const T = look.torso;
   const body = BUILDS[look.build];
   const shape = POSES[pose](L);
-  const kit = KITS[look.kit];
+  // Camisola marcada com estes dois nomes: o desenho dela só se resolve no fim, quando já se sabe cada píxel.
+  const kit = look.custom ? { ...kitColors(look), jersey: JERSEY_MARK, shade: SHADE_MARK } : KITS[look.kit];
   const [skin, skinShade] = SKINS[look.skin]!;
   const hair = HAIRS[look.hair]!;
   const hipY = ANCHOR_Y - L - (shape.jump ?? 0);
@@ -217,7 +233,11 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     for (let x = 0; x < SPRITE_W; x++) {
       const i = y * SPRITE_W + x;
       const near = (x > 0 && grid[i - 1]) || (x < SPRITE_W - 1 && grid[i + 1]) || (y > 0 && grid[i - SPRITE_W]) || (y < SPRITE_H - 1 && grid[i + SPRITE_W]);
-      const color = grid[i] ?? (near ? INK : null);
+      let color = grid[i] ?? (near ? INK : null);
+      if (look.custom && (color === JERSEY_MARK || color === SHADE_MARK)) {
+        const base = usesSecond(look.custom, x, y) ? look.custom.second : look.custom.jersey;
+        color = color === JERSEY_MARK ? base : shadeOf(base);
+      }
       if (color) {
         g.fillStyle = color;
         g.fillRect(x, y, 1, 1);
@@ -228,7 +248,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
 }
 
 export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean): void {
-  const key = `${pose}|${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}`;
+  const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}`;
   let sprite = cache.get(key);
   if (!sprite) {
     sprite = buildSprite(pose, look, back, withBall);
@@ -269,7 +289,7 @@ const faceCache = new Map<string, string>();
 
 /** Retrato do jogador para o painel, recortado do próprio boneco. */
 export function faceImage(look: Look): string {
-  const key = `${look.kit}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}`;
+  const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}`;
   let url = faceCache.get(key);
   if (!url) {
     const canvas = document.createElement('canvas');

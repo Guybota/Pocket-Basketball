@@ -1,0 +1,95 @@
+import { DIVISIONS } from '../sim/teamgen.ts';
+import { COMBOS } from '../sim/training.ts';
+import { careerOf, type CareerRecord, type ClubState } from './club.ts';
+
+export interface Trophy {
+  name: string;
+  kind: 'cup' | 'bigCup' | 'plate' | 'medal';
+  detail: string;
+  won: boolean;
+}
+
+// Numa época de 18 jornadas, só uma época excecional chega aqui.
+const COACH_OF_THE_YEAR_WINS = 15;
+
+/** O que o treinador já ganhou, em toda a carreira. O que falta fica em sombra, com a indicação do que pede. */
+export function trophyList(club: ClubState): Trophy[] {
+  const career = careerOf(club);
+  const last = DIVISIONS.length - 1;
+  const when = (r: CareerRecord): string => `Época ${r.season}, com o ${r.club}`;
+  const cups = DIVISIONS.map((division, index): Trophy => {
+    const titles = career.filter(r => r.outcome === 'champion' && r.division === index);
+    const latest = titles.at(-1);
+    return {
+      name: division.name,
+      kind: index === last ? 'bigCup' : 'cup',
+      won: latest !== undefined,
+      detail: latest ? `${when(latest)}. ${latest.wins} vitórias e ${latest.losses} derrotas.${titles.length > 1 ? ` Ganha ${titles.length} vezes.` : ''}` : index === last ? 'O título mais alto do país.' : `Ganha a ${division.name} para a veres aqui.`,
+    };
+  });
+  const rises = career.filter(r => (r.outcome === 'champion' || r.outcome === 'promoted') && r.division < last);
+  const bestYear = career.find(r => r.wins >= COACH_OF_THE_YEAR_WINS);
+  const scorer = [...career].sort((a, b) => b.topScorerPoints - a.topScorerPoints)[0];
+  return [
+    ...cups,
+    { name: 'Subida de divisão', kind: 'medal', won: rises.length > 0, detail: rises.length > 0 ? `${rises.length === 1 ? 'Uma subida' : `${rises.length} subidas`}. A última na ${when(rises.at(-1)!).toLowerCase()}.` : 'Sobe de divisão pela primeira vez.' },
+    { name: 'Treinador do Ano', kind: 'plate', won: bestYear !== undefined, detail: bestYear ? `${when(bestYear)}. ${bestYear.wins} vitórias numa só época.` : `Ganha ${COACH_OF_THE_YEAR_WINS} jogos na mesma época.` },
+    { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'O melhor marcador de uma época fica aqui.' },
+    { name: 'Coleção de combos', kind: 'plate', won: club.knownCombos.length === COMBOS.length, detail: `Descobre todos os combos secretos. Já tens ${club.knownCombos.length} de ${COMBOS.length}.` },
+    { name: 'Taça', kind: 'bigCup', won: false, detail: 'As taças chegam na Fase 4.' },
+    { name: 'Triplete', kind: 'bigCup', won: false, detail: 'Liga e taças na mesma época.' },
+  ];
+}
+
+/** A vitrina: prateleiras de madeira com o que já se ganhou. O que falta fica em sombra. */
+export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]): void {
+  const g = canvas.getContext('2d')!;
+  const { width: W, height: H } = canvas;
+  const rect = (c: string, x: number, y: number, w: number, h: number): void => {
+    g.fillStyle = c;
+    g.fillRect(Math.round(x), Math.round(y), w, h);
+  };
+  rect('#3a2a1c', 0, 0, W, H);
+  rect('#2a1e14', 8, 8, W - 16, H - 16);
+  for (let x = 12; x < W - 12; x += 22) rect('#33261a', x, 8, 2, H - 16);
+  const rowY = [Math.round(H * 0.47), Math.round(H * 0.92)];
+  for (const y of rowY) {
+    rect('#7a4f1e', 8, y, W - 16, 8);
+    rect('#a06a2c', 8, y, W - 16, 3);
+    rect('rgba(242,194,48,.08)', 8, y - 90, W - 16, 90);
+  }
+  trophies.forEach((t, n) => {
+    const x = Math.round((W / 5) * (n % 5 + 0.5));
+    const y = rowY[n < 5 ? 0 : 1]!;
+    const main = !t.won ? '#1b140d' : t.kind === 'cup' ? '#c9ccd4' : t.kind === 'plate' ? '#c98a4a' : '#f2c230';
+    const dark = !t.won ? '#1b140d' : t.kind === 'cup' ? '#8f93a0' : t.kind === 'plate' ? '#8f5e2c' : '#c99a14';
+    const light = !t.won ? '#1b140d' : '#ffffff';
+    if (t.kind === 'cup' || t.kind === 'bigCup') {
+      const s = t.kind === 'bigCup' ? 1.3 : 1;
+      const w = Math.round(14 * s);
+      const h = Math.round(16 * s);
+      rect(dark, x - w / 2 - 1, y - 6, w + 2, 6);
+      rect(main, x - 3, y - 12, 6, 6);
+      rect(main, x - w / 2, y - 12 - h, w, h);
+      rect(dark, x + w / 2 - 3, y - 12 - h, 3, h);
+      rect(light, x - w / 2 + 2, y - 10 - h, 2, h - 6);
+      rect(main, x - w / 2 - 4, y - 10 - h, 4, 2);
+      rect(main, x - w / 2 - 4, y - 10 - h, 2, 7);
+      rect(main, x - w / 2 - 4, y - 5 - h, 4, 2);
+      rect(main, x + w / 2, y - 10 - h, 4, 2);
+      rect(main, x + w / 2 + 2, y - 10 - h, 2, 7);
+      rect(main, x + w / 2, y - 5 - h, 4, 2);
+    } else if (t.kind === 'plate') {
+      rect(dark, x - 10, y - 5, 20, 5);
+      rect(main, x - 8, y - 27, 16, 22);
+      rect(dark, x + 5, y - 27, 3, 22);
+      if (t.won) rect('#e8622a', x - 3, y - 21, 6, 6);
+    } else {
+      rect('#cf3a2c', x - 4, y - 28, 3, 10);
+      rect('#2b5fd9', x + 1, y - 28, 3, 10);
+      rect(dark, x - 7, y - 18, 14, 14);
+      rect(main, x - 6, y - 17, 12, 12);
+      if (t.won) rect(light, x - 3, y - 14, 3, 3);
+    }
+  });
+}

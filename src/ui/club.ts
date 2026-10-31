@@ -3,17 +3,19 @@ import { LEAGUE_SIZE, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDiv
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, makeRng, next } from '../sim/rng.ts';
 import { DIVISIONS, generateTeam, teamRating } from '../sim/teamgen.ts';
-import { CARD_IDS, CARDS, MAX_CARDS_PER_PLAYER, endOfMatchCards, independentPractice, trainPlayer, type CardId, type Combo } from '../sim/training.ts';
-import { NEUTRAL_TACTICS, validateTactics, validateTeam, type MoveId, type Tactics, type Team } from '../sim/types.ts';
+import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
+import { NEUTRAL_TACTICS, validateTactics, validateTeam, type Tactics, type Team } from '../sim/types.ts';
+import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 const MATCH_FATIGUE = 0.22;
 const WEEKLY_RECOVERY = 0.5;
 const STARTING_CARDS: readonly CardId[] = ['shooting', 'dribble', 'sprints', 'readDefense', 'weights', 'nap'];
 /** O clube do jogador é sempre o número 0 da lista de clubes. */
 export const PLAYER_CLUB = 0;
 const TACTIC_CHOICES = [-1, 0, 0, 1] as const;
+const RECENT_TRAINING = 4;
 const SEASON_CARDS: Record<SeasonOutcome, number> = { champion: 5, promoted: 3, stayed: 2, relegated: 1 };
 
 export interface PlayerSeason {
@@ -37,6 +39,11 @@ export interface SeasonRecord {
   table: Standing[];
 }
 
+/** Uma época acabada na carreira do treinador, em qualquer clube. */
+export interface CareerRecord extends SeasonRecord {
+  club: string;
+}
+
 export interface ClubState {
   version: number;
   seed: number;
@@ -50,8 +57,17 @@ export interface ClubState {
   cards: Partial<Record<CardId, number>>;
   /** Combos já descobertos, para os mostrar na lista. */
   knownCombos: string[];
-  /** Já treinou esta semana: só se treina uma vez entre jogos. */
-  trainedThisWeek: boolean;
+  /** Quem já treinou esta semana: cada jogador treina uma vez entre jogos. */
+  trainedThisWeek: string[];
+  /** As categorias dos últimos treinos de cada jogador, a mais recente primeiro. */
+  recentTraining: Record<string, CardCategory[]>;
+  /** O número da camisola não muda quando o jogador troca de lugar no plantel. */
+  shirts: Record<string, number>;
+  emblem: Emblem;
+  kits: ClubKit[];
+  kitChoice: string;
+  /** As épocas feitas noutros clubes. Os troféus são do treinador, por isso não se perdem com o clube. */
+  career: CareerRecord[];
   /** De 0 a 100. Abaixo do limite, o treinador é despedido. */
   confidence: number;
   fired: boolean;
@@ -79,13 +95,23 @@ function createWorld(seed: number, division: number, playerName: string): { club
   return { clubs, divisions };
 }
 
-export function newClub(seed: number, division = 0): ClubState {
+/** O que um clube guarda além da liga, com os valores de quem acabou de chegar. */
+const clubExtras = (team: Team): Pick<ClubState, 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice'> => ({
+  recentTraining: {},
+  shirts: Object.fromEntries(team.roster.map((player, index) => [player.name, index + 4])),
+  emblem: defaultEmblem(team.short),
+  kits: DEFAULT_KITS.map(kit => ({ ...kit })),
+  kitChoice: DEFAULT_KITS[0]!.id,
+});
+
+export function newClub(seed: number, division = 0, career: CareerRecord[] = []): ClubState {
   const cards: Partial<Record<CardId, number>> = {};
   for (const card of STARTING_CARDS) cards[card] = (cards[card] ?? 0) + 1;
   const name = CLUB_NAMES[Math.abs(seed) % CLUB_NAMES.length]!;
   // No nosso clube, os movimentos especiais aprendem-se no treino.
   const team = generateTeam(seed * 2 + 1, name, DIVISIONS[division]!.level + B.playerClubLevelOffset);
   const world = createWorld(seed, division, name);
+  const squad: Team = { ...team, short: shortName(name), roster: team.roster.map(player => ({ ...player, moves: [] })) };
   return {
     version: SAVE_VERSION,
     seed,
@@ -94,11 +120,13 @@ export function newClub(seed: number, division = 0): ClubState {
     week: 1,
     wins: 0,
     losses: 0,
-    team: { ...team, short: shortName(name), roster: team.roster.map(player => ({ ...player, moves: [] })) },
+    team: squad,
     tactics: { ...NEUTRAL_TACTICS },
     cards,
     knownCombos: [],
-    trainedThisWeek: false,
+    trainedThisWeek: [],
+    ...clubExtras(squad),
+    career,
     confidence: B.confidenceStart,
     fired: false,
     ...world,
@@ -160,51 +188,44 @@ export const leagueTable = (club: ClubState): Standing[] => standings(leagueIds(
 
 export const leaguePosition = (club: ClubState): number => leagueTable(club).findIndex(row => row.club === PLAYER_CLUB);
 
-export type TrainingPlan = Partial<Record<number, CardId[]>>;
+export const activeKit = (club: ClubState): ClubKit => club.kits.find(kit => kit.id === club.kitChoice) ?? club.kits[0]!;
 
-export interface TrainingReport {
-  playerIndex: number;
-  name: string;
-  gains: Partial<Record<string, number>>;
-  combo: Combo | null;
+/** Toda a carreira do treinador, incluindo as épocas neste clube. */
+export const careerOf = (club: ClubState): CareerRecord[] =>
+  [...club.career, ...club.history.map(record => ({ ...record, club: club.team.name, table: [] }))];
+
+export interface TrainingOutcome {
+  club: ClubState;
+  result: TrainingResult;
   isNewCombo: boolean;
-  newMove: MoveId | null;
-  moveBlocked: boolean;
 }
 
-/** Cartas livres, depois de descontar as já escolhidas para outros jogadores. */
-export function cardsLeft(club: ClubState, plan: TrainingPlan, card: CardId): number {
-  let used = 0;
-  for (const cards of Object.values(plan)) used += cards?.filter(c => c === card).length ?? 0;
-  return (club.cards[card] ?? 0) - used;
-}
-
-/** Aplica o treino da semana. Rejeita um plano que use cartas que o clube não tem. */
-export function runTraining(club: ClubState, plan: TrainingPlan): { club: ClubState; reports: TrainingReport[] } {
-  if (club.trainedThisWeek) throw new Error('Esta semana já houve treino');
-  const remaining = { ...club.cards };
-  const rng = makeRng(weekSeed(club) ^ 0x51ed27);
-  const known = new Set(club.knownCombos);
-  const reports: TrainingReport[] = [];
-  const roster = club.team.roster.map((player, index) => {
-    const cards = plan[index] ?? [];
-    if (cards.length > MAX_CARDS_PER_PLAYER) throw new Error(`${player.name}: demasiadas cartas`);
-    for (const card of cards) {
-      if (!(card in CARDS)) throw new Error(`Carta desconhecida: ${String(card)}`);
-      const left = remaining[card] ?? 0;
-      if (left <= 0) throw new Error(`Não há cartas de ${CARDS[card].name}`);
-      remaining[card] = left - 1;
-    }
-    if (cards.length === 0) return independentPractice(player, rng);
-    const result = trainPlayer(player, cards);
-    const isNewCombo = result.combo !== null && !known.has(result.combo.id);
-    if (result.combo) known.add(result.combo.id);
-    reports.push({ playerIndex: index, name: player.name, gains: result.gains, combo: result.combo, isNewCombo, newMove: result.newMove, moveBlocked: result.moveBlocked });
-    return result.player;
-  });
+/** Treina um jogador, logo, com as cartas escolhidas. Cada jogador treina uma vez por semana. */
+export function trainOne(club: ClubState, index: number, cards: readonly CardId[]): TrainingOutcome {
+  const player = club.team.roster[index];
+  if (!player) throw new Error(`Não há jogador ${index}`);
+  if (club.trainedThisWeek.includes(player.name)) throw new Error(`${player.name} já treinou esta semana`);
+  if (cards.length === 0) throw new Error('Falta escolher as cartas');
+  const owned = { ...club.cards };
+  for (const card of cards) {
+    if (!(card in CARDS)) throw new Error(`Carta desconhecida: ${String(card)}`);
+    const left = owned[card] ?? 0;
+    if (left <= 0) throw new Error(`Não há cartas de ${CARDS[card].name}`);
+    owned[card] = left - 1;
+  }
+  const result = trainPlayer(player, cards);
+  const isNewCombo = result.combo !== null && !club.knownCombos.includes(result.combo.id);
   return {
-    club: { ...club, team: { ...club.team, roster }, cards: remaining, knownCombos: [...known], trainedThisWeek: true },
-    reports,
+    result,
+    isNewCombo,
+    club: {
+      ...club,
+      cards: owned,
+      team: { ...club.team, roster: club.team.roster.map((p, i) => (i === index ? result.player : p)) },
+      knownCombos: isNewCombo ? [...club.knownCombos, result.combo!.id] : club.knownCombos,
+      trainedThisWeek: [...club.trainedThisWeek, player.name],
+      recentTraining: { ...club.recentTraining, [player.name]: [...cards.map(card => CARDS[card].category), ...(club.recentTraining[player.name] ?? [])].slice(0, RECENT_TRAINING) },
+    },
   };
 }
 
@@ -219,11 +240,11 @@ export function swapPlayers(club: ClubState, a: number, b: number): ClubState {
 function closeWeek(club: ClubState, played: (index: number) => number): ClubState {
   const rng = makeRng(weekSeed(club) ^ 0x51ed27);
   const roster = club.team.roster.map((player, index) => {
-    const practiced = club.trainedThisWeek ? player : independentPractice(player, rng);
+    const practiced = club.trainedThisWeek.includes(player.name) ? player : independentPractice(player, rng);
     const fatigue = practiced.fatigue * WEEKLY_RECOVERY + (played(index) / 480) * MATCH_FATIGUE;
     return { ...practiced, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
   });
-  const closed: ClubState = { ...club, team: { ...club.team, roster }, week: club.week + 1, trainedThisWeek: false };
+  const closed: ClubState = { ...club, team: { ...club.team, roster }, week: club.week + 1, trainedThisWeek: [] };
   return closed.week > SEASON_WEEKS ? endSeason(closed) : closed;
 }
 
@@ -335,6 +356,20 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
   return { club: closeWeek(updated, index => bodies[index]?.line.secondsPlayed ?? 0), cards, round, confidenceDelta: delta };
 }
 
+/** Um jogo-treino são os dois primeiros períodos. No resto dos jogos, é a hora do intervalo. */
+export const firstHalfOver = (s: MatchState): boolean => s.period >= 3 || (s.period === 2 && s.phase === 'break');
+
+/** O fim de um jogo-treino: dá menos cartas e não conta para a liga, para a confiança nem para o historial. */
+export function finishPractice(club: ClubState, s: MatchState, found: readonly CardId[]): MatchResult {
+  if (currentFixture(club)) throw new Error('Esta semana há jogo oficial');
+  const won = s.score[0] > s.score[1];
+  const cards = [...found, ...(won ? endOfMatchCards(won, weekSeed(club)).slice(0, 1) : [])];
+  const owned = { ...club.cards };
+  for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
+  const bodies = s.bodies.filter(b => b.team === 0);
+  return { club: closeWeek({ ...club, cards: owned }, index => bodies[index]?.line.secondsPlayed ?? 0), cards, round: null, confidenceDelta: 0 };
+}
+
 /** Numa semana livre, pode-se passar à frente sem jogar. */
 export function skipWeek(club: ClubState): ClubState {
   if (currentFixture(club)) throw new Error('Esta semana há jogo oficial');
@@ -354,7 +389,9 @@ function migrateV1(old: ClubState): ClubState {
     version: SAVE_VERSION,
     season: 1,
     week: 1,
-    trainedThisWeek: false,
+    trainedThisWeek: [],
+    ...clubExtras(old.team),
+    career: [],
     confidence: B.confidenceStart,
     fired: false,
     ...world,
@@ -365,11 +402,24 @@ function migrateV1(old: ClubState): ClubState {
   };
 }
 
+/** Antes de cada jogador treinar à vez, o treino da semana era de toda a equipa. */
+function migrateV2(old: ClubState): ClubState {
+  const trained = (old.trainedThisWeek as unknown) === true ? old.team.roster.map(player => player.name) : [];
+  return { ...old, version: SAVE_VERSION, trainedThisWeek: trained, ...clubExtras(old.team), career: [] };
+}
+
+function validExtras(club: ClubState): boolean {
+  const isRecord = (value: unknown): boolean => typeof value === 'object' && value !== null;
+  return Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
+    && validEmblem(club.emblem) && Array.isArray(club.kits) && club.kits.length > 0 && club.kits.every(validKit)
+    && club.kits.some(kit => kit.id === club.kitChoice);
+}
+
 /** Lê um clube guardado. Devolve null se estiver estragado ou for de outra versão, sem deitar nada fora. */
 export function parseClub(text: string | null): ClubState | null {
   if (!text) return null;
   try {
-    const parsed = JSON.parse(text) as ClubState;
+    let parsed = JSON.parse(text) as ClubState;
     if (!Number.isInteger(parsed.seed) || !Number.isInteger(parsed.week) || parsed.week < 1) return null;
     if (!Number.isInteger(parsed.division) || parsed.division < 0 || parsed.division >= DIVISIONS.length) return null;
     validateTeam(parsed.team);
@@ -380,7 +430,8 @@ export function parseClub(text: string | null): ClubState | null {
     }
     if (!Array.isArray(parsed.knownCombos)) return null;
     if (parsed.version === 1) return migrateV1(parsed);
-    if (parsed.version !== SAVE_VERSION) return null;
+    if (parsed.version === 2) parsed = migrateV2(parsed);
+    if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
     if (parsed.divisions.some(ids => !Array.isArray(ids) || ids.length !== LEAGUE_SIZE || ids.some(id => !parsed.clubs[id]))) return null;

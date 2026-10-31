@@ -26,11 +26,32 @@ const TRAINING = { i: 13.5, j: 21.5, a: 4.8, b: 4.8 };
 const FEDERATION = { i: 30.6, j: 21.5, a: 3.8, b: 3.8, h: 2.2, roof: 1.1 };
 const TOWER = { i: 22.5, j: 32, a: 2, b: 2, h: 5 };
 const AIRPORT = { i: 30.5, j: 31, a: 7, b: 7 };
+// Tudo afastado das estradas o suficiente para nem o telhado as tapar.
+export const TOWN_ROADS = [{ along: 'i', at: ROAD_A }, { along: 'i', at: ROAD_B_J }, { along: 'j', at: ROAD_A }, { along: 'j', at: ROAD_B_I }] as const;
+export const ROAD_SIZE = ROAD_WIDTH;
+export const HOUSE_SIZE = 2.2;
+export const TOWN_HOUSES: readonly (readonly [number, number])[] = [
+  [22, 8], [25.5, 9.5], [23, 4], [25.5, 5], [31.4, 11], [34.4, 14], [31.4, 15.2], [31.4, 2],
+  [22.4, 22.4], [25.4, 22.4], [22.4, 25.4], [25.4, 25.4],
+  [7, 22.2], [9, 25.2], [14.4, 31.8], [16.4, 34.2], [12, 34.5],
+];
+export const TOWN_TREES: readonly (readonly [number, number])[] = [
+  [3, 4], [17.8, 3], [4, 17.8], [17.8, 12], [7, 17.9], [27.4, 12], [27.4, 16],
+  [21.4, 28], [27.6, 21.2], [18.4, 27.6], [11, 27.8], [18.4, 31], [27.4, 33], [26.4, 36], [21.4, 37],
+  [30.4, 31], [30.4, 36], [39, 34], [39, 37], [36.4, 22], [31, 27.6], [33.5, 18.4],
+];
 // Até onde o mapa vai, em ladrilhos, medido na diagonal.
 const MAP_DEPTH = 76;
 
 type Pixels = CanvasRenderingContext2D;
 type Point = [number, number];
+
+/** A mesma cor, misturada com branco. */
+function lighten(color: string, amount: number): string {
+  const value = parseInt(color.slice(1), 16);
+  const mix = (channel: number): number => Math.round(channel + (255 - channel) * amount);
+  return `rgb(${mix((value >> 16) & 255)},${mix((value >> 8) & 255)},${mix(value & 255)})`;
+}
 
 interface Grid {
   th: number;
@@ -78,11 +99,19 @@ function buildTown(width: number, height: number, division: number): Town {
     poly([P(i, j, k), P(i + width_, j, k), P(i + width_, j, k + height_), P(i, j, k + height_)], color);
   const onRight = (i: number, j: number, width_: number, k: number, height_: number, color: string): void =>
     poly([P(i, j, k), P(i, j + width_, k), P(i, j + width_, k + height_), P(i, j, k + height_)], color);
-  /** Telhado de quatro águas: só se veem as duas da frente. */
+  /** Telhado de quatro águas. A câmara vê as quatro, porque o telhado é baixo: as de trás, mais claras, apanham o sol. */
   const hipRoof = (i: number, j: number, a: number, b: number, k: number, rise: number, left: string, right: string): Point => {
     const apex = P(i + a / 2, j + b / 2, k + rise);
-    poly([P(i, j + b, k), P(i + a, j + b, k), apex], left);
-    poly([P(i + a, j, k), P(i + a, j + b, k), apex], right);
+    const back = P(i, j, k);
+    const west = P(i, j + b, k);
+    const east = P(i + a, j, k);
+    const front = P(i + a, j + b, k);
+    poly([back, east, apex], lighten(right, 0.34));
+    poly([back, west, apex], lighten(left, 0.2));
+    poly([west, front, apex], left);
+    poly([east, front, apex], right);
+    // Os cantos das águas, para o telhado se ler como um volume.
+    for (const corner of [west, east, front]) line(corner, apex, lighten(left, 0.42));
     return apex;
   };
   const disc = (ci: number, cj: number, radius: number, color: string, k = 0): void => {
@@ -169,16 +198,18 @@ function buildTown(width: number, height: number, division: number): Town {
       onLeft(i + a / 2 - 1, j + b, 0.95, 0, 1.05, '#3d5a78');
       onLeft(i + a / 2 + 0.05, j + b, 0.95, 0, 1.05, '#3d5a78');
       onLeft(i + a / 2 - 1.5, j + b + 0.01, 3, 1.15, 0.22, '#f4efe0');
-      // No telhado, o campo: é assim que se reconhece de longe.
-      flat(i + 1.1, j + 1.1, a - 2.2, b - 2.2, '#a44b22', h);
-      flat(i + 1.4, j + 1.4, a - 2.8, b - 2.8, '#dca35c', h);
-      const inner = a - 2.8;
-      const c = i + a / 2;
-      const m = j + b / 2;
-      line(P(c, j + 1.4, h), P(c, j + 1.4 + inner, h), WHITE);
-      disc(c, m, 0.9, '#17737a', h);
-      flat(i + 1.4, m - 0.9, 1.5, 1.8, '#17737a', h);
-      flat(i + 1.4 + inner - 1.5, m - 0.9, 1.5, 1.8, '#17737a', h);
+      // O telhado: chapa com nervuras, rebordo e uma lanterna envidraçada, que dá luz ao campo lá dentro.
+      for (let n = 0; n < a - 0.8; n += 0.9) flat(i + 0.5 + n, j + 0.4, 0.14, b - 0.8, '#c25024', h);
+      flat(i, j, a, 0.3, '#f07238', h);
+      flat(i, j, 0.3, b, '#f07238', h);
+      flat(i, j + b - 0.3, a, 0.3, '#d9592a', h);
+      flat(i + a - 0.3, j, 0.3, b, '#d9592a', h);
+      const lantern = { i: i + 2.4, j: j + 3.4, a: a - 4.8, b: b - 6.8, k: h, h: 0.9 };
+      poly([P(lantern.i, lantern.j + lantern.b, lantern.k), P(lantern.i + lantern.a, lantern.j + lantern.b, lantern.k), P(lantern.i + lantern.a, lantern.j + lantern.b, lantern.k + lantern.h), P(lantern.i, lantern.j + lantern.b, lantern.k + lantern.h)], '#8fd0e6');
+      poly([P(lantern.i + lantern.a, lantern.j, lantern.k), P(lantern.i + lantern.a, lantern.j + lantern.b, lantern.k), P(lantern.i + lantern.a, lantern.j + lantern.b, lantern.k + lantern.h), P(lantern.i + lantern.a, lantern.j, lantern.k + lantern.h)], '#6fb2c9');
+      for (let n = 0.7; n < lantern.a; n += 0.9) onLeft(lantern.i + n, lantern.j + lantern.b, 0.1, lantern.k, lantern.h, '#3d5a78');
+      for (let n = 0.7; n < lantern.b; n += 0.9) onRight(lantern.i + lantern.a, lantern.j + n, 0.1, lantern.k, lantern.h, '#2d4a68');
+      hipRoof(lantern.i - 0.25, lantern.j - 0.25, lantern.a + 0.5, lantern.b + 0.5, lantern.k + lantern.h, 0.8, '#e8622a', '#b84a1e');
     });
   }
 
@@ -318,11 +349,11 @@ function buildTown(width: number, height: number, division: number): Town {
   }
 
   // Casas nos quarteirões livres.
-  ([[22, 8], [25.5, 9.5], [23, 4], [27, 5.5], [31, 11], [34, 14], [31, 15.5], [22, 21.5], [25, 22.5], [22, 25], [25, 25.5], [31, 2], [7, 22], [9, 25], [14, 31], [17, 33.5], [12, 34.5]] as const).forEach(([i, j], n) => {
+  TOWN_HOUSES.forEach(([i, j], n) => {
     add(i + j + 2.2, () => house(i, j, n));
   });
   // Árvores à volta, e bosque onde o mapa acaba.
-  ([[3, 4], [18, 3], [4, 18], [17.6, 12], [7, 18], [17.8, 17.8], [27, 12], [27, 16], [21, 19 + 2], [27, 20.5], [20.8, 28], [27, 27.5], [18, 28], [11, 28], [18, 30.5], [26.5, 33], [26, 36], [21, 36.5], [29.5, 31], [29.5, 36], [39, 34], [39, 37], [36, 22], [31, 27.5], [33.5, 19]] as const).forEach(([i, j], n) => {
+  TOWN_TREES.forEach(([i, j], n) => {
     add(i + j, () => tree(i, j, n % 2 === 1));
   });
   for (let i = -reach; i < reach * 2; i += 2) {

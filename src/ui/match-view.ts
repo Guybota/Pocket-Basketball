@@ -1,3 +1,4 @@
+import type { ClubKit } from './art/kit.ts';
 import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
@@ -105,7 +106,7 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit) {
     this.g = g;
     this.callbacks = callbacks;
     this.s = createMatch(home, away, seed, controlled, visitor);
@@ -114,7 +115,7 @@ export class MatchView {
     this.pixels = new Uint32Array(this.image.data.buffer);
     this.camera.setViewport(g.canvas.width, g.canvas.height);
     for (const b of this.s.bodies) {
-      this.looks.set(b, lookOf(b.player, b.team === 0 ? 'blue' : 'cream'));
+      this.looks.set(b, b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : lookOf(b.player, 'cream'));
       this.previous.set(b, { x: b.x, y: b.y });
     }
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'coach'), style: 0, legs: 6, torso: 6, build: 'athletic' });

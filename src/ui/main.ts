@@ -5,12 +5,15 @@ import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
 import type { Tactics } from '../sim/types.ts';
 import { cardImage } from './art/cards.ts';
+import { CLOSED_GYM } from './art/court.ts';
+import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
 import { drawTown, townPlaces } from './art/town.ts';
 import { GameAudio } from './audio.ts';
-import { openTraining, tacticsControls } from './club-screens.ts';
-import { clubTeam, currentFixture, finishMatch, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, openFederation, openOffice, openSquad, seasonReportHtml, townOverlay, type ScreenHost } from './season-screens.ts';
+import { tacticsControls } from './club-screens.ts';
+import { activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openHalf, openMenu, showTopNote, type GameKind } from './menus.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
 import { escapeHtml, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
@@ -21,13 +24,17 @@ const SPEEDS = [1, 2, 4];
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
-const LANDSCAPE_PANEL_WIDTH = 320;
+const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
 // A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
 const LANDSCAPE_TOWN_HEIGHT = 360;
 // O que fica por baixo do mapa, no telemóvel: a secretária, o próximo jogo e dois botões.
 const CITY_PANEL_HEIGHT = 186;
+// Os menus têm uma ficha ou uma cena por cima, e essas precisam de mais altura do que o campo.
+const MENU_STAGE_WIDTH = 360;
+const MENU_STAGE_HEIGHT = 270;
+const MATCH_STAGE_HEIGHT = 216;
 const SAVE_KEY = 'pocket-basketball-clube';
 const DROP_TICKS = 50;
 
@@ -51,9 +58,14 @@ const testSeed = paramInt('semente');
 // Só para a verificação automática poder ver os outros pavilhões. Um clube a sério começa sempre na última divisão.
 const testDivision = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisao') ?? 0));
 let club: ClubState | null = null;
-let inTown = true;
+// A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si.
+let stage: 'town' | 'title' | 'menu' | 'match' = 'title';
 let townClock: number | null = null;
-let cityHome = false;
+let topSize: readonly [number, number] = [MENU_STAGE_WIDTH, MENU_STAGE_HEIGHT];
+let gameKind: GameKind = 'official';
+let rivalOf = 0;
+let halfShown = false;
+let halfSubsOpen = false;
 let saveFailed = false;
 let saveUnreadable = false;
 let view: MatchView | undefined;
@@ -78,6 +90,7 @@ let subsOpen = false;
 let subOut: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+const townExtras = newClub(1);
 const soundsPlayed = new Set<Sound>();
 const announced = new Set<string>();
 
@@ -85,6 +98,11 @@ const townUi = document.createElement('div');
 townUi.id = 'townUi';
 townUi.hidden = true;
 screen_.append(townUi);
+
+const topUi = document.createElement('div');
+topUi.id = 'topUi';
+topUi.hidden = true;
+screen_.append(topUi);
 
 const drop = document.createElement('div');
 drop.id = 'drop';
@@ -135,7 +153,7 @@ function fit(): void {
     const panelWidth = LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
-    const scale = inTown
+    const scale = stage === 'town' || stage === 'title'
       ? Math.max(1, Math.floor((innerHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
       : Math.ceil((innerHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = Math.ceil(stageWidth / scale);
@@ -149,13 +167,15 @@ function fit(): void {
     panel.style.width = `${LANDSCAPE_PANEL_WIDTH}px`;
     panel.style.height = `${innerHeight / ui}px`;
     screen_.style.setProperty('--hud-zoom', String(ui));
+    const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, innerHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
+    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(innerHeight / topZoom), topZoom);
   } else {
     const available = Math.min(innerWidth / 360, innerHeight / 640);
     const scale = Math.max(1, Math.floor(available * dpr)) / dpr;
     const finalScale = Math.min(scale, Math.max(available, 0.5));
     const gameHeight = Math.max(640, innerHeight / finalScale);
     // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
-    const stageHeight = cityHome ? Math.floor(gameHeight - CITY_PANEL_HEIGHT) : 216;
+    const stageHeight = stage === 'town' ? Math.floor(gameHeight - CITY_PANEL_HEIGHT) : stage === 'menu' ? MENU_STAGE_HEIGHT : MATCH_STAGE_HEIGHT;
     setCanvasSize(360, stageHeight, 360, stageHeight);
     game.style.zoom = String(finalScale);
     game.style.height = `${gameHeight}px`;
@@ -165,16 +185,26 @@ function fit(): void {
     panel.style.width = '';
     panel.style.height = '';
     screen_.style.setProperty('--hud-zoom', '1');
+    setTopSize(MENU_STAGE_WIDTH, stageHeight, 1);
   }
-  if (cityHome && club) placeTownUi();
+  if (stage === 'town' && club) placeTownUi();
 }
 
-/** Muda de modo e volta a medir: a cidade e o campo usam tamanhos diferentes. */
-function setStage(town: boolean, home: boolean): void {
-  inTown = town;
-  cityHome = home;
-  game.classList.toggle('city-home', home);
-  townUi.hidden = !home;
+function setTopSize(width: number, height: number, zoom: number): void {
+  topUi.style.width = `${width}px`;
+  topUi.style.height = `${height}px`;
+  screen_.style.setProperty('--top-zoom', String(zoom));
+  if (topSize[0] === width && topSize[1] === height) return;
+  topSize = [width, height];
+  menusResized();
+}
+
+/** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
+function setStage(next: typeof stage): void {
+  stage = next;
+  game.classList.toggle('city-home', next === 'town');
+  townUi.hidden = next !== 'town';
+  topUi.hidden = next !== 'menu';
   fit();
 }
 
@@ -185,21 +215,14 @@ function placeTownUi(): void {
     const box = document.getElementById('staffNote');
     if (box) box.innerHTML = `<b>Secretária:</b> ${escapeHtml(text)}`;
   };
-  element('arenaChip').addEventListener('click', startMatch);
+  element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página.' : TOWER_NOTE));
   element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
-  element('federationBtn').addEventListener('click', () => {
-    setStage(true, false);
-    openFederation(screenHost());
-  });
-  element('officeBtn').addEventListener('click', () => {
-    setStage(true, false);
-    openOffice(screenHost(), showResetConfirm);
-  });
+  element('federationBtn').addEventListener('click', () => openMenu('federation'));
+  element('officeBtn').addEventListener('click', () => openMenu('office'));
   element('trainBtn').addEventListener('click', () => {
     audio.unlock();
-    setStage(true, false);
-    openTraining({ ...screenHost(), sound: name => audio.play(name) });
+    openMenu('train');
   });
 }
 
@@ -214,13 +237,21 @@ function announce(message: string): void {
   bannerUntil = view!.s.tick + 36;
 }
 
-function makeView(): void {
+/** As cores da interface seguem o equipamento escolhido. */
+function applyClubColors(): void {
+  const { jersey } = activeKit(club!);
+  game.style.setProperty('--home', jersey);
+  game.style.setProperty('--home-ink', isLight(jersey) ? '#1b2230' : '#ffffff');
+}
+
+function makeView(kind: GameKind, rivalId: number): void {
   const current = club!;
   const seed = weekSeed(current);
   dropRng = makeRng(seed ^ 0x3c1a77);
   found = [];
   drop.hidden = true;
-  view = new MatchView(context, clubTeam(current), opponentOf(current), seed, current.division, {
+  // Um jogo-treino é à porta fechada, por isso joga-se num pavilhão sem público.
+  view = new MatchView(context, clubTeam(current), aiTeam(current.clubs[rivalId]!), seed, kind === 'practice' ? CLOSED_GYM : current.division, {
     announce,
     event: e => {
       // A vista já recebe o início do jogo ao ser criada, antes de o jogo começar a sério.
@@ -231,7 +262,7 @@ function makeView(): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], visitorOf(current));
+  }, [true, false], visitorOf(current), activeKit(current));
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -239,7 +270,7 @@ function makeView(): void {
   subOut = null;
   tacticsOpen = false;
   timeoutHandled = false;
-  audio.setVenue(current.division);
+  audio.setVenue(kind === 'practice' ? 0 : current.division);
   banner.hidden = true;
   hudText = '';
 }
@@ -281,7 +312,8 @@ const ballLogo = (): string => {
 
 /** Sem clube, ou depois de um despedimento, começa-se um novo. Toda a gente começa pela última divisão. */
 function showNewClub(): void {
-  setStage(true, false);
+  closeMenus();
+  setStage('title');
   panel.innerHTML = `<div class="start">
     <h1><img src="${ballLogo()}" alt=""><span>Pocket<br>Basketball</span></h1>
     ${saveUnreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
@@ -292,22 +324,13 @@ function showNewClub(): void {
   document.getElementById('newClubBack')?.addEventListener('click', showClub);
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
-    club = newClub(newSeed());
+    // Os troféus são do treinador, por isso acompanham-no para o clube novo.
+    club = newClub(newSeed(), 0, club ? careerOf(club) : []);
     saveUnreadable = false;
     saveClub();
     showClub();
   });
 }
-
-const screenHost = (): ScreenHost => ({
-  panel,
-  club: () => club!,
-  setClub: updated => {
-    club = updated;
-    saveClub();
-  },
-  back: showClub,
-});
 
 /** A cidade é o menu principal. Se houver um balanço por ver ou um despedimento, vem primeiro. */
 function showClub(): void {
@@ -322,25 +345,31 @@ function showClub(): void {
   }
   started = false;
   paused = false;
-  makeView();
+  view = undefined;
+  closeMenus();
+  applyClubColors();
+  banner.hidden = true;
+  drop.hidden = true;
   panel.innerHTML = cityPanel(current, saveFailed);
-  setStage(true, true);
-  element('startBtn').addEventListener('click', startMatch);
+  setStage('town');
+  element('startBtn').addEventListener('click', openArena);
   document.getElementById('skipWeekBtn')?.addEventListener('click', () => {
     club = skipWeek(club!);
     saveClub();
     showClub();
   });
-  element('tacticsBtn').addEventListener('click', showTactics);
-  element('squadBtn').addEventListener('click', () => {
-    setStage(true, false);
-    openSquad(screenHost());
-  });
+  element('tacticsBtn').addEventListener('click', () => openMenu('tactics'));
+  element('squadBtn').addEventListener('click', () => openMenu('squad'));
 }
+
+/** O clube em grande, por cima dos ecrãs que têm o texto todo em baixo. */
+const clubBadge = (current: ClubState): string => `<div class="clubbadge"><img class="emblem" alt="" src="${emblemImage(current.emblem)}"><b>${escapeHtml(current.team.name)}</b></div>`;
 
 function showSeasonReport(): void {
   const current = club!;
-  setStage(true, false);
+  closeMenus();
+  setStage('menu');
+  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), clubBadge(current));
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
   element('seasonContinue').addEventListener('click', () => {
     club = { ...club!, seasonReport: null };
@@ -350,32 +379,11 @@ function showSeasonReport(): void {
 }
 
 function showFired(): void {
-  setStage(true, false);
+  closeMenus();
+  setStage('menu');
+  showTopNote('Despedido', `${Math.round(club!.confidence)}%`, `${clubBadge(club!)}<div class="quote">Os troféus ganhos vão contigo para o próximo clube.</div>`);
   panel.innerHTML = firedHtml(club!);
   element('firedNewClub').addEventListener('click', showNewClub);
-}
-
-/** Apagar um clube não se desfaz, por isso pergunta-se sempre. */
-function showResetConfirm(): void {
-  const { team, week } = club!;
-  setStage(true, false);
-  panel.innerHTML = `<div class="start">
-    <div class="club-week"><b>Começar de novo?</b><span>Perdes o ${escapeHtml(team.name)}, na semana ${week}, assim que criares o novo clube.</span></div>
-    <button type="button" class="primary" id="resetNo">Ficar com este clube</button>
-    <button type="button" id="resetYes">Escolher novo clube</button>
-  </div>`;
-  element('resetNo').addEventListener('click', showClub);
-  element('resetYes').addEventListener('click', showNewClub);
-}
-
-function showTactics(): void {
-  setStage(true, false);
-  panel.innerHTML = `<div class="train">
-    <div class="train-title"><b>Táticas</b><span>${escapeHtml(club!.team.name)}</span></div>
-    <div class="content">${tacticsControls(club!.tactics)}</div>
-    <div class="train-actions"><button type="button" class="primary" id="tacticsBack">Voltar</button></div>
-  </div>`;
-  element('tacticsBack').addEventListener('click', showClub);
 }
 
 function matchControls(): string {
@@ -443,7 +451,7 @@ function refreshContent(): void {
     if (card && live && card.dataset.cardBody === String(view!.s.bodies.indexOf(cardBody))) {
       live.innerHTML = playerCardLive(cardBody);
     } else {
-      content.innerHTML = playerCard(view!, cardBody);
+      content.innerHTML = playerCard(view!, cardBody, club!.shirts);
     }
     return;
   }
@@ -481,12 +489,18 @@ function updateCoachButtons(): void {
 function closeSubs(): void {
   subsOpen = false;
   subOut = null;
+  if (halfSubsOpen) {
+    halfSubsOpen = false;
+    openHalf(gameKind, rivalOf);
+    return;
+  }
   // Se estava num desconto nosso, o jogo só continua quando o jogador quiser.
   if (paused && view!.s.timeoutTeam === 0) paused = false;
   showMatch();
 }
 
 panel.addEventListener('click', event => {
+  if (menusOpen()) return;
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-sub-out], [data-sub-in], [data-sub-cancel], [data-rotation], [data-subs-close], [data-tactic], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
   if (!target || (target as HTMLButtonElement).disabled) return;
   pointerDown = false;
@@ -494,12 +508,8 @@ panel.addEventListener('click', event => {
     const tactics: Tactics = { ...club!.tactics, [target.dataset.tactic]: Number(target.dataset.tacticValue) };
     club = { ...club!, tactics };
     saveClub();
-    if (started) {
-      setTactics(view!.s, 0, tactics);
-      refreshContent();
-    } else {
-      showTactics();
-    }
+    setTactics(view!.s, 0, tactics);
+    refreshContent();
     return;
   }
   const { s } = view!;
@@ -568,19 +578,57 @@ function showMatch(): void {
   refreshContent();
 }
 
-function startMatch(): void {
+function startGame(kind: GameKind, rivalId: number): void {
   audio.unlock();
+  gameKind = kind;
+  rivalOf = rivalId;
+  halfShown = false;
+  closeMenus();
+  applyClubColors();
+  setStage('match');
+  makeView(kind, rivalId);
   started = true;
-  setStage(false, false);
   showMatch();
+}
+
+/** O jogo fica à espera no balneário, até o treinador o mandar voltar. */
+function showHalfTime(): void {
+  halfShown = true;
+  announced.add('Intervalo');
+  accumulator = 0;
+  banner.hidden = true;
+  drop.hidden = true;
+  openHalf(gameKind, rivalOf);
+}
+
+function secondHalf(): void {
+  const current = view!;
+  closeMenus();
+  while (current.s.phase === 'break') current.stepSim();
+  current.snapCamera();
+  setStage('match');
+  showMatch();
+}
+
+function showHalfSubs(): void {
+  closeMenus();
+  halfSubsOpen = true;
+  subsOpen = true;
+  subOut = null;
+  cardBody = null;
+  tacticsOpen = false;
+  panel.innerHTML = '<div id="tabContent" class="content"></div>';
+  refreshContent();
 }
 
 function showResult(): void {
   finished = true;
-  const result = finishMatch(club!, view!.s, found);
+  banner.hidden = true;
+  drop.hidden = true;
+  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found);
   club = result.club;
   saveClub();
-  panel.innerHTML = `${resultScreen(view!, result.cards, matchLeagueSummary(result))}
+  panel.innerHTML = `${resultScreen(view!, result.cards, matchLeagueSummary(result, gameKind === 'practice'))}
     <div class="end-actions">
       <button type="button" class="primary" id="againBtn">Continuar</button>
     </div>`;
@@ -614,25 +662,28 @@ function frame(now: number): void {
   const elapsed = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   let simSeconds = 0;
-  const current = view!;
-  if (started && !paused && !finished) {
+  const current = view;
+  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen()) {
     simSeconds = elapsed * speed;
     accumulator += simSeconds * TICKS_PER_SECOND;
     let steps = 0;
-    while (accumulator >= 1 && steps < MAX_STEPS_PER_FRAME) {
+    while (accumulator >= 1 && steps < MAX_STEPS_PER_FRAME && (halfShown || !firstHalfOver(current.s))) {
       current.stepSim();
       accumulator -= 1;
       steps++;
     }
-    if (current.s.phase === 'end') {
+    if (!halfShown && firstHalfOver(current.s)) {
+      if (gameKind === 'practice') showResult();
+      else showHalfTime();
+    } else if (current.s.phase === 'end') {
       showResult();
     } else if (current.s.phase === 'break') {
-      const message = current.s.period === 2 ? 'Intervalo' : current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`;
+      const message = current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`;
       if (banner.textContent !== message || banner.hidden) announce(message);
     }
   }
   // No nosso desconto, o jogo espera pelo jogador e abre logo as trocas.
-  if (current.s.phase === 'timeout' && current.s.timeoutTeam === 0) {
+  if (current?.s.phase === 'timeout' && current.s.timeoutTeam === 0) {
     if (!timeoutHandled) {
       timeoutHandled = true;
       paused = true;
@@ -644,14 +695,18 @@ function frame(now: number): void {
   } else {
     timeoutHandled = false;
   }
-  if (started && !paused && !finished) audio.ambience(now);
-  if (!banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
-  if (!drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
+  if (started && !paused && !finished && stage === 'match') audio.ambience(now);
+  if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
+  if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();
-  hud.hidden = inTown;
-  if (inTown) {
-    drawTown(context, canvas.width, canvas.height, club?.division ?? 0, current.s.bodies.filter(b => b.team === 0).slice(0, 5).map(b => lookOf(b.player, 'blue')), townClock ?? now);
-  } else {
+  hud.hidden = stage !== 'match';
+  if (stage === 'town' || stage === 'title') {
+    // A cidade passeia sempre uma equipa, mesmo antes de haver clube.
+    const walkers = club ?? townExtras;
+    drawTown(context, canvas.width, canvas.height, walkers.division, walkers.team.roster.slice(0, 5).map(p => ({ ...lookOf(p, 'blue'), custom: activeKit(walkers) })), townClock ?? now);
+  } else if (stage === 'menu') {
+    menuFrame(now);
+  } else if (current) {
     current.render(Math.min(1, accumulator), simSeconds);
     updateHud();
   }
@@ -664,20 +719,30 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+initMenus({
+  top: topUi,
+  panel,
+  club: () => club!,
+  setClub: updated => {
+    club = updated;
+    applyClubColors();
+    saveClub();
+  },
+  topSize: () => topSize,
+  match: () => view,
+  showMenus: () => setStage('menu'),
+  toTown: showClub,
+  kickOff: startGame,
+  secondHalf,
+  halfSubs: showHalfSubs,
+  newClub: showNewClub,
+  sound: name => audio.play(name),
+});
 addEventListener('resize', fit);
 fit();
 club = testSeed !== null ? newClub(testSeed, testDivision) : loadClub();
-if (club) {
-  // Os ecrãs de fim de época e de despedimento não criam vista, mas a cidade atrás deles precisa dela.
-  makeView();
-  showClub();
-} else {
-  // Mesmo sem clube é preciso uma vista, porque a cidade passeia uma equipa.
-  club = newClub(newSeed());
-  makeView();
-  club = null;
-  showNewClub();
-}
+if (club) showClub();
+else showNewClub();
 requestAnimationFrame(now => {
   lastFrame = now;
   frame(now);
@@ -740,10 +805,10 @@ Object.assign(window, {
       return { perPlayerMinute: changes / 10 / (s.tick / 20 / 60), shortestSeconds: shortestTicks / 20 };
     },
     state: () => ({
-      phase: view!.s.phase,
-      tick: view!.s.tick,
-      period: view!.s.period,
-      score: view!.s.score,
+      phase: view?.s.phase ?? 'none',
+      tick: view?.s.tick ?? 0,
+      period: view?.s.period ?? 0,
+      score: view?.s.score ?? [0, 0],
       started,
       finished,
       announced: [...announced],

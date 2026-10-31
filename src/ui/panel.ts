@@ -135,9 +135,9 @@ export function playerSheet(player: Player, look: Look, team: 0 | 1, number: num
 }
 
 /** A ficha de jogador durante um jogo: a ficha normal e o que fez até agora. */
-export function playerCard(view: MatchView, b: Body): string {
+export function playerCard(view: MatchView, b: Body, shirts: Readonly<Record<string, number>>): string {
   const { s } = view;
-  const number = s.teams[b.team].roster.indexOf(b.player) + 4;
+  const number = (b.team === 0 ? shirts[b.player.name] : undefined) ?? s.teams[b.team].roster.indexOf(b.player) + 4;
   const live = `<div class="card-live" id="cardLive">${playerCardLive(b)}</div>`;
   return `<div class="card" data-card-body="${s.bodies.indexOf(b)}">
     ${playerSheet(b.player, view.lookFor(b), b.team, number, s.teams[b.team].name, live)}

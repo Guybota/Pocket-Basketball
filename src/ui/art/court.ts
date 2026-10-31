@@ -303,11 +303,15 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
   return wall;
 }
 
+/** O pavilhão dos jogos-treino: o da escola, à porta fechada. */
+export const CLOSED_GYM = THEMES.length;
+const VENUES: readonly CourtTheme[] = [...THEMES, { ...THEMES[1]!, name: 'Pavilhão Fechado', crowd: null }];
+
 /** As texturas calculam-se uma vez por divisão. Desenhar um frame é só consultá-las. */
 export function courtTextures(division: number): CourtTextures {
   const cached = textureCache.get(division);
   if (cached) return cached;
-  const theme = THEMES[division]!;
+  const theme = VENUES[division]!;
   const floorW = Math.ceil((WALL_FAR_X - WALL_NEAR_X) * FLOOR_SCALE);
   const floorH = Math.ceil((NEAR_Y - WALL_Y) * FLOOR_SCALE);
   const floor = new Uint32Array(floorW * floorH);

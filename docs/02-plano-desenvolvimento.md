@@ -229,6 +229,18 @@ Estes números já incluem a regra da Fase 3 que torna o treino menos rentável 
 
 **Ressaltos:** depois de bater no aro, a bola sobe em cerca de 70% das vezes e cai logo nas outras. Os jogadores correm para onde ela vai cair.
 
+### Menus como no original
+
+Os menus aprovados no protótipo são agora os do jogo, em `src/ui/menus.ts`, sempre com a ficha ou a cena em cima e as decisões em baixo.
+
+- **Treino:** treina-se um jogador de cada vez, com a lista das notas, o quadro de cartas e a animação quando sai um combo. Cada jogador treina uma vez por semana, e quem não treinou treina sozinho no fecho da semana.
+- **Antes do jogo e intervalo:** o balneário, com plantel, táticas e equipamento. No intervalo, as trocas e as táticas entram como comandos do treinador, por isso o jogo continua a poder ser repetido.
+- **Semana livre:** propostas de jogo-treino ou de particular, com escolha do adversário. O jogo-treino são dois períodos num pavilhão sem público. Dá menos cartas e cansa menos, e não conta para a liga, para a confiança nem para o historial.
+- **Emblema e equipamentos:** editáveis no Escritório, guardados no clube. O equipamento veste os bonecos, os retratos e as cores da interface.
+- **Troféus:** calculados a partir da carreira do treinador, que acompanha o treinador quando muda de clube.
+
+O formato do clube guardado passou para a versão 3. Os clubes das versões 1 e 2 são migrados ao abrir. As cores e as letras de um clube guardado são validadas, porque vão parar ao HTML da página.
+
 ## 7A. Decisões durante o jogo
 
 - **Descontos de tempo:** 2 por parte e 1 no prolongamento. Entram logo se a equipa tiver a bola, ou na bola parada seguinte. O relógio para e os jogadores recuperam um pouco de energia. A equipa adversária pede um quando sofre um parcial de 8 pontos ou mais.
