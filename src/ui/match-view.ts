@@ -2,7 +2,7 @@ import { createMatch, step, type Body, type MatchEvent, type MatchState, type Te
 import type { Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { Camera, courtTextures, drawBox, drawHoopBack, drawHoopFront, type CourtTextures } from './art/court.ts';
-import { text } from './art/font.ts';
+import { text, textWidth } from './art/font.ts';
 import {
   drawBall,
   drawCarrierArrow,
@@ -31,6 +31,11 @@ const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
 const IDLE_TURN_MARGIN = 24;
+// Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
+const TIP_RISE = 0.45;
+const TIP_HEIGHT = 16;
+const REFEREE_STEP = 0.26;
+const REFEREE_SIGNAL_TICKS = 22;
 
 interface Point {
   x: number;
@@ -56,7 +61,7 @@ interface Floater {
   born: number;
 }
 
-export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card';
+export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
 
 export interface ViewCallbacks {
   announce(message: string): void;
@@ -80,6 +85,10 @@ export class MatchView {
   private shortestBackInterval = Infinity;
   private readonly overrides = new Map<Body, { pose: PoseName; until: number; withBall?: boolean }>();
   private readonly floaters: Floater[] = [];
+  private tip: { a: Body; b: Body; start: number; total: number } | null = null;
+  // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
+  private readonly referee = { x: 14, y: -1, prevX: 14, prevY: -1, flip: false, moving: false, signalUntil: 0 };
+  private readonly refereeLook: Look;
   private readonly trail: [number, number][] = [];
   private ball = { x: 14, y: 0, z: 1 };
   private ballPrevious = { x: 14, y: 0, z: 1 };
@@ -110,6 +119,7 @@ export class MatchView {
     }
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'coach'), style: 0, legs: 6, torso: 6, build: 'athletic' });
     this.coaches = [coachLook(home), coachLook(away)];
+    this.refereeLook = { ...lookOf({ ...home.roster[0]!, name: 'Árbitro' }, 'referee'), style: 0, legs: 7, torso: 7, build: 'athletic' };
     this.camera.aim(this.cameraTarget());
     this.processEvents();
   }
@@ -123,6 +133,8 @@ export class MatchView {
   }
 
   private cameraTarget(): number {
+    // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
+    if (this.s.phase === 'intro' || this.s.phase === 'jump') return this.s.ball.x;
     // Olhar um pouco à frente da bola, para o cesto atacado ficar sempre à vista.
     const secondHalf = this.s.period >= 3;
     const attacksRight = (this.s.offense === 0) !== secondHalf;
@@ -178,11 +190,25 @@ export class MatchView {
         case 'steal':
           callbacks.sound('steal');
           break;
+        case 'tipOff':
+          callbacks.sound('whistle');
+          this.tip = { a: s.jump!.a, b: s.jump!.b, start: s.tick, total: s.jump!.total };
+          this.refereeSignal(null, 8);
+          break;
+        case 'bump':
+          if (e.hard) {
+            callbacks.sound('bump');
+            // Quem empurra abre os braços; quem perde já cambaleia, porque fica atordoado.
+            if (body && body !== s.holder) this.overrides.set(body, { pose: 'defend', until: s.tick + 6 });
+          }
+          break;
         case 'foul':
           callbacks.sound('whistle');
+          this.refereeSignal('FALTA');
           break;
         case 'periodEnd':
           callbacks.sound('buzzer');
+          this.refereeSignal(null);
           break;
         case 'end':
           this.excitedUntil = s.tick + 100000;
@@ -191,11 +217,13 @@ export class MatchView {
           callbacks.sound('whistle');
           callbacks.sound('horn');
           callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
+          this.refereeSignal(null);
           break;
         case 'shotClockViolation':
           callbacks.sound('shotClockBuzzer');
           callbacks.sound('whistle');
           callbacks.announce('Tempo de posse!');
+          this.refereeSignal(null);
           break;
         case 'move':
           if (body && e.move === 'crossover') this.overrides.set(body, { pose: 'crossover', until: s.tick + 8, withBall: true });
@@ -205,6 +233,7 @@ export class MatchView {
           break;
         case 'turnover':
           callbacks.sound('whistle');
+          this.refereeSignal('FORA');
           break;
         case 'substitution':
           // Várias trocas na mesma paragem só dão um toque de buzzer.
@@ -213,6 +242,51 @@ export class MatchView {
           break;
       }
     }
+  }
+
+  /** O árbitro para e levanta os braços, com o que marcou escrito por cima. */
+  private refereeSignal(label: string | null, ticks = REFEREE_SIGNAL_TICKS): void {
+    const { referee, s } = this;
+    referee.signalUntil = s.tick + ticks;
+    if (label) this.floaters.push({ label, x: referee.x, y: referee.y, z: 2.4, born: s.tick });
+  }
+
+  /** Atira a bola no início e depois acompanha o jogo, por trás da bola e do lado de fora. */
+  private updateReferee(): void {
+    const { referee, s } = this;
+    referee.prevX = referee.x;
+    referee.prevY = referee.y;
+    let targetX = 14;
+    let targetY = -1;
+    if (s.phase === 'jump') {
+      // Sai para o lado, para se ver o salto.
+      targetX = 16.2;
+    } else if (s.phase !== 'intro' && s.phase !== 'timeout' && s.phase !== 'break') {
+      const secondHalf = s.period >= 3;
+      const attack = (s.offense === 0) !== secondHalf ? 1 : -1;
+      targetX = Math.max(1, Math.min(27, s.ball.x - attack * 2.5));
+      targetY = Math.max(2.5, Math.min(5.5, s.ball.y + 3));
+    }
+    const dx = targetX - referee.x;
+    const dy = targetY - referee.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Enquanto assinala, fica parado. Abaixo de meio metro não vale a pena mexer-se.
+    referee.moving = s.tick >= referee.signalUntil && dist > (referee.moving ? 0.1 : 0.5);
+    if (referee.moving) {
+      const stepLength = Math.min(dist, REFEREE_STEP);
+      referee.x += (dx / dist) * stepLength;
+      referee.y += (dy / dist) * stepLength;
+      if (Math.abs(dx) > 0.3) referee.flip = dx < 0;
+    }
+  }
+
+  /** Quanto o saltador está acima do chão, em píxeis. */
+  private tipLift(b: Body, alpha: number): number {
+    const { tip, s } = this;
+    if (!tip || (tip.a !== b && tip.b !== b)) return 0;
+    const air = tip.total * (1 - TIP_RISE);
+    const t = (s.tick + alpha - (tip.start + tip.total * TIP_RISE)) / (air * 2);
+    return t > 0 && t < 1 ? 4 * TIP_HEIGHT * t * (1 - t) : 0;
   }
 
   private addPoints(e: MatchEvent, points: number): void {
@@ -275,7 +349,7 @@ export class MatchView {
     this.ballPrevious = { ...this.ball };
     step(s);
     const target = s.ball;
-    if (s.flight) {
+    if (s.flight || s.loose) {
       this.ball = { ...target };
     } else {
       // Quando a bola muda de sítio de repente, como no ressalto, desliza em vez de saltar.
@@ -284,6 +358,7 @@ export class MatchView {
       this.ball.z += (target.z - this.ball.z) * 0.45;
     }
     this.updateMotion();
+    this.updateReferee();
     if (s.holder && s.tick >= this.nextDribbleTick) {
       this.nextDribbleTick = s.tick + 8;
       this.callbacks.sound('bounce');
@@ -346,6 +421,13 @@ export class MatchView {
       return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'idle', withBall: false };
     }
     const override = this.overrides.get(b);
+    // A bola ao alto: primeiro fletem as pernas, e depois saltam de braços no ar.
+    const { tip } = this;
+    if (tip && (tip.a === b || tip.b === b)) {
+      const risesAt = tip.start + tip.total * TIP_RISE;
+      if (s.tick < risesAt) return { pose: 'defend', withBall: false };
+      if (s.tick < risesAt + tip.total * (1 - TIP_RISE) * 2) return { pose: 'block', withBall: false };
+    }
     if (b.stunnedUntil > s.tick) return { pose: 'stumble', withBall: false };
     if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
     if (s.phase === 'freeThrow') {
@@ -438,7 +520,20 @@ export class MatchView {
       const { pose, withBall } = this.poseOf(b, motion.moving);
       const flip = motion.flip;
       const back = motion.back && pose.startsWith('run');
-      return { x: sx, y: sy, pose, withBall, look, flip, back };
+      return { x: sx, y: sy, lift: this.tipLift(b, alpha), pose, withBall, look, flip, back };
+    });
+    const { referee } = this;
+    const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
+    const signalling = s.tick < referee.signalUntil;
+    placed.push({
+      x: refereeX,
+      y: refereeY,
+      lift: 0,
+      pose: signalling ? 'cheer0' : referee.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle',
+      withBall: false,
+      look: this.refereeLook,
+      flip: referee.flip,
+      back: false,
     });
     // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
     if (theme.reflection > 0) {
@@ -449,7 +544,7 @@ export class MatchView {
         y: p.y,
         draw: () => {
           drawShadow(g, p.x, p.y);
-          drawSprite(g, p.pose, p.look, p.x, p.y, p.flip, p.back, p.withBall);
+          drawSprite(g, p.pose, p.look, p.x, p.y - p.lift, p.flip, p.back, p.withBall);
         },
       });
     }
@@ -507,9 +602,12 @@ export class MatchView {
       // À frente do aro e com um limite no topo, para o marcador nunca tapar o número.
       const rise = Math.min(10, age);
       const top = Math.max(40, (y | 0) - 14 - rise);
-      const left = (x | 0) + (x < camera.width / 2 ? 14 : -38);
-      text(g, f.label, left + 1, top + 1, '#1b2230', 3);
-      text(g, f.label, left, top, '#f2c230', 3);
+      // Os pontos são grandes e ficam ao lado do aro; as palavras do árbitro, mais pequenas e por cima dele.
+      const word = f.label.length > 3;
+      const scale = word ? 2 : 3;
+      const left = word ? (x | 0) - (textWidth(f.label, scale) >> 1) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      text(g, f.label, left + 1, top + 1, '#1b2230', scale);
+      text(g, f.label, left, top, '#f2c230', scale);
     }
   }
 

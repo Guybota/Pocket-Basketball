@@ -132,6 +132,7 @@ export class GameAudio {
       case 'shotClockBuzzer': this.horn(310, 0.55, 0.07); break;
       case 'horn': this.horn(205, 0.35, 0.05); break;
       case 'steal': this.tone('triangle', 500, 900, 0.09, 0.07); break;
+      case 'bump': this.tone('square', 120, 60, 0.07, 0.05); break;
       case 'card':
         this.tone('square', 660, 660, 0.06, 0.04);
         this.tone('square', 990, 990, 0.1, 0.04, 0.06);

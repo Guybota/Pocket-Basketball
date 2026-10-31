@@ -6,11 +6,46 @@ export const BALANCE = {
   periodBreakSeconds: 2,
   shotClockSeconds: 11,
   offensiveReboundShotClockSeconds: 7,
-  deadBallSeconds: 1.15,
+  deadBallSeconds: 0.9,
+  // Reposição: quem repõe fica fora de campo e passa a quem vem receber.
+  inboundMaxWaitSeconds: 2,
+  inboundOutside: 0.45,
+  inboundTwoReceiversChance: 0.35,
+  // Início do jogo: as equipas entram a andar e a bola sobe entre dois saltadores.
+  introMaxSeconds: 5,
+  introWalkFactor: 0.5,
+  jumpSeconds: 1.1,
+  // Cada ponto de diferença a saltar vale 1% de hipóteses, e nunca passa de 70%.
+  jumpEdgePerPoint: 0.01,
+  jumpMaxEdge: 0.2,
+  jumpPerCm: 0.6,
+  // Ressalto: nem toda a gente vai. Os outros recuam, ficam no sítio ou marcam o seu jogador.
+  reboundChasersOffense: 2,
+  reboundChasersDefense: 2,
+  reboundCrashPreference: 1.5,
+  reboundGuardReluctance: 1.5,
+  reboundSafetyU: 12,
+  // Quem ganha o ressalto, se for grande, procura o base em vez de subir sozinho.
+  outletU: 14,
+  outletBoost: 4,
+  // Sem pressão, a defesa espera o ataque aqui, em vez de o seguir até ao outro lado.
+  defensePickUpU: 10.5,
   freeThrowSeconds: 1,
   freeThrowSetupSeconds: 1,
   freeThrowFlightSeconds: 0.6,
+  rimHeight: 3.05,
   reboundSeconds: 0.4,
+  // A bola demora mais a cair quanto mais alto ressalta.
+  reboundSecondsPerRise: 0.25,
+  reboundCatchHeight: 2.1,
+  reboundDropChance: 0.3,
+  reboundDropRiseMin: 0.1,
+  reboundDropRiseMax: 0.3,
+  reboundBounceRiseMin: 0.8,
+  reboundBounceRiseMax: 1.6,
+  reboundBlockedRiseMin: 0.3,
+  reboundBlockedRiseMax: 0.8,
+  reboundBlockedTravel: 1.5,
 
   // Movimento
   baseSpeed: 4.3,
@@ -21,7 +56,7 @@ export const BALANCE = {
 
   // Decisões do portador da bola
   decisionMinSeconds: 0.35,
-  decisionMaxSeconds: 0.85,
+  decisionMaxSeconds: 0.74,
   shootingRangeU: 10,
   forcedShotSeconds: 1,
   holdWeight: 0.32,
@@ -61,6 +96,9 @@ export const BALANCE = {
   ballFallSpeed: 6,
   ballRestHeight: 0.15,
   rimMissOffset: 0.34,
+  // Ninguém lança com os pés em cima da linha de 3, a não ser à pressa, com o tempo de posse a acabar.
+  shotLineMargin: 0.35,
+  shotLineRushSeconds: 2,
   blockedTravel: 0.12,
 
   // Pressão do defensor
@@ -188,6 +226,35 @@ export const BALANCE = {
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,
+
+  // Colisões. O corpo ocupa este raio, e quem tem mais físico e peso é empurrado menos.
+  bodyRadius: 0.41,
+  bodyRadiusPerBmi: 0.012,
+  pushPerKg: 0.5,
+  pushPerCm: 0.1,
+  pushFatigueLoss: 0.3,
+  pushPowerMin: 15,
+  contactPasses: 2,
+  contactSlide: 0.5,
+  // Encontrões: só entre adversários, a chocar de frente, e cada um só de vez em quando.
+  // A velocidade é a de aproximação, em metros por passo: 0,2 são 4 m/s.
+  bumpMinClosing: 0.2,
+  // Longe da bola e do cesto, passar de raspão não conta como encontrão.
+  bumpHoopRange: 4.5,
+  bumpLuck: 18,
+  bumpHardMargin: 42,
+  bumpSlowdown: 0.65,
+  bumpSlowSeconds: 0.3,
+  bumpStunSeconds: 0.25,
+  bumpCooldownSeconds: 4,
+  // Jogo de costas para o cesto: encostar ao defensor e ganhar terreno.
+  postMinDistance: 1.7,
+  postMaxDistance: 5.5,
+  postContactRange: 1.3,
+  postPowerEdge: 15,
+  postSpeedFactor: 0.4,
+  postPressureRelief: 0.25,
+  postPowerScale: 40,
 
   // Treino: quanto mais alto o atributo, menos rende. Com 140, um atributo de 70 rende metade.
   trainingHardCap: 140,

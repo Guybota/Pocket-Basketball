@@ -346,7 +346,7 @@ try {
 
   // O buzzer do tempo de posse só toca quando há violação, por isso procura-se um jogo onde aconteça.
   let violationHeard = false;
-  for (let seed = 1; seed <= 12 && !violationHeard; seed++) {
+  for (let seed = 1; seed <= 40 && !violationHeard; seed++) {
     await moments.goto(`${url}?semente=${seed}&divisao=2`);
     await moments.waitForFunction(() => window.__pocket !== undefined);
     await moments.click('#startBtn');
@@ -367,6 +367,36 @@ try {
     await moments.evaluate(extra => window.__pocket.pauseAt('made', extra), frame);
     await moments.waitForTimeout(120);
     await moments.locator('.screen').screenshot({ path: `${OUT}/cesto-${frame}.png` });
+  }
+
+  // A bola a ressaltar no aro, imagem a imagem.
+  for (const frame of [0, 2, 4, 6, 8, 10]) {
+    await moments.goto(`${url}?semente=21&divisao=2`);
+    await moments.waitForFunction(() => window.__pocket !== undefined);
+    await moments.click('#startBtn');
+    await moments.evaluate(extra => window.__pocket.pauseAt('missed', extra), frame);
+    await moments.waitForTimeout(120);
+    await moments.locator('.screen').screenshot({ path: `${OUT}/ressalto-${frame}.png` });
+  }
+
+  // O início do jogo e as reposições, imagem a imagem.
+  for (const [name, type, extra] of [['entrada-1', 'fase:intro', 15], ['entrada-2', 'fase:intro', 45], ['bola-0', 'fase:jump', 0], ['bola-ao-alto', 'fase:jump', 10], ['bola-16', 'fase:jump', 16], ['bola-21', 'fase:jump', 21], ['falta', 'foul', 6], ['fora', 'turnover', 6], ['reposicao-1', 'made', 14], ['reposicao-2', 'made', 26], ['reposicao-3', 'made', 34], ['ressalto-papeis', 'missed', 9], ['transicao', 'rebound', 30]] as const) {
+    await moments.goto(`${url}?semente=21&divisao=2`);
+    await moments.waitForFunction(() => window.__pocket !== undefined);
+    await moments.click('#startBtn');
+    await moments.evaluate(([t, e]) => window.__pocket.pauseAt(t as string, e as number), [type, extra] as const);
+    await moments.waitForTimeout(120);
+    await moments.locator('.screen').screenshot({ path: `${OUT}/inicio-${name}.png` });
+  }
+
+  // Muita gente junta debaixo do cesto: tem de se ver quem é quem.
+  for (const [name, type, extra] of [['ressalto', 'missed', 12], ['encontrao', 'bump', 1], ['costas', 'bump', 6]] as const) {
+    await moments.goto(`${url}?semente=21&divisao=2`);
+    await moments.waitForFunction(() => window.__pocket !== undefined);
+    await moments.click('#startBtn');
+    await moments.evaluate(([t, e]) => window.__pocket.pauseAt(t as string, e as number), [type, extra] as const);
+    await moments.waitForTimeout(120);
+    await moments.locator('.screen').screenshot({ path: `${OUT}/contacto-${name}.png` });
   }
 
   // Os bonecos não podem tremer entre frente e costas.

@@ -9,6 +9,7 @@ export const KITS = {
   blue: { jersey: '#2b5fd9', shade: '#1d43a3', trim: '#ffffff', shorts: '#f4f4f4' },
   cream: { jersey: '#f4efe0', shade: '#cfc7ae', trim: '#cf3a2c', shorts: '#cf3a2c' },
   coach: { jersey: '#3a4252', shade: '#2a3040', trim: '#f4efe0', shorts: '#2c3345' },
+  referee: { jersey: '#f4f4f4', shade: '#c9c9c9', trim: '#1b2230', shorts: '#1b2230' },
 } as const;
 export type KitName = keyof typeof KITS;
 
@@ -141,6 +142,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     const left = hx - (width >> 1);
     rect(left, top + row, width, 1, kit.jersey);
     if (row > 0) put(left + width - 1, top + row, kit.shade);
+    // A camisola às riscas é o que faz reconhecer o árbitro no meio dos jogadores.
+    if (look.kit === 'referee') for (let c = left; c < left + width; c += 2) put(c, top + row, INK);
   }
   if (back) {
     rect(hx - 1, top + 1, 2, 3, kit.trim);

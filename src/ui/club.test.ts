@@ -264,10 +264,11 @@ describe('critério da Fase 2', () => {
     for (let i = 0; i < N; i++) {
       const start = newClub(i + 1, 2);
       let trained = start;
-      const rotation: CardId[][] = [['shooting', 'video'], ['weights', 'jumps'], ['sprints', 'longRun'], ['bouncePass', 'readDefense'], ['dribble', 'agility'], ['freeThrows', 'fado']];
+      // O que um treinador faz com os combos que aprende: sobem atributos e ensinam movimentos e comportamentos.
+      const rotation: CardId[][] = [['dribble', 'sprints', 'readDefense'], ['weights', 'jumps', 'soup'], ['shooting', 'freeThrows', 'nap'], ['bouncePass', 'readDefense', 'pickRoll'], ['shooting', 'readDefense', 'nap'], ['weights', 'jumps', 'pickRoll']];
       for (let week = 0; week < 10; week++) {
         const plan: Record<number, CardId[]> = {};
-        // Cerca de 6 cartas por semana, o que um jogo costuma dar.
+        // 9 cartas por semana: pouco mais do que as 8 que um jogo costuma dar.
         for (let p = 0; p < 3; p++) plan[(week + p) % 8] = rotation[(week + p) % rotation.length]!;
         const cards: Partial<Record<CardId, number>> = {};
         for (const list of Object.values(plan)) for (const card of list) cards[card] = (cards[card] ?? 0) + 1;

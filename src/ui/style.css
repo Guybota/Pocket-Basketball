@@ -655,7 +655,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .town-chip {
   position: absolute;
   zoom: var(--hud-zoom, 1);
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -50%);
   min-height: 26px;
   padding: 2px 6px;
   line-height: 1;
@@ -663,7 +663,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
   pointer-events: auto;
 }
 
-.town-chip:active { transform: translate(-50%, -100%) translate(1px, 1px); }
+.town-chip:active { transform: translate(-50%, -50%) translate(1px, 1px); }
 
 .town-chip:disabled { opacity: 1; background: var(--paper-3); color: var(--muted); }
 

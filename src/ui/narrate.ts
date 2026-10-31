@@ -47,6 +47,12 @@ export function narrate(e: MatchEvent, s: MatchState): string | null {
     case 'move': return `${team}: ${MOVE_INFO[e.move!].name} de ${e.player}!`;
     case 'timeout': return `Desconto de tempo: ${s.teams[e.team].name}`;
     case 'shotClockViolation': return `${team}: acabou o tempo de posse`;
+    case 'bump':
+      if (e.bump === 'rebound') return `${team}: ${e.player} ganha a posição a ${e.other}`;
+      if (e.bump === 'post') return e.offensive ? `${team}: ${e.player} encosta a ${e.other} e ganha terreno` : `${team}: ${e.player} aguenta o encosto de ${e.other}`;
+      return null;
+    case 'jumpBall': return `Bola ao alto: ${e.player} ganha a ${e.other}`;
+    case 'tipOff':
     case 'shot':
     case 'periodEnd': return null;
     case 'end': return `Fim do jogo. Ganha ${s.teams[e.team].name}`;

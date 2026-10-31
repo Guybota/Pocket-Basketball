@@ -1,16 +1,33 @@
 import { fillPolygon, pixelLine } from './court.ts';
-import { drawBall, drawShadow, drawSprite, INK, type Look, type PoseName } from './sprites.ts';
+import { drawShadow, drawSprite, INK, type Look, type PoseName } from './sprites.ts';
 
 // A cidade do estudo visual: um mapa isométrico em que cada edifício é uma função.
+// Quatro quarteirões à volta de uma rotunda, tudo perto do centro para caber num telemóvel.
 const GROUND = ['#1a7f77', '#17737a'];
 const ROAD = '#d9c79a';
+const ROAD_LINE = '#efe3c2';
 const YARD = '#c9b482';
 const TARMAC = '#6d7a86';
+const TARMAC_DARK = '#4b5564';
+const WHITE = '#f8f0d8';
 const WALK_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
 const WALK_FRAME_MS = 170;
 const WALK_TILES_PER_SECOND = 1.1;
-const ROAD_J = 18.2;
-const ROAD_I = 20.8;
+
+const ROAD_A = 19;
+const ROAD_B_I = 28.2;
+const ROAD_B_J = 28.5;
+const ROAD_WIDTH = 1.5;
+const PLAZA = ROAD_A + ROAD_WIDTH / 2;
+
+const PAVILION = { i: 6.5, j: 6.5, a: 10, b: 10 };
+const OFFICE = { i: 22, j: 14, a: 3.8, b: 3.8, h: 5 };
+const TRAINING = { i: 13.5, j: 21.5, a: 4.8, b: 4.8 };
+const FEDERATION = { i: 30.6, j: 21.5, a: 3.8, b: 3.8, h: 2.2, roof: 1.1 };
+const TOWER = { i: 22.5, j: 32, a: 2, b: 2, h: 5 };
+const AIRPORT = { i: 30.5, j: 31, a: 7, b: 7 };
+// Até onde o mapa vai, em ladrilhos, medido na diagonal.
+const MAP_DEPTH = 76;
 
 type Pixels = CanvasRenderingContext2D;
 type Point = [number, number];
@@ -22,16 +39,16 @@ interface Grid {
   oy: number;
 }
 
-/** O mapa tem de caber na altura, por isso os ladrilhos encolhem em janelas mais baixas. */
+/** Os ladrilhos crescem com a janela até um limite, e o mapa fica centrado na altura que sobra. */
 function gridFor(width: number, height: number): Grid {
-  const th = height >= 560 ? 6 : height >= 430 ? 5 : 4;
-  return { th, tw: th * 2, ox: Math.round(width / 2), oy: th === 6 ? 40 : 28 };
+  const th = Math.max(4, Math.min(6, Math.floor((height - 30) / MAP_DEPTH)));
+  return { th, tw: th * 2, ox: Math.round(width / 2), oy: Math.max(26, Math.round((height - MAP_DEPTH * th) / 2) + 12) };
 }
 
 const project = ({ tw, th, ox, oy }: Grid, i: number, j: number, k = 0): Point => [ox + (i - j) * tw, oy + (i + j) * th - k * th * 2];
 
 /** O pavilhão vai ficando mais alto à medida que o clube sobe de divisão. */
-const arenaHeight = (division: number): number => 3.2 + division * 0.5;
+const arenaHeight = (division: number): number => 2.6 + division * 0.5;
 
 interface Town {
   ground: HTMLCanvasElement;
@@ -49,11 +66,32 @@ function buildTown(width: number, height: number, division: number): Town {
   const grid = gridFor(width, height);
   const P = (i: number, j: number, k = 0): Point => project(grid, i, j, k);
   const poly = (points: Point[], color: string): void => fillPolygon(g, points, color);
-  const plot = (i: number, j: number, a: number, b: number, color: string): void => poly([P(i, j), P(i + a, j), P(i + a, j + b), P(i, j + b)], color);
+  const flat = (i: number, j: number, a: number, b: number, color: string, k = 0): void => poly([P(i, j, k), P(i + a, j, k), P(i + a, j + b, k), P(i, j + b, k)], color);
+  const line = (a: Point, b: Point, color: string): void => pixelLine(g, Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1]), color);
   const prism = (i: number, j: number, a: number, b: number, h: number, top: string, left: string, right: string): void => {
     poly([P(i, j + b), P(i + a, j + b), P(i + a, j + b, h), P(i, j + b, h)], left);
     poly([P(i + a, j), P(i + a, j + b), P(i + a, j + b, h), P(i + a, j, h)], right);
-    poly([P(i, j, h), P(i + a, j, h), P(i + a, j + b, h), P(i, j + b, h)], top);
+    flat(i, j, a, b, top, h);
+  };
+  // Um retângulo deitado numa das duas faces visíveis, para seguir a perspetiva do edifício.
+  const onLeft = (i: number, j: number, width_: number, k: number, height_: number, color: string): void =>
+    poly([P(i, j, k), P(i + width_, j, k), P(i + width_, j, k + height_), P(i, j, k + height_)], color);
+  const onRight = (i: number, j: number, width_: number, k: number, height_: number, color: string): void =>
+    poly([P(i, j, k), P(i, j + width_, k), P(i, j + width_, k + height_), P(i, j, k + height_)], color);
+  /** Telhado de quatro águas: só se veem as duas da frente. */
+  const hipRoof = (i: number, j: number, a: number, b: number, k: number, rise: number, left: string, right: string): Point => {
+    const apex = P(i + a / 2, j + b / 2, k + rise);
+    poly([P(i, j + b, k), P(i + a, j + b, k), apex], left);
+    poly([P(i + a, j, k), P(i + a, j + b, k), apex], right);
+    return apex;
+  };
+  const disc = (ci: number, cj: number, radius: number, color: string, k = 0): void => {
+    const points: Point[] = [];
+    for (let n = 0; n < 20; n++) {
+      const angle = (n / 20) * Math.PI * 2;
+      points.push(P(ci + Math.cos(angle) * radius, cj + Math.sin(angle) * radius, k));
+    }
+    poly(points, color);
   };
   const tree = (i: number, j: number, big: boolean): void => {
     const [x, y] = P(i, j).map(Math.round) as Point;
@@ -67,20 +105,18 @@ function buildTown(width: number, height: number, division: number): Town {
       g.fillRect(x - w, y - top, w * 2 + 1, 6);
     });
   };
-  const windows = (i: number, j: number, a: number, h: number, color: string): void => {
-    g.fillStyle = color;
-    for (let k = 0.5; k < h - 0.3; k += 0.8) {
-      for (let u = 0.3; u < a - 0.2; u += 0.8) {
-        const [x, y] = P(i + u, j, k).map(Math.round) as Point;
-        g.fillRect(x, y, 3, 3);
-      }
-    }
+  const house = (i: number, j: number, n: number): void => {
+    const wall = ['#efe3c2', '#e6d7ad', '#f4ebd0'][n % 3]!;
+    prism(i, j, 2.2, 2.2, 1, wall, wall, '#b8a981');
+    onLeft(i + 0.85, j + 2.2, 0.5, 0, 0.7, '#5a3a22');
+    onRight(i + 2.2, j + 0.8, 0.6, 0.4, 0.4, '#2d6fa8');
+    hipRoof(i - 0.1, j - 0.1, 2.4, 2.4, 1, 0.8, n % 4 === 3 ? '#b55d3a' : '#c9622f', n % 4 === 3 ? '#8f4629' : '#a44b22');
   };
 
   // O chão aos quadrados vai até onde a janela chegar.
-  const reach = Math.ceil((width + height) / grid.th / 2) + 8;
-  for (let i = -reach; i < reach; i++) {
-    for (let j = -reach; j < reach; j++) {
+  const reach = Math.ceil((width + height) / grid.th / 2) + 10;
+  for (let i = -reach; i < reach * 2; i++) {
+    for (let j = -reach; j < reach * 2; j++) {
       const a = P(i, j);
       const c = P(i + 1, j + 1);
       const b = P(i + 1, j);
@@ -89,88 +125,218 @@ function buildTown(width: number, height: number, division: number): Town {
       poly([a, b, c, d], GROUND[Math.abs(i + j) % 2]!);
     }
   }
-  // As estradas saem do mapa em todas as direções.
-  plot(-reach, 17.5, reach * 2, 1.5, ROAD);
-  plot(-reach, 30, reach * 2, 1.5, ROAD);
-  plot(20, -reach, 1.5, reach * 2, ROAD);
-  plot(30.5, -reach, 1.5, reach * 2, ROAD);
+  // As estradas saem do mapa em todas as direções, com um traço ao meio.
+  const roadAlongI = (j: number): void => {
+    flat(-reach, j, reach * 3, ROAD_WIDTH, ROAD);
+    for (let i = -reach; i < reach * 2; i += 2) flat(i, j + ROAD_WIDTH / 2 - 0.05, 0.9, 0.1, ROAD_LINE);
+  };
+  const roadAlongJ = (i: number): void => {
+    flat(i, -reach, ROAD_WIDTH, reach * 3, ROAD);
+    for (let j = -reach; j < reach * 2; j += 2) flat(i + ROAD_WIDTH / 2 - 0.05, j, 0.1, 0.9, ROAD_LINE);
+  };
+  roadAlongI(ROAD_A);
+  roadAlongI(ROAD_B_J);
+  roadAlongJ(ROAD_A);
+  roadAlongJ(ROAD_B_I);
+  // A rotunda no meio de tudo.
+  disc(PLAZA, PLAZA, 2.1, ROAD);
+  disc(PLAZA, PLAZA, 1.15, '#2f8f5b');
+  disc(PLAZA, PLAZA, 0.75, '#3ca86c');
 
   const operations: [number, () => void][] = [];
   const add = (depth: number, draw: () => void): void => {
     operations.push([depth, draw]);
   };
 
-  // Pavilhão
-  const arena = arenaHeight(division);
-  plot(4, 4, 11, 11, YARD);
-  add(19.5, () => {
-    prism(5, 5, 9, 9, arena, '#e8622a', '#c9622f', '#a44b22');
-    poly([P(6.5, 6.5, arena), P(12.5, 6.5, arena), P(12.5, 12.5, arena), P(6.5, 12.5, arena)], '#dca35c');
-    poly([P(6.5, 8.3, arena), P(8.5, 8.3, arena), P(8.5, 10.7, arena), P(6.5, 10.7, arena)], '#17737a');
-    poly([P(10.5, 8.3, arena), P(12.5, 8.3, arena), P(12.5, 10.7, arena), P(10.5, 10.7, arena)], '#17737a');
-    const a = P(9.5, 6.5, arena);
-    const b = P(9.5, 12.5, arena);
-    pixelLine(g, Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1]), '#f8f0d8');
+  // Pavilhão: paredes com faixa branca, entrada na frente e o campo à vista no telhado.
+  {
+    const { i, j, a, b } = PAVILION;
+    const h = arenaHeight(division);
+    flat(i - 1.2, j - 1.2, a + 2.4, b + 2.4, YARD);
+    add(i + j + (a + b) / 2, () => {
+      prism(i, j, a, b, h, '#e8622a', '#c9622f', '#a44b22');
+      onLeft(i, j + b, a, h - 0.55, 0.28, WHITE);
+      onRight(i + a, j, b, h - 0.55, 0.28, '#d9cfb4');
+      // Janelas altas a toda a volta.
+      for (let n = 0; n < 7; n++) {
+        const step = (a - 1) / 7;
+        // Na frente, as três do meio dão lugar à entrada.
+        if (n < 2 || n > 4) onLeft(i + 0.75 + n * step, j + b, 0.6, 0.75, h - 1.5, '#8fd0e6');
+        onRight(i + a, j + 0.75 + n * step, 0.6, 0.75, h - 1.5, '#6fb2c9');
+      }
+      // A entrada, com portas duplas e uma pala.
+      onLeft(i + a / 2 - 1.1, j + b, 2.2, 0, 1.15, INK);
+      onLeft(i + a / 2 - 1, j + b, 0.95, 0, 1.05, '#3d5a78');
+      onLeft(i + a / 2 + 0.05, j + b, 0.95, 0, 1.05, '#3d5a78');
+      onLeft(i + a / 2 - 1.5, j + b + 0.01, 3, 1.15, 0.22, '#f4efe0');
+      // No telhado, o campo: é assim que se reconhece de longe.
+      flat(i + 1.1, j + 1.1, a - 2.2, b - 2.2, '#a44b22', h);
+      flat(i + 1.4, j + 1.4, a - 2.8, b - 2.8, '#dca35c', h);
+      const inner = a - 2.8;
+      const c = i + a / 2;
+      const m = j + b / 2;
+      line(P(c, j + 1.4, h), P(c, j + 1.4 + inner, h), WHITE);
+      disc(c, m, 0.9, '#17737a', h);
+      flat(i + 1.4, m - 0.9, 1.5, 1.8, '#17737a', h);
+      flat(i + 1.4 + inner - 1.5, m - 0.9, 1.5, 1.8, '#17737a', h);
+    });
+  }
+
+  // Escritório: um bloco moderno, com janelas nas duas faces e o emblema do clube no terraço.
+  {
+    const { i, j, a, b, h } = OFFICE;
+    flat(i - 0.8, j - 0.8, a + 1.6, b + 1.1, YARD);
+    add(i + j + (a + b) / 2, () => {
+      prism(i, j, a, b, h, '#f4efe0', '#c4c9d4', '#8f97ab');
+      for (let floor = 0; floor < 4; floor++) {
+        const k = 1.05 + floor * 0.95;
+        for (let col = 0; col < 3; col++) {
+          const step = (a - 0.7) / 3;
+          onLeft(i + 0.35 + col * step, j + b, step - 0.3, k, 0.55, '#2d6fa8');
+          onRight(i + a, j + 0.35 + col * step, step - 0.3, k, 0.55, '#24598a');
+        }
+      }
+      onLeft(i + a / 2 - 0.5, j + b, 1, 0, 0.85, '#3d5a78');
+      flat(i + 0.3, j + 0.3, a - 0.6, b - 0.6, '#dcd6c4', h);
+      const c = i + a / 2;
+      const m = j + b / 2;
+      disc(c, m, 1.15, INK, h);
+      disc(c, m, 0.98, '#e8622a', h);
+      line(P(c - 0.98, m, h), P(c + 0.98, m, h), INK);
+      line(P(c, m - 0.98, h), P(c, m + 0.98, h), INK);
+    });
+  }
+
+  // Treino: um campo ao ar livre com dois cestos, uma arrecadação e um banco.
+  {
+    const { i, j, a, b } = TRAINING;
+    flat(i - 0.6, j - 0.6, a + 1.2, b + 1.2, YARD);
+    flat(i, j, a, b, TARMAC);
+    flat(i + 0.4, j + 0.4, a - 0.8, b - 0.8, '#dca35c');
+    const c = i + a / 2;
+    const m = j + b / 2;
+    line(P(c, j + 0.4), P(c, j + b - 0.4), WHITE);
+    disc(c, m, 0.65, WHITE);
+    disc(c, m, 0.5, '#dca35c');
+    const hoop = (ci: number, side: number): void => {
+      const [x, y] = P(ci, m).map(Math.round) as Point;
+      g.fillStyle = INK;
+      g.fillRect(x, y - 15, 2, 15);
+      g.fillRect(x - 5, y - 21, 12, 8);
+      g.fillStyle = WHITE;
+      g.fillRect(x - 4, y - 20, 10, 6);
+      g.fillStyle = '#e8622a';
+      g.fillRect(x - 2 + side * 3, y - 14, 5, 1);
+    };
+    add(i + m + 0.1, () => hoop(i + 0.5, 1));
+    add(i + a + m - 0.5, () => hoop(i + a - 0.5, -1));
+    add(i + j + 1, () => {
+      prism(i + 0.1, j - 0.5, 1.5, 1, 0.9, '#efe3c2', '#efe3c2', '#c4b890');
+      hipRoof(i, j - 0.6, 1.7, 1.2, 0.9, 0.5, '#cf4436', '#a7372c');
+    });
+  }
+
+  // Federação: um edifício clássico, com degraus, colunas e um telhado a sério.
+  {
+    const { i, j, a, b, h, roof } = FEDERATION;
+    flat(i - 0.8, j - 0.8, a + 1.6, b + 1.6, YARD);
+    add(i + j + (a + b) / 2, () => {
+      prism(i - 0.45, j - 0.45, a + 0.9, b + 0.9, 0.18, '#f4efe0', '#c4bea6', '#a39d84');
+      prism(i - 0.2, j - 0.2, a + 0.4, b + 0.4, 0.36, '#f8f4e6', '#d4cdb6', '#b0a98e');
+      prism(i + 0.2, j + 0.2, a - 0.4, b - 0.4, h, '#d9d3bf', '#a39c82', '#8a8369');
+      onLeft(i + a / 2 - 0.45, j + b - 0.2, 0.9, 0.36, 1.2, '#5a3a22');
+      // Colunas nas duas faces, sem tapar a porta.
+      for (let n = 0; n < 6; n++) {
+        const step = (a - 0.9) / 5;
+        const u = i + 0.35 + n * step;
+        if (n !== 2 && n !== 3) onLeft(u, j + b - 0.2, 0.22, 0.36, h - 0.36, '#f4efe0');
+        onRight(i + a - 0.2, j + 0.35 + n * step, 0.22, 0.36, h - 0.36, '#e4dcc6');
+      }
+      const eave = h + 0.22;
+      onLeft(i - 0.1, j + b + 0.1, a + 0.2, h, 0.22, '#f4efe0');
+      onRight(i + a + 0.1, j - 0.1, b + 0.2, h, 0.22, '#d4cdb6');
+      const apex = hipRoof(i - 0.1, j - 0.1, a + 0.2, b + 0.2, eave, roof, '#e8622a', '#b84a1e');
+      const [x, y] = apex.map(Math.round) as Point;
+      g.fillStyle = INK;
+      g.fillRect(x, y - 15, 1, 15);
+      g.fillStyle = '#cf3a2c';
+      g.fillRect(x + 1, y - 15, 9, 6);
+    });
+  }
+
+  // Torre do relógio: esguia, com o relógio virado para a cidade.
+  {
+    const { i, j, a, b, h } = TOWER;
+    flat(i - 1, j - 0.8, a + 2, b + 1.6, YARD);
+    add(i + j + (a + b) / 2, () => {
+      prism(i - 0.2, j - 0.2, a + 0.4, b + 0.4, 0.5, '#efe3c2', '#c9bea0', '#a79c7e');
+      prism(i, j, a, b, h, WHITE, '#dad3bc', '#b6ae93');
+      onLeft(i, j + b, a, h - 0.35, 0.35, '#c9bea0');
+      onRight(i + a, j, b, h - 0.35, 0.35, '#a79c7e');
+      onLeft(i + a / 2 - 0.35, j + b, 0.7, 0, 0.95, '#5a3a22');
+      // Um relógio em perspetiva, com os ponteiros.
+      onLeft(i + 0.3, j + b, a - 0.6, h - 1.75, 1.2, INK);
+      onLeft(i + 0.4, j + b, a - 0.8, h - 1.65, 1, '#f2c230');
+      line(P(i + a / 2, j + b, h - 1.15), P(i + a / 2, j + b, h - 0.8), INK);
+      line(P(i + a / 2, j + b, h - 1.15), P(i + a / 2 + 0.45, j + b, h - 1.15), INK);
+      onRight(i + a, j + 0.3, b - 0.6, h - 1.75, 1.2, INK);
+      onRight(i + a, j + 0.4, b - 0.8, h - 1.65, 1, '#d9a400');
+      hipRoof(i - 0.15, j - 0.15, a + 0.3, b + 0.3, h, 0.9, '#cf4436', '#a7372c');
+    });
+  }
+
+  // Aeroporto: pista, placa de estacionamento, terminal envidraçado, torre de controlo e um avião.
+  {
+    const { i, j, a, b } = AIRPORT;
+    flat(i, j, a, b, TARMAC);
+    flat(i, j + b - 1.7, a, 1.4, TARMAC_DARK);
+    for (let n = 0; n < 5; n++) flat(i + 0.5 + n * 1.3, j + b - 1.05, 0.8, 0.1, WHITE);
+    add(i + j + 4, () => {
+      prism(i + 0.7, j + 0.6, 3.6, 2, 1.2, '#f4efe0', '#c4c9d4', '#8f97ab');
+      onLeft(i + 1, j + 2.6, 3, 0.35, 0.55, '#2d6fa8');
+      onRight(i + 4.3, j + 0.9, 1.4, 0.35, 0.55, '#24598a');
+    });
+    add(i + j + 6, () => {
+      prism(i + 5.2, j + 0.8, 0.8, 0.8, 3.4, '#dfe2ea', '#dfe2ea', '#a9aebc');
+      prism(i + 4.95, j + 0.55, 1.3, 1.3, 0.5, '#2d6fa8', '#2d6fa8', '#24598a');
+      const k = 3.4;
+      poly([P(i + 4.95, j + 1.85, k), P(i + 6.25, j + 1.85, k), P(i + 6.25, j + 1.85, k + 0.6), P(i + 4.95, j + 1.85, k + 0.6)], '#7ec8e0');
+      poly([P(i + 6.25, j + 0.55, k), P(i + 6.25, j + 1.85, k), P(i + 6.25, j + 1.85, k + 0.6), P(i + 6.25, j + 0.55, k + 0.6)], '#5aa6bf');
+      flat(i + 4.85, j + 0.45, 1.5, 1.5, '#2d6fa8', k + 0.6);
+    });
+    add(i + j + 8.5, () => {
+      // O avião: fuselagem, asas e cauda, parado na placa.
+      const pi = i + 4.6;
+      const pj = j + 4.1;
+      flat(pi - 0.15, pj - 2, 0.3, 4, 'rgba(10,40,44,.35)');
+      flat(pi - 1.9, pj - 0.2, 3.8, 0.6, '#c4c9d4', 0.25);
+      flat(pi - 0.9, pj + 1.5, 1.8, 0.35, '#c4c9d4', 0.25);
+      flat(pi - 0.3, pj - 2, 0.6, 4, WHITE, 0.3);
+      flat(pi - 0.3, pj - 2, 0.6, 0.5, '#2d6fa8', 0.3);
+      flat(pi - 0.3, pj + 1.2, 0.6, 0.8, '#cf3a2c', 0.3);
+    });
+  }
+
+  // Casas nos quarteirões livres.
+  ([[22, 8], [25.5, 9.5], [23, 4], [27, 5.5], [31, 11], [34, 14], [31, 15.5], [22, 21.5], [25, 22.5], [22, 25], [25, 25.5], [31, 2], [7, 22], [9, 25], [14, 31], [17, 33.5], [12, 34.5]] as const).forEach(([i, j], n) => {
+    add(i + j + 2.2, () => house(i, j, n));
   });
-  // Escritório
-  plot(22, 11, 6, 6, YARD);
-  add(39, () => {
-    prism(23, 12, 4, 4, 5, '#f4efe0', '#c4c9d4', '#8f97ab');
-    windows(23, 16, 4, 5, '#2d6fa8');
-    const [x, y] = P(25, 14, 5.6).map(Math.round) as Point;
-    drawBall(g, x, y);
+  // Árvores à volta, e bosque onde o mapa acaba.
+  ([[3, 4], [18, 3], [4, 18], [17.6, 12], [7, 18], [17.8, 17.8], [27, 12], [27, 16], [21, 19 + 2], [27, 20.5], [20.8, 28], [27, 27.5], [18, 28], [11, 28], [18, 30.5], [26.5, 33], [26, 36], [21, 36.5], [29.5, 31], [29.5, 36], [39, 34], [39, 37], [36, 22], [31, 27.5], [33.5, 19]] as const).forEach(([i, j], n) => {
+    add(i + j, () => tree(i, j, n % 2 === 1));
   });
-  // Treino
-  plot(11, 20, 8, 8, YARD);
-  poly([P(12, 21), P(18, 21), P(18, 27), P(12, 27)], TARMAC);
-  poly([P(13, 22), P(17, 22), P(17, 26), P(13, 26)], '#dca35c');
-  add(35, () => {
-    prism(11.5, 20.2, 2, 1.2, 1.2, '#cf4436', '#efe3c2', '#d0c096');
-    const a = P(15, 22);
-    const b = P(15, 26);
-    pixelLine(g, Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1]), '#f8f0d8');
-  });
-  // Federação
-  plot(32.5, 23, 7, 6.5, YARD);
-  add(62, () => {
-    prism(33.5, 24, 5, 5, 0.5, '#f4efe0', '#c4bea6', '#a39d84');
-    prism(34, 24.5, 4, 4, 2.4, '#d9d3bf', '#b0a98e', '#918a6f');
-    windows(34, 28.5, 4, 2.2, '#efe3c2');
-    poly([P(33.5, 24, 3), P(38.5, 24, 3), P(38.5, 29, 3), P(33.5, 29, 3)], '#e8622a');
-  });
-  // Torre do relógio
-  plot(23.5, 32, 5, 5, YARD);
-  add(60.5, () => {
-    prism(25, 33.5, 2, 2, 6.5, '#f8f0d8', '#dad3bc', '#b6ae93');
-    poly([P(25, 33.5, 6.5), P(27, 33.5, 6.5), P(27, 35.5, 6.5), P(25, 35.5, 6.5)], '#cf4436');
-    const [x, y] = P(26, 35.5, 5).map(Math.round) as Point;
-    g.fillStyle = INK;
-    g.fillRect(x - 6, y - 5, 11, 11);
-    g.fillStyle = '#f2c230';
-    g.fillRect(x - 5, y - 4, 9, 9);
-    g.fillStyle = INK;
-    g.fillRect(x - 1, y - 3, 1, 4);
-    g.fillRect(x - 1, y, 3, 1);
-  });
-  // Aeroporto
-  plot(34, 33, 9, 9, TARMAC);
-  poly([P(34, 40), P(43, 40), P(43, 41.5), P(34, 41.5)], '#4b5564');
-  add(73, () => {
-    prism(35, 34.5, 4, 3, 1.4, '#f4efe0', '#c4c9d4', '#8f97ab');
-    prism(40, 34.5, 1.2, 1.2, 4.6, '#2d6fa8', '#dfe2ea', '#a9aebc');
-  });
-  // Casas e árvores nos espaços livres
-  ([[1, 8], [2, 13], [17, 2], [23, 4], [27, 6], [2, 22], [7, 24], [23, 20], [26, 23], [22, 25], [3, 34], [14, 33], [17, 37], [34, 11], [37, 15], [34, 16], [11, 34], [8, 38]] as const).forEach(([i, j], n) => {
-    const color = ['#efe3c2', '#e6d7ad', '#f4ebd0'][n % 3]!;
-    add(i + j + 3, () => prism(i, j, 2.4, 2.4, 1.2, n % 4 === 3 ? '#b55d3a' : '#c9622f', color, '#b8a981'));
-  });
-  ([[16, 9], [17, 13], [1, 3], [8, 16.6], [12, 15], [16, 16.5], [28, 16.5], [23, 28], [27, 28], [17, 29], [30, 27], [30, 22], [25, 39], [22, 42], [31, 33], [33, 44], [40, 28], [42, 24], [11, 42], [15, 43]] as const).forEach(([i, j], n) => add(i + j, () => tree(i, j, n % 2 === 1)));
-  // Numa janela larga, o mapa continua em arvoredo para os lados.
-  for (let i = -reach; i < reach; i += 3) {
-    for (let j = -reach; j < reach; j += 3) {
-      if (i >= -2 && i <= 46 && j >= -2 && j <= 46) continue;
-      if ((i >= 18 && i <= 22) || (i >= 29 && i <= 33) || (j >= 16 && j <= 20) || (j >= 29 && j <= 32)) continue;
-      if (((i * 7 + j * 13) & 3) === 0) add(i + j, () => tree(i, j, ((i + j) & 4) === 0));
+  for (let i = -reach; i < reach * 2; i += 2) {
+    for (let j = -reach; j < reach * 2; j += 2) {
+      const hash = (i * 73 + j * 37) & 255;
+      if (hash % 3 !== 0) continue;
+      const ti = i + (hash % 5) * 0.3;
+      const tj = j + ((hash >> 2) % 5) * 0.3;
+      if (ti > -1 && ti < 41 && tj > -1 && tj < 40) continue;
+      const onRoad = (v: number, start: number): boolean => v > start - 0.8 && v < start + ROAD_WIDTH + 0.8;
+      if (onRoad(ti, ROAD_A) || onRoad(tj, ROAD_A) || onRoad(ti, ROAD_B_I) || onRoad(tj, ROAD_B_J)) continue;
+      const [x, y] = P(ti, tj);
+      if (x < -12 || x > width + 12 || y < -4 || y > height + 22) continue;
+      add(ti + tj, () => tree(ti, tj, hash % 2 === 1));
     }
   }
   operations.sort((a, b) => a[0] - b[0]);
@@ -185,20 +351,21 @@ function buildTown(width: number, height: number, division: number): Town {
 
 export type TownPlace = 'arena' | 'office' | 'training' | 'federation' | 'tower' | 'airport';
 
-/** Onde fica a etiqueta de cada edifício, em frações da janela, para as etiquetas tocáveis ficarem por cima dele. */
-export function townPlaces(width: number, height: number, division: number): Record<TownPlace, { x: number; y: number }> {
+/** Onde fica a etiqueta de cada edifício, em frações da janela. Ficam à frente de cada um, para não o taparem. */
+export function townPlaces(width: number, height: number): Record<TownPlace, { x: number; y: number }> {
   const grid = gridFor(width, height);
-  const at = (i: number, j: number, k: number): { x: number; y: number } => {
-    const [x, y] = project(grid, i, j, k);
+  const at = (i: number, j: number): { x: number; y: number } => {
+    const [x, y] = project(grid, i, j);
     return { x: x / width, y: y / height };
   };
   return {
-    arena: at(9.5, 9.5, arenaHeight(division)),
-    office: at(25, 14, 6.4),
-    training: at(15, 24, 1.2),
-    federation: at(36, 26.5, 3),
-    tower: at(26, 34.5, 6.5),
-    airport: at(40.6, 35, 4.6),
+    arena: at(PAVILION.i + PAVILION.a + 0.6, PAVILION.j + PAVILION.b + 0.6),
+    office: at(OFFICE.i + OFFICE.a + 1, OFFICE.j + OFFICE.b + 1),
+    // À esquerda do campo, porque à frente fica a torre.
+    training: at(TRAINING.i - 0.2, TRAINING.j + TRAINING.b + 0.2),
+    federation: at(FEDERATION.i + FEDERATION.a + 1, FEDERATION.j + FEDERATION.b + 1),
+    tower: at(TOWER.i + TOWER.a + 0.8, TOWER.j + TOWER.b + 0.8),
+    airport: at(AIRPORT.i + AIRPORT.a, AIRPORT.j + AIRPORT.b),
   };
 }
 
@@ -217,10 +384,11 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
   const placed = walkers.slice(0, 4).map((look, n) => {
     const travelled = (now / 1000 * WALK_TILES_PER_SECOND + n * 13) % span - span / 2;
     const forward = n % 2 === 0;
-    const along = 20 + (forward ? travelled : -travelled);
+    const along = PLAZA + (forward ? travelled : -travelled);
     const onRoadJ = n < 2;
-    const i = onRoadJ ? along : ROAD_I + n * 0.2;
-    const j = onRoadJ ? ROAD_J + n * 0.4 : along;
+    const lane = ROAD_A + 0.45 + (n % 2) * 0.6;
+    const i = onRoadJ ? along : lane;
+    const j = onRoadJ ? lane : along;
     const [x, y] = project(grid, i, j);
     // Andar para a frente numa estrada é ir para a direita; na outra, é ir para a esquerda.
     const right = onRoadJ ? forward : !forward;

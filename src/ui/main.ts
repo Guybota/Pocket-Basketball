@@ -19,7 +19,7 @@ const TICKS_PER_SECOND = 20;
 const MAX_STEPS_PER_FRAME = 40;
 const SPEEDS = [1, 2, 4];
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
-const QUIET_AT_SPEED: readonly Sound[] = ['bounce'];
+const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
 const LANDSCAPE_PANEL_WIDTH = 320;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
@@ -180,7 +180,7 @@ function setStage(town: boolean, home: boolean): void {
 
 function placeTownUi(): void {
   const current = club!;
-  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height, current.division));
+  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height));
   const note = (text: string): void => {
     const box = document.getElementById('staffNote');
     if (box) box.innerHTML = `<b>Secretária:</b> ${escapeHtml(text)}`;
@@ -730,7 +730,7 @@ Object.assign(window, {
     /** Toca todos os sons, para confirmar que nenhum dá erro. */
     playAllSounds: () => {
       audio.unlock();
-      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'steal', 'block', 'cheer', 'bigCheer', 'card'] as const) audio.play(name);
+      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'steal', 'block', 'cheer', 'bigCheer', 'card', 'bump'] as const) audio.play(name);
       for (let i = 0; i < 30; i++) audio.ambience(1e12 + i * 1e6);
     },
     onCourtNames: () => view!.s.court[0].map(b => b.player.name),

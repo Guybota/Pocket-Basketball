@@ -202,7 +202,7 @@ Estes números já incluem a regra da Fase 3 que torna o treino menos rentável 
 - **Confiança:** começa em 60%. Sobe e desce com os resultados, conta mais contra quem é melhor e metade num particular. Abaixo de 3% há despedimento, e a carreira neste clube acaba.
 - **Casa e fora:** contam na simulação, pela Vontade.
 - **Plantel:** tocar em dois jogadores troca-os, e os cinco primeiros são os titulares. A ficha mostra a época de cada um.
-- **Cidade:** isométrica, como no estudo visual. Os edifícios têm etiquetas tocáveis: Pavilhão, Escritório, Treino, Federação, Torre e Aeroporto. O pavilhão cresce a cada divisão.
+- **Cidade:** isométrica, no estilo do estudo visual, com quatro quarteirões à volta de uma rotunda e tudo centrado para caber num telemóvel. Os edifícios têm etiquetas tocáveis à frente: Pavilhão, Escritório, Treino, Federação, Torre e Aeroporto. O pavilhão cresce a cada divisão.
 - **Clubes antigos:** um clube guardado na Fase 2 entra numa liga nova, com tudo o que tinha treinado.
 
 **Medições com o treinador automático da Fase 2, sem qualquer tática:**
@@ -224,6 +224,10 @@ Estes números já incluem a regra da Fase 3 que torna o treino menos rentável 
 - Um treinador razoável ainda pode ser despedido na época 2, em cerca de 7% das carreiras simuladas. Pode ser demasiado duro, e só jogando se percebe.
 - A Torre e o Aeroporto só respondem pela secretária: o clube guarda-se sozinho, e o jogo online é da Fase 6.
 - Lesões, orçamento e o nome do clube à escolha ficam para mais tarde.
+
+**Linha de 3:** é mais curta do que a da FIBA, com raio de 6,30 m em vez de 6,75 m e cantos a 5,70 m do centro em vez de 6,60 m. Os bonecos são grandes para o campo, e com as medidas reais pareciam estar sempre em cima da linha. Os lugares de ataque ficam pelo menos 50 cm para um dos lados, e só se lança com os pés na linha à pressa, com menos de 2 segundos de posse.
+
+**Ressaltos:** depois de bater no aro, a bola sobe em cerca de 70% das vezes e cai logo nas outras. Os jogadores correm para onde ela vai cair.
 
 ## 7A. Decisões durante o jogo
 
@@ -273,6 +277,30 @@ Regras:
 - Só conta um combo por jogador em cada semana: o maior que as cartas formarem.
 - Um combo novo só se revela ao treinar. A lista mostra apenas as categorias das cartas de cada um.
 - Tudo isto vive em dados, em `src/sim/training.ts`, para acrescentar combinações sem mexer no resto do código.
+
+## 7C. Colisões e encontrões
+
+**Ninguém atravessa ninguém.** Cada jogador ocupa cerca de 40 cm de raio, um pouco mais se for pesado. Quem se sobrepõe é afastado, e cede mais quem tem menos força. A força vem do físico, do peso e da altura, e o cansaço tira-a. Quem está a lançar não se move, e quem quer passar contorna o outro.
+
+**Encontrões:** quando dois adversários chocam de frente, ganha o mais forte, com alguma sorte. Quem perde corre mais devagar por um instante, e numa diferença grande cambaleia e deixa de defender. Num jogo há cerca de 130 toques que só abrandam, e cerca de 8 fortes, que se veem.
+
+**Ganhar posição no ressalto:** os jogadores disputam o sítio onde a bola vai cair, e o mais forte fica mais perto. O relato conta-o, cerca de 34 vezes por jogo.
+
+**Jogo de costas:** perto do cesto, com um defensor colado, quem gosta de jogar de costas ou é claramente mais forte recua na direção do cesto a empurrar. Um defensor mais fraco cede terreno e contesta pior o lançamento; um mais forte aguenta. Acontece cerca de 6 vezes por jogo.
+
+**Efeito medido:** uma nota acima só em físico ganha 66,5%, o valor mais alto dos atributos, que vão de 55,5% a 61,8%. A decisão mais demorada de quem tem a bola passou de 0,85 s para 0,74 s. Ficaram 42,1 pontos por equipa, 68,8 posses e 7,5 segundos por posse.
+
+## 7D. Papéis, reposições e início do jogo
+
+**Ressalto:** nem toda a gente vai. Disputam a bola 2 atacantes e 2 defensores, os mais perto e com esse papel. Os grandes e os Ressaltadores atacam o cesto, cada um no seu lugar. O base e os de Contra-ataque recuam, para evitar o contra-ataque, e os Atiradores Parados ficam onde estão. Os defensores que não disputam seguram o sítio.
+
+**Transição:** sem pressão, a defesa espera o ataque perto do meio-campo. Só a Sombra e as equipas em pressão seguem o adversário até ao outro lado. Quem ganha o ressalto, se for grande, procura o base com um passe.
+
+**Reposições:** depois de um cesto, da linha de fundo; nos outros casos, da lateral mais perto da bola. Repõe o jogador mais perto, fora de campo, exceto o base, que vem sempre receber. Vêm dois receber em cerca de um terço das vezes, e sempre contra uma defesa em pressão. O passe vai para o mais solto, não pode ser intercetado e nunca conta como assistência.
+
+**Início do jogo:** as equipas entram em campo a andar e colocam-se à volta do círculo. O árbitro atira a bola, e salta o que chega mais alto de cada equipa. Quem salta melhor tem vantagem, de 1% por ponto de diferença, até 70% no máximo, para a mesma equipa não ganhar sempre. O vencedor toca a bola para um colega. O relógio só anda depois disto. Nos outros períodos há reposição do meio-campo, com a posse alternada: começa quem perdeu a bola ao alto. O prolongamento volta a ter bola ao alto.
+
+**Árbitro:** atira a bola ao alto, acompanha o jogo por trás da bola e levanta os braços quando apita, com "FALTA" ou "FORA" escrito por cima. Só existe na imagem: não influencia o jogo nem choca com os jogadores.
 
 ## 8. Riscos
 

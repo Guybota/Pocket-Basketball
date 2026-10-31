@@ -1,3 +1,4 @@
+import { HOOP_U, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS } from '../../sim/court.ts';
 import { INK } from './sprites.ts';
 
 type Rgb = readonly [number, number, number];
@@ -179,10 +180,11 @@ function isLine(x: number, y: number): boolean {
   if (near(x, 0) || near(absY, 7.5) || near(x, 14)) return true;
   if (x < 5.8 + w && near(absY, 2.45)) return true;
   if (near(x, 5.8) && absY < 2.45) return true;
-  if (near(dist(5.8), 1.8) && x > 5.8) return true;
+  // Mais pequeno do que o da FIBA, para não encostar à linha de 3, que também é mais curta.
+  if (near(dist(5.8), 1.5) && x > 5.8) return true;
   if (near(dist(1.575), 1.25) && x > 1.575) return true;
-  if (near(dist(1.575), 6.75) && absY < 6.6) return true;
-  if (near(absY, 6.6) && x < 3) return true;
+  if (near(dist(HOOP_U), THREE_RADIUS) && absY < THREE_CORNER_V) return true;
+  if (near(absY, THREE_CORNER_V) && x < THREE_CORNER_MAX_U) return true;
   if (near(dist(14), 1.8)) return true;
   // Traços ao longo da área, onde os jogadores se alinham no lance livre.
   if (absY > 2.45 && absY < 2.72) {

@@ -21,7 +21,7 @@ npm run build-page     # junta o jogo numa só página, em dist/pocket-basketbal
 
 Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. Usa o Edge; noutra máquina, define `BROWSER_CHANNEL=chrome`.
 
-Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 4 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
+Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 15 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 
 ## Regras da simulação (`src/sim/`)
 
