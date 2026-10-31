@@ -563,3 +563,117 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .found-card { display: grid; justify-items: center; gap: 2px; text-align: center; font: 400 15px/1 var(--ui-sm); }
 
 .found-card img { display: block; width: 40px; height: 44px; image-rendering: pixelated; border: 1px solid var(--ink); }
+
+.city { justify-content: flex-start; gap: 6px; }
+
+.confidence { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; font: 400 15px/1 var(--ui-sm); }
+
+.confidence b { font-weight: 400; min-width: 30px; text-align: right; }
+
+.staff-note { margin: 0; padding: 4px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--ui-sm); }
+
+.fixture-label { text-align: center; font: 400 15px/1 var(--ui-sm); color: var(--muted); }
+
+.city .versus { padding: 5px 4px; }
+
+.club-menu.even { grid-template-columns: 1fr 1fr; }
+
+.city-menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+.city-menu .wide { grid-column: span 2; }
+
+.city-menu button { padding: 4px 2px; }
+
+.table-row { flex: none; display: grid; grid-template-columns: 20px 1fr 26px 26px 42px; align-items: center; gap: 4px; min-height: 24px; padding: 1px 4px; line-height: 1; text-align: right; border-left: 4px solid transparent; }
+
+.table-row > span:first-child { text-align: left; color: var(--muted); }
+
+.table-row .name, .calendar-row .name { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.table-row.head { min-height: 18px; color: var(--muted); font: 400 15px/1 var(--ui-sm); }
+
+.table-row.up { border-left-color: var(--good); }
+
+.table-row.down { border-left-color: var(--bad); }
+
+.table-row.mine, .calendar-row.mine { background: rgba(242, 194, 48, 0.42); }
+
+.calendar-row { flex: none; display: grid; grid-template-columns: 30px 36px 1fr 54px; align-items: center; gap: 4px; min-height: 24px; padding: 1px 4px; line-height: 1; border-bottom: 1px solid var(--line); }
+
+.calendar-row > span:first-child, .calendar-row > span:nth-child(2) { font: 400 15px/1 var(--ui-sm); color: var(--muted); }
+
+.calendar-row b { font-weight: 400; text-align: right; }
+
+.calendar-row.history { grid-template-columns: 30px 1fr 30px 74px; }
+
+.calendar-row.history > span:nth-child(2) { font: 400 20px/1 var(--ui); color: var(--ink); }
+
+.won { color: var(--good); }
+
+.lost { color: var(--bad); }
+
+.squad-row { flex: none; display: grid; grid-template-columns: 1fr 34px; align-items: center; gap: 4px; }
+
+.squad-row.selected { background: rgba(242, 194, 48, 0.42); box-shadow: inset 3px 0 0 var(--ball); }
+
+.squad-main { display: grid; grid-template-columns: 20px 30px 1fr 54px 26px; align-items: center; gap: 5px; min-height: 34px; padding: 2px; line-height: 1; text-align: left; border: 0; box-shadow: none; background: transparent; color: var(--ink); }
+
+.squad-main[aria-pressed="true"] { background: transparent; color: var(--ink); }
+
+.squad-main:active { transform: none; box-shadow: none; }
+
+.squad-main .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.squad-info { min-height: 30px; padding: 0; box-shadow: none; }
+
+.office-stats { grid-template-columns: repeat(4, 1fr); margin-top: 0; }
+
+.office-stats b { font-size: 30px; }
+
+.league-line { display: flex; justify-content: space-between; gap: 8px; padding: 3px 4px; font: 400 15px/1.1 var(--ui-sm); }
+
+.round-row { flex: none; display: grid; grid-template-columns: 1fr 50px 1fr; gap: 4px; align-items: center; font: 400 15px/1.1 var(--ui-sm); }
+
+.round-row b { font-weight: 400; text-align: center; }
+
+.round-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.round-row .right { text-align: right; }
+
+.train .tabs + .content { padding-top: 4px; }
+
+.result .confidence { padding: 3px 4px; }
+
+.card-stats.two { grid-template-columns: 1fr 1fr; }
+
+#townUi { position: absolute; inset: 0; pointer-events: none; }
+
+.town-bar { position: absolute; top: 0; left: 0; right: 0; zoom: var(--hud-zoom, 1); display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; background: var(--ink); color: var(--paper); line-height: 1; }
+
+.town-bar .low { color: var(--bad); }
+
+.town-chip {
+  position: absolute;
+  zoom: var(--hud-zoom, 1);
+  transform: translate(-50%, -100%);
+  min-height: 26px;
+  padding: 2px 6px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.town-chip:active { transform: translate(-50%, -100%) translate(1px, 1px); }
+
+.town-chip:disabled { opacity: 1; background: var(--paper-3); color: var(--muted); }
+
+.staff-note b { font-weight: 400; color: var(--ball); }
+
+/* No telemóvel, o painel da cidade é baixo e o próximo jogo cabe numa linha. */
+#game:not(.landscape) .city .versus { display: none; }
+
+#game:not(.landscape) .city { justify-content: flex-start; padding: 6px 8px; gap: 4px; }
+
+#game:not(.landscape) .city > .club-menu button { min-height: 36px; }
+
+#game:not(.landscape) .city > button.primary { min-height: 38px; }

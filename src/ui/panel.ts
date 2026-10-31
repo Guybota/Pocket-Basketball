@@ -1,9 +1,9 @@
 import type { Body, MatchState, TeamLine } from '../sim/match.ts';
 import type { CardId } from '../sim/training.ts';
-import { gradeOf, type Attributes, type Position } from '../sim/types.ts';
+import { gradeOf, type Attributes, type Player, type Position } from '../sim/types.ts';
 import { BUILD_NAMES } from './art/body.ts';
 import { portraitImage } from './art/portrait.ts';
-import { faceImage } from './art/sprites.ts';
+import { faceImage, type Look } from './art/sprites.ts';
 import { foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
 import type { MatchView } from './match-view.ts';
@@ -109,34 +109,38 @@ export function playerCardLive(b: Body): string {
     <div class="card-stats">${stats.map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>`;
 }
 
-/** A ficha de jogador: o retrato grande, as notas e o que fez neste jogo. */
-export function playerCard(view: MatchView, b: Body): string {
-  const { s } = view;
-  const team = b.team;
+/** O que não muda durante um jogo: retrato, medidas, notas e o que o jogador sabe fazer. */
+export function playerSheet(player: Player, look: Look, team: 0 | 1, number: number, clubName: string, side: string): string {
   const attributes = ATTRIBUTE_LABELS.map(([key, label]) => {
-    const value = b.player.attributes[key];
+    const value = player.attributes[key];
     const grade = gradeOf(value);
     return `<div class="attr"><span>${label}</span><span class="attr-bar"><i class="grade-${grade}" style="width:${value}%"></i></span><b class="grade grade-${grade}">${grade}</b></div>`;
   }).join('');
-  const number = s.teams[team].roster.indexOf(b.player) + 4;
-  const look = view.lookFor(b);
-  const moves = b.player.moves.length > 0
-    ? b.player.moves.map(move => `<div class="move"><b>${MOVE_INFO[move].name}</b><span>${MOVE_INFO[move].description}</span></div>`).join('')
+  const moves = player.moves.length > 0
+    ? player.moves.map(move => `<div class="move"><b>${MOVE_INFO[move].name}</b><span>${MOVE_INFO[move].description}</span></div>`).join('')
     : '<p class="no-moves">Ainda sem movimentos especiais.</p>';
-  return `<div class="card" data-card-body="${s.bodies.indexOf(b)}">
-    <div class="card-head team-${team}"><span class="shirt">${number}</span><b>${escapeHtml(b.player.name)}</b><span class="card-pos">${POSITION_NAMES[b.player.position]}</span></div>
+  return `<div class="card-head team-${team}"><span class="shirt">${number}</span><b>${escapeHtml(player.name)}</b><span class="card-pos">${POSITION_NAMES[player.position]}</span></div>
     <div class="card-body">
-      <img class="portrait team-${team}" alt="Retrato de ${escapeHtml(b.player.name)}" src="${portraitImage(view.lookFor(b))}">
+      <img class="portrait team-${team}" alt="Retrato de ${escapeHtml(player.name)}" src="${portraitImage(look)}">
       <div class="card-side">
-        <span class="card-club">${escapeHtml(s.teams[team].name)}</span>
-        <span class="card-body-info">${b.player.heightCm} cm · ${b.player.weightKg} kg · ${BUILD_NAMES[look.build]}</span>
-        <div class="card-live" id="cardLive">${playerCardLive(b)}</div>
+        <span class="card-club">${escapeHtml(clubName)}</span>
+        <span class="card-body-info">${player.heightCm} cm · ${player.weightKg} kg · ${BUILD_NAMES[look.build]}</span>
+        ${side}
       </div>
     </div>
     <div class="attrs">${attributes}</div>
-    <div class="moves"><span class="moves-title">Com bola</span><div class="move"><b>${ON_BALL_INFO[b.player.onBall].name}</b><span>${ON_BALL_INFO[b.player.onBall].description}</span></div></div>
-    <div class="moves"><span class="moves-title">Sem bola</span><div class="move"><b>${OFF_BALL_INFO[b.player.offBall].name}</b><span>${OFF_BALL_INFO[b.player.offBall].description}</span></div></div>
-    <div class="moves"><span class="moves-title">Movimentos especiais</span>${moves}</div>
+    <div class="moves"><span class="moves-title">Com bola</span><div class="move"><b>${ON_BALL_INFO[player.onBall].name}</b><span>${ON_BALL_INFO[player.onBall].description}</span></div></div>
+    <div class="moves"><span class="moves-title">Sem bola</span><div class="move"><b>${OFF_BALL_INFO[player.offBall].name}</b><span>${OFF_BALL_INFO[player.offBall].description}</span></div></div>
+    <div class="moves"><span class="moves-title">Movimentos especiais</span>${moves}</div>`;
+}
+
+/** A ficha de jogador durante um jogo: a ficha normal e o que fez até agora. */
+export function playerCard(view: MatchView, b: Body): string {
+  const { s } = view;
+  const number = s.teams[b.team].roster.indexOf(b.player) + 4;
+  const live = `<div class="card-live" id="cardLive">${playerCardLive(b)}</div>`;
+  return `<div class="card" data-card-body="${s.bodies.indexOf(b)}">
+    ${playerSheet(b.player, view.lookFor(b), b.team, number, s.teams[b.team].name, live)}
     <div class="card-nav">
       <button type="button" data-card="prev" aria-label="Jogador anterior">‹</button>
       <button type="button" data-card="close">Fechar</button>
@@ -186,7 +190,7 @@ export function panelContent(view: MatchView, tab: PanelTab, found: readonly Car
   }
 }
 
-export function resultScreen(view: MatchView, cards: readonly CardId[]): string {
+export function resultScreen(view: MatchView, cards: readonly CardId[], league: string): string {
   const { s } = view;
   const winner: 0 | 1 = s.score[0] > s.score[1] ? 0 : 1;
   const top = s.bodies
@@ -196,6 +200,7 @@ export function resultScreen(view: MatchView, cards: readonly CardId[]): string 
   return `<div class="result">
     <div class="final-score">${crest(s, 0)}<b>${s.score[0]}</b><span>-</span><b>${s.score[1]}</b>${crest(s, 1)}</div>
     <div class="winner">Ganha ${escapeHtml(s.teams[winner].name)}</div>
+    ${league}
     <div class="section-head plain"><span>Cartas ganhas</span><span>${cards.length}</span></div>
     ${foundCards(cards)}
     ${periodTable(view)}

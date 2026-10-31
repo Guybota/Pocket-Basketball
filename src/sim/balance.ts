@@ -188,4 +188,24 @@ export const BALANCE = {
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,
+
+  // Treino: quanto mais alto o atributo, menos rende. Com 140, um atributo de 70 rende metade.
+  trainingHardCap: 140,
+
+  // Liga e confiança da direção. O original despede abaixo de 3%.
+  confidenceStart: 60,
+  confidenceFired: 3,
+  confidenceStep: 5,
+  confidenceGapWeight: 0.25,
+  confidenceMinStep: 2,
+  confidenceMaxStep: 9,
+  confidenceFriendlyFactor: 0.5,
+  confidenceChampion: 20,
+  confidencePromoted: 15,
+  confidenceRelegated: 15,
+  clubLevelSpread: 6,
+  clubLevelPull: 0.4,
+  clubLevelDrift: 1.5,
+  otherDivisionLuck: 6,
+  playerClubLevelOffset: -2,
 } as const;

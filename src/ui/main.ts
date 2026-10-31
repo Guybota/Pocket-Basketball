@@ -1,17 +1,19 @@
 import { matchHash } from '../sim/hash.ts';
 import { cancelSubstitution, queueSubstitution, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
-import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
+import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
-import { gradeOf, type Tactics } from '../sim/types.ts';
+import type { Tactics } from '../sim/types.ts';
 import { cardImage } from './art/cards.ts';
-import { THEMES } from './art/court.ts';
+import { lookOf } from './art/sprites.ts';
+import { drawTown, townPlaces } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { openTraining, tacticsControls } from './club-screens.ts';
-import { clubTeam, finishMatch, newClub, opponentOf, parseClub, totalCards, weekSeed, type ClubState } from './club.ts';
+import { clubTeam, currentFixture, finishMatch, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, openFederation, openOffice, openSquad, seasonReportHtml, townOverlay, type ScreenHost } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
-import { crest, escapeHtml, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
+import { escapeHtml, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
 
 const TICKS_PER_SECOND = 20;
 const MAX_STEPS_PER_FRAME = 40;
@@ -22,6 +24,10 @@ const LANDSCAPE_MIN_RATIO = 1.2;
 const LANDSCAPE_PANEL_WIDTH = 320;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
+// A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
+const LANDSCAPE_TOWN_HEIGHT = 360;
+// O que fica por baixo do mapa, no telemóvel: a secretária, o próximo jogo e dois botões.
+const CITY_PANEL_HEIGHT = 186;
 const SAVE_KEY = 'pocket-basketball-clube';
 const DROP_TICKS = 50;
 
@@ -42,9 +48,12 @@ const paramInt = (name: string): number | null => {
 };
 
 const testSeed = paramInt('semente');
-// A divisão escolhida para o próximo clube. A do clube atual está no clube.
-let division = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisao') ?? 0));
+// Só para a verificação automática poder ver os outros pavilhões. Um clube a sério começa sempre na última divisão.
+const testDivision = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisao') ?? 0));
 let club: ClubState | null = null;
+let inTown = true;
+let townClock: number | null = null;
+let cityHome = false;
 let saveFailed = false;
 let saveUnreadable = false;
 let view: MatchView | undefined;
@@ -71,6 +80,11 @@ let tacticsOpen = false;
 let timeoutHandled = false;
 const soundsPlayed = new Set<Sound>();
 const announced = new Set<string>();
+
+const townUi = document.createElement('div');
+townUi.id = 'townUi';
+townUi.hidden = true;
+screen_.append(townUi);
 
 const drop = document.createElement('div');
 drop.id = 'drop';
@@ -121,7 +135,9 @@ function fit(): void {
     const panelWidth = LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
-    const scale = Math.ceil((innerHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
+    const scale = inTown
+      ? Math.max(1, Math.floor((innerHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
+      : Math.ceil((innerHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = Math.ceil(stageWidth / scale);
     const height = Math.ceil(innerHeight / scale);
     setCanvasSize(width, height, width * scale, height * scale);
@@ -137,16 +153,54 @@ function fit(): void {
     const available = Math.min(innerWidth / 360, innerHeight / 640);
     const scale = Math.max(1, Math.floor(available * dpr)) / dpr;
     const finalScale = Math.min(scale, Math.max(available, 0.5));
-    setCanvasSize(360, 216, 360, 216);
+    const gameHeight = Math.max(640, innerHeight / finalScale);
+    // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
+    const stageHeight = cityHome ? Math.floor(gameHeight - CITY_PANEL_HEIGHT) : 216;
+    setCanvasSize(360, stageHeight, 360, stageHeight);
     game.style.zoom = String(finalScale);
-    game.style.height = `${Math.max(640, innerHeight / finalScale)}px`;
+    game.style.height = `${gameHeight}px`;
     screen_.style.width = '360px';
-    screen_.style.height = '216px';
+    screen_.style.height = `${stageHeight}px`;
     panel.style.zoom = '';
     panel.style.width = '';
     panel.style.height = '';
     screen_.style.setProperty('--hud-zoom', '1');
   }
+  if (cityHome && club) placeTownUi();
+}
+
+/** Muda de modo e volta a medir: a cidade e o campo usam tamanhos diferentes. */
+function setStage(town: boolean, home: boolean): void {
+  inTown = town;
+  cityHome = home;
+  game.classList.toggle('city-home', home);
+  townUi.hidden = !home;
+  fit();
+}
+
+function placeTownUi(): void {
+  const current = club!;
+  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height, current.division));
+  const note = (text: string): void => {
+    const box = document.getElementById('staffNote');
+    if (box) box.innerHTML = `<b>Secretária:</b> ${escapeHtml(text)}`;
+  };
+  element('arenaChip').addEventListener('click', startMatch);
+  element('towerChip').addEventListener('click', () => note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página.' : TOWER_NOTE));
+  element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
+  element('federationBtn').addEventListener('click', () => {
+    setStage(true, false);
+    openFederation(screenHost());
+  });
+  element('officeBtn').addEventListener('click', () => {
+    setStage(true, false);
+    openOffice(screenHost(), showResetConfirm);
+  });
+  element('trainBtn').addEventListener('click', () => {
+    audio.unlock();
+    setStage(true, false);
+    openTraining({ ...screenHost(), sound: name => audio.play(name) });
+  });
 }
 
 function announce(message: string): void {
@@ -177,7 +231,7 @@ function makeView(): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  });
+  }, [true, false], visitorOf(current));
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -225,78 +279,86 @@ const ballLogo = (): string => {
   return c.toDataURL();
 };
 
-/** Sem clube guardado, começa-se por escolher onde jogar. */
+/** Sem clube, ou depois de um despedimento, começa-se um novo. Toda a gente começa pela última divisão. */
 function showNewClub(): void {
+  setStage(true, false);
   panel.innerHTML = `<div class="start">
     <h1><img src="${ballLogo()}" alt=""><span>Pocket<br>Basketball</span></h1>
     ${saveUnreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
-    <div class="choice" role="group" aria-label="Divisão">
-      ${DIVISIONS.map((d, i) => `<button type="button" data-division="${i}" aria-pressed="${i === division}"><i style="background:${THEMES[i]!.swatch}"></i><b>${d.name}</b><span>${THEMES[i]!.note}</span></button>`).join('')}
-    </div>
     <button type="button" class="primary" id="newClubBtn">Criar clube</button>
-    ${club ? '<button type="button" class="quiet" id="newClubBack">Voltar ao meu clube</button>' : ''}
-    <p class="hint">Treinas a equipa entre jogos. Os jogos correm sozinhos.</p>
+    ${club && !club.fired ? '<button type="button" class="quiet" id="newClubBack">Voltar ao meu clube</button>' : ''}
+    <p class="hint">Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.</p>
   </div>`;
   document.getElementById('newClubBack')?.addEventListener('click', showClub);
-  panel.querySelectorAll<HTMLButtonElement>('[data-division]').forEach(button => {
-    button.addEventListener('click', () => {
-      division = Number(button.dataset.division);
-      showNewClub();
-    });
-  });
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
-    club = newClub(newSeed(), division);
+    club = newClub(newSeed());
     saveUnreadable = false;
     saveClub();
     showClub();
   });
 }
 
+const screenHost = (): ScreenHost => ({
+  panel,
+  club: () => club!,
+  setClub: updated => {
+    club = updated;
+    saveClub();
+  },
+  back: showClub,
+});
+
+/** A cidade é o menu principal. Se houver um balanço por ver ou um despedimento, vem primeiro. */
 function showClub(): void {
+  const current = club!;
+  if (current.fired && !current.seasonReport) {
+    showFired();
+    return;
+  }
+  if (current.seasonReport) {
+    showSeasonReport();
+    return;
+  }
   started = false;
   paused = false;
   makeView();
-  const current = club!;
-  const { s } = view!;
-  const card = (team: 0 | 1): string => `<div class="team-card">
-    ${crest(s, team)}
-    <b>${escapeHtml(s.teams[team].name)}</b>
-    <span>Nível ${gradeOf(teamRating(s.teams[team]))}</span>
-  </div>`;
-  const cards = totalCards(current);
-  panel.innerHTML = `<div class="start">
-    <div class="club-week"><b>Semana ${current.week}</b><span>${DIVISIONS[current.division]!.name} · ${current.wins} V · ${current.losses} D</span></div>
-    <div class="versus">${card(0)}<span class="vs">contra</span>${card(1)}</div>
-    <div class="club-menu">
-      <button type="button" id="trainBtn" ${current.trainedThisWeek || cards === 0 ? 'disabled' : ''}>${current.trainedThisWeek ? 'Treino feito' : `Treino (${cards} ${cards === 1 ? 'carta' : 'cartas'})`}</button>
-      <button type="button" id="tacticsBtn">Táticas</button>
-    </div>
-    <button type="button" class="primary" id="startBtn">Jogar</button>
-    <p class="hint">${saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página.' : 'O jogo tem 4 períodos de 2 minutos e corre sozinho.'}</p>
-    <button type="button" class="quiet" id="resetBtn">Novo clube</button>
-  </div>`;
+  panel.innerHTML = cityPanel(current, saveFailed);
+  setStage(true, true);
   element('startBtn').addEventListener('click', startMatch);
-  element('tacticsBtn').addEventListener('click', showTactics);
-  element('trainBtn').addEventListener('click', () => {
-    audio.unlock();
-    openTraining({
-      panel,
-      club: () => club!,
-      setClub: updated => {
-        club = updated;
-        saveClub();
-      },
-      back: showClub,
-      sound: name => audio.play(name),
-    });
+  document.getElementById('skipWeekBtn')?.addEventListener('click', () => {
+    club = skipWeek(club!);
+    saveClub();
+    showClub();
   });
-  element('resetBtn').addEventListener('click', showResetConfirm);
+  element('tacticsBtn').addEventListener('click', showTactics);
+  element('squadBtn').addEventListener('click', () => {
+    setStage(true, false);
+    openSquad(screenHost());
+  });
+}
+
+function showSeasonReport(): void {
+  const current = club!;
+  setStage(true, false);
+  panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
+  element('seasonContinue').addEventListener('click', () => {
+    club = { ...club!, seasonReport: null };
+    saveClub();
+    showClub();
+  });
+}
+
+function showFired(): void {
+  setStage(true, false);
+  panel.innerHTML = firedHtml(club!);
+  element('firedNewClub').addEventListener('click', showNewClub);
 }
 
 /** Apagar um clube não se desfaz, por isso pergunta-se sempre. */
 function showResetConfirm(): void {
   const { team, week } = club!;
+  setStage(true, false);
   panel.innerHTML = `<div class="start">
     <div class="club-week"><b>Começar de novo?</b><span>Perdes o ${escapeHtml(team.name)}, na semana ${week}, assim que criares o novo clube.</span></div>
     <button type="button" class="primary" id="resetNo">Ficar com este clube</button>
@@ -307,6 +369,7 @@ function showResetConfirm(): void {
 }
 
 function showTactics(): void {
+  setStage(true, false);
   panel.innerHTML = `<div class="train">
     <div class="train-title"><b>Táticas</b><span>${escapeHtml(club!.team.name)}</span></div>
     <div class="content">${tacticsControls(club!.tactics)}</div>
@@ -508,6 +571,7 @@ function showMatch(): void {
 function startMatch(): void {
   audio.unlock();
   started = true;
+  setStage(false, false);
   showMatch();
 }
 
@@ -516,7 +580,7 @@ function showResult(): void {
   const result = finishMatch(club!, view!.s, found);
   club = result.club;
   saveClub();
-  panel.innerHTML = `${resultScreen(view!, result.cards)}
+  panel.innerHTML = `${resultScreen(view!, result.cards, matchLeagueSummary(result))}
     <div class="end-actions">
       <button type="button" class="primary" id="againBtn">Continuar</button>
     </div>`;
@@ -584,8 +648,13 @@ function frame(now: number): void {
   if (!banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
   if (!drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();
-  current.render(Math.min(1, accumulator), simSeconds);
-  updateHud();
+  hud.hidden = inTown;
+  if (inTown) {
+    drawTown(context, canvas.width, canvas.height, club?.division ?? 0, current.s.bodies.filter(b => b.team === 0).slice(0, 5).map(b => lookOf(b.player, 'blue')), townClock ?? now);
+  } else {
+    current.render(Math.min(1, accumulator), simSeconds);
+    updateHud();
+  }
   renderMs += performance.now() - start;
   renderCount++;
   if (started && !finished && now - lastPanelUpdate > 250) {
@@ -597,12 +666,14 @@ function frame(now: number): void {
 
 addEventListener('resize', fit);
 fit();
-club = testSeed !== null ? newClub(testSeed, division) : loadClub();
+club = testSeed !== null ? newClub(testSeed, testDivision) : loadClub();
 if (club) {
+  // Os ecrãs de fim de época e de despedimento não criam vista, mas a cidade atrás deles precisa dela.
+  makeView();
   showClub();
 } else {
-  // Atrás do ecrã de escolha já se vê um pavilhão.
-  club = newClub(newSeed(), division);
+  // Mesmo sem clube é preciso uma vista, porque a cidade passeia uma equipa.
+  club = newClub(newSeed());
   makeView();
   club = null;
   showNewClub();
@@ -617,14 +688,43 @@ Object.assign(window, {
   __pocket: {
     hashFor: (s: number, d: number) => {
       const c = newClub(s, d);
-      return matchHash(simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false]));
+      return matchHash(simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)));
     },
     club: () => club,
     found: () => [...found],
+    /** Para a cidade num instante, para a verificação a poder fotografar. */
+    setTownClock: (value: number | null) => {
+      townClock = value;
+    },
+    /** Joga semanas sem as mostrar, para a verificação chegar depressa ao fim da época. */
+    fastForward: (weeks: number) => {
+      for (let i = 0; i < weeks && club && !club.seasonReport && !club.fired; i++) {
+        if (currentFixture(club)) {
+          const c = club;
+          club = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []).club;
+        } else {
+          club = skipWeek(club);
+        }
+      }
+      saveClub();
+      showClub();
+    },
+    fire: () => {
+      club = { ...club!, fired: true };
+      saveClub();
+      showClub();
+    },
+    /** Quanto demora a simular os outros 4 jogos de uma jornada. */
+    timeOtherGames: () => {
+      const c = club!;
+      const start = performance.now();
+      for (let i = 0; i < 4; i++) simulateMatch(opponentOf(c), opponentOf({ ...c, week: c.week + 1 }), i + 1);
+      return performance.now() - start;
+    },
     /** O jogo que está a decorrer, reproduzido só com a semente, as equipas e as decisões do treinador. */
     replayMatchesCurrent: () => {
       const { s } = view!;
-      return matchHash(replayMatch(s.teams[0], s.teams[1], s.seed, s.controlled, s.commands)) === matchHash(s);
+      return matchHash(replayMatch(s.teams[0], s.teams[1], s.seed, s.controlled, s.commands, s.visitor)) === matchHash(s);
     },
     soundsPlayed: () => [...soundsPlayed],
     /** Toca todos os sons, para confirmar que nenhum dá erro. */

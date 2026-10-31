@@ -140,8 +140,8 @@ Ordem pensada para testar primeiro o maior risco: **ver um jogo tem de ser diver
 | **0. Simulação sem ecrã** | 5 contra 5 em texto; simula 1000 jogos | Resultados de 35-50 pontos; a equipa melhor ganha cerca de 70% | 3-4 semanas |
 | **1. Jogo visível** | Campo, sprites, marcador, ×1/×2/×4 | **3 pessoas veem um jogo inteiro sem pedir para saltar** | 4-6 semanas |
 | **2. Ciclo central** | Cartas nos jogos, treino, 3 espaços, 20 cartas, 30 combos, atributos, táticas | Quem vê o jogo nota a diferença entre um jogador treinado e o mesmo por treinar | 6-8 semanas |
-| **3. Uma época completa** | Cidade, calendário, 1 liga, plantel, confiança, despedimento, gravar | Alguém joga uma época inteira e quer outra | 6-8 semanas |
-| **4. Carreira** | 4 divisões, 3 taças, transferências, contratos, 12 tipos, descontos de tempo | Triplete possível em 8-12 épocas | 8-10 semanas |
+| **3. Uma época completa** | Cidade, calendário, liga, 4 divisões com subidas e descidas, plantel, confiança, despedimento, gravar | Alguém joga uma época inteira e quer outra | 6-8 semanas |
+| **4. Carreira** | 3 taças, transferências, contratos, envelhecer, 12 tipos | Triplete possível em 8-12 épocas | 8-10 semanas |
 | **5. Conteúdo e polimento** | 32 cartas, 130 combos, som, tutorial, repetições, videoteca | Teste com 10 pessoas sem ajuda | 8-12 semanas |
 | **6. Online assíncrono** | Enviar equipas, ranking, Match ID, mercado | Rankings estáveis | 4-6 semanas |
 
@@ -181,18 +181,49 @@ Medições com um treinador automático simples, 60 clubes de 30 semanas na Liga
 
 | Medida | Resultado |
 |---|---|
-| Contra a mesma equipa sem treino, depois de 5 semanas | Ganha 66,9% (480 jogos) |
-| Contra a mesma equipa sem treino, depois de 10 semanas | Ganha 81,0% (480 jogos) |
-| Contra a mesma equipa sem treino, depois de 20 semanas | Ganha 94,8% (480 jogos) |
+| Contra a mesma equipa sem treino, depois de 5 semanas | Ganha 55,6% (480 jogos) |
+| Contra a mesma equipa sem treino, depois de 10 semanas | Ganha 69,0% (480 jogos) |
+| Contra a mesma equipa sem treino, depois de 20 semanas | Ganha 83,1% (480 jogos) |
 | Cartas ganhas por jogo | Cerca de 8 |
-| Combos descobertos ao fim de 29 semanas | Cerca de 19 em 30 |
-| Vitórias na liga | 53% na semana 1, 72% na semana 9, 98% na semana 29 |
+| Combos descobertos ao fim de 29 semanas | Cerca de 18 em 30 |
+
+Estes números já incluem a regra da Fase 3 que torna o treino menos rentável quanto mais alto está o atributo.
 
 **Falta o critério da fase:** alguém ver um jogo e notar a diferença entre o jogador treinado e o mesmo por treinar. Os números acima dizem que o treino pesa no resultado, mas não que se vê.
 
-**Limite conhecido:** os adversários não melhoram. Sem subidas de divisão, ao fim de cerca de 20 semanas o clube é demasiado forte para a sua liga. Resolve-se na Fase 3, com a liga e as subidas: as divisões estão a 11 pontos de nível, e o clube sobe cerca de 0,6 por semana.
-
 **Uma simplificação:** abandonar um jogo a meio não custa nada, porque só o fim do jogo é guardado. A semana repete-se com a mesma semente.
+
+### Estado da Fase 3: construída, à espera de alguém a jogar
+
+**O que existe:**
+
+- **Liga:** 40 clubes em 4 divisões de 10. Cada época tem 18 jornadas, em casa e fora, e uma semana livre, com um particular opcional. Os outros jogos da jornada são simulados a sério.
+- **Subidas e descidas:** os 2 primeiros sobem e os 2 últimos descem. Toda a gente começa na Liga Iniciados. Esta parte estava planeada para a Fase 4 e veio para aqui por decisão do dono do projeto, porque sem ela o clube ficava forte demais para a liga.
+- **Confiança:** começa em 60%. Sobe e desce com os resultados, conta mais contra quem é melhor e metade num particular. Abaixo de 3% há despedimento, e a carreira neste clube acaba.
+- **Casa e fora:** contam na simulação, pela Vontade.
+- **Plantel:** tocar em dois jogadores troca-os, e os cinco primeiros são os titulares. A ficha mostra a época de cada um.
+- **Cidade:** isométrica, como no estudo visual. Os edifícios têm etiquetas tocáveis: Pavilhão, Escritório, Treino, Federação, Torre e Aeroporto. O pavilhão cresce a cada divisão.
+- **Clubes antigos:** um clube guardado na Fase 2 entra numa liga nova, com tudo o que tinha treinado.
+
+**Medições com o treinador automático da Fase 2, sem qualquer tática:**
+
+| Medida | Resultado |
+|---|---|
+| Lugar médio por época | 4,9 na 1.ª, 2,7 na 2.ª, depois entre 1,3 e 2,4 enquanto sobe |
+| Chegada à Pro Liga 1 | Época 5 para 6 em 9 clubes, época 6 para os 9 (10 carreiras, um despedido antes) |
+| Depois de chegar | Acaba sempre em 1.º a partir da época 7 |
+| Despedido, com treino | 2 em 30, ambos na época 2 |
+| Despedido, sem treino | 4 em 30 em 3 épocas; 7 em 10 em 10 épocas, medido com a confiança inicial de 50% |
+| Sem treino, a subir | Quase nunca sai da última divisão |
+
+**Falta o critério da fase:** alguém jogar uma época inteira e querer outra. Uma época tem 18 jogos, o que dá cerca de 2 horas e meia a velocidade ×1. Só uma pessoa pode dizer se isso cansa.
+
+**Limites conhecidos:**
+
+- A partir da época 7, a Pro Liga 1 deixa de ter desafio. Resolve-se na Fase 4, com as taças, o envelhecimento e as transferências.
+- Um treinador razoável ainda pode ser despedido na época 2, em cerca de 7% das carreiras simuladas. Pode ser demasiado duro, e só jogando se percebe.
+- A Torre e o Aeroporto só respondem pela secretária: o clube guarda-se sozinho, e o jogo online é da Fase 6.
+- Lesões, orçamento e o nome do clube à escolha ficam para mais tarde.
 
 ## 7A. Decisões durante o jogo
 

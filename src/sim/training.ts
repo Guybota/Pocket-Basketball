@@ -1,3 +1,4 @@
+import { BALANCE as B } from './balance.ts';
 import { between, chance, makeRng, next, type Rng } from './rng.ts';
 import type { MatchEvent, TeamIndex } from './match.ts';
 import { ATTRIBUTE_KEYS, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Player } from './types.ts';
@@ -96,6 +97,9 @@ export function trainingFactor(potential: number, fatigue: number): number {
   return (0.6 + (potential / 100) * 0.8) * (1 - fatigue * 0.5);
 }
 
+/** Subir é mais difícil quanto mais alto já se está, para o clube não chegar ao topo em poucas épocas. */
+const attributeFactor = (value: number): number => Math.max(0.1, 1 - value / B.trainingHardCap);
+
 /** O maior combo contido nas cartas escolhidas. Só conta um por semana. */
 export function comboFor(cards: readonly CardId[]): Combo | null {
   let best: Combo | null = null;
@@ -133,7 +137,7 @@ export function trainPlayer(player: Player, cards: readonly CardId[]): TrainingR
     const value = raw[key] ?? 0;
     if (value === 0) continue;
     // Um combo mau tira sempre o mesmo: o potencial não torna o erro pior.
-    const scaled = value > 0 ? value * factor : value;
+    const scaled = value > 0 ? value * factor * attributeFactor(attributes[key]) : value;
     const updated = Math.max(ATTRIBUTE_MIN, Math.min(ATTRIBUTE_MAX, Math.round((attributes[key] + scaled) * 10) / 10));
     gains[key] = Math.round((updated - attributes[key]) * 10) / 10;
     attributes[key] = updated;
@@ -177,7 +181,7 @@ export function previewGains(player: Player, cards: readonly CardId[], knownComb
   for (const card of cards) {
     for (const key of ATTRIBUTE_KEYS) {
       const value = (CARDS[card].gains as Gains)[key];
-      if (value) gains[key] = Math.round(((gains[key] ?? 0) + value * factor) * 10) / 10;
+      if (value) gains[key] = Math.round(((gains[key] ?? 0) + value * factor * attributeFactor(player.attributes[key])) * 10) / 10;
     }
   }
   return gains;
@@ -187,7 +191,7 @@ export function previewGains(player: Player, cards: readonly CardId[], knownComb
 export function independentPractice(player: Player, rng: Rng): Player {
   if (!chance(rng, 0.5)) return player;
   const key = ATTRIBUTE_KEYS[Math.floor(next(rng) * ATTRIBUTE_KEYS.length)]!;
-  const value = Math.round((player.attributes[key] + between(rng, 0.2, 1) * trainingFactor(player.potential, player.fatigue)) * 10) / 10;
+  const value = Math.round((player.attributes[key] + between(rng, 0.2, 1) * trainingFactor(player.potential, player.fatigue) * attributeFactor(player.attributes[key])) * 10) / 10;
   return { ...player, attributes: { ...player.attributes, [key]: Math.min(ATTRIBUTE_MAX, value) } };
 }
 

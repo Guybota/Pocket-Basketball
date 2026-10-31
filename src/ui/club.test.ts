@@ -4,7 +4,11 @@ import { generateTeam } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, comboFor, cardFromEvent, endOfMatchCards, independentPractice, previewGains, trainPlayer, trainingFactor, type CardId } from '../sim/training.ts';
 import { makeRng } from '../sim/rng.ts';
 import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/types.ts';
-import { cardsLeft, clubTeam, finishMatch, newClub, opponentOf, parseClub, runTraining, totalCards, weekSeed, type ClubState } from './club.ts';
+import { BALANCE as B } from '../sim/balance.ts';
+import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
+import { DIVISIONS } from '../sim/teamgen.ts';
+import { PLAYER_CLUB, aiTeam, cardsLeft, clubTeam, currentFixture, finishMatch, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, runTraining, skipWeek, swapPlayers, totalCards, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { CLUB_NAMES, shortName } from './setup.ts';
 
 const base = generateTeam(1, 'A', 50).roster[0]!;
 
@@ -69,6 +73,13 @@ describe('treino', () => {
     expect(gain(60, 0)).toBeGreaterThan(gain(60, 0.8));
     expect(trainingFactor(100, 0)).toBeCloseTo(1.4);
     expect(trainingFactor(0, 0)).toBeCloseTo(0.6);
+  });
+
+  it('quanto mais alto o atributo, menos rende', () => {
+    const at = (shooting: number): number => trainPlayer({ ...base, attributes: { ...base.attributes, shooting } }, ['shooting']).gains.shooting!;
+    expect(at(30)).toBeGreaterThan(at(60));
+    expect(at(60)).toBeGreaterThan(at(90));
+    expect(at(90)).toBeGreaterThan(0);
   });
 
   it('recusa mais de 3 cartas e cartas repetidas', () => {
@@ -272,5 +283,157 @@ describe('critério da Fase 2', () => {
     const rate = wins / N;
     expect(rate).toBeGreaterThan(0.6);
     expect(rate).toBeLessThan(0.95);
+  });
+});
+
+describe('época', () => {
+  const week = (c: ClubState): ClubState => currentFixture(c)
+    ? finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []).club
+    : skipWeek(c);
+  const season = (c: ClubState): ClubState => {
+    let current = c;
+    for (let i = 0; i < SEASON_WEEKS; i++) current = week(current);
+    return current;
+  };
+
+  it('os nomes dos clubes chegam para as 4 divisões, com abreviaturas diferentes', () => {
+    expect(CLUB_NAMES.length).toBeGreaterThan(DIVISIONS.length * LEAGUE_SIZE);
+    expect(new Set(CLUB_NAMES.map(shortName)).size).toBe(CLUB_NAMES.length);
+  });
+
+  it('há 40 clubes diferentes, com o nosso na última divisão', () => {
+    const c = newClub(5);
+    expect(c.divisions.flat().sort((a, b) => a - b)).toEqual(Array.from({ length: 40 }, (_, i) => i));
+    expect(new Set(c.clubs.map(club => club.name)).size).toBe(40);
+    expect(c.divisions[0]).toContain(PLAYER_CLUB);
+    expect(c.division).toBe(0);
+  });
+
+  it('o adversário vem do calendário, e o nosso jogo fica lá escrito com a jornada inteira', () => {
+    const c = newClub(11);
+    const fixture = currentFixture(c)!;
+    expect([fixture.home, fixture.away]).toContain(opponentId(c));
+    const result = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []);
+    expect(result.round).toHaveLength(LEAGUE_SIZE / 2);
+    expect(result.round!.every(f => f.score !== null)).toBe(true);
+    expect(leagueTable(result.club).filter(row => row.played === 1)).toHaveLength(LEAGUE_SIZE);
+    const own = leagueTable(result.club).find(row => row.club === PLAYER_CLUB)!;
+    expect(own.pointsFor).toBe(result.club.wins === 1 ? Math.max(own.pointsFor, own.pointsAgainst) : Math.min(own.pointsFor, own.pointsAgainst));
+  });
+
+  it('os resultados dos outros jogos repetem-se com o mesmo clube', () => {
+    const play = (): unknown => finishMatch(newClub(13), simulateMatch(clubTeam(newClub(13)), opponentOf(newClub(13)), 1), []).round;
+    expect(play()).toEqual(play());
+  });
+
+  it('a Vontade conta para quem joga fora, seja que equipa for', () => {
+    const c = newClub(17);
+    const away = (visitor: 0 | 1): number[] => simulateMatch(clubTeam(c), opponentOf(c), 3, [true, false], visitor).score;
+    expect(away(0)).not.toEqual(away(1));
+    expect(simulateMatch(clubTeam(c), opponentOf(c), 3, [true, false], 0).visitor).toBe(0);
+  });
+
+  it('a semana livre tem particular, não conta para a liga, e pode-se saltar', () => {
+    let c = newClub(19);
+    for (let i = 1; i < 10; i++) c = week(c);
+    expect(c.week).toBe(10);
+    expect(currentFixture(c)).toBeNull();
+    const before = leagueTable(c);
+    const friendly = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), 7), []);
+    expect(friendly.round).toBeNull();
+    expect(friendly.club.week).toBe(11);
+    expect(leagueTable(friendly.club)).toEqual(before);
+    expect(skipWeek(c).week).toBe(11);
+  });
+
+  it('não se pode saltar uma jornada', () => {
+    expect(() => skipWeek(newClub(1))).toThrow();
+  });
+
+  it('uma época inteira acaba com tudo jogado, balanço e calendário novo', () => {
+    const start = newClub(23);
+    const after = season(start);
+    const record = after.seasonReport!;
+    expect(after.season).toBe(2);
+    expect(after.week).toBe(1);
+    expect(after.history).toHaveLength(1);
+    expect(record.table.every(row => row.played === (LEAGUE_SIZE - 1) * 2)).toBe(true);
+    expect(record.wins + record.losses).toBe((LEAGUE_SIZE - 1) * 2);
+    expect(record.cards.length).toBeGreaterThan(0);
+    expect(after.rounds.flat().every(f => f.score === null)).toBe(true);
+    expect(after.divisions.map(ids => ids.length)).toEqual([10, 10, 10, 10]);
+    expect(new Set(after.divisions.flat()).size).toBe(40);
+    expect(Object.keys(after.stats)).toHaveLength(0);
+    expect(record.topScorerPoints).toBeGreaterThan(0);
+    expect(parseClub(JSON.stringify(after))).toEqual(after);
+  });
+
+  it('quem acaba em cima sobe, e quem acaba em baixo desce', () => {
+    for (const seed of [31, 37, 41, 43, 47, 53]) {
+      const start = newClub(seed, 1);
+      const after = season(start);
+      const expected = { champion: 2, promoted: 2, stayed: 1, relegated: 0 }[after.seasonReport!.outcome];
+      expect(after.division, `semente ${seed}`).toBe(expected);
+      expect(after.divisions[expected]).toContain(PLAYER_CLUB);
+      expect(after.rounds.flat().every(f => after.divisions[expected]!.includes(f.home))).toBe(true);
+    }
+  });
+
+  it('perder muito leva ao despedimento, que fica guardado', () => {
+    let c = { ...newClub(59), confidence: 4 };
+    let loops = 0;
+    while (!c.fired && loops++ < 40) {
+      const s = simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c));
+      // Um jogo perdido, seja qual for o resultado verdadeiro.
+      s.score = [10, 60];
+      c = finishMatch(c, s, []).club;
+    }
+    expect(c.fired).toBe(true);
+    expect(c.confidence).toBeLessThan(B.confidenceFired);
+    expect(parseClub(JSON.stringify(c))?.fired).toBe(true);
+  });
+
+  it('trocar jogadores muda quem começa o jogo e guarda-se', () => {
+    const c = newClub(61);
+    const swapped = swapPlayers(c, 0, 7);
+    expect(swapped.team.roster[0]!.name).toBe(c.team.roster[7]!.name);
+    expect(swapped.team.roster[7]!.name).toBe(c.team.roster[0]!.name);
+    const s = simulateMatch(clubTeam(swapped), opponentOf(swapped), 1);
+    expect(s.bodies[0]!.player.name).toBe(c.team.roster[7]!.name);
+    expect(c.team.roster[0]!.name).not.toBe(swapped.team.roster[0]!.name);
+  });
+
+  it('as equipas dos outros clubes repetem-se e têm táticas válidas', () => {
+    const c = newClub(67);
+    const club = c.clubs[5]!;
+    expect(aiTeam(club)).toEqual(aiTeam({ ...club }));
+    validateTeam(aiTeam(club));
+  });
+
+  it('um clube guardado antes das épocas continua, com o que treinou', () => {
+    const { club: trained } = runTraining(newClub(71), { 0: ['shooting'] });
+    const old = {
+      version: 1, seed: trained.seed, division: 2, week: 7, wins: 4, losses: 2, team: trained.team, tactics: trained.tactics, cards: trained.cards, knownCombos: ['lazyWeekend'], trainedThisWeek: true,
+    };
+    const migrated = parseClub(JSON.stringify(old))!;
+    expect(migrated).not.toBeNull();
+    expect(migrated.version).toBe(2);
+    expect(migrated.week).toBe(1);
+    expect(migrated.season).toBe(1);
+    expect(migrated.wins).toBe(4);
+    expect(migrated.team).toEqual(trained.team);
+    expect(migrated.knownCombos).toEqual(['lazyWeekend']);
+    expect(migrated.divisions[2]).toContain(PLAYER_CLUB);
+    expect(new Set(migrated.clubs.map(club => club.name)).size).toBe(40);
+    expect(leaguePosition(migrated)).toBeGreaterThanOrEqual(0);
+    expect(parseClub(JSON.stringify(migrated))).toEqual(migrated);
+  });
+
+  it('não aceita uma liga estragada', () => {
+    const c = newClub(73);
+    expect(parseClub(JSON.stringify({ ...c, divisions: [[0]] }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, rounds: [[{ home: 99, away: 0, score: null }]] }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, week: 99 }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, confidence: 'muita' }))).toBeNull();
   });
 });

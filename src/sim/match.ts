@@ -140,6 +140,8 @@ export interface MatchState {
   /** Equipa dirigida por uma pessoa: não pede descontos sozinha. */
   controlled: [boolean, boolean];
   tactics: [Tactics, Tactics];
+  /** Quem joga fora, porque a Vontade conta mais longe de casa. */
+  visitor: TeamIndex;
   autoRotation: [boolean, boolean];
   timeoutsLeft: [number, number];
   pendingTimeout: [boolean, boolean];
@@ -254,7 +256,7 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
     pressure,
     fatigue: b.fatigue,
     clutch: s.period >= 4 && s.clock <= seconds(B.clutchSeconds),
-    away: b.team === 1,
+    away: b.team === s.visitor,
   });
   return { chance: probability, points: three ? 3 : 2, distance: dist };
 }
@@ -703,7 +705,7 @@ function decide(s: MatchState): void {
     pressure: drivePressure,
     fatigue: h.fatigue,
     clutch: false,
-    away: h.team === 1,
+    away: h.team === s.visitor,
   });
   const driveValue = dist > 2.5 && !s.driving ? driveChance * 2 : 0;
   const urgency = 1 + B.urgencyPerShotClock * (1 - shotSeconds / B.shotClockSeconds);
@@ -1078,7 +1080,7 @@ export function step(s: MatchState): void {
   if (s.clock === 0 && phase !== 'shot' && phase !== 'freeThrow' && phase !== 'timeout') endPeriod(s);
 }
 
-export function createMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean] = [false, false]): MatchState {
+export function createMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean] = [false, false], visitor: TeamIndex = 1): MatchState {
   validateTeam(home);
   validateTeam(away);
   const teams: [Team, Team] = [home, away];
@@ -1115,6 +1117,7 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
     teams,
     controlled,
     tactics: [{ ...(home.tactics ?? NEUTRAL_TACTICS) }, { ...(away.tactics ?? NEUTRAL_TACTICS) }],
+    visitor,
     autoRotation: [true, true],
     timeoutsLeft: [B.timeoutsPerHalf, B.timeoutsPerHalf],
     pendingTimeout: [false, false],
@@ -1153,8 +1156,8 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
 }
 
 /** Reproduz um jogo a partir da semente, das equipas e das decisões do treinador. */
-export function replayMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean], commands: readonly Command[]): MatchState {
-  const s = createMatch(home, away, seed, controlled);
+export function replayMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean], commands: readonly Command[], visitor: TeamIndex = 1): MatchState {
+  const s = createMatch(home, away, seed, controlled, visitor);
   let next = 0;
   const maxTicks = seconds(B.periodSeconds) * 200;
   while (s.phase !== 'end' && s.tick < maxTicks) {
@@ -1164,8 +1167,8 @@ export function replayMatch(home: Team, away: Team, seed: number, controlled: [b
   return s;
 }
 
-export function simulateMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean] = [false, false]): MatchState {
-  const s = createMatch(home, away, seed, controlled);
+export function simulateMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean] = [false, false], visitor: TeamIndex = 1): MatchState {
+  const s = createMatch(home, away, seed, controlled, visitor);
   // Limite de segurança: nunca deve ser atingido, mas uma equipa vinda de fora não pode bloquear o jogo.
   const maxTicks = seconds(B.periodSeconds) * 200;
   while (s.phase !== 'end' && s.tick < maxTicks) step(s);

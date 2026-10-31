@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import { preview, build } from 'vite';
 import { matchHash } from '../sim/hash.ts';
 import { simulateMatch } from '../sim/match.ts';
-import { clubTeam, newClub, opponentOf, weekSeed, type ClubState } from '../ui/club.ts';
+import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } from '../ui/club.ts';
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
@@ -18,7 +18,11 @@ interface Pocket {
   onCourtNames(): string[];
   frontBackFlips(): { perPlayerMinute: number; shortestSeconds: number };
   club(): ClubState | null;
+  setTownClock(value: number | null): void;
   found(): string[];
+  fastForward(weeks: number): void;
+  fire(): void;
+  timeOtherGames(): number;
   pauseAt(eventType: string, extraTicks: number, maxDistance?: number): { phase: string; found: boolean };
   resetRenderStats(): void;
   renderStats(): { meanMs: number; frames: number };
@@ -34,7 +38,7 @@ mkdirSync(OUT, { recursive: true });
 const failures: string[] = [];
 const firstMatch = (seed: number, division: number) => {
   const club = newClub(seed, division);
-  return simulateMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false]);
+  return simulateMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false], visitorOf(club));
 };
 const check = (name: string, ok: boolean, detail = ''): void => {
   console.log(`${ok ? 'OK    ' : 'FALHOU'} ${name}${detail ? `: ${detail}` : ''}`);
@@ -114,15 +118,48 @@ try {
   const season = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
   const coach = await season.newPage();
   const coachProblems: string[] = [];
-  coach.on('pageerror', error => coachProblems.push(error.message));
+  coach.on('pageerror', error => {
+    coachProblems.push(error.message);
+    console.log('ERRO NA PÁGINA', error.message, error.stack);
+  });
   await coach.goto(url);
   await coach.waitForSelector('#newClubBtn');
   await coach.screenshot({ path: `${OUT}/clube-novo.png` });
-  await coach.click('[data-division="1"]');
   await coach.click('#newClubBtn');
   await coach.waitForSelector('#startBtn');
   await coach.screenshot({ path: `${OUT}/clube.png` });
-  check('O clube novo guarda a divisão escolhida', await coach.evaluate(() => window.__pocket.club()!.division === 1));
+  check('O clube novo começa na última divisão', await coach.evaluate(() => window.__pocket.club()!.division === 0));
+  await coach.locator('.screen').screenshot({ path: `${OUT}/cidade.png` });
+  await coach.screenshot({ path: `${OUT}/cidade-inteira.png` });
+  const chipsFit = await coach.evaluate(() => {
+    const box = document.getElementById('screen')!.getBoundingClientRect();
+    return [...document.querySelectorAll('.town-chip')].every(chip => {
+      const r = chip.getBoundingClientRect();
+      return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom;
+    });
+  });
+  check('As etiquetas dos edifícios cabem no telemóvel', chipsFit);
+  const cityFits = await coach.evaluate(() => {
+    const city = document.querySelector<HTMLElement>('.city')!;
+    return city.scrollHeight <= city.clientHeight + 1;
+  });
+  check('O menu da cidade não precisa de deslocamento', cityFits);
+  // Os jogadores têm de passar por trás do que está à frente deles. O 3.º anda na estrada ao lado do escritório.
+  for (const [name, seconds] of [['atras-escritorio', 19.1], ['atras-escritorio-2', 20.5], ['frente', 29]] as const) {
+    await coach.evaluate(ms => window.__pocket.setTownClock(ms), seconds * 1000);
+    await coach.waitForTimeout(80);
+    await coach.locator('.screen').screenshot({ path: `${OUT}/cidade-${name}.png` });
+  }
+  await coach.evaluate(() => window.__pocket.setTownClock(null));
+  const townCdp = await season.newCDPSession(coach);
+  await townCdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  await coach.evaluate(() => window.__pocket.resetRenderStats());
+  await coach.waitForTimeout(2000);
+  const townStats = await coach.evaluate(() => window.__pocket.renderStats());
+  await townCdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  check('Desenhar a cidade demora menos de 16 ms com CPU 4× mais lento', townStats.meanMs < 16, `${townStats.meanMs.toFixed(1)} ms em ${townStats.frames} frames`);
+  await coach.click('#towerChip');
+  check('A torre responde pela secretária', ((await coach.locator('#staffNote').textContent()) ?? '').includes('torre'));
   await coach.click('#trainBtn');
   await coach.waitForSelector('.train-row');
   await coach.screenshot({ path: `${OUT}/treino-lista.png` });
@@ -183,9 +220,75 @@ try {
   await coach.reload();
   await coach.waitForSelector('#startBtn');
   check('Passa para a semana 2 e fica guardado', await coach.evaluate(() => window.__pocket.club()!.week === 2 && !window.__pocket.club()!.trainedThisWeek));
+  await coach.click('#officeBtn');
+  await coach.screenshot({ path: `${OUT}/gabinete.png` });
   await coach.click('#resetBtn');
   await coach.click('#resetNo');
   check('Cancelar o novo clube não apaga nada', await coach.evaluate(() => window.__pocket.club()!.week === 2));
+
+  // Plantel: trocar dois jogadores muda os titulares e fica guardado.
+  await coach.click('#squadBtn');
+  await coach.screenshot({ path: `${OUT}/plantel.png` });
+  const rosterBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
+  await coach.click('[data-slot="0"]');
+  await coach.click('[data-slot="6"]');
+  await coach.click('[data-sheet="0"]');
+  await coach.waitForSelector('.portrait');
+  await coach.screenshot({ path: `${OUT}/plantel-ficha.png` });
+  await coach.click('[data-sheet-close]');
+  await coach.click('#squadBack');
+  await coach.reload();
+  await coach.waitForSelector('#startBtn');
+  const rosterAfter = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
+  check('A troca no plantel fica guardada', rosterAfter[0] === rosterBefore[6] && rosterAfter[6] === rosterBefore[0], `${rosterBefore[0]} <> ${rosterBefore[6]}`);
+
+  // Os outros jogos da jornada não podem encravar um telemóvel.
+  const seasonCdp = await season.newCDPSession(coach);
+  await seasonCdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  const otherGames = await coach.evaluate(() => window.__pocket.timeOtherGames());
+  await seasonCdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  check('Simular os outros 4 jogos demora menos de 1,5 s com CPU 4× mais lento', otherGames < 1500, `${Math.round(otherGames)} ms`);
+
+  // Federação a meio da época, semana livre e fim de época.
+  await coach.evaluate(() => window.__pocket.fastForward(7));
+  await coach.click('#federationBtn');
+  await coach.screenshot({ path: `${OUT}/federacao-tabela.png` });
+  await coach.click('[data-fed-tab="calendar"]');
+  await coach.screenshot({ path: `${OUT}/federacao-calendario.png` });
+  await coach.click('#federationBack');
+  await coach.evaluate(() => window.__pocket.fastForward(1));
+  check('A semana 10 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 10));
+  await coach.screenshot({ path: `${OUT}/semana-livre.png` });
+  await coach.click('#skipWeekBtn');
+  check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 11));
+  await coach.screenshot({ path: `${OUT}/cidade-painel.png` });
+  await coach.evaluate(() => window.__pocket.fastForward(9));
+  await coach.waitForSelector('#seasonContinue');
+  await coach.screenshot({ path: `${OUT}/fim-epoca.png` });
+  await coach.reload();
+  await coach.waitForSelector('#seasonContinue');
+  check('O balanço da época continua lá depois de recarregar', true);
+  await coach.click('#seasonContinue');
+  await coach.waitForSelector('#startBtn');
+  check('Começa a época 2', await coach.evaluate(() => window.__pocket.club()!.season === 2 && window.__pocket.club()!.week === 1));
+
+  // Despedimento. A regra em si é testada em Node; aqui confirma-se o ecrã e que fica guardado.
+  await coach.evaluate(() => window.__pocket.fire());
+  await coach.waitForSelector('#firedNewClub');
+  await coach.screenshot({ path: `${OUT}/despedido.png` });
+  await coach.reload();
+  await coach.waitForSelector('#firedNewClub');
+  check('O despedimento fica guardado', true);
+  await coach.click('#firedNewClub');
+  await coach.click('#newClubBtn');
+  await coach.waitForSelector('#startBtn');
+  check('Depois de despedido, pode-se treinar outro clube', await coach.evaluate(() => !window.__pocket.club()!.fired && window.__pocket.club()!.season === 1));
+  // Um jogo depois de recarregar o balanço da época tem de correr normalmente.
+  await coach.click('#startBtn');
+  await coach.evaluate(() => window.__pocket.setSpeedRaw(40));
+  await coach.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+  await coach.click('#againBtn');
+  await coach.waitForSelector('#startBtn');
   await coach.evaluate(() => localStorage.setItem('pocket-basketball-clube', 'estragado'));
   await coach.reload();
   await coach.waitForSelector('#newClubBtn');
@@ -314,6 +417,14 @@ try {
     await wide.waitForFunction(() => window.__pocket !== undefined);
     await wide.waitForTimeout(300);
     await wide.screenshot({ path: `${OUT}/landscape-${name}-inicio.png` });
+    const wideChips = await wide.evaluate(() => {
+      const box = document.getElementById('screen')!.getBoundingClientRect();
+      return [...document.querySelectorAll('.town-chip')].every(chip => {
+        const r = chip.getBoundingClientRect();
+        return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom;
+      });
+    });
+    check(`Em ${name}, as etiquetas dos edifícios cabem na janela`, wideChips);
     await wide.click('#trainBtn');
     await wide.click('[data-train-player="1"]');
     await wide.click('[data-hand="shooting"]');

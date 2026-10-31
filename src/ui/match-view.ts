@@ -96,10 +96,10 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false]) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1) {
     this.g = g;
     this.callbacks = callbacks;
-    this.s = createMatch(home, away, seed, controlled);
+    this.s = createMatch(home, away, seed, controlled, visitor);
     this.textures = courtTextures(division);
     this.image = g.createImageData(g.canvas.width, g.canvas.height);
     this.pixels = new Uint32Array(this.image.data.buffer);
