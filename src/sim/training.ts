@@ -64,6 +64,9 @@ export const COMBOS: readonly Combo[] = [
   { id: 'runAway', name: 'Fuga para a Frente', cards: ['sprints', 'dance', 'bouncePass'], gains: { speed: 8 }, offBall: 'leaker' },
   { id: 'humanWall', name: 'Parede Humana', cards: ['pickRoll', 'weights', 'readDefense'], gains: { strength: 8 }, offBall: 'screener' },
   { id: 'stickyGuard', name: 'Cola Tudo', cards: ['readDefense', 'sprints', 'massage'], gains: { speed: 3, willpower: 5 }, offBall: 'shadow' },
+  { id: 'benchSpark', name: 'Faísca do Banco', cards: ['massage', 'sprints', 'video'], gains: { stamina: 6, willpower: 3 }, offBall: 'sixthMan' },
+  { id: 'liveWire', name: 'Pilha Elétrica', cards: ['agility', 'longRun', 'readDefense'], gains: { speed: 5, stamina: 5 }, offBall: 'dynamo' },
+  { id: 'rimKeeper', name: 'Guarda do Aro', cards: ['jumps', 'whiteboard', 'weights'], gains: { jumping: 7, strength: 3 }, offBall: 'rimProtector' },
   // Comportamentos com bola
   { id: 'maestro', name: 'Maestro', cards: ['bouncePass', 'readDefense', 'pickRoll'], gains: { technique: 8 }, onBall: 'playmaker' },
   { id: 'justMe', name: 'Só Eu', cards: ['dribble', 'shooting', 'soup'], gains: { shooting: 5, technique: 3 }, onBall: 'scorer' },

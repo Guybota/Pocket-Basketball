@@ -9,7 +9,7 @@ import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, careerOf, clubTeam, cupStatus, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, salaryFor, sellPlayer, signPlayer, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -21,10 +21,10 @@ describe('cartas e combos', () => {
     expect(new Set(CARD_IDS.map(card => CARDS[card].category))).toEqual(new Set(['tactic', 'technique', 'physical', 'support']));
   });
 
-  it('há 30 combos válidos e todos diferentes', () => {
-    expect(COMBOS).toHaveLength(30);
-    expect(new Set(COMBOS.map(combo => combo.id)).size).toBe(30);
-    expect(new Set(COMBOS.map(combo => [...combo.cards].sort().join('+'))).size).toBe(30);
+  it('há 33 combos válidos e todos diferentes', () => {
+    expect(COMBOS).toHaveLength(33);
+    expect(new Set(COMBOS.map(combo => combo.id)).size).toBe(33);
+    expect(new Set(COMBOS.map(combo => [...combo.cards].sort().join('+'))).size).toBe(33);
     for (const combo of COMBOS) {
       expect(combo.cards.length, combo.id).toBeGreaterThanOrEqual(2);
       expect(combo.cards.length, combo.id).toBeLessThanOrEqual(3);
@@ -170,7 +170,8 @@ describe('cartas ganhas nos jogos', () => {
       for (const card of cards) kinds.add(card);
     }
     expect(total / N).toBeGreaterThan(3);
-    expect(total / N).toBeLessThan(10);
+    // Os tipos novos dão mais roubos e desarmes, e cada um pode dar carta: a média anda nos 10.
+    expect(total / N).toBeLessThan(11);
     expect(kinds.size).toBeGreaterThan(12);
   });
 
@@ -328,7 +329,7 @@ describe('clube', () => {
   });
 
   it('a carreira do treinador passa de clube para clube', () => {
-    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [], cups: [], federationExit: 2, continentalExit: null, worldExit: null, playoffExit: null };
+    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [], cups: [], federationExit: 2, continentalExit: null, worldExit: null, playoffExit: null, departures: [], arrivals: [], prizeMoney: 0 };
     const first = { ...club(), history: [record] };
     const second = newClub(22, 0, careerOf(first));
     expect(careerOf(second)).toEqual([{ ...record, club: first.team.name }]);
@@ -376,6 +377,8 @@ describe('época', () => {
     for (let i = 0; i < 80 && !current.seasonReport; i++) current = week(current);
     return current;
   };
+  /** Fecha o balanço e as renovações, como um treinador que fica com toda a gente que couber. */
+  const nextSeason = (c: ClubState): ClubState => autoRenew({ ...c, seasonReport: null });
   const stronger = (c: ClubState, bonus: number): ClubState => ({ ...c, team: { ...c.team, roster: c.team.roster.map(p => ({ ...p, attributes: Object.fromEntries(Object.entries(p.attributes).map(([k, v]) => [k, Math.min(100, v + bonus)])) as unknown as typeof p.attributes })) } });
 
   it('os nomes dos clubes chegam para as 4 divisões, com abreviaturas diferentes', () => {
@@ -546,12 +549,123 @@ describe('época', () => {
     expect(first.history[0]!.outcome).toBe('champion');
     expect(first.continentalQualified).toContain(PLAYER_CLUB);
     expect(cupStatus(first, 'continental').entered).toBe(true);
-    const second = season({ ...first, seasonReport: null });
+    const second = season(nextSeason(first));
     const record = second.history[1]!;
     expect(record.continentalExit).not.toBeNull();
     expect(record.continentalExit).toBeLessThanOrEqual(CUP_ROUNDS.continental.length);
     expect(record.worldExit !== null).toBe(record.continentalExit === CUP_ROUNDS.continental.length);
     expect(record.cups.includes('continental')).toBe(record.continentalExit === CUP_ROUNDS.continental.length);
+  });
+
+  it('o tempo passa: o potencial desce no fim da época, e quem o esgota sai e é substituído', () => {
+    const start = newClub(101);
+    const doomed = start.team.roster[11]!.name;
+    const c = { ...start, team: { ...start.team, roster: start.team.roster.map((p, i) => (i === 11 ? { ...p, potential: 1 } : p)) } };
+    const after = season(c);
+    const record = after.history[0]!;
+    for (const player of after.team.roster) {
+      const before = c.team.roster.find(p => p.name === player.name);
+      if (before) expect(player.potential).toBeLessThan(before.potential);
+    }
+    expect(record.departures).toEqual([doomed]);
+    expect(record.arrivals).toHaveLength(1);
+    expect(after.team.roster.some(p => p.name === doomed)).toBe(false);
+    expect(after.team.roster.length).toBe(12);
+    const newcomer = after.team.roster.find(p => p.name === record.arrivals[0])!;
+    expect(newcomer.potential).toBeGreaterThanOrEqual(65);
+    expect(after.joined[newcomer.name]).toBe(2);
+    expect(yearsAtClub(after, newcomer.name)).toBe(1);
+    expect(yearsAtClub(after, after.team.roster[0]!.name)).toBe(2);
+    expect(after.shirts[newcomer.name]).toBeDefined();
+    expect(parseClub(JSON.stringify(after))).toEqual(after);
+  });
+
+  it('um veterano com o potencial no fim perde velocidade, salto e resistência', () => {
+    const start = newClub(103);
+    const c = { ...start, team: { ...start.team, roster: start.team.roster.map((p, i) => (i === 0 ? { ...p, potential: 12 } : p)) } };
+    const after = season(c);
+    const veteran = after.team.roster.find(p => p.name === c.team.roster[0]!.name)!;
+    expect(veteran.attributes.speed).toBeLessThan(c.team.roster[0]!.attributes.speed);
+    expect(veteran.attributes.shooting).toBeGreaterThanOrEqual(c.team.roster[0]!.attributes.shooting - 2);
+  });
+
+  it('no fim da época toda a gente pede um salário novo, e só se continua dentro do orçamento', () => {
+    const after = season(newClub(105));
+    expect(after.pendingRenewals).not.toBeNull();
+    expect(after.pendingRenewals!.length).toBe(after.team.roster.length - after.history[0]!.arrivals.length);
+    expect(after.money).toBeGreaterThan(0);
+    const all = after.pendingRenewals!.map(r => r.name);
+    const total = after.pendingRenewals!.reduce((sum, r) => sum + r.asked, 0);
+    if (total <= after.money) {
+      const kept = applyRenewals(after, all);
+      expect(kept.pendingRenewals).toBeNull();
+      expect(surplus(kept)).toBe(after.money - total);
+    } else {
+      expect(() => applyRenewals(after, all)).toThrow();
+    }
+    // Libertar quase toda a gente enche o plantel com jogadores livres até ao mínimo.
+    const few = applyRenewals(after, all.slice(0, 3));
+    expect(few.team.roster.length).toBe(10);
+    expect(few.team.roster.filter(p => all.slice(0, 3).includes(p.name))).toHaveLength(3);
+    expect(parseClub(JSON.stringify(few))).toEqual(few);
+    const auto = autoRenew(after);
+    expect(auto.pendingRenewals).toBeNull();
+    expect(surplus(auto)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('contratar e libertar mexem no salário, no número e na data de chegada', () => {
+    const c = newClub(107);
+    const stranger = { ...aiTeam(c.clubs[3]!).roster[0]!, name: 'Zé Novo' };
+    const signed = signPlayer(c, stranger);
+    expect(signed.team.roster).toHaveLength(13);
+    expect(signed.salaries['Zé Novo']).toBe(salaryFor(stranger));
+    expect(signed.shirts['Zé Novo']).toBe(16);
+    expect(signed.joined['Zé Novo']).toBe(1);
+    expect(surplus(signed)).toBe(surplus(c) - salaryFor(stranger));
+    expect(() => signPlayer(signed, stranger)).toThrow();
+    const released = releasePlayer(signed, 'Zé Novo');
+    expect(released.team.roster).toHaveLength(12);
+    expect(released.salaries['Zé Novo']).toBeUndefined();
+    expect(() => releasePlayer(released, 'Zé Novo')).toThrow();
+  });
+
+  it('o mercado muda todas as semanas, os livres entram logo e os outros demoram e podem recusar', () => {
+    const c = { ...newClub(109), money: 5000 };
+    const list = marketList(c);
+    expect(list.length).toBeGreaterThanOrEqual(3);
+    expect(list.filter(e => e.clubId === null)).toHaveLength(3);
+    expect(marketList({ ...c, week: 2 })).not.toEqual(list);
+    expect(marketList(c)).toEqual(list);
+    const free = list.find(e => e.clubId === null)!;
+    const signed = makeOffer(c, free);
+    expect(signed.team.roster).toHaveLength(13);
+    expect(signed.salaries[free.player.name]).toBe(free.salary);
+    const foreign = list.find(e => e.clubId !== null)!;
+    const offered = makeOffer(signed, foreign);
+    expect(offered.offers).toHaveLength(1);
+    expect(offered.money).toBe(signed.money - foreign.fee);
+    expect(cancelOffer(offered, foreign.player.name).money).toBe(signed.money);
+    expect(() => makeOffer({ ...c, money: 0 }, free)).toThrow();
+    expect(() => makeOffer({ ...signed, week: 21 }, foreign)).toThrow();
+    expect(transferWindowOpen({ ...c, week: 21 })).toBe(false);
+    // Semanas a seguir: a proposta acaba aceite ou recusada, e o dinheiro nunca desaparece.
+    let current = offered;
+    for (let i = 0; i < 4 && current.offers.length > 0; i++) current = week(current);
+    expect(current.offers).toHaveLength(0);
+    const joined = current.team.roster.some(p => p.name === foreign.player.name);
+    expect(joined ? current.money : current.money).toBe(joined ? signed.money - foreign.fee : signed.money);
+    expect(parseClub(JSON.stringify(offered))).toEqual(offered);
+  });
+
+  it('vender dá o valor do jogador, mas nunca abaixo do mínimo do plantel', () => {
+    const c = newClub(111);
+    const name = c.team.roster[11]!.name;
+    const sold = sellPlayer(c, name);
+    expect(sold.team.roster).toHaveLength(11);
+    expect(sold.money).toBeGreaterThan(c.money);
+    let small = sold;
+    small = sellPlayer(small, small.team.roster[10]!.name);
+    expect(() => sellPlayer(small, small.team.roster[9]!.name)).toThrow();
   });
 
   it('nas divisões de baixo a época acaba na fase regular, sem playoffs', () => {
@@ -650,7 +764,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(8);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -667,7 +781,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(8);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

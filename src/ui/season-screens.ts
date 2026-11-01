@@ -142,6 +142,9 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       <div class="league-line"><span>Época ${record.season} · ${divisionName(record.division)}</span><span>${place(record.position)} · ${record.wins} V · ${record.losses} D</span></div>
       ${tableRows(club, record.table, record.division)}
       ${playoffLine(record)}
+      ${record.prizeMoney > 0 ? `<div class="league-line"><span>Prémios</span><span>${record.prizeMoney} mil</span></div>` : ''}
+      ${record.departures.length > 0 ? `<div class="league-line"><span>Saíram, com o potencial no fim</span><span>${record.departures.map(escapeHtml).join(', ')}</span></div>` : ''}
+      ${record.arrivals.length > 0 ? `<div class="league-line"><span>Chegaram</span><span>${record.arrivals.map(escapeHtml).join(', ')}</span></div>` : ''}
       <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('federation', record.federationExit).toLowerCase()}`}</span></div>
       ${record.continentalExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.continental}</span><span>${record.continentalExit >= CUP_ROUNDS.continental.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('continental', record.continentalExit).toLowerCase()}`}</span></div>`}
       ${record.worldExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.world}</span><span>${record.worldExit >= CUP_ROUNDS.world.length ? 'Campeões do mundo!' : 'Perdida a final'}</span></div>`}

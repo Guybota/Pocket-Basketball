@@ -48,11 +48,11 @@ const POSITION_ON_BALL: Record<Position, readonly OnBallStyle[]> = {
   POS: ['postUp', 'postUp', 'balanced'],
 };
 const POSITION_OFF_BALL: Record<Position, readonly OffBallStyle[]> = {
-  BAS: ['balanced', 'shadow', 'leaker'],
-  ESC: ['spotUp', 'leaker', 'cutter', 'shadow'],
-  EXT: ['cutter', 'spotUp', 'leaker', 'crasher'],
-  EXP: ['crasher', 'screener', 'lowPost'],
-  POS: ['lowPost', 'screener', 'crasher'],
+  BAS: ['balanced', 'shadow', 'leaker', 'dynamo'],
+  ESC: ['spotUp', 'leaker', 'cutter', 'shadow', 'sixthMan'],
+  EXT: ['cutter', 'spotUp', 'leaker', 'crasher', 'dynamo'],
+  EXP: ['crasher', 'screener', 'lowPost', 'rimProtector'],
+  POS: ['lowPost', 'screener', 'crasher', 'rimProtector'],
 };
 // Os adversários já trazem movimentos. No clube do jogador, aprendem-se no treino (ver newClub).
 const MOVE_CHANCE = 0.25;
@@ -89,6 +89,21 @@ export function generateTeam(seed: number, name: string, level: number, spread =
   for (const position of POSITIONS) roster.push(makePlayer(rng, names, position, level - 6, spread));
   roster.push(makePlayer(rng, names, 'ESC', level - 10, spread), makePlayer(rng, names, 'EXP', level - 10, spread));
   return { name, short: name.slice(0, 3).toUpperCase(), roster };
+}
+
+/** Um jogador livre, para substituir quem sai: do nível pedido e com o potencial pedido. Evita os nomes que já há na equipa. */
+export function generatePlayer(seed: number, position: Position, level: number, potential: number, taken: readonly string[]): Player {
+  const rng = makeRng(seed ^ 0x2b7e15);
+  const names = SURNAMES.filter(name => !taken.includes(name));
+  const player = makePlayer(rng, names.length > 0 ? names : [...SURNAMES], position, level, 10);
+  return { ...player, moves: [], potential: Math.round(Math.max(1, Math.min(100, potential))) };
+}
+
+/** A nota de um jogador: a média dos atributos. */
+export function playerRating(player: Player): number {
+  let total = 0;
+  for (const key of ATTRIBUTE_KEYS) total += player.attributes[key];
+  return total / ATTRIBUTE_KEYS.length;
 }
 
 /** Média dos atributos dos oito primeiros jogadores: os que jogam mais minutos. */

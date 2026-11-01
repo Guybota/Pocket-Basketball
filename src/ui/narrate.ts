@@ -10,6 +10,9 @@ export const OFF_BALL_INFO: Record<OffBallStyle, { name: string; description: st
   leaker: { name: 'Contra-ataque', description: 'Larga a defesa cedo e corre para o outro lado.' },
   screener: { name: 'Bloqueador', description: 'Faz bloqueios para o colega com a bola.' },
   shadow: { name: 'Sombra', description: 'Defende colado ao adversário direto.' },
+  sixthMan: { name: 'Sexto Homem', description: 'Recupera depressa no banco e entra sempre fresco.' },
+  dynamo: { name: 'Dínamo', description: 'Corta para o cesto e rouba bolas em todo o lado.' },
+  rimProtector: { name: 'Guarda do Aro', description: 'Fica entre o seu homem e o cesto, e desarma.' },
 };
 
 export const ON_BALL_INFO: Record<OnBallStyle, { name: string; description: string }> = {

@@ -242,6 +242,13 @@ try {
   await coach.locator('[data-kit-second="#f2c230"]').click();
   await coach.screenshot({ path: `${OUT}/equipamento-editor.png` });
   await coach.click('.back');
+  await coach.click('[data-go="market"]');
+  await coach.screenshot({ path: `${OUT}/mercado.png` });
+  const marketBefore = await coach.evaluate(() => ({ roster: window.__pocket.club()!.team.roster.length, money: window.__pocket.club()!.money }));
+  await coach.click('[data-market="0"]');
+  await coach.click('[data-act="offer"]');
+  check('Um jogador livre entra logo', await coach.evaluate((b: { roster: number }) => window.__pocket.club()!.team.roster.length === b.roster + 1, marketBefore));
+  await coach.click('.back');
   await coach.click('[data-office="trophies"]');
   await coach.screenshot({ path: `${OUT}/trofeus.png` });
   await coach.click('.back');
@@ -382,8 +389,16 @@ try {
   await coach.waitForSelector('#seasonContinue');
   check('O balanço da época continua lá depois de recarregar', true);
   await coach.click('#seasonContinue');
+  await coach.waitForSelector('#renewalsConfirm');
+  await coach.screenshot({ path: `${OUT}/renovacoes.png` });
+  const squadBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.length);
+  check('As renovações ficam guardadas a meio', await coach.evaluate(() => window.__pocket.club()!.pendingRenewals !== null));
+  await coach.click('[data-renew]:nth-child(2)');
+  await coach.click('#renewalsConfirm');
   await coach.waitForSelector('#startBtn');
   check('Começa a época 2', await coach.evaluate(() => window.__pocket.club()!.season === 2 && window.__pocket.club()!.week === 1));
+  check('Quem não renova sai, e o plantel fica com os que ficaram', await coach.evaluate((b: number) => window.__pocket.club()!.team.roster.length === Math.max(10, b - 1) && window.__pocket.club()!.pendingRenewals === null, squadBefore));
+  check('O orçamento cobre os salários', await coach.evaluate(() => window.__pocket.club()!.money >= Object.values(window.__pocket.club()!.salaries).reduce((a, b) => a + b, 0)));
 
   // Despedimento. A regra em si é testada em Node; aqui confirma-se o ecrã e que fica guardado.
   await coach.evaluate(() => window.__pocket.fire());

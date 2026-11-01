@@ -123,6 +123,27 @@ describe('comportamentos', () => {
     expect(baseAssists('playmaker')).toBeGreaterThan(baseAssists('scorer'));
   });
 
+  it('o guarda do aro desarma mais, o dínamo rouba mais, e o sexto homem recupera mais no banco', () => {
+    const totals = (offBall: OffBallStyle): { blocks: number; steals: number; benchFatigue: number } => {
+      let blocks = 0;
+      let steals = 0;
+      let benchFatigue = 0;
+      for (let i = 0; i < 60; i++) {
+        const team = plain(i, 'A');
+        const roster = team.roster.map((player, index) => (index < 5 ? { ...player, offBall } : player));
+        const s = simulateMatch({ ...team, roster }, plain(i + 500, 'B'), i + 1);
+        blocks += s.lines[0].blocks;
+        steals += s.lines[0].steals;
+        for (let k = 0; k < 5; k++) benchFatigue += s.bodies[k]!.fatigue;
+      }
+      return { blocks, steals, benchFatigue };
+    };
+    const base = totals('balanced');
+    expect(totals('rimProtector').blocks).toBeGreaterThan(base.blocks);
+    expect(totals('dynamo').steals).toBeGreaterThan(base.steals);
+    expect(totals('sixthMan').benchFatigue).toBeLessThan(base.benchFatigue);
+  });
+
   it('os ressaltadores ganham mais ressaltos ofensivos', () => {
     const rate = (t: { offensive: number; defensive: number }): number => t.offensive / (t.offensive + t.defensive);
     expect(rate(homeTotals({ offBall: 'crasher' }))).toBeGreaterThan(rate(homeTotals({ offBall: 'balanced' })));

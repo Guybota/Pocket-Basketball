@@ -13,7 +13,7 @@ import { KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type E
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { INK, KITS, drawSprite, lookOf, type Look } from './art/sprites.ts';
-import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, cupRoundName, cupStatus, currentFixture, leagueTable, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, applyRenewals, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
@@ -22,7 +22,7 @@ import { ATTRIBUTE_LABELS, escapeHtml as esc, panelContent } from './panel.ts';
 import { drawShelf, trophyList } from './trophies.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
-type Screen = 'create' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
+type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
 type GoTo = Screen | 'town';
 type OfficeItem = 'board' | 'trophies' | 'history' | 'reset';
 
@@ -66,6 +66,11 @@ let kitEditBack: GoTo = 'office';
 let emblemBack: GoTo = 'office';
 let federationRound = 0;
 let cupView: CupName = 'federation';
+// Quem fica, enquanto se decidem as renovações.
+let keep = new Set<string>();
+let marketPick = 0;
+// Vender pede dois toques: o segundo confirma.
+let selling = false;
 let kitEditing = 'home';
 let gameKind: GameKind = 'official';
 let half = false;
@@ -160,8 +165,9 @@ function playerCard(index: number, extra?: string): string {
     ${extra ?? ''}${`<div class="pfoot${extra ? ' spare' : ''}">
       <div class="rows">
         <div>${dot(p)}<span>Energia ${Math.round((1 - p.fatigue) * 100)}%</span></div>
-        <div><span>Na equipa</span><span>${club.season} ép.</span></div>
+        <div><span>Na equipa</span><span>${yearsAtClub(club, p.name)} ép.</span></div>
         <div><span>Jogos</span><span>${stats.games}</span></div>
+        <div><span>Salário</span><span>${club.salaries[p.name] ?? salaryFor(p)} mil</span></div>
         <div class="history" title="Treino das últimas 4 semanas" style="display:grid">${history}</div>
       </div>
       <div>
@@ -203,7 +209,7 @@ function squadScreen(): Rendered {
         <div class="starters"><span>Titulares</span><span>${swapping === null ? '' : 'Toca em quem entra para o lugar dele'}</span></div>
         ${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')).replace('<button type="button" class="prow bench', '<div class="starters plain"><span>Banco</span></div><button type="button" class="prow bench')}
       </div>
-      ${bar(backBtn(backFromSquad), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, '<button type="button" data-go="tactics">Táticas</button>')}`,
+      ${bar(backBtn(backFromSquad), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, backFromSquad === 'town' ? `<button type="button" data-act="sell" aria-pressed="${selling}" ${club.team.roster.length <= 10 ? 'disabled' : ''}>${selling ? `Vender por ${transferFee(club.team.roster[selected]!)}?` : 'Vender'}</button>` : '<button type="button" data-go="tactics">Táticas</button>')}`,
   };
 }
 
@@ -338,6 +344,72 @@ function preScreen(): Rendered {
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
     bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div><div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
+  };
+}
+
+/** A ficha de um jogador que não é nosso, para o mercado. */
+function marketCard(entry: MarketEntry): string {
+  const p = entry.player;
+  return `<div class="pcard">
+    <header>${entry.clubId === null ? '<span>Livre</span>' : crest(club.clubs[entry.clubId]!.short, true)}<span>${p.position}</span><b>${esc(p.name)}</b><span>${p.heightCm} cm · ${p.weightKg} kg</span></header>
+    <div class="pbody">
+      <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookOf(p, entry.clubId === null ? 'coach' : 'cream'))}">
+      <div class="pshirt" aria-label="Sem número">?</div>
+      <div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${ATTRIBUTE_ICONS[key]}">`).join('')}</div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>
+        <div class="kv"><span>Sem bola</span><b>${OFF_BALL_INFO[p.offBall].name}</b></div>
+        <div class="kv"><span>Com bola</span><b>${ON_BALL_INFO[p.onBall].name}</b></div>
+        <div class="kv"><span>Potencial</span>${chevrons(p.potential)}</div>
+      </div>
+    </div>
+    <div class="pfoot"><div class="rows">
+      <div><span>Salário</span><span>${entry.salary} mil</span></div>
+      <div><span>${entry.clubId === null ? 'Entra' : 'Pede'}</span><span>${entry.clubId === null ? 'já' : `${entry.fee} mil`}</span></div>
+      <div><span>Sobra</span><span>${surplus(club)} mil</span></div>
+    </div><div style="padding:2px 0">${entry.clubId === null ? 'Jogadores livres aceitam logo, se houver dinheiro.' : `O ${esc(club.clubs[entry.clubId]!.name)} responde dentro de 1 a 3 semanas, e pode recusar. O dinheiro fica reservado entretanto.`}</div></div>
+  </div>`;
+}
+
+/** O mercado: o que está à venda esta semana e as propostas à espera. */
+function marketScreen(): Rendered {
+  const list = marketList(club);
+  const pick = list[Math.min(marketPick, list.length - 1)] ?? null;
+  const rows = list.map((entry, i) => `<button type="button" class="prow${entry.clubId === null ? '' : ' bench'}" data-market="${i}" aria-pressed="${i === marketPick}">
+      <span class="ppos ppos-${entry.player.position}">${entry.player.position}</span><span class="pnum">${entry.clubId === null ? 'L' : esc(club.clubs[entry.clubId]!.short.slice(0, 1))}</span><span class="name">${esc(entry.player.name)}</span><i class="edot${entry.salary + entry.fee > surplus(club) ? ' low' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(entry.player.attributes[key])).join('')}
+    </button>`).join('');
+  const offers = club.offers.map(o => `<button type="button" class="prow" data-cancel-offer="${esc(o.player.name)}"><span class="ppos ppos-${o.player.position}">${o.player.position}</span><span class="pnum">${o.weeksLeft}s</span><span class="name">${esc(o.player.name)}</span><i class="edot mid"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${o.fee} mil · cancelar</span></button>`).join('');
+  const canOffer = pick !== null && pick.salary + pick.fee <= surplus(club) && club.team.roster.length + club.offers.length < 15 && (pick.clubId === null || transferWindowOpen(club));
+  return {
+    top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
+    bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}</div>
+      <div class="scroll">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows}</div>
+      ${bar(backBtn('office'), `<button type="button" class="primary" data-act="offer" ${canOffer ? '' : 'disabled'}>${pick === null ? 'Nada' : pick.clubId === null ? 'Contratar' : 'Propor'}</button>`)}`,
+  };
+}
+
+/** As renovações: toda a gente pede um salário novo, e só se segue dentro do orçamento. */
+function renewalsScreen(): Rendered {
+  const renewals = club.pendingRenewals ?? [];
+  const total = renewals.filter(r => keep.has(r.name)).reduce((sum, r) => sum + r.asked, 0);
+  const left = club.money - total;
+  const rows = renewals.map(r => {
+    const p = club.team.roster.find(player => player.name === r.name)!;
+    const kept = keep.has(r.name);
+    return `<button type="button" class="prow${club.team.roster.indexOf(p) >= 5 ? ' bench' : ''}" data-renew="${esc(r.name)}" aria-pressed="${kept}">
+      <span class="ppos ppos-${p.position}">${p.position}</span><span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span><i class="edot${kept ? '' : ' low'}"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${r.current} › <b>${r.asked}</b> mil${kept ? '' : ' · sai'}</span>
+    </button>`;
+  }).join('');
+  return {
+    top: inside(`<div class="note"><header><b>Renovações</b><span>Época ${club.season}</span></header><div class="inner">
+      <div class="kv"><span>Orçamento</span><b>${club.money} mil</b></div>
+      <div class="kv"><span>Salários</span><b>${total} mil</b></div>
+      <div class="kv"><span>Sobra</span><b style="color:${left < 0 ? 'var(--bad)' : 'var(--good)'}">${left} mil</b></div>
+      <div class="quote">Contratos de um ano. Cada jogador pede o salário que vale agora; quem não ficar sai, e abaixo de 10 jogadores entram livres.</div>
+    </div></div>`),
+    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span><span style="grid-column:span 7;text-align:right">Era › Pede</span></div>
+      <div class="scroll">${rows}</div>
+      ${bar(`<button type="button" class="primary" id="renewalsConfirm" data-act="confirmRenewals" ${left < 0 ? 'disabled' : ''}>${left < 0 ? 'Acima do orçamento' : 'Começar a época'}</button>`)}`,
   };
 }
 
@@ -622,6 +694,7 @@ function officeScreen(): Rendered {
   const details: Record<Exclude<OfficeItem, 'trophies'>, string> = {
     board: `<div class="note"><header><b>Direção do clube</b><span>${Math.round(club.confidence)}%</span></header><div class="inner">
       <div>Confiança no treinador</div><div class="gauge"><i style="width:${club.confidence}%;background:${club.confidence < 15 ? 'var(--bad)' : club.confidence < 40 ? 'var(--gold)' : 'var(--good)'}"></i></div>
+      <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>Orçamento ${club.money}</span><span>Salários ${totalSalaries(club)}</span><span>Sobra ${surplus(club)}</span></div>
       <div class="quote">${boardQuote()}</div>
       <div>Abaixo de ${B.confidenceFired}% de confiança, a direção despede-te.</div>
     </div></div>`,
@@ -639,12 +712,12 @@ function officeScreen(): Rendered {
   ];
   return {
     top: inside(details[officeItem]),
-    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
+    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market" style="grid-template-columns:1fr auto"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
   };
 }
 
 const SCREENS: Record<Screen, () => Rendered> = {
-  create: createScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
+  create: createScreen, market: marketScreen, renewals: renewalsScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
   offers: offersScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
 };
 
@@ -687,6 +760,7 @@ function go(next: GoTo): void {
   if (next === 'tactics') tacticsBack = screen === 'tactics' ? tacticsBack : screen;
   screen = next;
   swapping = null;
+  selling = false;
   active = true;
   host.showMenus();
   render();
@@ -742,6 +816,7 @@ function onClick(event: Event): void {
       swapping = null;
     }
     selected = index;
+    selling = false;
     render();
   } else if (data.card) {
     const id = data.card as CardId;
@@ -837,6 +912,31 @@ function onClick(event: Event): void {
     host.newClub();
   } else if (data.act === 'startClub') {
     host.toTown();
+  } else if (data.market !== undefined) {
+    marketPick = Number(data.market);
+    render();
+  } else if (data.act === 'offer') {
+    const entry = marketList(club)[marketPick];
+    if (entry) commit(makeOffer(club, entry));
+    marketPick = 0;
+    render();
+  } else if (data.cancelOffer) {
+    commit(cancelOffer(club, data.cancelOffer));
+    render();
+  } else if (data.act === 'sell') {
+    if (selling) {
+      commit(sellPlayer(club, club.team.roster[selected]!.name));
+      selected = Math.min(selected, club.team.roster.length - 1);
+      selling = false;
+    } else selling = true;
+    render();
+  } else if (data.renew) {
+    if (keep.has(data.renew)) keep.delete(data.renew);
+    else keep.add(data.renew);
+    render();
+  } else if (data.act === 'confirmRenewals') {
+    commit(applyRenewals(club, [...keep]));
+    host.toTown();
   }
 }
 
@@ -890,6 +990,21 @@ export function openMenu(next: Screen, squadBack: GoTo = 'town'): void {
   // Assim, o Voltar das táticas sabe que se veio da cidade e não do último menu aberto.
   screen = next;
   go(next);
+}
+
+/** Entre o balanço da época e a seguinte: decidir quem fica. Começa com toda a gente que couber, dos melhores para os piores. */
+export function openRenewals(): void {
+  club = host.club();
+  half = false;
+  keep = new Set();
+  let total = 0;
+  for (const r of [...(club.pendingRenewals ?? [])].sort((a, b) => b.asked - a.asked)) {
+    if (total + r.asked <= club.money) {
+      keep.add(r.name);
+      total += r.asked;
+    }
+  }
+  go('renewals');
 }
 
 /** O clube acabou de nascer: dá-se-lhe nome, emblema e cores. */

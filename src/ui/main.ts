@@ -12,7 +12,7 @@ import { drawTown, townPlaces } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { tacticsControls } from './club-screens.ts';
 import { activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
-import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, showTopNote, type GameKind } from './menus.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, showTopNote, type GameKind } from './menus.ts';
 import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
@@ -344,6 +344,10 @@ function showClub(): void {
     showSeasonReport();
     return;
   }
+  if (current.pendingRenewals) {
+    openRenewals();
+    return;
+  }
   started = false;
   paused = false;
   view = undefined;
@@ -376,7 +380,8 @@ function showSeasonReport(): void {
   element('seasonContinue').addEventListener('click', () => {
     club = { ...club!, seasonReport: null };
     saveClub();
-    showClub();
+    if (club.pendingRenewals && !club.fired) openRenewals();
+    else showClub();
   });
 }
 

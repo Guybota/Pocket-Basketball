@@ -108,6 +108,7 @@ Uma secretária, um treinador-adjunto e um médico dão orientações ao longo d
 - **Orçamento:** Budget − Salary − Transfers = Surplus. Não podes fazer ofertas acima do Surplus.
 - **Prazo de transferências:** depois dele, não há ofertas a jogadores de outros clubes.
 - **Jogadores livres aceitam sempre.** Os de outros clubes demoram várias semanas a negociar e podem recusar.
+- **Não há idade.** A ficha do jogador tem "anos no clube", Potencial, Tipo, cansaço e lesões, e nada mais sobre a idade. [M] O envelhecimento é o **Potencial a descer** de época para época; as lesões aceleram a descida e a seleção nacional recupera um pouco. [F] Guias japoneses do Calciobit dizem que um jogador com o Potencial no fim, ou que quase não jogou jogos oficiais, sai do clube por vontade própria no fim da época, e que na versão 3DS há reforma quando o Potencial chega a zero. [F] A saída por falta de jogos **não está confirmada** para o NPFC: o manual não a refere e o dono do projeto não se lembra dela. O manual confirma que o salário **sobe ou desce** de época para época, visto na renovação. [M] Os jogadores novos vêm sempre do mercado: não há escola de formação. [M]
 
 ## 9. Multijogador [M]
 

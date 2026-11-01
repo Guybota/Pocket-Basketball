@@ -470,7 +470,7 @@ function rotate(s: MatchState, team: TeamIndex): void {
     const stintLimit = seconds(B.maxStintSeconds + slot * B.stintStaggerSeconds);
     const needsRest = current.fatigue >= B.subOutFatigue || s.tick - current.enteredTick >= stintLimit;
     if (!fouledOut && !needsRest) continue;
-    const candidates = bench.filter(b => b.line.fouls < B.foulOutAt && (fouledOut || b.fatigue <= B.subInFatigue));
+    const candidates = bench.filter(b => b.line.fouls < B.foulOutAt && (fouledOut || b.fatigue <= B.subInFatigue + (b.player.offBall === 'sixthMan' ? B.sixthManSubIn : 0)));
     if (candidates.length === 0) continue;
     const position = current.player.position;
     const samePosition = candidates.filter(b => b.player.position === position);
@@ -673,7 +673,7 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
   let blockedBy: Body | null = null;
   if (!unstoppable && pressure >= B.blockPressureMin && odds.distance <= B.blockMaxDistance) {
     const edge = defenseAttrs.jumping - offenseAttrs.jumping + (defender.player.heightCm - shooter.player.heightCm) * (B.blockPerCm / B.blockSlope);
-    if (chance(s.rng, Math.max(0.005, B.blockBase + B.blockSlope * edge))) blockedBy = defender;
+    if (chance(s.rng, Math.max(0.005, B.blockBase + B.blockSlope * edge) * (defender.player.offBall === 'rimProtector' ? B.rimProtectorBlock : 1))) blockedBy = defender;
   }
   let fouledBy: Body | null = null;
   if (!blockedBy) {
@@ -849,7 +849,7 @@ function pass(s: MatchState, passer: Body, target: Body, lob = false): void {
   for (const d of lob ? [] : s.court[other(passer.team)]) {
     if (segmentDistance(d.x, d.y, passer.x, passer.y, target.x, target.y) > B.interceptDistance) continue;
     const edge = d.player.attributes.speed + d.player.attributes.technique - a.technique * 2;
-    if (chance(s.rng, Math.max(0.005, B.interceptBase + B.interceptSlope * edge))) {
+    if (chance(s.rng, Math.max(0.005, B.interceptBase + B.interceptSlope * edge) * (d.player.offBall === 'dynamo' ? B.dynamoSteal : 1))) {
       interceptedBy = d;
       break;
     }
@@ -886,7 +886,7 @@ function decide(s: MatchState): void {
     const edge = defender.player.attributes.speed + defender.player.attributes.technique - a.technique * 2;
     const pickpocket = hasMove(defender, 'pickpocket');
     const defenseTactics = s.tactics[defender.team];
-    const stealChance = Math.max(0.002, (B.stealBase + B.stealSlope * edge) * pressure) * (pickpocket ? B.pickpocketFactor : 1) * (1 + B.tacticPressureSteal * defenseTactics.pressure);
+    const stealChance = Math.max(0.002, (B.stealBase + B.stealSlope * edge) * pressure) * (pickpocket ? B.pickpocketFactor : 1) * (defender.player.offBall === 'dynamo' ? B.dynamoSteal : 1) * (1 + B.tacticPressureSteal * defenseTactics.pressure);
     if (chance(s.rng, stealChance)) {
       if (pickpocket) emitMove(s, defender, 'pickpocket');
       defender.line.steals++;
@@ -990,7 +990,7 @@ function attackSpot(b: Body): readonly [number, number] {
   };
   if (b.player.offBall === 'spotUp') return mirrored(ARC_SPOTS);
   if (b.player.offBall === 'lowPost') return mirrored(LOW_POST_SPOTS);
-  if (b.player.offBall === 'cutter') return mirrored(CUT_SPOTS);
+  if (b.player.offBall === 'cutter' || b.player.offBall === 'dynamo') return mirrored(CUT_SPOTS);
   return SPOTS[b.slot]![b.spot]!;
 }
 
@@ -1051,7 +1051,7 @@ function updateTargets(s: MatchState): void {
   for (const b of s.court[offense]) {
     if (s.tick >= b.nextCutTick) {
       b.spot = weightedIndex(s.rng, [3, 1, 1]);
-      const pace = b.player.offBall === 'cutter' ? B.cutterCutFactor : 1;
+      const pace = b.player.offBall === 'cutter' ? B.cutterCutFactor : b.player.offBall === 'dynamo' ? B.dynamoCutFactor : 1;
       b.nextCutTick = s.tick + seconds(between(s.rng, B.cutMinSeconds, B.cutMaxSeconds) * pace);
     }
     const [u, v] = b === s.holder ? onBallSpot(b) : attackSpot(b);
@@ -1104,9 +1104,10 @@ function updateTargets(s: MatchState): void {
     const man = s.court[offense][b.slot]!;
     const hoopX = fromU(s, offense, 1.575);
     const baseGap = b.player.offBall === 'shadow' ? B.shadowGap : man === s.holder ? 1 : 1.5;
-    const marking = focus.length === 0 ? 1 : focus.includes(attackers.indexOf(man.player)) ? B.focusGap : B.unfocusedGap;
-    const gap = Math.max(0.5, baseGap * marking - B.tacticPressureGap * s.tactics[defense].pressure);
     const dist = distance(man.x, man.y, hoopX, 0) || 1;
+    // O guarda do aro só larga o seu homem quando ele está longe do cesto; perto, fica colado para desarmar.
+    const marking = (focus.length === 0 ? 1 : focus.includes(attackers.indexOf(man.player)) ? B.focusGap : B.unfocusedGap) * (b.player.offBall === 'rimProtector' && man !== s.holder && dist > B.rimProtectorSagFrom ? B.rimProtectorGap : 1);
+    const gap = Math.max(0.5, baseGap * marking - B.tacticPressureGap * s.tactics[defense].pressure);
     b.targetX = man.x + ((hoopX - man.x) / dist) * gap;
     b.targetY = man.y + ((0 - man.y) / dist) * gap;
     // Sem pressão, ninguém segue o ataque até ao outro lado: espera-se perto do meio-campo, cada um no seu lado.
@@ -1262,7 +1263,7 @@ function updateFatigue(s: MatchState): void {
       const bodyLoad = (1 + B.fatiguePerBmi * (b.bmi - B.referenceBmi)) * (1 + B.tacticPressureFatigue * teamTactics.pressure + B.tacticPaceFatigue * teamTactics.pace);
       b.fatigue = clamp01(b.fatigue + B.fatigueGain * bodyLoad * (1 + B.fatigueStaminaFactor * (0.6 - a.stamina / 100)) * DT);
     } else {
-      b.fatigue = clamp01(b.fatigue - B.benchRecovery * (1 + B.benchStrengthFactor * (a.strength / 100 - 0.6)) * DT);
+      b.fatigue = clamp01(b.fatigue - B.benchRecovery * (b.player.offBall === 'sixthMan' ? B.sixthManRecovery : 1) * (1 + B.benchStrengthFactor * (a.strength / 100 - 0.6)) * DT);
     }
   }
 }

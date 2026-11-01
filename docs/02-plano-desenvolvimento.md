@@ -365,9 +365,13 @@ A época passa de 19 para 29 semanas. As 18 jornadas da liga continuam, e entre 
 
 Os outros jogos de cada ronda são simulados a sério, como na liga. Ganhar uma taça dá cartas e dinheiro, e conta para os troféus da carreira.
 
-### Idade e contratos
+### Potencial, saídas e contratos
 
-- **Idade.** Cada jogador passa a ter idade, de 19 a 36 anos. No fim da época envelhece um ano. Até aos 23 cresce um pouco sozinho; dos 31 em diante perde Velocidade, Salto e Resistência; o potencial desce com a idade. Aos 36, ou quando fica abaixo de um mínimo, retira-se, e o clube recebe um jovem de 19 anos, fraco e com potencial alto.
+Verificado a 1 de novembro de 2026: o original **não tem idade**. A ficha mostra "anos no clube", o Potencial, o Tipo e o cansaço, e o tempo passa pelo Potencial, que desce de época para época. Um jogador com o Potencial no fim, ou que quase não jogou, sai do clube por vontade própria. Os jogadores novos vêm do mercado. O jogo segue o mesmo desenho, sem idades:
+
+- **Potencial a descer.** No fim de cada época o Potencial de cada jogador desce alguns pontos, mais depressa quanto mais épocas leva no clube e mais jogos jogou. Treinar continua a render conforme o Potencial, por isso um veterano deixa de melhorar e, com o Potencial perto do fim, começa a perder Velocidade, Salto e Resistência.
+- **Saídas.** No fim da época, quem tem o Potencial no fim sai do clube, e o balanço da época diz quem foi. A saída por falta de jogos, que guias de fãs atribuem ao Calciobit, não está confirmada no NPFC e fica de fora. Enquanto não houver mercado (passo 6), cada saída é substituída por um jogador livre gerado, fraco e com Potencial alto, para o plantel nunca ficar abaixo de 10.
+- **Anos no clube.** Contam-se a partir de agora e aparecem na ficha, como no original.
 - **Orçamento.** Cada época o clube recebe um orçamento conforme a divisão, mais os prémios das taças. Cada jogador tem um salário conforme a nota. O que sobra é o que há para contratar.
 - **Contratos de um ano.** No fim da época, cada jogador pede renovação, com um salário novo. Decide-se um a um: fica ou sai. Não se pode começar a época com salários acima do orçamento.
 
@@ -400,7 +404,7 @@ Táticas que se anulam umas às outras, como ritmo rápido contra pressão alta,
 1. Calendário novo e Taça da Federação, com testes e o treinador automático a medir quantas épocas leva a ganhá-la.
 2. Playoffs na Pro Liga 1 e na Pro Liga 2, com quadros desenhados.
 3. Taça Continental, Mundial, prémios e troféus.
-4. Idade, crescimento, declínio, reformas e jovens.
+4. Potencial a descer, saídas e anos no clube, sem idades, como no original.
 5. Orçamento, salários e renovações no fim da época.
 6. Mercado de transferências.
 7. Os três tipos novos e os seus combos.
@@ -464,6 +468,28 @@ Com o treinador automático, 10 carreiras de 12 épocas (2 despedidos na época 
 | 7 | Pro Liga 1 | 4 em 8 | 4 | 1 | 1 |
 | 8 a 9 | Pro Liga 1 | 5 a 6 em 8 | 1 a 3 | 1 | 1 |
 | 10 a 12 | Pro Liga 1 | 7 em 8 | 3 a 6 | 2 a 4 | 2 a 4 |
+
+### Estado dos passos 4 a 7: tempo, dinheiro, mercado e os três tipos
+
+Feitos de uma vez a 1 de novembro de 2026, a pedido do dono do projeto.
+
+- **Potencial a descer (4):** no fim da época cada jogador perde 3 pontos de Potencial, mais 1 por época no clube e 0,05 por jogo jogado, com sorte de ±2. Abaixo de 20 de Potencial perde Velocidade, Salto e Resistência, a 30% da distância ao fim. Quem chega a 0 sai, e o balanço da época diz quem saiu e quem chegou: por cada saída entra um livre gerado, 4 níveis abaixo da divisão e com Potencial entre 65 e 90. A ficha mostra "Na equipa X ép.", contado desde a chegada.
+- **Orçamento e renovações (5):** o orçamento é 600, 900, 1400 ou 2200 mil conforme a divisão, mais os prémios (200 pela Federação, 400 pela Continental, 600 pelo Mundial, 300 por ganhar os playoffs e 150 por perder a final). O salário é 5 mil mais 1 por ponto de nota, com o Potencial a pesar 30%. Entre o balanço e a época seguinte aparece o ecrã **Renovações**: cada um pede o que vale agora, começa-se com todos os que cabem, dos mais caros para baixo, e só se começa a época dentro do orçamento; quem não fica sai, e abaixo de 10 entram livres. A Direção mostra Orçamento, Salários e Sobra.
+- **Mercado (6):** no Escritório. Todas as semanas, 3 livres e até 5 jogadores de clubes da nossa divisão ou da de cima, com nota e salário; um livre entra logo se houver dinheiro, um de outro clube pede o dobro do salário e responde dentro de 1 a 3 semanas, com 70% de aceitar, e o dinheiro fica reservado até à resposta. Depois da semana 20 só há livres. No Plantel, **Vender** (dois toques) dá o valor do jogador, nunca abaixo de 10 no plantel; o máximo são 15, contando as propostas à espera. Um atalho honesto: os plantéis dos outros clubes são gerados a partir da semente, por isso quem nos vem de lá continua a jogar lá; ao mercado não interessa, porque a liga fica equilibrada e o jogador é nosso.
+- **Os três tipos (7):** Sexto Homem (recupera 70% mais depressa no banco e entra com 15 pontos mais de cansaço admitido), Dínamo (corta como o cortador, mais devagar, e rouba e interceta 60% mais) e Guarda do Aro (larga o seu homem quando ele está para lá da linha dos 3 pontos, a 7,5 m, e desarma o dobro). Entram nas listas de posições do gerador e têm combos únicos: Faísca do Banco, Pilha Elétrica e Guarda do Aro, 33 combos ao todo. Em 100 jogos com os cinco titulares do tipo, contra equipas equilibradas: roubos 217 → 269 com dínamos, desarmes 93 → 169 com guardas do aro, cansaço dos cinco 279 → 215 com sextos homens. Com dois titulares o efeito do dínamo perde-se no ruído: os roubos são sobretudo interceções, e o bónus foi posto também aí. A primeira versão, com 5 pontos de Potencial por época e livres 8 níveis abaixo, deixava o treinador automático sem triplete em 12 épocas e despedia metade; os números acima são os suavizados.
+- O clube guardado está na versão 8.
+
+Com o treinador automático, que não usa o mercado, 6 carreiras de 12 épocas (1 despedido na época 10):
+
+| Época | Divisão | Nível | Taça da Federação | Continental | Mundial | Triplete |
+|---|---|---|---|---|---|---|
+| 6 | Pro Liga 1 | 63 | 3 em 6 | 0 | 0 | 0 |
+| 7 | Pro Liga 1 e 2 | 57 | 2 em 6 | 0 | 0 | 0 |
+| 8 a 10 | Pro Liga 1 | 65 a 78 | 0 a 1 em 6 | 0 | 0 | 0 |
+| 11 | Pro Liga 1 | 84 | 3 em 5 | 2 | 2 | 2 |
+| 12 | Pro Liga 1 | 89 | 3 em 5 | 1 | 1 | 1 |
+
+O envelhecimento faz o que devia: a primeira vaga de saídas chega na época 7 e atrasa o triplete da época 7 para a 11, ainda dentro das 8 a 12 pedidas, mas no fim do intervalo. Um treinador que use o mercado chega antes.
 
 O primeiro triplete chega na época 7, e nas épocas 10 a 12 acontece em cerca de metade das carreiras. **O critério da Fase 4, triplete possível em 8 a 12 épocas, está cumprido.** O que ainda não bate certo é a equipa continuar a subir de nível sem parar, até 93 na época 12: é o que a idade, no passo 4, vai travar.
 

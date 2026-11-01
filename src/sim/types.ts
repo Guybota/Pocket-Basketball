@@ -19,7 +19,7 @@ export const MOVES = ['crossover', 'stepBack', 'alleyOop', 'powerDunk', 'pickpoc
 export type MoveId = (typeof MOVES)[number];
 
 /** Como se move sem bola, tanto a atacar como a defender. Muda com o treino. */
-export const OFF_BALL_STYLES = ['balanced', 'spotUp', 'cutter', 'lowPost', 'crasher', 'leaker', 'screener', 'shadow'] as const;
+export const OFF_BALL_STYLES = ['balanced', 'spotUp', 'cutter', 'lowPost', 'crasher', 'leaker', 'screener', 'shadow', 'sixthMan', 'dynamo', 'rimProtector'] as const;
 export type OffBallStyle = (typeof OFF_BALL_STYLES)[number];
 
 /** O que tende a fazer quando tem a bola. Muda com o treino. */

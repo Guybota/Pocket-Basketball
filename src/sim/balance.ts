@@ -184,6 +184,15 @@ export const BALANCE = {
 
   // Comportamentos sem bola
   cutterCutFactor: 0.6,
+  // Os três tipos da Fase 4: o sexto homem recupera mais no banco e entra mais cansado; o dínamo corta e rouba mais;
+  // o guarda do aro fica entre o seu homem e o cesto e desarma mais.
+  sixthManRecovery: 1.7,
+  sixthManSubIn: 0.15,
+  dynamoCutFactor: 0.85,
+  dynamoSteal: 1.6,
+  rimProtectorGap: 1.6,
+  rimProtectorSagFrom: 7.5,
+  rimProtectorBlock: 2,
   // Quem vive do ressalto ofensivo chega-lhe melhor colocado.
   crasherReboundBonus: 0.3,
   shadowGap: 0.8,
@@ -265,6 +274,35 @@ export const BALANCE = {
   postSpeedFactor: 0.4,
   postPressureRelief: 0.25,
   postPowerScale: 40,
+
+  // O tempo: o potencial desce no fim de cada época, mais depressa com os anos no clube e com os jogos jogados.
+  // Perto do fim, o corpo começa a ceder.
+  potentialDecayBase: 3,
+  potentialDecayPerYear: 1,
+  potentialDecayPerGame: 0.05,
+  potentialDecayLuck: 2,
+  potentialDeclineFrom: 20,
+  potentialDeclineRate: 0.3,
+  // Quem chega para substituir quem sai: mais fraco do que a divisão, mas com futuro.
+  freeAgentLevelOffset: -4,
+  freeAgentPotentialMin: 65,
+  freeAgentPotentialMax: 90,
+  // Dinheiro, em milhares: o orçamento de cada divisão, os prémios e os salários por nota.
+  budgetByDivision: [600, 900, 1400, 2200],
+  prizeMoney: { federation: 200, continental: 400, world: 600, playoffChampion: 300, playoffFinalist: 150 },
+  salaryBase: 5,
+  salaryPerPoint: 1,
+  salaryPotentialWeight: 0.3,
+  squadMin: 10,
+  squadMax: 15,
+  // O mercado: quantos livres e quantos de outros clubes aparecem por semana, o valor de um jogador e as propostas.
+  marketFreeAgents: 3,
+  marketClubPlayers: 5,
+  transferFeeFactor: 2,
+  transferDeadlineWeek: 20,
+  offerMinWeeks: 1,
+  offerMaxWeeks: 3,
+  offerAcceptChance: 0.7,
 
   // Treino: quanto mais alto o atributo, menos rende. Com 140, um atributo de 70 rende metade.
   trainingHardCap: 140,

@@ -4,13 +4,13 @@ import { CUP_ROUNDS, CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, createKn
 import { LEAGUE_SIZE, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, makeRng, next, type Rng } from '../sim/rng.ts';
-import { DIVISIONS, generateTeam, teamRating } from '../sim/teamgen.ts';
+import { DIVISIONS, generatePlayer, generateTeam, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
-import { NEUTRAL_TACTICS, validateTactics, validateTeam, type Tactics, type Team } from '../sim/types.ts';
+import { NEUTRAL_TACTICS, validateTactics, validateTeam, type Player, type Tactics, type Team } from '../sim/types.ts';
 import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 6;
+const SAVE_VERSION = 8;
 // Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
 const PLAYOFF_GAME_FATIGUE = 0.6;
 const MATCH_FATIGUE = 0.22;
@@ -60,6 +60,37 @@ export interface SeasonRecord {
   worldExit: number | null;
   /** Nos playoffs: a ronda em que caiu, ou o total se os ganhou. Null se a divisão não tem playoffs ou não se apurou. */
   playoffExit: number | null;
+  /** Quem saiu no fim da época, com o potencial esgotado, e quem chegou para o lugar deles. */
+  departures: string[];
+  arrivals: string[];
+  /** O dinheiro ganho em prémios nesta época, em milhares. */
+  prizeMoney: number;
+}
+
+/** Um jogador à venda esta semana: livre, ou de outro clube, com o que custa. */
+export interface MarketEntry {
+  player: Player;
+  /** O clube de origem, ou null se está livre. */
+  clubId: number | null;
+  salary: number;
+  /** O que o clube de origem pede. Zero num jogador livre. */
+  fee: number;
+}
+
+/** Uma proposta a um jogador de outro clube, à espera: o dinheiro já está reservado. */
+export interface Offer {
+  player: Player;
+  clubId: number;
+  salary: number;
+  fee: number;
+  weeksLeft: number;
+}
+
+/** Um contrato por renovar no fim da época: o salário de agora e o que o jogador pede. */
+export interface Renewal {
+  name: string;
+  current: number;
+  asked: number;
 }
 
 /** Uma época acabada na carreira do treinador, em qualquer clube. */
@@ -93,6 +124,15 @@ export interface ClubState {
   kitChoice: string;
   /** As épocas feitas noutros clubes. Os troféus são do treinador, por isso não se perdem com o clube. */
   career: CareerRecord[];
+  /** A época em que cada jogador chegou ao clube. */
+  joined: Record<string, number>;
+  /** O orçamento desta época e o salário de cada jogador, em milhares. O que sobra é para contratar. */
+  money: number;
+  salaries: Record<string, number>;
+  /** As renovações por decidir, entre o balanço da época e a época seguinte. */
+  pendingRenewals: Renewal[] | null;
+  /** As propostas a jogadores de outros clubes, à espera de resposta. */
+  offers: Offer[];
   /** De 0 a 100. Abaixo do limite, o treinador é despedido. */
   confidence: number;
   fired: boolean;
@@ -146,9 +186,19 @@ const continentalCup = (qualified: readonly number[]): CupState =>
 const firstQualified = (clubs: readonly LeagueClub[], divisions: readonly (readonly number[])[], seed: number): number[] =>
   orderByLevel(divisions[DIVISIONS.length - 1]!, id => clubs[id]!.level, makeRng(seed ^ 0x5a17)).slice(0, CONTINENTAL_PLACES);
 
+/** O salário que um jogador vale: pela nota, e um pouco mais por quem ainda vai crescer. */
+export const salaryFor = (player: Player): number => Math.round(B.salaryBase + B.salaryPerPoint * playerRating(player) + B.salaryPotentialWeight * Math.max(0, player.potential - 50));
+
+const salariesFor = (team: Team): Record<string, number> => Object.fromEntries(team.roster.map(player => [player.name, salaryFor(player)]));
+
 /** O que um clube guarda além da liga, com os valores de quem acabou de chegar. */
-const clubExtras = (team: Team): Pick<ClubState, 'practicedThisWeek' | 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice'> => ({
+const clubExtras = (team: Team, division = 0, season = 1): Pick<ClubState, 'practicedThisWeek' | 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice' | 'joined' | 'money' | 'salaries' | 'pendingRenewals' | 'offers'> => ({
   practicedThisWeek: false,
+  offers: [],
+  joined: Object.fromEntries(team.roster.map(player => [player.name, season])),
+  money: B.budgetByDivision[division]!,
+  salaries: salariesFor(team),
+  pendingRenewals: null,
   recentTraining: {},
   shirts: Object.fromEntries(team.roster.map((player, index) => [player.name, index + 4])),
   emblem: defaultEmblem(team.short),
@@ -178,7 +228,7 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
     cards,
     knownCombos: [],
     trainedThisWeek: [],
-    ...clubExtras(squad),
+    ...clubExtras(squad, division),
     career,
     confidence: B.confidenceStart,
     fired: false,
@@ -295,6 +345,169 @@ export function renameClub(club: ClubState, name: string): ClubState {
   };
 }
 
+/** Há quantas épocas o jogador está no clube. */
+export const yearsAtClub = (club: ClubState, name: string): number => club.season - (club.joined[name] ?? 1) + 1;
+
+export const totalSalaries = (club: ClubState): number => club.team.roster.reduce((sum, player) => sum + (club.salaries[player.name] ?? salaryFor(player)), 0);
+
+/** O que sobra do orçamento depois dos salários: é com isto que se contrata. */
+export const surplus = (club: ClubState): number => club.money - totalSalaries(club);
+
+/** O próximo número de camisola livre. */
+const nextShirt = (club: ClubState): number => {
+  const used = new Set(Object.values(club.shirts));
+  let n = 4;
+  while (used.has(n)) n++;
+  return n;
+};
+
+/** Um jogador livre entra no plantel, com salário, número e data de chegada. */
+export function signPlayer(club: ClubState, player: Player, salary = salaryFor(player)): ClubState {
+  if (club.team.roster.length >= B.squadMax) throw new Error('O plantel está cheio');
+  if (club.team.roster.some(p => p.name === player.name)) throw new Error(`${player.name} já está no clube`);
+  return {
+    ...club,
+    team: { ...club.team, roster: [...club.team.roster, player] },
+    shirts: { ...club.shirts, [player.name]: nextShirt(club) },
+    joined: { ...club.joined, [player.name]: club.season },
+    salaries: { ...club.salaries, [player.name]: salary },
+  };
+}
+
+/** Um jogador sai do clube. O que ficar abaixo do mínimo é preenchido com jogadores livres gerados. */
+export function releasePlayer(club: ClubState, name: string): ClubState {
+  const roster = club.team.roster.filter(p => p.name !== name);
+  if (roster.length === club.team.roster.length) throw new Error(`${name} não está no clube`);
+  const drop = <T>(record: Record<string, T>): Record<string, T> => Object.fromEntries(Object.entries(record).filter(([key]) => key !== name));
+  return { ...club, team: { ...club.team, roster }, shirts: drop(club.shirts), joined: drop(club.joined), salaries: drop(club.salaries), recentTraining: drop(club.recentTraining) };
+}
+
+/** Enquanto não há mercado, quem sai é substituído por um jogador livre gerado da mesma posição, fraco e com futuro. */
+function fillSquad(club: ClubState, positions: readonly Player['position'][], salt: number, target: number = B.squadMin): { club: ClubState; arrivals: string[] } {
+  let current = club;
+  const arrivals: string[] = [];
+  const rng = makeRng((club.seed + club.season * 7919 + salt) & 0x7fffffff);
+  let i = 0;
+  while (current.team.roster.length < Math.min(B.squadMax, target)) {
+    const position = positions[i] ?? current.team.roster[i % current.team.roster.length]!.position;
+    const potential = between(rng, B.freeAgentPotentialMin, B.freeAgentPotentialMax);
+    const player = generatePlayer((club.seed * 31 + club.season * 101 + i * 17 + salt) & 0x7fffffff, position, DIVISIONS[current.division]!.level + B.freeAgentLevelOffset, potential, current.team.roster.map(p => p.name));
+    current = signPlayer(current, player);
+    arrivals.push(player.name);
+    i++;
+  }
+  return { club: current, arrivals };
+}
+
+/** As renovações decididas: quem fica paga o que pediu, quem sai sai, e o plantel enche-se até ao mínimo. */
+export function applyRenewals(club: ClubState, keep: readonly string[]): ClubState {
+  const renewals = club.pendingRenewals;
+  if (!renewals) throw new Error('Não há renovações por decidir');
+  const kept = renewals.filter(r => keep.includes(r.name));
+  const total = kept.reduce((sum, r) => sum + r.asked, 0);
+  if (total > club.money) throw new Error('Os salários passam do orçamento');
+  let current: ClubState = { ...club, pendingRenewals: null, salaries: Object.fromEntries(kept.map(r => [r.name, r.asked])) };
+  const released = renewals.filter(r => !keep.includes(r.name));
+  const positions = released.map(r => club.team.roster.find(p => p.name === r.name)!.position);
+  for (const r of released) current = releasePlayer(current, r.name);
+  return fillSquad(current, positions, 1).club;
+}
+
+/** O valor de um jogador no mercado. */
+export const transferFee = (player: Player): number => Math.round(salaryFor(player) * B.transferFeeFactor);
+
+/** O que está à venda esta semana: alguns livres e alguns de clubes da nossa divisão ou da de cima. Muda todas as semanas. */
+export function marketList(club: ClubState): MarketEntry[] {
+  const rng = makeRng((weekSeed(club) ^ 0x6d4a7b) & 0x7fffffff);
+  const taken = new Set([...club.team.roster.map(p => p.name), ...club.offers.map(o => o.player.name)]);
+  const level = DIVISIONS[club.division]!.level;
+  const entries: MarketEntry[] = [];
+  for (let i = 0; i < B.marketFreeAgents; i++) {
+    const position = club.team.roster[Math.floor(next(rng) * club.team.roster.length)]!.position;
+    const player = generatePlayer((weekSeed(club) + i * 977) & 0x7fffffff, position, level + between(rng, -8, 4), between(rng, 30, 85), [...taken]);
+    taken.add(player.name);
+    entries.push({ player, clubId: null, salary: salaryFor(player), fee: 0 });
+  }
+  const pool = [...club.divisions[club.division]!, ...(club.divisions[club.division + 1] ?? [])].filter(id => id !== PLAYER_CLUB);
+  for (let i = 0; i < B.marketClubPlayers; i++) {
+    const clubId = pool[Math.floor(next(rng) * pool.length)]!;
+    const roster = aiTeam(club.clubs[clubId]!).roster;
+    const player = roster[Math.floor(next(rng) * roster.length)]!;
+    if (taken.has(player.name)) continue;
+    taken.add(player.name);
+    entries.push({ player, clubId, salary: salaryFor(player), fee: transferFee(player) });
+  }
+  return entries;
+}
+
+export const transferWindowOpen = (club: ClubState): boolean => club.week <= B.transferDeadlineWeek;
+
+/** Uma proposta: um jogador livre entra logo; um de outro clube demora semanas e pode recusar, com o dinheiro reservado entretanto. */
+export function makeOffer(club: ClubState, entry: MarketEntry): ClubState {
+  const cost = entry.salary + entry.fee;
+  if (club.team.roster.length + club.offers.length >= B.squadMax) throw new Error('O plantel está cheio');
+  if (surplus(club) < cost) throw new Error('Não há dinheiro para esta proposta');
+  if (entry.clubId === null) return signPlayer(club, entry.player, entry.salary);
+  if (!transferWindowOpen(club)) throw new Error('O prazo das transferências já passou');
+  const rng = makeRng((weekSeed(club) + entry.player.name.length * 131) & 0x7fffffff);
+  const weeksLeft = Math.floor(between(rng, B.offerMinWeeks, B.offerMaxWeeks + 1));
+  return { ...club, money: club.money - entry.fee, offers: [...club.offers, { player: entry.player, clubId: entry.clubId, salary: entry.salary, fee: entry.fee, weeksLeft }] };
+}
+
+export function cancelOffer(club: ClubState, name: string): ClubState {
+  const offer = club.offers.find(o => o.player.name === name);
+  if (!offer) throw new Error('Não há proposta a esse jogador');
+  return { ...club, money: club.money + offer.fee, offers: club.offers.filter(o => o !== offer) };
+}
+
+/** Vender: o jogador sai e o clube recebe o valor dele. Nunca abaixo do mínimo do plantel. */
+export function sellPlayer(club: ClubState, name: string): ClubState {
+  if (club.team.roster.length <= B.squadMin) throw new Error(`O plantel não pode ter menos de ${B.squadMin} jogadores`);
+  const player = club.team.roster.find(p => p.name === name);
+  if (!player) throw new Error(`${name} não está no clube`);
+  return { ...releasePlayer(club, name), money: club.money + transferFee(player) };
+}
+
+/** No fim da semana, as propostas avançam: aceites entram, recusadas devolvem o dinheiro. */
+function settleOffers(club: ClubState): { club: ClubState; accepted: string[]; refused: string[] } {
+  const rng = makeRng((weekSeed(club) ^ 0x3f1a9c) & 0x7fffffff);
+  let current = club;
+  const accepted: string[] = [];
+  const refused: string[] = [];
+  const remaining: Offer[] = [];
+  for (const offer of club.offers) {
+    const weeksLeft = offer.weeksLeft - 1;
+    if (weeksLeft > 0) {
+      remaining.push({ ...offer, weeksLeft });
+      continue;
+    }
+    const room = current.team.roster.length < B.squadMax && !current.team.roster.some(p => p.name === offer.player.name);
+    if (room && next(rng) < B.offerAcceptChance) {
+      current = signPlayer(current, offer.player, offer.salary);
+      accepted.push(offer.player.name);
+    } else {
+      current = { ...current, money: current.money + offer.fee };
+      refused.push(offer.player.name);
+    }
+  }
+  return { club: { ...current, offers: remaining }, accepted, refused };
+}
+
+/** Decide as renovações sozinho: fica toda a gente que couber, a começar pelos melhores. */
+export function autoRenew(club: ClubState): ClubState {
+  if (!club.pendingRenewals) return club;
+  const byRating = [...club.pendingRenewals].sort((a, b) => playerRating(club.team.roster.find(p => p.name === b.name)!) - playerRating(club.team.roster.find(p => p.name === a.name)!));
+  const keep: string[] = [];
+  let total = 0;
+  for (const r of byRating) {
+    if (total + r.asked <= club.money) {
+      keep.push(r.name);
+      total += r.asked;
+    }
+  }
+  return applyRenewals(club, keep);
+}
+
 export const activeKit = (club: ClubState): ClubKit => club.kits.find(kit => kit.id === club.kitChoice) ?? club.kits[0]!;
 
 /** Toda a carreira do treinador, incluindo as épocas neste clube. */
@@ -363,7 +576,8 @@ function closeWeek(club: ClubState, played: (index: number) => number): ClubStat
     return { ...practiced, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
   });
   // Os alvos são do adversário desta semana, por isso não passam para a seguinte.
-  const closed: ClubState = { ...settlePendingCup(club), team: { ...club.team, roster }, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [], practicedThisWeek: false };
+  const settled = settleOffers({ ...settlePendingCup(club), team: { ...club.team, roster } }).club;
+  const closed: ClubState = { ...settled, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [], practicedThisWeek: false };
   return closed.week > SEASON_WEEKS ? afterRegularSeason(closed) : drawCups(closed);
 }
 
@@ -466,6 +680,19 @@ function endSeason(club: ClubState): ClubState {
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
   const own = table[position]!;
   const scorers = Object.entries(club.stats).sort((a, b) => b[1].points - a[1].points);
+  // O tempo passa: o potencial desce, quem o esgota sai, e quem fica pede um salário novo.
+  const aged = club.team.roster.map(player => {
+    const decay = B.potentialDecayBase + B.potentialDecayPerYear * yearsAtClub(club, player.name) + B.potentialDecayPerGame * (club.stats[player.name]?.games ?? 0) + between(rng, -B.potentialDecayLuck, B.potentialDecayLuck);
+    const potential = Math.max(0, Math.round(player.potential - decay));
+    const drop = Math.max(0, Math.round((B.potentialDeclineFrom - potential) * B.potentialDeclineRate));
+    const attributes = drop === 0 ? player.attributes : { ...player.attributes, speed: Math.max(1, player.attributes.speed - drop), jumping: Math.max(1, player.attributes.jumping - drop), stamina: Math.max(1, player.attributes.stamina - drop) };
+    return { ...player, potential, attributes };
+  });
+  const departures = aged.filter(player => player.potential <= 0).map(player => player.name);
+  let shrunk: ClubState = { ...club, team: { ...club.team, roster: aged } };
+  for (const name of departures) shrunk = releasePlayer(shrunk, name);
+  const prizeMoney = cups.reduce((sum, cup) => sum + B.prizeMoney[cup], 0)
+    + (club.playoffs && PLAYOFF_FORMATS[club.division]!.decidesTitle ? (playoffWinner(club.playoffs) === PLAYER_CLUB ? B.prizeMoney.playoffChampion : playoffExit(club.playoffs, PLAYER_CLUB) === PLAYOFF_FORMATS[club.division]!.bestOf.length - 1 ? B.prizeMoney.playoffFinalist : 0) : 0);
   const record: SeasonRecord = {
     season: club.season,
     division: club.division,
@@ -482,11 +709,26 @@ function endSeason(club: ClubState): ClubState {
     continentalExit,
     worldExit,
     playoffExit: club.playoffs ? playoffExit(club.playoffs, PLAYER_CLUB) : null,
+    departures,
+    arrivals: [],
+    prizeMoney,
   };
   const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup));
   const qualified = orders[DIVISIONS.length - 1]!.slice(0, CONTINENTAL_PLACES);
+  const filled = fillSquad({ ...shrunk, season: club.season + 1, division }, departures.map(name => club.team.roster.find(p => p.name === name)!.position), 0, aged.length);
+  record.arrivals = filled.arrivals;
+  const renewals: Renewal[] = filled.club.team.roster.filter(p => !filled.arrivals.includes(p.name)).map(player => ({ name: player.name, current: club.salaries[player.name] ?? salaryFor(player), asked: salaryFor(player) }));
   return {
     ...club,
+    team: filled.club.team,
+    shirts: filled.club.shirts,
+    joined: filled.club.joined,
+    salaries: filled.club.salaries,
+    recentTraining: filled.club.recentTraining,
+    // As propostas pendentes caem com a época, e o dinheiro reservado volta.
+    money: B.budgetByDivision[division]! + prizeMoney,
+    offers: [],
+    pendingRenewals: renewals,
     division,
     season: club.season + 1,
     week: 1,
@@ -644,7 +886,17 @@ function validCups(club: ClubState): boolean {
 function migrateV5(old: ClubState): ClubState {
   const clubs = [...old.clubs.slice(0, FOREIGN_START), ...foreignClubs(old.seed, makeRng(old.seed ^ 0x77a1c3))];
   const qualified = firstQualified(clubs, old.divisions, old.seed);
-  return { ...old, version: SAVE_VERSION, clubs, continentalQualified: qualified, cups: { ...old.cups, continental: continentalCup(qualified) } };
+  return migrateV6({ ...old, version: 6, clubs, continentalQualified: qualified, cups: { ...old.cups, continental: continentalCup(qualified) } });
+}
+
+/** Antes do dinheiro e do tempo: toda a gente chegou na época 1 e ganha o que vale. */
+function migrateV6(old: ClubState): ClubState {
+  return migrateV7({ ...old, version: 7, joined: Object.fromEntries(old.team.roster.map(player => [player.name, 1])), money: B.budgetByDivision[old.division]!, salaries: salariesFor(old.team), pendingRenewals: null });
+}
+
+/** Antes do mercado não havia propostas. */
+function migrateV7(old: ClubState): ClubState {
+  return { ...old, version: SAVE_VERSION, offers: [] };
 }
 
 /** Antes dos playoffs, a época acabava na fase regular. */
@@ -669,7 +921,7 @@ function migrateV1(old: ClubState): ClubState {
     season: 1,
     week: 1,
     trainedThisWeek: [],
-    ...clubExtras(old.team),
+    ...clubExtras(old.team, old.division),
     career: [],
     confidence: B.confidenceStart,
     fired: false,
@@ -687,13 +939,15 @@ function migrateV1(old: ClubState): ClubState {
 /** Antes de cada jogador treinar à vez, o treino da semana era de toda a equipa. */
 function migrateV2(old: ClubState): ClubState {
   const trained = (old.trainedThisWeek as unknown) === true ? old.team.roster.map(player => player.name) : [];
-  return { ...old, version: 3, trainedThisWeek: trained, ...clubExtras(old.team), career: [] };
+  return { ...old, version: 3, trainedThisWeek: trained, ...clubExtras(old.team, old.division), career: [] };
 }
 
 function validExtras(club: ClubState): boolean {
   const isRecord = (value: unknown): boolean => typeof value === 'object' && value !== null;
   const playoffs = club.playoffs === null || (isRecord(club.playoffs) && Array.isArray(club.playoffs.seeds) && Array.isArray(club.playoffs.rounds) && PLAYOFF_FORMATS[club.playoffs.division] !== undefined);
-  return playoffs && Array.isArray(club.trainedThisWeek) && typeof club.practicedThisWeek === 'boolean' && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
+  const money = Number.isFinite(club.money) && isRecord(club.salaries) && isRecord(club.joined) && (club.pendingRenewals === null || (Array.isArray(club.pendingRenewals) && club.pendingRenewals.every(r => typeof r.name === 'string' && Number.isFinite(r.asked))))
+    && Array.isArray(club.offers) && club.offers.every(o => isRecord(o.player) && Number.isFinite(o.fee) && Number.isFinite(o.weeksLeft));
+  return playoffs && money && Array.isArray(club.trainedThisWeek) && typeof club.practicedThisWeek === 'boolean' && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
     && validEmblem(club.emblem) && Array.isArray(club.kits) && club.kits.length > 0 && club.kits.every(validKit)
     && club.kits.some(kit => kit.id === club.kitChoice);
 }
@@ -718,6 +972,8 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 3) parsed = migrateV3(parsed);
     if (parsed.version === 4) parsed = migrateV4(parsed);
     if (parsed.version === 5) parsed = migrateV5(parsed);
+    if (parsed.version === 6) parsed = migrateV6(parsed);
+    if (parsed.version === 7) parsed = migrateV7(parsed);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
