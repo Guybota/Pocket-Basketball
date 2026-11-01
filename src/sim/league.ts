@@ -1,5 +1,8 @@
 import { BALANCE as B } from './balance.ts';
-import { between, makeRng, next, type Rng } from './rng.ts';
+import { CUP_WEEKS, type CupName } from './cup.ts';
+import { between, makeRng, shuffled, type Rng } from './rng.ts';
+
+export { shuffled };
 
 /** Um clube da liga. Guarda só o necessário para gerar a equipa, para o save ficar pequeno. */
 export interface LeagueClub {
@@ -27,25 +30,28 @@ export interface Standing {
 export type SeasonOutcome = 'champion' | 'promoted' | 'stayed' | 'relegated';
 
 export const LEAGUE_SIZE = 10;
-// 18 jornadas e uma semana livre a meio, onde mais tarde cabem as taças.
-export const FREE_WEEK = 10;
-export const SEASON_WEEKS = 19;
+// 18 jornadas, com as semanas das taças pelo meio: 6 da Taça da Federação, 4 da Continental e 1 do Mundial.
+export const SEASON_WEEKS = 29;
 export const MOVING_PLACES = 2;
+const CUP_WEEK_SET = new Set(Object.values(CUP_WEEKS).flat());
+/** As semanas com jornada, por ordem. */
+export const LEAGUE_WEEKS: readonly number[] = Array.from({ length: SEASON_WEEKS }, (_, i) => i + 1).filter(week => !CUP_WEEK_SET.has(week));
 
-/** A jornada de cada semana, ou null numa semana sem jogo oficial. */
+/** A jornada de cada semana, ou null numa semana de taça. */
 export function weekRound(week: number): number | null {
-  if (week < 1 || week > SEASON_WEEKS || week === FREE_WEEK) return null;
-  return week < FREE_WEEK ? week - 1 : week - 2;
+  const round = LEAGUE_WEEKS.indexOf(week);
+  return round < 0 ? null : round;
 }
 
-export function shuffled<T>(list: readonly T[], rng: Rng): T[] {
-  const out = [...list];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(next(rng) * (i + 1));
-    [out[i], out[j]] = [out[j]!, out[i]!];
+/** A taça e a ronda de uma semana, ou null numa semana de jornada. */
+export function weekCup(week: number): { cup: CupName; round: number } | null {
+  for (const cup of Object.keys(CUP_WEEKS) as CupName[]) {
+    const round = CUP_WEEKS[cup].indexOf(week);
+    if (round >= 0) return { cup, round };
   }
-  return out;
+  return null;
 }
+
 
 /** Todos jogam contra todos, em casa e fora. Na segunda volta trocam-se os campos. */
 export function roundRobin(ids: readonly number[], seed: number): Fixture[][] {

@@ -1,16 +1,20 @@
 // Os menus do jogo: em cima a ficha ou a cena, em baixo as decisões. A cidade e o jogo em si ficam em main.ts.
 import { BALANCE as B } from '../sim/balance.ts';
-import { LEAGUE_SIZE, MOVING_PLACES, weekRound } from '../sim/league.ts';
+import { CUP_NAMES, FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { seriesWinner, seriesWins } from '../sim/playoff.ts';
+import { drawBracket, fullBracket, type BracketRound, type BracketSlot } from './art/bracket.ts';
+import { LEAGUE_SIZE, MOVING_PLACES } from '../sim/league.ts';
 import { setTactics } from '../sim/match.ts';
 import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, MAX_CARDS_PER_PLAYER, previewGains, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
-import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player, type Team } from '../sim/types.ts';
+import { ATTRIBUTE_KEYS, MAX_FOCUS, gradeOf, type Attributes, type Player, type Team } from '../sim/types.ts';
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
 import { KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { INK, KITS, drawSprite, lookOf, type Look } from './art/sprites.ts';
-import { PLAYER_CLUB, activeKit, aiTeam, currentFixture, leagueTable, opponentId, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, cupRoundName, currentFixture, federationStatus, leagueTable, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
@@ -18,7 +22,7 @@ import { ATTRIBUTE_LABELS, escapeHtml as esc, panelContent } from './panel.ts';
 import { drawShelf, trophyList } from './trophies.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
-type Screen = 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
+type Screen = 'create' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
 type GoTo = Screen | 'town';
 type OfficeItem = 'board' | 'trophies' | 'history' | 'reset';
 
@@ -50,7 +54,7 @@ let swapping: number | null = null;
 let picked: CardId[] = [];
 let focusCard: CardId | null = null;
 let lastTraining: { before: Player; result: TrainingResult; cards: CardId[]; isNew: boolean; index: number } | null = null;
-let federationTab: 'table' | 'calendar' | 'round' | 'ladder' = 'table';
+let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' | 'ladder' = 'table';
 let federationClub = PLAYER_CLUB;
 let officeItem: OfficeItem = 'board';
 let selectedTrophy = 0;
@@ -59,6 +63,8 @@ let offerClub = 0;
 let backFromSquad: GoTo = 'town';
 let tacticsBack: GoTo = 'town';
 let kitEditBack: GoTo = 'office';
+let emblemBack: GoTo = 'office';
+let federationRound = 0;
 let kitEditing = 'home';
 let gameKind: GameKind = 'official';
 let half = false;
@@ -150,7 +156,7 @@ function playerCard(index: number, extra?: string): string {
         <div class="kv"><span>Potencial</span>${chevrons(p.potential)}</div>
       </div>
     </div>
-    ${extra ?? `<div class="pfoot">
+    ${extra ?? ''}${`<div class="pfoot${extra ? ' spare' : ''}">
       <div class="rows">
         <div>${dot(p)}<span>Energia ${Math.round((1 - p.fatigue) * 100)}%</span></div>
         <div><span>Na equipa</span><span>${club.season} ép.</span></div>
@@ -284,7 +290,15 @@ function reportScreen(): Rendered {
   };
 }
 
-const offers = (): number[] => club.divisions.flatMap((ids, d) => ids.filter(id => id !== PLAYER_CLUB).slice(0, d === club.division ? 5 : d === club.division + 1 ? 3 : 0));
+const offers = (): number[] => club.divisions.flatMap((ids, d) => {
+  const others = ids.filter(id => id !== PLAYER_CLUB);
+  const count = d === club.division ? 5 : d === club.division + 1 ? 3 : 0;
+  // Todas as semanas há clubes diferentes a propor jogos.
+  const start = (club.week * 3 + club.season) % others.length;
+  return [...others.slice(start), ...others.slice(0, start)].slice(0, count);
+});
+const practiceAllowed = (): boolean => !club.practicedThisWeek;
+const friendlyAllowed = (): boolean => !currentFixture(club);
 
 function offersScreen(): Rendered {
   const list = offers();
@@ -299,7 +313,7 @@ function offersScreen(): Rendered {
       <div class="quote">${offerKind === 'practice' ? 'Só dois períodos, à porta fechada e sem público. Dá menos cartas, cansa menos e não mexe na confiança.' : 'Jogo inteiro com público. Dá cartas, cansa, e conta metade para a confiança. Não conta para a liga.'}</div>
     </div></div>`),
     bottom: `<div class="chalk"><h2>Propostas de jogo</h2>
-      <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}">Jogo-treino</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}">Particular</button></div>
+      <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}" ${practiceAllowed() ? '' : 'disabled'}>${practiceAllowed() ? 'Jogo-treino' : 'Jogo-treino feito'}</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}" ${friendlyAllowed() ? '' : 'disabled'}>Particular</button></div>
       <div class="scroll">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(club.clubs[id]!.name)}</span><img alt="" src="${offerKind === 'practice' ? ICON_WHISTLE : ICON_BALL}"><small>${DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name.replace('Liga ', '')}</small></button>`).join('')}</div>
     </div>${bar(backBtn('town'), `<button type="button" class="primary" data-pre="${offerKind}">Aceitar</button>`)}`,
   };
@@ -311,10 +325,11 @@ const currentRival = (): Team => aiTeam(club.clubs[rivalId()]!);
 function preScreen(): Rendered {
   const rival = currentRival();
   const view = host.match();
-  const kind = half ? 'Intervalo' : gameKind === 'official' ? `Jornada ${(weekRound(club.week) ?? 0) + 1}` : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
+  const kind = half ? 'Intervalo' : gameKind === 'official' ? officialLabel(club) : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
   const score = half && view ? `${view.s.score[0]} - ${view.s.score[1]}` : '';
   const bars: string[] = [
     `<button type="button" class="mbar" ${half ? 'data-act="halfSubs"' : 'data-squad="pre"'}><img alt="" src="${ICON_SQUAD}"><span>${half ? 'Trocas' : 'Plantel'}</span><small>${half ? 'Quem entra na segunda parte' : 'Titulares e banco'}</small></button>`,
+    `<button type="button" class="mbar" data-go="rival"><img alt="" src="${ICON_BALL}"><span>Adversário</span><small>${focusLabel(rival)}</small></button>`,
     `<button type="button" class="mbar" data-go="tactics"><img alt="" src="${ICON_TACTICS}"><span>Táticas da equipa</span><small>Pressão, ataque, ritmo</small></button>`,
     half ? `<button type="button" class="mbar" data-go="halfStats"><img alt="" src="${ICON_BALL}"><span>Estatísticas</span><small>Primeira parte</small></button>` : `<button type="button" class="mbar" data-go="kit"><img alt="" src="${ICON_KIT}"><span>Equipamento</span><small>${esc(activeKit(club).name)}</small></button>`,
     `<button type="button" class="mbar go" id="${half ? 'secondHalfBtn' : 'kickoffBtn'}" data-act="${half ? 'secondHalf' : 'startMatch'}"><img alt="" src="${ICON_GO}"><span>${half ? 'Segunda parte' : 'Bola ao alto'}</span><small>${half ? 'A equipa volta ao campo' : gameKind === 'practice' ? 'Dois períodos, sem público' : 'Começa o jogo'}</small></button>`,
@@ -322,6 +337,57 @@ function preScreen(): Rendered {
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
     bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div><div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
+  };
+}
+
+/** Criar o clube: o nome, o emblema e o equipamento, antes da primeira semana. */
+function createScreen(): Rendered {
+  const kit = activeKit(club);
+  return {
+    top: inside(`<div class="note"><header><b id="createName">${esc(club.team.name)}</b><span>${DIVISIONS[club.division]!.name}</span></header><div class="inner kitstage">
+      <div id="createCrest">${ownCrest(96)}</div>
+      ${flatKit(kit)}
+    </div></div>`),
+    bottom: `<div class="editor" style="flex:1;min-height:0">
+        <div><label for="clubName">Nome do clube</label><input id="clubName" maxlength="${CLUB_NAME_MAX}" autocomplete="off" spellcheck="false" style="width:100%;text-transform:none;letter-spacing:0" value="${esc(club.team.name)}"></div>
+        <div class="menu tight" style="padding:0;background:none">
+          <button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button>
+          <button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button>
+        </div>
+        <div class="quote">Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos. Tudo isto pode mudar-se depois, no Escritório.</div>
+      </div>
+      ${bar('<button type="button" class="primary" id="startClubBtn" data-act="startClub">Começar</button>')}`,
+  };
+}
+
+/** Quem está marcado, para a barra do menu. */
+function focusLabel(rival: Team): string {
+  const names = (club.tactics.focus ?? []).map(i => rival.roster[i]?.name).filter((name): name is string => Boolean(name));
+  return names.length ? `Alvos: ${names.map(esc).join(', ')}` : 'Plantel e alvos a marcar';
+}
+
+/** O adversário desta semana: o plantel e as notas, como no original. As táticas não se veem, porque mudam a meio do jogo. */
+function rivalScreen(): Rendered {
+  const rival = currentRival();
+  const id = rivalId();
+  const focus = club.tactics.focus ?? [];
+  const played = [...club.rounds.flat(), ...club.cups.federation.rounds.flat()].filter(f => f.score && (f.home === id || f.away === id));
+  const wins = played.filter(f => (f.home === id ? f.score![0] > f.score![1] : f.score![1] > f.score![0])).length;
+  const best = [...rival.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!;
+  const tallest = [...rival.roster].sort((a, b) => b.heightCm - a.heightCm)[0]!;
+  const rows = rival.roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-target="${index}" aria-pressed="${focus.includes(index)}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}>
+      <span class="ppos ppos-${p.position}">${p.position}</span><span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+    </button>`).join('');
+  return {
+    top: inside(`<div class="note"><header><b>${crest(rival.short, true)} ${esc(rival.name)}</b><span>Nível ${gradeOf(teamRating(rival))}</span></header><div class="inner">
+      <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>${wins} V</span><span>${played.length - wins} D</span><span>${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)}</span></div>
+      <div class="kv"><span>Lança mais</span><b>${esc(best.name)}</b></div>
+      <div class="kv"><span>Mais alto</span><b>${esc(tallest.name)}, ${tallest.heightCm} cm</b></div>
+      <div class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos. As táticas do adversário não se veem, porque ele também as muda a meio do jogo.</div>
+    </div></div>`),
+    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
+      <div class="scroll">${rows}</div>
+      ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
   };
 }
 
@@ -420,8 +486,36 @@ function emblemScreen(): Rendered {
         <div><span>Cor do símbolo</span>${swatches('data-em-accent', emblem.accent)}</div>
         <div><label for="emblemLetters">Letras, até três</label><input id="emblemLetters" maxlength="3" autocomplete="off" value="${esc(emblem.letters)}"></div>
       </div>
-      ${bar('<button type="button" class="back" data-go="office">‹ Voltar</button>')}`,
+      ${bar(`<button type="button" class="back" data-go="${emblemBack}">‹ Voltar</button>`)}`,
   };
+}
+
+const slotOf = (id: number, score: string, winner: boolean): BracketSlot => ({ short: club.clubs[id]!.short, mine: id === PLAYER_CLUB, score, winner });
+
+/** O quadro da taça: as três últimas rondas, que são as que cabem no ecrã. As primeiras ficam na lista. */
+function cupBracket(): [BracketRound[], string] {
+  const from = FEDERATION_ROUNDS.length - 3;
+  const rounds: BracketRound[] = club.cups.federation.rounds.slice(from).map((fixtures, n) => ({
+    label: ['Quartos', 'Meias', 'Final'][n]!,
+    pairs: fixtures.map(f => {
+      const homeWon = f.score ? f.score[0] > f.score[1] : false;
+      return [slotOf(f.home, f.score ? String(f.score[0]) : '', Boolean(f.score) && homeWon), slotOf(f.away, f.score ? String(f.score[1]) : '', Boolean(f.score) && !homeWon)];
+    }),
+  }));
+  return [fullBracket(rounds, ['Quartos', 'Meias', 'Final'], 4), CUP_NAMES.federation];
+}
+
+function playoffBracket(): [BracketRound[], string] {
+  const format = playoffFormat(club)!;
+  const rounds: BracketRound[] = (club.playoffs?.rounds ?? []).map((series, n) => ({
+    label: format.roundNames[n]!.replace(' de final', '').replace('-finais', ''),
+    pairs: series.map(s => {
+      const [top, bottom] = seriesWins(s);
+      const winner = seriesWinner(s);
+      return [slotOf(s.top, String(top), winner === s.top), slotOf(s.bottom, String(bottom), winner === s.bottom)];
+    }),
+  }));
+  return [fullBracket(rounds, format.roundNames.map(name => name.replace(' de final', '').replace('-finais', '')), format.places.length / 2), format.name];
 }
 
 function federationScreen(): Rendered {
@@ -444,7 +538,8 @@ function federationScreen(): Rendered {
   let body = '';
   if (federationTab === 'table') {
     body = `<div class="crow head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>${table.map((r, i) => {
-      const up = i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
+      const format = playoffFormat(club);
+      const up = format ? format.places.includes(i) : i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
       const down = i >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0;
       const diff = r.pointsFor - r.pointsAgainst;
       return `<button type="button" class="crow${up ? ' up' : down ? ' down' : ''}${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}"><span>${i + 1}</span><span class="name">${esc(club.clubs[r.club]!.name)}</span><span>${r.wins}</span><span>${r.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></button>`;
@@ -459,14 +554,32 @@ function federationScreen(): Rendered {
       return `<button type="button" class="crow cal" data-fed-club="${rival}" aria-pressed="${federationClub === rival}"><small>J${n + 1}</small><small>${home ? 'Casa' : 'Fora'}</small><span class="name">${esc(club.clubs[rival]!.name)}</span><b class="${own > other ? 'won' : 'lost'}">${f.score ? `${own}-${other}` : ''}</b></button>`;
     }).join('');
   } else if (federationTab === 'round') {
-    const last = [...club.rounds].reverse().find(r => r[0]?.score) ?? club.rounds[0]!;
-    body = last.map(f => `<div class="crow round"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('');
+    const last = club.rounds[federationRound] ?? club.rounds[0]!;
+    body = `<div class="crow head" style="grid-template-columns:34px 1fr 34px"><button type="button" class="chalkarrow" data-fed-round="-1" aria-label="Jornada anterior" ${federationRound > 0 ? '' : 'disabled'}>‹</button><span style="text-align:center">Jornada ${federationRound + 1}${last[0]?.score ? '' : ' · por jogar'}</span><button type="button" class="chalkarrow" data-fed-round="1" aria-label="Jornada seguinte" ${federationRound < club.rounds.length - 1 ? '' : 'disabled'}>›</button></div>` + last.map(f => `<div class="crow round"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('');
+  } else if (federationTab === 'playoffs') {
+    const format = playoffFormat(club)!;
+    const state = club.playoffs;
+    const entry = format.decidesTitle ? `Os ${format.places.length} primeiros da fase regular. Quartos e meias à melhor de 3, final à melhor de 5. O vencedor é o campeão; os 2 últimos descem.` : `Do 2.º ao 5.º da fase regular, à melhor de 3. O 1.º sobe logo; o vencedor do playoff sobe com ele.`;
+    body = `<div class="crow round" style="grid-template-columns:1fr"><span class="name">${entry}</span></div>` + (state
+      ? [...state.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${format.roundNames[n]}</span><span>melhor de ${round[0]!.bestOf}</span></div>` + round.map(series => {
+        const [top, bottom] = seriesWins(series);
+        const winner = seriesWinner(series);
+        return `<div class="crow round${series.top === PLAYER_CLUB || series.bottom === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[series.top]!.name)}${winner === series.top ? ' ✓' : ''}</span><b>${top}-${bottom}</b><span class="name">${esc(club.clubs[series.bottom]!.name)}${winner === series.bottom ? ' ✓' : ''}</span></div>`;
+      }).join('')).join('')
+      : `<div class="crow round" style="grid-template-columns:1fr"><span class="name">Começam depois da jornada ${(LEAGUE_SIZE - 1) * 2}. Cada ronda é uma semana, com os jogos da série seguidos.</span></div>`);
+  } else if (federationTab === 'cup') {
+    const { federation } = club.cups;
+    const status = federationStatus(club);
+    const headline = status.winner === PLAYER_CLUB ? 'Vencedores!' : status.alive ? 'Ainda em prova' : status.exit === null ? '' : `Eliminados: ${cupRoundName(status.exit).toLowerCase()}`;
+    body = `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${CUP_NAMES.federation}</span><span>${headline}</span></div>` + [...federation.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${cupRoundName(n)}</span><span>${round.length} ${round.length === 1 ? 'jogo' : 'jogos'}</span></div>` + round.map(f => `<div class="crow round${f.home === PLAYER_CLUB || f.away === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('')).join('') + (federation.rounds.length === 0 ? '<div class="crow round" style="grid-template-columns:1fr"><span class="name">O sorteio da pré-eliminatória é na semana 2.</span></div>' : '') + `<div class="crow round" style="grid-template-columns:1fr"><span class="name">${FEDERATION_ROUNDS.length} rondas a um jogo. Entram os 40 clubes; os da ${DIVISIONS[0]!.name} e os mais fracos da ${DIVISIONS[1]!.name} começam na pré-eliminatória.</span></div>`;
   } else {
     body = [...DIVISIONS].map((d, n) => ({ d, n })).reverse().map(({ d, n }) => `<div class="crow round" style="grid-template-columns:1fr auto;font:400 18px/1 var(--ui);min-height:44px${n === club.division ? ';color:var(--gold)' : ''}"><span class="name">${d.name}</span><small>${n === club.division ? 'Estás aqui' : `${LEAGUE_SIZE} clubes`}</small></div>`).join('');
   }
-  const tabs: [typeof federationTab, string][] = [['table', 'Classificação'], ['calendar', 'Calendário'], ['round', 'Jornada'], ['ladder', 'Divisões']];
+  const tabs: [typeof federationTab, string][] = [['table', 'Classificação'], ['calendar', 'Calendário'], ['round', 'Jornada'], ...(playoffFormat(club) ? [['playoffs', 'Playoffs'] as [typeof federationTab, string]] : []), ['cup', 'Taça'], ['ladder', 'Divisões']];
+  const bracket = federationTab === 'cup' || federationTab === 'playoffs';
   return {
-    top,
+    top: bracket ? fullCanvas('bracket') : top,
+    after: bracket ? () => drawBracket(element<HTMLCanvasElement>('bracket'), ...(federationTab === 'cup' ? cupBracket() : playoffBracket())) : undefined,
     bottom: `<div class="chalk"><h2>${DIVISIONS[club.division]!.name}</h2><div class="chalktabs">${tabs.map(([id, label]) => `<button type="button" data-fed-tab="${id}" aria-pressed="${federationTab === id}">${label}</button>`).join('')}</div><div class="scroll">${body}</div></div>${bar(backBtn('town'))}`,
   };
 }
@@ -522,7 +635,7 @@ function officeScreen(): Rendered {
 }
 
 const SCREENS: Record<Screen, () => Rendered> = {
-  squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
+  create: createScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
   offers: offersScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
 };
 
@@ -582,6 +695,13 @@ function trainNow(): void {
   go('report');
 }
 
+/** As táticas ficam no clube e, ao intervalo, entram no jogo a decorrer como comando do treinador, para a repetição. */
+function applyTactics(tactics: ClubState['tactics']): void {
+  commit({ ...club, tactics });
+  if (half) setTactics(host.match()!.s, 0, tactics);
+  render();
+}
+
 const editKit = (change: Partial<ClubKit>): void => {
   commit({ ...club, kits: club.kits.map(kit => (kit.id === kitEditing ? { ...kit, ...change } : kit)) });
   render();
@@ -597,6 +717,7 @@ function onClick(event: Event): void {
   if (!target || (target as HTMLButtonElement).disabled) return;
   const data = target.dataset;
   if (data.go) {
+    if (data.go === 'emblem') emblemBack = screen === 'emblem' ? emblemBack : screen;
     go(data.go as GoTo);
   } else if (data.pre) {
     gameKind = data.pre as GameKind;
@@ -654,11 +775,13 @@ function onClick(event: Event): void {
     selectedTrophy = Number(data.trophy);
     render();
   } else if (data.tactic) {
-    const tactics = { ...club.tactics, [data.tactic]: Number(data.tacticValue) };
-    commit({ ...club, tactics });
-    // No intervalo, a mudança também entra no jogo que está a decorrer, e fica registada para a repetição.
-    if (half) setTactics(host.match()!.s, 0, tactics);
-    render();
+    applyTactics({ ...club.tactics, [data.tactic]: Number(data.tacticValue) });
+  } else if (data.target !== undefined) {
+    const index = Number(data.target);
+    const focus = club.tactics.focus ?? [];
+    applyTactics({ ...club.tactics, focus: focus.includes(index) ? focus.filter(i => i !== index) : [...focus, index].slice(0, MAX_FOCUS) });
+  } else if (data.act === 'clearFocus') {
+    applyTactics({ ...club.tactics, focus: [] });
   } else if (data.kit) {
     commit({ ...club, kitChoice: data.kit });
     render();
@@ -673,6 +796,9 @@ function onClick(event: Event): void {
     render();
   } else if (data.fedClub !== undefined) {
     federationClub = Number(data.fedClub);
+    render();
+  } else if (data.fedRound !== undefined) {
+    federationRound = Math.max(0, Math.min(club.rounds.length - 1, federationRound + Number(data.fedRound)));
     render();
   } else if (data.office) {
     officeItem = data.office as OfficeItem;
@@ -697,13 +823,22 @@ function onClick(event: Event): void {
     host.halfSubs();
   } else if (data.act === 'newClub') {
     host.newClub();
+  } else if (data.act === 'startClub') {
+    host.toTown();
   }
 }
 
 // As letras só aceitam o que a letra do jogo sabe desenhar, e escrever não pode tirar o cursor do sítio.
 function onInput(event: Event): void {
   const input = event.target as HTMLInputElement;
-  if (!active || input.id !== 'emblemLetters') return;
+  if (!active) return;
+  if (input.id === 'clubName') {
+    commit(renameClub(club, input.value));
+    element('createName').textContent = club.team.name;
+    element('createCrest').innerHTML = ownCrest(96);
+    return;
+  }
+  if (input.id !== 'emblemLetters') return;
   input.value = emblemLetters(input.value);
   commit({ ...club, emblem: { ...club.emblem, letters: input.value } });
   element('emblemBig').innerHTML = ownCrest(160);
@@ -731,10 +866,37 @@ export function openMenu(next: Screen, squadBack: GoTo = 'town'): void {
   backFromSquad = squadBack;
   tacticsBack = 'town';
   if (next === 'federation' && !club.divisions[club.division]!.includes(federationClub)) federationClub = PLAYER_CLUB;
-  if (next === 'office') officeItem = 'board';
+  if (next === 'office') {
+    officeItem = 'board';
+    emblemBack = 'office';
+    kitEditBack = 'office';
+  }
+  if (next === 'federation') {
+    federationRound = Math.max(0, club.rounds.map(round => Boolean(round[0]?.score)).lastIndexOf(true));
+    if (federationTab === 'playoffs' && !playoffFormat(club)) federationTab = 'table';
+  }
   // Assim, o Voltar das táticas sabe que se veio da cidade e não do último menu aberto.
   screen = next;
   go(next);
+}
+
+/** O clube acabou de nascer: dá-se-lhe nome, emblema e cores. */
+export function openCreate(): void {
+  club = host.club();
+  half = false;
+  emblemBack = 'create';
+  kitEditBack = 'create';
+  kitEditing = club.kitChoice;
+  go('create');
+}
+
+/** As propostas de jogo-treino e de particular desta semana. */
+export function openOffers(): void {
+  club = host.club();
+  half = false;
+  offerClub = 0;
+  offerKind = practiceAllowed() ? 'practice' : 'friendly';
+  go('offers');
 }
 
 /** O pavilhão: numa semana com jogo vai-se ao balneário, numa semana livre vêem-se as propostas. */
@@ -743,10 +905,7 @@ export function openArena(): void {
   half = false;
   gameKind = 'official';
   if (currentFixture(club)) go('pre');
-  else {
-    offerClub = 0;
-    go('offers');
-  }
+  else openOffers();
 }
 
 export function openHalf(kind: GameKind, rival: number): void {

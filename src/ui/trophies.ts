@@ -30,14 +30,16 @@ export function trophyList(club: ClubState): Trophy[] {
   const rises = career.filter(r => (r.outcome === 'champion' || r.outcome === 'promoted') && r.division < last);
   const bestYear = career.find(r => r.wins >= COACH_OF_THE_YEAR_WINS);
   const scorer = [...career].sort((a, b) => b.topScorerPoints - a.topScorerPoints)[0];
+  const federationWins = career.filter(r => (r.cups ?? []).includes('federation')).length;
+  const federation = career.filter(r => (r.cups ?? []).includes('federation')).at(-1);
   return [
     ...cups,
     { name: 'Subida de divisão', kind: 'medal', won: rises.length > 0, detail: rises.length > 0 ? `${rises.length === 1 ? 'Uma subida' : `${rises.length} subidas`}. A última na ${when(rises.at(-1)!).toLowerCase()}.` : 'Sobe de divisão pela primeira vez.' },
     { name: 'Treinador do Ano', kind: 'plate', won: bestYear !== undefined, detail: bestYear ? `${when(bestYear)}. ${bestYear.wins} vitórias numa só época.` : `Ganha ${COACH_OF_THE_YEAR_WINS} jogos na mesma época.` },
     { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'O melhor marcador de uma época fica aqui.' },
     { name: 'Coleção de combos', kind: 'plate', won: club.knownCombos.length === COMBOS.length, detail: `Descobre todos os combos secretos. Já tens ${club.knownCombos.length} de ${COMBOS.length}.` },
-    { name: 'Taça', kind: 'bigCup', won: false, detail: 'As taças chegam na Fase 4.' },
-    { name: 'Triplete', kind: 'bigCup', won: false, detail: 'Liga e taças na mesma época.' },
+    { name: 'Taça da Federação', kind: 'cup', won: federation !== undefined, detail: federation ? `${when(federation)}. ${federationWins > 1 ? `Ganha ${federationWins} vezes.` : 'A taça de todos os clubes.'}` : 'Seis rondas a um jogo, contra qualquer clube do país.' },
+    { name: 'Triplete', kind: 'bigCup', won: false, detail: 'Pro Liga 1, Taça da Federação e Mundial de Clubes na mesma época. O Mundial chega no passo 2 da Fase 4.' },
   ];
 }
 

@@ -142,7 +142,7 @@ Ordem pensada para testar primeiro o maior risco: **ver um jogo tem de ser diver
 | **2. Ciclo central** | Cartas nos jogos, treino, 3 espaços, 20 cartas, 30 combos, atributos, táticas | Quem vê o jogo nota a diferença entre um jogador treinado e o mesmo por treinar | 6-8 semanas |
 | **3. Uma época completa** | Cidade, calendário, liga, 4 divisões com subidas e descidas, plantel, confiança, despedimento, gravar | Alguém joga uma época inteira e quer outra | 6-8 semanas |
 | **4. Carreira** | 3 taças, transferências, contratos, envelhecer, 12 tipos | Triplete possível em 8-12 épocas | 8-10 semanas |
-| **5. Conteúdo e polimento** | 32 cartas, 130 combos, som, tutorial, repetições, videoteca | Teste com 10 pessoas sem ajuda | 8-12 semanas |
+| **5. Conteúdo e polimento** | 32 cartas, 130 combos, táticas que se anulam, som, tutorial, repetições, videoteca | Teste com 10 pessoas sem ajuda | 8-12 semanas |
 | **6. Online assíncrono** | Enviar equipas, ranking, Match ID, mercado | Rankings estáveis | 4-6 semanas |
 
 **Total: 9 a 13 meses a tempo parcial.** O multijogador está em último porque depende de tudo, mas o formato de equipa e a simulação determinista ficam preparados desde a Fase 0.
@@ -241,6 +241,33 @@ Os menus aprovados no protótipo são agora os do jogo, em `src/ui/menus.ts`, se
 
 O formato do clube guardado passou para a versão 3. Os clubes das versões 1 e 2 são migrados ao abrir. As cores e as letras de um clube guardado são validadas, porque vão parar ao HTML da página.
 
+### Revisão antes da Fase 4
+
+Feito a 31 de outubro de 2026, depois de uma revisão do jogo inteiro:
+
+- **Criar clube:** escolhe-se o nome, o emblema e as cores antes da primeira semana. O nome curto e as letras do emblema acompanham o nome.
+- **Jogo-treino em qualquer semana:** um por semana, antes do jogo oficial ou na semana livre. Não fecha a semana, cansa metade de um jogo e só dá cartas. O particular continua a ser só da semana livre.
+- **Federação:** a jornada vê-se qualquer uma, com setas. As propostas de jogo mudam todas as semanas.
+- **Computador:** o quadro de cartas usa a largura toda e a ficha do jogador mostra a época dele mesmo com cartas escolhidas.
+- **Movimentos especiais:** o nome aparece junto a quem o fez, por baixo quando está junto ao cesto de cima e encostado à margem num canto. A Mão Rápida tem pose própria e o Step-back desliza para trás em vez de mudar de sítio num só passo. `npm run anim-check` desenha todas as poses e uma tira de imagens de cada movimento numa cena à parte, sem correr o jogo.
+- **Equilíbrio:** os comportamentos que faziam perder (Cortador, Fugitivo, Poste, Penetrador) ganham agora a jogada que é a sua, com um bónus de finalização; o Fugitivo recebe o passe de saída e o Ressaltador chega melhor ao ressalto. O peso ajuda mais nos ressaltos e nos encontrões e cansa menos; não ajuda na finalização, porque isso subia os pontos na Pro Liga 1 acima dos 50. O crossover prende o defensor mais tempo, o step-back afasta-se mais e o alley-oop tenta-se mais vezes.
+
+Medições com 600 jogos cada, depois da afinação (antes entre parênteses). A equipa de referência, com dois titulares «equilibrados», fica em 49%, por isso é esse o zero:
+
+| Medida | Resultado |
+|---|---|
+| 15 kg mais pesados | 50% (45%) |
+| Cortador / Fugitivo / Ressaltador | 51% / 51% / 52% (46% / 47% / 51%) |
+| Poste / Penetrador | 48% / 49%, ao nível da referência (48% / 49%) |
+| Crossover / Step-back / Alley-oop | 50% / 59% / 53% (54% os três) |
+| A melhor equipa ganha | 71% |
+| Pontos por divisão | 36 a 50 |
+| Físico, o atributo que mais pesa | 65% |
+
+O Poste e o Penetrador deixaram de prejudicar, mas também não ajudam, e o Crossover oscilou entre 50% e 56% consoante as outras afinações. Com 600 jogos, 3 pontos percentuais são ruído, por isso só vale a pena voltar a afiná-los com mais jogos ou quando a Fase 4 acrescentar os tipos de jogador.
+
+**Ficou por fazer:** testes com pessoas (os critérios das Fases 1 a 3), uma proteção contra o despedimento na época 2, uma forma de guardar o clube fora do browser, e uma velocidade acima de ×4.
+
 ## 7A. Decisões durante o jogo
 
 - **Descontos de tempo:** 2 por parte e 1 no prolongamento. Entram logo se a equipa tiver a bola, ou na bola parada seguinte. O relógio para e os jogadores recuperam um pouco de energia. A equipa adversária pede um quando sofre um parcial de 8 pontos ou mais.
@@ -313,6 +340,108 @@ Regras:
 **Início do jogo:** as equipas entram em campo a andar e colocam-se à volta do círculo. O árbitro atira a bola, e salta o que chega mais alto de cada equipa. Quem salta melhor tem vantagem, de 1% por ponto de diferença, até 70% no máximo, para a mesma equipa não ganhar sempre. O vencedor toca a bola para um colega. O relógio só anda depois disto. Nos outros períodos há reposição do meio-campo, com a posse alternada: começa quem perdeu a bola ao alto. O prolongamento volta a ter bola ao alto.
 
 **Árbitro:** atira a bola ao alto, acompanha o jogo por trás da bola e levanta os braços quando apita, com "FALTA" ou "FORA" escrito por cima. Só existe na imagem: não influencia o jogo nem choca com os jogadores.
+
+## 7E. Fase 4: carreira
+
+Desenho decidido a 1 de novembro de 2026, antes de escrever código. O objetivo da fase é dar à carreira um fim à vista, o triplete, e tirar à Pro Liga 1 a falta de desafio.
+
+### Calendário
+
+A época passa de 19 para 29 semanas. As 18 jornadas da liga continuam, e entre elas entram as semanas das taças. Para quem não joga a taça nessa semana, é uma semana livre, com jogos-treino e particulares.
+
+| Semanas | O que há |
+|---|---|
+| 18 | Jornadas da liga, como hoje |
+| 6 | Taça da Federação: pré-eliminatória e 5 eliminatórias |
+| 4 | Taça Continental: 4 eliminatórias |
+| 1 | Mundial de Clubes: uma final |
+
+### As três taças
+
+- **Taça da Federação.** Todos os 40 clubes. Os 10 da Liga Iniciados e os 6 piores da Liga Avançada jogam uma pré-eliminatória; os 8 vencedores juntam-se aos outros 24 e seguem-se 5 eliminatórias a um jogo. Casa e fora decidido pelo sorteio, e a final em campo neutro. Qualquer clube a pode ganhar desde a primeira época, mas um clube da Liga Iniciados tem de passar 6 rondas.
+- **Taça Continental.** 16 clubes: os 4 primeiros da Pro Liga 1 da época anterior e 12 clubes estrangeiros, gerados com nomes próprios e nível ao de cima da Pro Liga 1. 4 eliminatórias a um jogo.
+- **Mundial de Clubes.** Uma final entre o campeão continental e um campeão de outro continente, gerado com nível acima de tudo o que há cá.
+- **Triplete:** Pro Liga 1, Taça da Federação e Mundial de Clubes na mesma época. O critério da fase é que seja possível em 8 a 12 épocas com um treinador razoável, medido com o treinador automático.
+
+Os outros jogos de cada ronda são simulados a sério, como na liga. Ganhar uma taça dá cartas e dinheiro, e conta para os troféus da carreira.
+
+### Idade e contratos
+
+- **Idade.** Cada jogador passa a ter idade, de 19 a 36 anos. No fim da época envelhece um ano. Até aos 23 cresce um pouco sozinho; dos 31 em diante perde Velocidade, Salto e Resistência; o potencial desce com a idade. Aos 36, ou quando fica abaixo de um mínimo, retira-se, e o clube recebe um jovem de 19 anos, fraco e com potencial alto.
+- **Orçamento.** Cada época o clube recebe um orçamento conforme a divisão, mais os prémios das taças. Cada jogador tem um salário conforme a nota. O que sobra é o que há para contratar.
+- **Contratos de um ano.** No fim da época, cada jogador pede renovação, com um salário novo. Decide-se um a um: fica ou sai. Não se pode começar a época com salários acima do orçamento.
+
+### Transferências
+
+- **Mercado.** No Escritório, uma lista de jogadores que se renova todas as semanas: uns livres, outros de outros clubes. Os livres aceitam logo, se houver dinheiro. Aos outros faz-se uma proposta, que demora 1 a 3 semanas e pode ser recusada. O clube de origem recebe outro jogador em troca, para a liga não ficar desequilibrada.
+- **Prazo.** Depois da semana 20 não há propostas a jogadores de outros clubes.
+- **Plantel.** Entre 10 e 15 jogadores. Vender também é possível, pelo valor do jogador.
+
+### Os 12 tipos
+
+Dos 12 tipos do original, 9 já existem como comportamentos sem bola e com bola. Faltam três, que entram nesta fase, cada um com o seu combo:
+
+| Tipo | O que faz |
+|---|---|
+| Sexto Homem | Recupera mais depressa no banco e entra sempre fresco |
+| Dínamo | Corta para o cesto e ajuda na defesa, com mais roubos |
+| Guarda do Aro | Na defesa fica perto do cesto, com mais desarmes |
+
+A ficha do jogador passa a mostrar o tipo, com o nome da tabela da secção 2. Os tipos continuam a mudar com o treino, como hoje.
+
+### O adversário e os alvos
+
+Antes do jogo e ao intervalo vê-se o plantel do adversário com as notas, como no original, mas não as táticas dele, porque também as muda a meio do jogo. Marcam-se até dois adversários: quem os defende cola-se a eles, e os outros ficam um passo mais soltos. Os alvos entram na simulação como tática, por isso ficam registados para a repetição, e esquecem-se no fim da semana.
+
+Táticas que se anulam umas às outras, como ritmo rápido contra pressão alta, ficam para a Fase 5.
+
+### Ordem de trabalho
+
+1. Calendário novo e Taça da Federação, com testes e o treinador automático a medir quantas épocas leva a ganhá-la.
+2. Playoffs na Pro Liga 1 e na Pro Liga 2, com quadros desenhados.
+3. Taça Continental, Mundial, prémios e troféus.
+4. Idade, crescimento, declínio, reformas e jovens.
+5. Orçamento, salários e renovações no fim da época.
+6. Mercado de transferências.
+7. Os três tipos novos e os seus combos.
+
+Cada passo acaba com `npm run check` e `npm run browser-check`, e o formato do clube guardado sobe para a versão 4 no primeiro passo, com migração.
+
+### Estado do passo 1: calendário e Taça da Federação
+
+Feito a 1 de novembro de 2026. A época tem 29 semanas, a Taça da Federação sorteia-se ronda a ronda e os jogos dos outros clubes simulam-se mesmo nas semanas em que não jogamos. A Federação mostra a taça num separador, o balanço da época diz até onde se chegou, e a taça conta para os troféus da carreira. O clube guardado está na versão 4; os da versão 3 entram na taça se ela ainda não tiver começado.
+
+Com o treinador automático, 10 carreiras de 8 épocas:
+
+| Época | Divisão média | Taça ganha | Ronda média alcançada |
+|---|---|---|---|
+| 1 a 3 | Iniciados a Avançada | 0 em 10 | 0,2 a 1,1 |
+| 4 e 5 | Avançada a Pro Liga 2 | 1 em 10 | 2,0 a 2,5 |
+| 6 | Pro Liga 1 | 3 em 10 | 3,5 |
+| 7 e 8 | Pro Liga 1 | 4 a 5 em 10 | 3,8 a 4,4 |
+
+A primeira taça chega por volta da época 4, e na Pro Liga 1 ganha-se em cerca de metade das épocas. É o ritmo pedido para o triplete em 8 a 12 épocas, que depende ainda das outras duas taças.
+
+**Alvos:** marcar um adversário tira-lhe cerca de 10% dos pontos, medido em 300 jogos, sem mudar quem ganha em mais de 2 ou 3 pontos percentuais, que é o ruído da medição. É uma decisão com efeito visível no jogador marcado, não um botão de ganhar.
+
+### Estado do passo 2: playoffs nas duas ligas profissionais
+
+Feito a 1 de novembro de 2026, por decisão do dono do projeto depois da [pesquisa sobre o basquetebol português](04-pesquisa-basquetebol-portugues.md). Ficou com as medidas da Liga Betclic e da Proliga, com as meias-finais encurtadas:
+
+| Liga | Quem entra | Rondas | Decide |
+|---|---|---|---|
+| Pro Liga 1 | os 8 primeiros | quartos e meias à melhor de 3, final à melhor de 5 | o campeão |
+| Pro Liga 2 | do 2.º ao 5.º | meias e final à melhor de 3 | a segunda subida; o 1.º sobe logo |
+
+- O quadro emparelha 1.º-8.º, 4.º-5.º, 2.º-7.º e 3.º-6.º, e o melhor classificado joga em casa os jogos ímpares.
+- Cada ronda é uma semana, a seguir à 29: os jogos da série jogam-se seguidos, com o balneário entre eles, e só o cansaço de cada jogo, sem o descanso da semana. Para quem não se apura, ou é eliminado, o resto joga-se de uma vez e a época fecha-se.
+- As descidas continuam a ser as da fase regular. Na Pro Liga 1, "campeão" passa a ser quem ganha a final.
+- A Federação tem um separador Playoffs e, tanto para os playoffs como para a Taça, um **quadro desenhado** no ecrã de cima, com o nosso clube a dourado. Na Taça o quadro mostra quartos, meias e final; as rondas anteriores ficam na lista.
+- O clube guardado está na versão 5.
+
+Um erro que vale a pena lembrar: o nosso clube tem o número 0, e um `0` é falso em JavaScript. Um "há vencedor?" escrito como `if (winner)` fazia a série nunca acabar quando o vencedor éramos nós. As comparações com um número de clube são sempre `!== null`.
+
+As outras duas taças passam a ser o passo 3.
 
 ## 8. Riscos
 

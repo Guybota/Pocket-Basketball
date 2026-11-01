@@ -1,6 +1,6 @@
 import type { ClubKit } from './art/kit.ts';
 import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
-import type { Team } from '../sim/types.ts';
+import type { MoveId, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { Camera, courtTextures, drawBox, drawHoopBack, drawHoopFront, type CourtTextures } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
@@ -22,6 +22,9 @@ const RUN_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
 const DRIBBLE_RUN_FRAMES: readonly PoseName[] = ['dribRun0', 'dribRun1', 'dribRun2', 'dribRun3'];
 const DUNK_MAX_DISTANCE = 1.7;
 const DUNK_MIN_JUMPING = 45;
+// A letra do jogo só tem maiúsculas sem acentos.
+const MOVE_LABELS: Record<MoveId, string> = { crossover: 'CROSSOVER', stepBack: 'STEP-BACK', alleyOop: 'ALLEY-OOP', powerDunk: 'AFUNDANCO', pickpocket: 'MAO RAPIDA' };
+const STEP_BACK_TICKS = 5;
 const RUN_BANNERS = [8, 12, 16];
 const BENCH_Y = -8.5;
 const COACH_Y = -7.9;
@@ -85,6 +88,8 @@ export class MatchView {
   private backChanges = 0;
   private shortestBackInterval = Infinity;
   private readonly overrides = new Map<Body, { pose: PoseName; until: number; withBall?: boolean }>();
+  // Quem recua num step-back muda de sítio num só passo da simulação; aqui desliza até lá.
+  private readonly slides = new Map<Body, { x: number; y: number; start: number }>();
   private readonly floaters: Floater[] = [];
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
   // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
@@ -190,6 +195,7 @@ export class MatchView {
           break;
         case 'steal':
           callbacks.sound('steal');
+          if (body && !this.overrides.has(body)) this.overrides.set(body, { pose: 'gather', until: s.tick + 6, withBall: true });
           break;
         case 'tipOff':
           callbacks.sound('whistle');
@@ -227,7 +233,13 @@ export class MatchView {
           this.refereeSignal(null);
           break;
         case 'move':
-          if (body && e.move === 'crossover') this.overrides.set(body, { pose: 'crossover', until: s.tick + 8, withBall: true });
+          if (body) {
+            // Cada movimento tem a sua pose e o nome por cima de quem o fez. O afundanço e o alley-oop acabam na pose de afundar, com o lançamento.
+            if (e.move === 'crossover') this.overrides.set(body, { pose: 'crossover', until: s.tick + 8, withBall: true });
+            if (e.move === 'pickpocket') this.overrides.set(body, { pose: 'gather', until: s.tick + 8, withBall: true });
+            if (e.move === 'stepBack') this.slides.set(body, { ...this.previous.get(body)!, start: s.tick });
+            this.floaters.push({ label: MOVE_LABELS[e.move!], x: body.x, y: body.y, z: 2.6, born: s.tick });
+          }
           this.excitedUntil = s.tick + 30;
           callbacks.sound('bigCheer');
           callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
@@ -513,8 +525,17 @@ export class MatchView {
     const onCourt = [...s.court[0], ...s.court[1]];
     const placed = onCourt.map(b => {
       const prev = this.previous.get(b)!;
-      const x = prev.x + (b.x - prev.x) * alpha;
-      const y = prev.y + (b.y - prev.y) * alpha;
+      let x = prev.x + (b.x - prev.x) * alpha;
+      let y = prev.y + (b.y - prev.y) * alpha;
+      const slide = this.slides.get(b);
+      if (slide) {
+        const t = (s.tick + alpha - slide.start) / STEP_BACK_TICKS;
+        if (t >= 1) this.slides.delete(b);
+        else {
+          x = slide.x + (b.x - slide.x) * t;
+          y = slide.y + (b.y - slide.y) * t;
+        }
+      }
       const [sx, sy] = camera.project(x, y);
       const motion = this.motionOf(b);
       const look = this.looks.get(b)!;
@@ -590,6 +611,28 @@ export class MatchView {
     }
   }
 
+  /** Uma marca vermelha por cima de cada adversário a marcar de perto. */
+  private drawTargets(alpha: number): void {
+    const { g, s, camera } = this;
+    const focus = s.tactics[0].focus ?? [];
+    if (focus.length === 0) return;
+    for (const b of s.court[1]) {
+      if (!focus.includes(s.teams[1].roster.indexOf(b.player))) continue;
+      const prev = this.previous.get(b)!;
+      const [x, y] = camera.project(prev.x + (b.x - prev.x) * alpha, prev.y + (b.y - prev.y) * alpha);
+      const top = (y | 0) - spriteHeight(this.looks.get(b)!) - 4;
+      g.fillStyle = '#1b2230';
+      g.fillRect((x | 0) - 4, top - 5, 9, 2);
+      g.fillRect((x | 0) - 3, top - 3, 7, 2);
+      g.fillRect((x | 0) - 2, top - 1, 5, 2);
+      g.fillRect((x | 0) - 1, top + 1, 3, 1);
+      g.fillStyle = '#cf3a2c';
+      g.fillRect((x | 0) - 3, top - 4, 7, 2);
+      g.fillRect((x | 0) - 2, top - 2, 5, 2);
+      g.fillRect((x | 0) - 1, top, 3, 1);
+    }
+  }
+
   private drawFloaters(): void {
     const { g, s, camera } = this;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
@@ -600,13 +643,15 @@ export class MatchView {
         continue;
       }
       const [x, y] = camera.project(f.x, f.y, f.z);
-      // À frente do aro e com um limite no topo, para o marcador nunca tapar o número.
       const rise = Math.min(10, age);
-      const top = Math.max(40, (y | 0) - 14 - rise);
-      // Os pontos são grandes e ficam ao lado do aro; as palavras do árbitro, mais pequenas e por cima dele.
+      // Os pontos são grandes e ficam ao lado do aro; as palavras, mais pequenas e por cima de quem as fez.
       const word = f.label.length > 3;
+      // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés do jogador.
+      const below = word && y < camera.height * 0.38;
+      const top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(40, (y | 0) - 14 - rise));
       const scale = word ? 2 : 3;
-      const left = word ? (x | 0) - (textWidth(f.label, scale) >> 1) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      // Num canto, a palavra encosta à margem em vez de sair do ecrã.
+      const left = word ? Math.max(2, Math.min(camera.width - textWidth(f.label, scale) - 2, (x | 0) - (textWidth(f.label, scale) >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
       text(g, f.label, left + 1, top + 1, '#1b2230', scale);
       text(g, f.label, left, top, '#f2c230', scale);
     }
@@ -620,6 +665,7 @@ export class MatchView {
     const [x, y] = camera.project(prev.x + (holder.x - prev.x) * alpha, prev.y + (holder.y - prev.y) * alpha);
     const bob = (s.tick >> 3) % 2;
     drawCarrierArrow(g, x, y - spriteHeight(this.looks.get(holder)!) - 3 - bob);
+    this.drawTargets(alpha);
   }
 
   /** A pose do portador da bola neste instante. Serve para a verificação no browser. */

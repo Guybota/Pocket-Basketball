@@ -7,8 +7,9 @@ import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/typ
 import { BALANCE as B } from '../sim/balance.ts';
 import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
-import { FREE_WEEK } from '../sim/league.ts';
-import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
+import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, currentGame, currentSeries, federationStatus, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -287,28 +288,47 @@ describe('clube', () => {
     expect(swapped.shirts[swapped.team.roster[6]!.name]).toBe(4);
   });
 
-  it('um jogo-treino acaba ao fim de dois períodos e só conta para as cartas', () => {
-    const c = { ...club(), week: FREE_WEEK };
+  it('um jogo-treino acaba ao fim de dois períodos, só conta para as cartas e não fecha a semana', () => {
+    const c = club();
     const rival = opponentOf(c);
     const s = createMatch(clubTeam(c), rival, weekSeed(c), [true, false]);
     while (!firstHalfOver(s)) step(s);
     expect(s.period).toBe(2);
     const { club: after, confidenceDelta, round } = finishPractice(c, s, ['fado']);
-    expect(after.week).toBe(FREE_WEEK + 1);
+    expect(after.week).toBe(c.week);
+    expect(after.practicedThisWeek).toBe(true);
     expect(after.cards.fado).toBeGreaterThanOrEqual(1);
     expect(confidenceDelta).toBe(0);
     expect(round).toBeNull();
     expect(after.confidence).toBe(c.confidence);
     expect(after.wins + after.losses).toBe(c.wins + c.losses);
     expect(after.rounds).toEqual(c.rounds);
-    const full = finishMatch(c, simulateMatch(clubTeam(c), rival, weekSeed(c), [true, false]), []).club;
     const tiredness = (x: ClubState): number => x.team.roster.reduce((sum, p) => sum + p.fatigue, 0);
-    expect(tiredness(after)).toBeLessThan(tiredness(full));
-    expect(() => finishPractice(club(), s, [])).toThrow();
+    expect(tiredness(after)).toBeGreaterThan(tiredness(c));
+    expect(tiredness(after) - tiredness(c)).toBeLessThan(tiredness(playWeek(c)) - tiredness(c) * 0.5);
+    expect(() => finishPractice(after, s, [])).toThrow();
+    // O jogo oficial da mesma semana fecha-a e volta a permitir um jogo-treino.
+    expect(playWeek(after).practicedThisWeek).toBe(false);
+  });
+
+  it('o nome do clube é à escolha, com o nome curto e as letras do emblema a acompanhar', () => {
+    const c = club();
+    const named = renameClub(c, '  Dragões   do Minho ');
+    expect(named.team.name).toBe('Dragões do Minho');
+    expect(named.team.short).toBe('MIN');
+    expect(named.clubs[PLAYER_CLUB]!.name).toBe('Dragões do Minho');
+    expect(named.emblem.letters).toBe('MIN');
+    expect(opponentOf(named).name).not.toBe('Dragões do Minho');
+    expect(renameClub(c, '   ')).toBe(c);
+    expect(renameClub(c, 'a'.repeat(40)).team.name).toHaveLength(24);
+    const custom = renameClub({ ...c, emblem: { ...c.emblem, letters: 'XYZ' } }, 'Outro');
+    expect(custom.emblem.letters).toBe('XYZ');
+    expect(parseClub(JSON.stringify(named))).toEqual(named);
+    expect(parseClub(JSON.stringify({ ...c, team: { ...c.team, name: 'a'.repeat(40) } }))).toBeNull();
   });
 
   it('a carreira do treinador passa de clube para clube', () => {
-    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [] };
+    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [], cups: [], federationExit: 2, playoffExit: null };
     const first = { ...club(), history: [record] };
     const second = newClub(22, 0, careerOf(first));
     expect(careerOf(second)).toEqual([{ ...record, club: first.team.name }]);
@@ -353,9 +373,10 @@ describe('época', () => {
     : skipWeek(c);
   const season = (c: ClubState): ClubState => {
     let current = c;
-    for (let i = 0; i < SEASON_WEEKS; i++) current = week(current);
+    for (let i = 0; i < 80 && !current.seasonReport; i++) current = week(current);
     return current;
   };
+  const stronger = (c: ClubState, bonus: number): ClubState => ({ ...c, team: { ...c.team, roster: c.team.roster.map(p => ({ ...p, attributes: Object.fromEntries(Object.entries(p.attributes).map(([k, v]) => [k, Math.min(100, v + bonus)])) as unknown as typeof p.attributes })) } });
 
   it('os nomes dos clubes chegam para as 4 divisões, com abreviaturas diferentes', () => {
     expect(CLUB_NAMES.length).toBeGreaterThan(DIVISIONS.length * LEAGUE_SIZE);
@@ -396,15 +417,81 @@ describe('época', () => {
 
   it('a semana livre tem particular, não conta para a liga, e pode-se saltar', () => {
     let c = newClub(19);
-    for (let i = 1; i < 10; i++) c = week(c);
-    expect(c.week).toBe(10);
+    for (let i = 1; i < 4; i++) c = week(c);
+    expect(c.week).toBe(4);
     expect(currentFixture(c)).toBeNull();
     const before = leagueTable(c);
     const friendly = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), 7), []);
     expect(friendly.round).toBeNull();
-    expect(friendly.club.week).toBe(11);
+    expect(friendly.club.week).toBe(5);
     expect(leagueTable(friendly.club)).toEqual(before);
-    expect(skipWeek(c).week).toBe(11);
+    expect(skipWeek(c).week).toBe(5);
+  });
+
+  it('a Taça da Federação sorteia-se ronda a ronda, e o nosso clube começa na pré-eliminatória', () => {
+    let c = newClub(29);
+    expect(c.cups.federation.rounds).toHaveLength(0);
+    expect(c.cups.federation.alive).toHaveLength(40);
+    expect(c.cups.federation.preliminary).toHaveLength(16);
+    expect(c.cups.federation.preliminary).toContain(PLAYER_CLUB);
+    c = week(c);
+    expect(c.week).toBe(2);
+    const game = currentGame(c)!;
+    expect(game.cup).toBe('federation');
+    expect(game.round).toBe(0);
+    expect(c.cups.federation.rounds[0]).toHaveLength(8);
+    const before = leagueTable(c);
+    const result = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []);
+    expect(result.cup).toBe('federation');
+    expect(result.round).toHaveLength(8);
+    expect(leagueTable(result.club)).toEqual(before);
+    expect(result.club.cups.federation.alive).toHaveLength(32);
+    const mine = result.round!.find(f => f.home === PLAYER_CLUB || f.away === PLAYER_CLUB)!;
+    const won = mine.home === PLAYER_CLUB ? mine.score![0] > mine.score![1] : mine.score![1] > mine.score![0];
+    expect(result.club.cups.federation.alive.includes(PLAYER_CLUB)).toBe(won);
+    expect(result.confidenceDelta).not.toBe(0);
+    expect(parseClub(JSON.stringify(result.club))).toEqual(result.club);
+  });
+
+  it('a taça acaba com um vencedor mesmo sem nós, e o balanço diz até onde chegámos', () => {
+    let c = newClub(23);
+    // Quer joguemos quer não, os outros jogam na mesma e cada ronda fecha-se com metade dos clubes.
+    for (let i = 0; i < SEASON_WEEKS - 1; i++) {
+      c = week(c);
+      const sizes = c.cups.federation.rounds.map(round => round.length);
+      expect(sizes, `semana ${c.week}`).toEqual([8, 16, 8, 4, 2, 1].slice(0, sizes.length));
+    }
+    expect(c.cups.federation.alive).toHaveLength(1);
+    expect(c.cups.federation.rounds.flat().every(f => f.score)).toBe(true);
+    const after = week(c);
+    const cup = after.history[0]!;
+    expect(cup.federationExit).toBeGreaterThanOrEqual(0);
+    expect(cup.federationExit).toBeLessThanOrEqual(FEDERATION_ROUNDS.length);
+    expect(cup.cups.includes('federation')).toBe(cup.federationExit === FEDERATION_ROUNDS.length);
+    expect(after.cups.federation.rounds).toHaveLength(0);
+    expect(after.cups.federation.alive).toHaveLength(40);
+  });
+
+  it('um clube com tudo a 100 ganha a taça, e isso dá cartas, confiança e fica na carreira', () => {
+    const perfect = (seed: number): ClubState => {
+      const start = newClub(seed);
+      return { ...start, team: { ...start.team, roster: start.team.roster.map(p => ({ ...p, attributes: Object.fromEntries(Object.keys(p.attributes).map(k => [k, 100])) as unknown as typeof p.attributes })) } };
+    };
+    // Seis rondas a um jogo: até um clube perfeito pode perder uma, por isso vale a primeira época ganha em três.
+    let won: ClubState | null = null;
+    for (const seed of [61, 62, 63]) {
+      const after = season(perfect(seed));
+      if (after.history[0]!.cups.includes('federation')) {
+        won = after;
+        break;
+      }
+    }
+    expect(won).not.toBeNull();
+    const record = won!.history[0]!;
+    expect(record.federationExit).toBe(FEDERATION_ROUNDS.length);
+    expect(record.cards.length).toBeGreaterThan(season(newClub(61)).history[0]!.cards.length);
+    expect(careerOf(won!)[0]!.cups).toContain('federation');
+    expect(federationStatus(perfect(61)).alive).toBe(true);
   });
 
   it('não se pode saltar uma jornada', () => {
@@ -427,6 +514,53 @@ describe('época', () => {
     expect(Object.keys(after.stats)).toHaveLength(0);
     expect(record.topScorerPoints).toBeGreaterThan(0);
     expect(parseClub(JSON.stringify(after))).toEqual(after);
+  });
+
+  it('nas divisões de baixo a época acaba na fase regular, sem playoffs', () => {
+    const after = season(newClub(23));
+    expect(after.history[0]!.playoffExit).toBeNull();
+    expect(after.playoffs).toBeNull();
+  });
+
+  it('na Pro Liga 1 o campeão sai dos playoffs, com os jogos da série na mesma semana', () => {
+    let c = stronger(newClub(81, 3), 20);
+    for (let i = 0; i < SEASON_WEEKS; i++) c = week(c);
+    expect(c.week).toBe(SEASON_WEEKS + 1);
+    expect(c.playoffs).not.toBeNull();
+    expect(c.playoffs!.seeds).toHaveLength(8);
+    expect(c.playoffs!.seeds).toContain(PLAYER_CLUB);
+    const series = currentSeries(c)!;
+    expect(series.bestOf).toBe(3);
+    const game = currentGame(c)!;
+    expect(game.playoff).toBe(true);
+    const first = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []);
+    expect(first.series).not.toBeNull();
+    expect(first.series!.wins[0] + first.series!.wins[1]).toBe(1);
+    expect(first.series!.decided).toBe(false);
+    expect(first.club.week).toBe(SEASON_WEEKS + 1);
+    expect(parseClub(JSON.stringify(first.club))).toEqual(first.club);
+    const after = season(first.club);
+    const record = after.history[0]!;
+    expect(record.playoffExit).not.toBeNull();
+    expect(after.playoffs).toBeNull();
+    expect(after.week).toBe(1);
+    expect(record.outcome === 'champion').toBe(record.playoffExit === PLAYOFF_FORMATS[3]!.bestOf.length);
+  });
+
+  it('na Pro Liga 2 sobem o 1.º da fase regular e o vencedor do playoff', () => {
+    const results = [83, 84, 85].map(seed => season(stronger(newClub(seed, 2), 25)));
+    for (const after of results) {
+      const record = after.history[0]!;
+      if (record.outcome === 'champion') {
+        expect(record.position).toBe(0);
+        expect(record.playoffExit).toBeNull();
+      }
+      if (record.outcome === 'promoted') expect(record.playoffExit).toBe(PLAYOFF_FORMATS[2]!.bestOf.length);
+      expect(after.division === 3).toBe(record.outcome === 'champion' || record.outcome === 'promoted');
+      // Quem acaba em 2.º e perde o playoff fica.
+      if (record.position === 1 && record.playoffExit !== PLAYOFF_FORMATS[2]!.bestOf.length) expect(record.outcome).toBe('stayed');
+    }
+    expect(results.some(after => after.history[0]!.outcome !== 'stayed')).toBe(true);
   });
 
   it('quem acaba em cima sobe, e quem acaba em baixo desce', () => {
@@ -478,7 +612,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(5);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -495,7 +629,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(5);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

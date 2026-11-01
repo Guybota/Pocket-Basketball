@@ -22,8 +22,9 @@ interface Pocket {
   found(): string[];
   fastForward(weeks: number): void;
   fire(): void;
+  setConfidence(value: number): void;
   timeOtherGames(): number;
-  pauseAt(eventType: string, extraTicks: number, maxDistance?: number): { phase: string; found: boolean };
+  pauseAt(eventType: string, extraTicks: number, maxDistance?: number, move?: string): { phase: string; found: boolean };
   resetRenderStats(): void;
   renderStats(): { meanMs: number; frames: number };
 }
@@ -49,6 +50,14 @@ const playToEnd = async (p: Page): Promise<void> => {
   await p.evaluate(() => window.__pocket.setSpeedRaw(40));
   await p.click('#secondHalfBtn', { timeout: 90_000 });
   await p.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+};
+/** Cria o clube e passa pelo ecrã de criação, com nome à escolha. */
+const createClub = async (p: Page, name = ''): Promise<void> => {
+  await p.click('#newClubBtn');
+  await p.waitForSelector('#startClubBtn');
+  if (name) await p.locator('#clubName').fill(name);
+  await p.click('#startClubBtn');
+  await p.waitForSelector('#startBtn');
 };
 const check = (name: string, ok: boolean, detail = ''): void => {
   console.log(`${ok ? 'OK    ' : 'FALHOU'} ${name}${detail ? `: ${detail}` : ''}`);
@@ -135,9 +144,20 @@ try {
   await coach.waitForSelector('#newClubBtn');
   await coach.screenshot({ path: `${OUT}/clube-novo.png` });
   await coach.click('#newClubBtn');
+  await coach.waitForSelector('#startClubBtn');
+  await coach.locator('#clubName').fill('Dragões do Minho');
+  await coach.click('[data-go="emblem"]');
+  await coach.click('[data-em-shape="pennant"]');
+  await coach.click('.back');
+  await coach.screenshot({ path: `${OUT}/criar-clube.png` });
+  await coach.click('#startClubBtn');
   await coach.waitForSelector('#startBtn');
   await coach.screenshot({ path: `${OUT}/clube.png` });
   check('O clube novo começa na última divisão', await coach.evaluate(() => window.__pocket.club()!.division === 0));
+  check('O clube tem o nome escolhido, o nome curto e o emblema', await coach.evaluate(() => {
+    const c = window.__pocket.club()!;
+    return c.team.name === 'Dragões do Minho' && c.team.short === 'MIN' && c.emblem.shape === 'pennant' && c.emblem.letters === 'MIN';
+  }));
   await coach.locator('.screen').screenshot({ path: `${OUT}/cidade.png` });
   await coach.screenshot({ path: `${OUT}/cidade-inteira.png` });
   const chipsFit = await coach.evaluate(() => {
@@ -238,6 +258,12 @@ try {
   await coach.click('.back');
   await coach.click('#startBtn');
   await coach.screenshot({ path: `${OUT}/balneario.png` });
+  await coach.click('[data-go="rival"]');
+  await coach.click('[data-target="0"]');
+  await coach.click('[data-target="3"]');
+  await coach.screenshot({ path: `${OUT}/adversario.png` });
+  check('Marcam-se até dois alvos, e o terceiro fica desligado', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2) && await coach.locator('[data-target="1"]').isDisabled());
+  await coach.click('.back');
   await coach.click('[data-go="kit"]');
   await coach.screenshot({ path: `${OUT}/equipamento.png` });
   await coach.click('[data-kit="gold"]');
@@ -277,6 +303,7 @@ try {
   await coach.waitForFunction(() => window.__pocket.state().period >= 3);
   await coach.waitForTimeout(100);
   await coach.locator('.screen').screenshot({ path: `${OUT}/segunda-parte-equipamento.png` });
+  check('Os alvos ficam no jogo', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2));
   await coach.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
   await coach.screenshot({ path: `${OUT}/fim-cartas.png` });
   check('As cartas do jogo vão para o clube', (await coach.locator('.found-card').count()) > 0, `${await coach.locator('.found-card').count()} cartas`);
@@ -285,7 +312,10 @@ try {
   await coach.waitForSelector('#startBtn');
   await coach.reload();
   await coach.waitForSelector('#startBtn');
+  check('A semana 2 é a pré-eliminatória da taça', ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-eliminatória'));
+  await coach.screenshot({ path: `${OUT}/semana-taca.png` });
   check('Passa para a semana 2 e fica guardado', await coach.evaluate(() => window.__pocket.club()!.week === 2 && window.__pocket.club()!.trainedThisWeek.length === 0));
+  check('Os alvos esquecem-se no fim da semana', await coach.evaluate(() => (window.__pocket.club()!.tactics.focus ?? []).length === 0));
   await coach.click('#officeBtn');
   await coach.screenshot({ path: `${OUT}/gabinete.png` });
   await coach.click('[data-office="reset"]');
@@ -321,19 +351,27 @@ try {
   await coach.click('[data-fed-tab="calendar"]');
   await coach.screenshot({ path: `${OUT}/federacao-calendario.png` });
   await coach.click('[data-fed-tab="round"]');
+  await coach.click('[data-fed-round="-1"]');
+  await coach.click('[data-fed-round="1"]');
+  await coach.click('[data-fed-round="1"]');
   await coach.screenshot({ path: `${OUT}/federacao-jornada.png` });
+  await coach.click('[data-fed-tab="cup"]');
+  await coach.screenshot({ path: `${OUT}/federacao-taca.png` });
   await coach.click('.back');
-  await coach.evaluate(() => window.__pocket.fastForward(1));
-  check('A semana 10 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 10));
+  await coach.evaluate(() => window.__pocket.fastForward(3));
+  check('A semana 12 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 12 && !document.getElementById('practiceBtn')));
   await coach.screenshot({ path: `${OUT}/semana-livre.png` });
   await coach.click('#startBtn');
   await coach.waitForSelector('[data-offer]');
   await coach.screenshot({ path: `${OUT}/propostas.png` });
+  await coach.click('[data-offer-kind="friendly"]');
   await coach.click('.back');
   await coach.click('#skipWeekBtn');
-  check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 11));
+  check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 13));
   await coach.screenshot({ path: `${OUT}/cidade-painel.png` });
-  await coach.evaluate(() => window.__pocket.fastForward(9));
+  // Sem treino, um clube pode ser despedido antes do fim da época; aqui interessa ver o balanço.
+  await coach.evaluate(() => window.__pocket.setConfidence(90));
+  await coach.evaluate(() => window.__pocket.fastForward(17));
   await coach.waitForSelector('#seasonContinue');
   await coach.screenshot({ path: `${OUT}/fim-epoca.png` });
   await coach.reload();
@@ -351,8 +389,7 @@ try {
   await coach.waitForSelector('#firedNewClub');
   check('O despedimento fica guardado', true);
   await coach.click('#firedNewClub');
-  await coach.click('#newClubBtn');
-  await coach.waitForSelector('#startBtn');
+  await createClub(coach);
   check('Depois de despedido, pode-se treinar outro clube', await coach.evaluate(() => !window.__pocket.club()!.fired && window.__pocket.club()!.season === 1));
   // Um jogo depois de recarregar o balanço da época tem de correr normalmente.
   await kick(coach);
@@ -366,15 +403,42 @@ try {
   check('Sem erros no ciclo da semana', coachProblems.length === 0, coachProblems.join(' | '));
   await season.close();
 
-  // Um jogo-treino na semana livre: dois períodos, à porta fechada, e só conta para as cartas.
+  // Os playoffs da Pro Liga 1: uma série na mesma semana, e a época só acaba depois.
+  const playoffs = await phone.newPage();
+  const playoffProblems: string[] = [];
+  playoffs.on('pageerror', error => playoffProblems.push(error.message));
+  await playoffs.goto(`${url}?semente=1&divisao=3`);
+  await playoffs.waitForFunction(() => window.__pocket !== undefined);
+  await playoffs.evaluate(() => window.__pocket.setConfidence(90));
+  await playoffs.evaluate(() => window.__pocket.fastForward(29));
+  const inPlayoffs = await playoffs.evaluate(() => window.__pocket.club()?.playoffs !== null && window.__pocket.club()!.week === 30);
+  if (inPlayoffs) {
+    check('A Pro Liga 1 entra nos playoffs na semana 30', ((await playoffs.locator('.citydetail').first().textContent()) ?? '').includes('Playoffs'));
+    await playoffs.screenshot({ path: `${OUT}/playoffs-cidade.png` });
+    await playoffs.click('#federationBtn');
+    await playoffs.click('[data-fed-tab="playoffs"]');
+    await playoffs.screenshot({ path: `${OUT}/playoffs-quadro.png` });
+    await playoffs.click('.back');
+    await kick(playoffs);
+    await playToEnd(playoffs);
+    await playoffs.screenshot({ path: `${OUT}/playoffs-jogo.png` });
+    const after = await playoffs.evaluate(() => ({ week: window.__pocket.club()!.week, games: window.__pocket.club()!.playoffs?.rounds[0]?.find(s => s.top === 0 || s.bottom === 0)?.games.length ?? 0, report: window.__pocket.club()!.seasonReport !== null }));
+    check('O primeiro jogo da série fica registado e a semana só fecha com a série decidida', after.games === 1 || after.report || after.week === 31, JSON.stringify(after));
+  } else {
+    console.log('AVISO  o clube de ensaio não chegou aos playoffs; o quadro não foi visto');
+  }
+  check('Sem erros nos playoffs', playoffProblems.length === 0, playoffProblems.join(' | '));
+
+  // Um jogo-treino antes do jogo oficial: dois períodos, à porta fechada, e só conta para as cartas.
   const practice = await phone.newPage();
   const practiceProblems: string[] = [];
   practice.on('pageerror', error => practiceProblems.push(error.message));
   await practice.goto(`${url}?semente=31&divisao=1`);
   await practice.waitForFunction(() => window.__pocket !== undefined);
-  await practice.evaluate(() => window.__pocket.fastForward(9));
+  await practice.evaluate(() => window.__pocket.fastForward(2));
   const beforePractice = await practice.evaluate(() => window.__pocket.club()!);
-  await practice.click('#startBtn');
+  await practice.click('#practiceBtn');
+  check('Numa semana com jogo só há jogos-treino', await practice.locator('[data-offer-kind="friendly"]').isDisabled());
   await practice.click('[data-offer="2"]');
   await practice.screenshot({ path: `${OUT}/jogo-treino-proposta.png` });
   await practice.click('[data-pre="practice"]');
@@ -387,9 +451,13 @@ try {
   await practice.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
   await practice.screenshot({ path: `${OUT}/jogo-treino-fim.png` });
   const afterPractice = await practice.evaluate(() => ({ club: window.__pocket.club()!, state: window.__pocket.state() }));
+  await practice.click('#againBtn');
+  await practice.waitForSelector('#startBtn');
+  await practice.screenshot({ path: `${OUT}/jogo-treino-depois.png` });
   check('O jogo-treino acaba ao fim de dois períodos', afterPractice.state.period === 2, `período ${afterPractice.state.period}`);
   check('O jogo-treino não mexe na confiança nem no recorde', afterPractice.club.confidence === beforePractice.confidence && afterPractice.club.wins + afterPractice.club.losses === beforePractice.wins + beforePractice.losses);
-  check('O jogo-treino fecha a semana', afterPractice.club.week === beforePractice.week + 1);
+  check('O jogo-treino não fecha a semana e só se joga uma vez', afterPractice.club.week === beforePractice.week && afterPractice.club.practicedThisWeek && await practice.locator('#practiceBtn').isDisabled());
+  check('Os jogadores saem do jogo-treino mais cansados', afterPractice.club.team.roster.reduce((sum, p) => sum + p.fatigue, 0) > beforePractice.team.roster.reduce((sum, p) => sum + p.fatigue, 0));
   check('Sem erros no jogo-treino', practiceProblems.length === 0, practiceProblems.join(' | '));
 
   // Os momentos que importam, para ver como ficam.

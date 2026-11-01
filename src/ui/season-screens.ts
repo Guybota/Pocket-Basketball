@@ -1,8 +1,10 @@
-import { FREE_WEEK, LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, weekRound, type Standing } from '../sim/league.ts';
+import { CUP_NAMES, FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, weekCup, weekRound, type Standing } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import type { TownPlace } from './art/town.ts';
 import { foundCards } from './club-screens.ts';
-import { PLAYER_CLUB, currentFixture, leaguePosition, leagueTable, opponentOf, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { PLAYER_CLUB, cupRoundName, currentGame, currentSeries, federationStatus, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
 
 // A letra do jogo não tem o «º», por isso diz-se por extenso.
@@ -22,13 +24,15 @@ export function staffNote(club: ClubState): string {
   if (club.confidence < 15) return 'A direção anda a fazer contas à tua indemnização. Convinha ganhar.';
   if (tired) return `O ${tired.name} chegou ao treino de rastos. Talvez o banco lhe faça bem.`;
   if (club.trainedThisWeek.length === 0 && totalCards(club) >= 3) return 'Há cartas por usar. Os jogadores não melhoram com boas intenções.';
-  if (club.week === FREE_WEEK) return 'Esta semana não há jogo. Há equipas a oferecer jogos de treino.';
+  if (currentGame(club)?.playoff) return 'Playoffs. Agora é jogo a jogo, e quem perder vai de férias.';
+  if (currentGame(club)?.cup) return 'Semana de taça. Um jogo mau e acabou-se; um jogo bom e a cidade fala disto durante meses.';
+  if (!currentGame(club)) return 'Esta semana não há jogo. Há equipas a oferecer jogos de treino.';
   if (played && position < MOVING_PLACES && club.division < DIVISIONS.length - 1) return 'Estamos em zona de subida. Eu não disse nada.';
   if (played && position >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0) return 'Estamos em zona de descida. O presidente já não me cumprimenta.';
   return 'Nada a assinalar. O café continua mau.';
 }
 
-const MONTHS = ['Setembro', 'Outubro', 'Novembro', 'Dezembro', 'Janeiro'] as const;
+const MONTHS = ['Setembro', 'Outubro', 'Novembro', 'Dezembro', 'Janeiro', 'Fevereiro', 'Março', 'Abril'] as const;
 const WEEKS_PER_MONTH = 4;
 
 /** Por cima do mapa: a data, a confiança e uma etiqueta tocável em cada edifício. */
@@ -55,20 +59,35 @@ export const TOWER_NOTE = 'A torre guarda tudo sozinha. Este clube fica guardado
 export const AIRPORT_NOTE = 'O aeroporto ainda está em obras. Os jogos contra outros treinadores chegam mais tarde.';
 
 /** O que fica por baixo do mapa: a secretária, o próximo jogo e o que não tem edifício próprio. */
+/** O nome do jogo oficial desta semana: a jornada ou a ronda da taça. */
+export function officialLabel(club: ClubState): string {
+  const game = currentGame(club);
+  if (!game) return 'Semana livre';
+  const series = currentSeries(club);
+  if (game.playoff && series) {
+    const [top, bottom] = seriesWins(series);
+    const wins = series.top === PLAYER_CLUB ? [top, bottom] : [bottom, top];
+    return `${playoffFormat(club)!.name} · ${playoffFormat(club)!.roundNames[game.round]} · Jogo ${series.games.length + 1} (${wins[0]}-${wins[1]})`;
+  }
+  return game.cup ? `${CUP_NAMES[game.cup]} · ${cupRoundName(game.round)}` : `Jornada ${game.round + 1} de ${(LEAGUE_SIZE - 1) * 2}`;
+}
+
 export function cityPanel(club: ClubState, saveFailed: boolean): string {
-  const fixture = currentFixture(club);
-  const round = weekRound(club.week);
+  const game = currentGame(club);
+  const round = game ? game.round : null;
   const own = leagueTable(club).find(row => row.club === PLAYER_CLUB)!;
-  const label = round === null
-    ? 'Semana livre · Sem jogo oficial'
-    : `Jornada ${round + 1} de ${SEASON_WEEKS - 1} · ${fixture!.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
+  const cupWeek = weekCup(club.week);
+  const status = federationStatus(club);
+  const label = !game
+    ? `Semana livre · ${cupWeek?.cup === 'federation' ? (status.winner === PLAYER_CLUB ? 'Vencedores da taça' : `Fora da ${CUP_NAMES.federation}`) : 'Sem jogo oficial'}`
+    : `${officialLabel(club)} · ${game.fixture.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
   return `<div class="cityp">
     <p id="staffNote"><b>Secretária:</b> ${escapeHtml(staffNote(club))}</p>
     <div class="citydetail">${label}</div>
     <div class="citydetail">Época ${club.season} · ${divisionName(club.division)}${own.played > 0 ? ` · ${place(leaguePosition(club))}` : ''} · ${own.wins} V · ${own.losses} D</div>
     ${round === null
       ? '<div class="two"><button type="button" class="primary" id="startBtn">Propostas de jogo</button><button type="button" id="skipWeekBtn">Próxima semana</button></div>'
-      : '<button type="button" class="primary" id="startBtn">Ir para o pavilhão</button>'}
+      : `<div class="two"><button type="button" class="primary" id="startBtn">Ir para o pavilhão</button><button type="button" id="practiceBtn" ${club.practicedThisWeek ? 'disabled' : ''}>${club.practicedThisWeek ? 'Jogo-treino feito' : 'Jogo-treino'}</button></div>`}
     <div class="two"><button type="button" id="squadBtn">Plantel</button><button type="button" id="tacticsBtn">Táticas</button></div>
     ${saveFailed ? '<p class="hint warn">Este browser não deixa guardar: o clube perde-se ao fechar a página.</p>' : ''}
   </div>`;
@@ -88,20 +107,28 @@ function tableRows(club: ClubState, table: readonly Standing[], division: number
 /** O que muda na liga com este jogo, para o ecrã de resultado. */
 export function matchLeagueSummary(result: MatchResult, practice: boolean): string {
   const { club, round, confidenceDelta } = result;
+  const won = confidenceDelta > 0;
   const delta = `<span class="${confidenceDelta >= 0 ? 'won' : 'lost'}">${confidenceDelta >= 0 ? '+' : ''}${confidenceDelta}%</span>`;
   const standing = club.seasonReport
     ? `${place(club.seasonReport.position)} no fim da época`
-    : round ? `${place(leaguePosition(club))} na ${divisionName(club.division)}` : practice ? 'Jogo-treino, não conta para nada além das cartas' : 'Particular, não conta para a liga';
+    : result.series ? (result.series.decided ? (won ? `Série ganha por ${result.series.wins[0]}-${result.series.wins[1]}` : `Série perdida por ${result.series.wins[1]}-${result.series.wins[0]}`) : `Série em ${result.series.wins[0]}-${result.series.wins[1]}, há mais um jogo esta semana`) : result.cup ? (won ? `Seguimos na ${CUP_NAMES[result.cup]}` : `Eliminados da ${CUP_NAMES[result.cup]}`) : round ? `${place(leaguePosition(club))} na ${divisionName(club.division)}` : practice ? 'Jogo-treino, não conta para nada além das cartas' : 'Particular, não conta para a liga';
   const others = (round ?? []).filter(f => f.home !== PLAYER_CLUB && f.away !== PLAYER_CLUB).map(f =>
     `<div class="round-row"><span class="name">${escapeHtml(club.clubs[f.home]!.name)}</span><b>${f.score![0]}-${f.score![1]}</b><span class="name right">${escapeHtml(club.clubs[f.away]!.name)}</span></div>`).join('');
   return `<div class="league-line"><span>${standing}</span>${practice ? '' : `<span>Confiança ${delta}</span>`}</div>
-    ${others ? `<div class="section-head plain"><span>Outros jogos da jornada</span></div>${others}` : ''}`;
+    ${others ? `<div class="section-head plain"><span>${result.cup ? 'Outros jogos da ronda' : 'Outros jogos da jornada'}</span></div>${others}` : ''}`;
+}
+
+function playoffLine(record: SeasonRecord): string {
+  const format = { ...PLAYOFF_FORMATS }[record.division];
+  if (!format) return '';
+  const text = record.playoffExit === null ? 'Não apurados' : record.playoffExit >= format.bestOf.length ? 'Vencedores!' : `Eliminados: ${format.roundNames[record.playoffExit]!.toLowerCase()}`;
+  return `<div class="league-line"><span>${format.name}</span><span>${text}</span></div>`;
 }
 
 const outcomeTitle = (record: SeasonRecord): string => {
   const top = record.division === DIVISIONS.length - 1;
   switch (record.outcome) {
-    case 'champion': return top ? 'Campeões nacionais!' : 'Campeões! E sobem!';
+    case 'champion': return record.cups.length > 0 ? 'Dobradinha!' : top ? 'Campeões nacionais!' : 'Campeões! E sobem!';
     case 'promoted': return 'Subiram de divisão!';
     case 'stayed': return 'Ficam onde estão';
     case 'relegated': return 'Desceram de divisão';
@@ -114,6 +141,8 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       <div class="winner">${outcomeTitle(record)}</div>
       <div class="league-line"><span>Época ${record.season} · ${divisionName(record.division)}</span><span>${place(record.position)} · ${record.wins} V · ${record.losses} D</span></div>
       ${tableRows(club, record.table, record.division)}
+      ${playoffLine(record)}
+      <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName(record.federationExit).toLowerCase()}`}</span></div>
       ${record.topScorer ? `<div class="mvp"><span>Melhor marcador: ${escapeHtml(record.topScorer)}, ${record.topScorerPoints} pontos</span></div>` : ''}
       <div class="section-head plain"><span>Prémio da época</span><span>${record.cards.length} cartas</span></div>
       ${foundCards(record.cards)}

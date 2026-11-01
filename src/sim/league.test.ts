@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { FREE_WEEK, LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, confidenceChange, moveDivisions, roundRobin, seasonOutcome, standings, weekRound } from './league.ts';
+import { createPlayoffs, drawNextRound, nextGame, playoffExit, playoffWinner, seriesWinner, seriesWins } from './playoff.ts';
+import { FEDERATION_ROUNDS, createFederationCup, cupExit, cupWinner, drawCupRound, settleCupRound } from './cup.ts';
+import { LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, confidenceChange, moveDivisions, weekCup, roundRobin, seasonOutcome, standings, weekRound } from './league.ts';
 
 const ids = Array.from({ length: LEAGUE_SIZE }, (_, i) => i);
 
@@ -29,11 +31,14 @@ describe('calendário', () => {
     }
   });
 
-  it('todas as jornadas cabem nas semanas, com uma semana livre', () => {
-    const weeks = Array.from({ length: SEASON_WEEKS }, (_, i) => weekRound(i + 1));
-    expect(weeks.filter(round => round === null)).toHaveLength(1);
-    expect(weekRound(FREE_WEEK)).toBeNull();
-    expect(weeks.filter(round => round !== null)).toEqual(Array.from({ length: (LEAGUE_SIZE - 1) * 2 }, (_, i) => i));
+  it('todas as jornadas cabem nas semanas, e as outras semanas são de taça', () => {
+    const weeks = Array.from({ length: SEASON_WEEKS }, (_, i) => i + 1);
+    const rounds = weeks.map(weekRound);
+    expect(rounds.filter(round => round === null)).toHaveLength(11);
+    expect(rounds.filter(round => round !== null)).toEqual(Array.from({ length: (LEAGUE_SIZE - 1) * 2 }, (_, i) => i));
+    for (const week of weeks) expect((weekRound(week) === null) !== (weekCup(week) === null), `semana ${week}`).toBe(true);
+    expect(weeks.filter(week => weekCup(week)?.cup === 'federation')).toHaveLength(6);
+    expect(weekCup(2)).toEqual({ cup: 'federation', round: 0 });
     expect(weekRound(0)).toBeNull();
     expect(weekRound(SEASON_WEEKS + 1)).toBeNull();
   });
@@ -114,5 +119,93 @@ describe('confiança', () => {
     expect(confidenceChange(true, 10, 99, true)).toBeLessThanOrEqual(9);
     expect(confidenceChange(false, 99, 10, true)).toBeGreaterThanOrEqual(-9);
     expect(Math.abs(confidenceChange(true, 99, 10, true))).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('taça', () => {
+  const ids = Array.from({ length: 40 }, (_, i) => i);
+  const divisions = [ids.slice(0, 10), ids.slice(10, 20), ids.slice(20, 30), ids.slice(30, 40)];
+  const cup = createFederationCup(divisions, id => id);
+
+  it('entram todos, e 16 começam na pré-eliminatória', () => {
+    expect(cup.alive).toHaveLength(40);
+    expect(cup.preliminary).toHaveLength(16);
+    expect(cup.preliminary.slice(0, 10)).toEqual(divisions[0]);
+    expect(cup.preliminary.slice(10)).toEqual([10, 11, 12, 13, 14, 15]);
+  });
+
+  it('as rondas têm 8, 16, 8, 4, 2 e 1 jogos, e sobra um vencedor', () => {
+    let state = cup;
+    const sizes: number[] = [];
+    for (let round = 0; round < FEDERATION_ROUNDS.length; round++) {
+      state = drawCupRound(state, 7);
+      const fixtures = state.rounds[round]!;
+      sizes.push(fixtures.length);
+      expect(new Set(fixtures.flatMap(f => [f.home, f.away])).size).toBe(fixtures.length * 2);
+      state = settleCupRound(state, round, fixtures.map(f => ({ ...f, score: [1, 0] as [number, number] })));
+    }
+    expect(sizes).toEqual([8, 16, 8, 4, 2, 1]);
+    expect(state.alive).toHaveLength(1);
+    expect(cupWinner(state, FEDERATION_ROUNDS.length)).toBe(state.alive[0]);
+    expect(cupExit(state, state.alive[0]!, FEDERATION_ROUNDS.length)).toBe(FEDERATION_ROUNDS.length);
+    const firstLoser = state.rounds[0]![0]!.away;
+    expect(cupExit(state, firstLoser, FEDERATION_ROUNDS.length)).toBe(0);
+    expect(cupExit(cup, 3, FEDERATION_ROUNDS.length)).toBeNull();
+  });
+
+  it('o mesmo sorteio com a mesma semente', () => {
+    expect(drawCupRound(cup, 11)).toEqual(drawCupRound(cup, 11));
+    expect(drawCupRound(cup, 11)).not.toEqual(drawCupRound(cup, 12));
+  });
+});
+
+describe('playoffs', () => {
+  const order = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+  const play = (series: NonNullable<ReturnType<typeof nextGame>> & { home: number }, topWins: boolean, s: { top: number; games: typeof series[] }): void => {
+    const homeIsTop = series.home === s.top;
+    s.games.push({ ...series, score: homeIsTop === topWins ? [1, 0] : [0, 1] });
+  };
+
+  it('na Pro Liga 1 entram 8, com 1.º-8.º, 4.º-5.º, 2.º-7.º e 3.º-6.º, e séries de 3, 3 e 5', () => {
+    const state = createPlayoffs(3, order)!;
+    expect(state.rounds[0]!.map(s => [s.top, s.bottom])).toEqual([[10, 17], [13, 14], [11, 16], [12, 15]]);
+    expect(state.rounds[0]!.every(s => s.bestOf === 3)).toBe(true);
+    expect(createPlayoffs(2, order)!.rounds[0]!.map(s => [s.top, s.bottom])).toEqual([[11, 14], [12, 13]]);
+    expect(createPlayoffs(1, order)).toBeNull();
+  });
+
+  it('o melhor classificado joga em casa os jogos ímpares, e a série acaba com duas vitórias', () => {
+    const series = createPlayoffs(3, order)!.rounds[0]![0]!;
+    expect(nextGame(series)!.home).toBe(10);
+    play(nextGame(series)!, true, series);
+    expect(nextGame(series)!.home).toBe(17);
+    play(nextGame(series)!, false, series);
+    expect(seriesWins(series)).toEqual([1, 1]);
+    expect(nextGame(series)!.home).toBe(10);
+    play(nextGame(series)!, false, series);
+    expect(seriesWinner(series)).toBe(17);
+    expect(nextGame(series)).toBeNull();
+  });
+
+  it('as rondas seguintes juntam vencedores vizinhos, até ao campeão', () => {
+    let state = createPlayoffs(3, order)!;
+    const sweep = (topWins: (s: { top: number; bottom: number }) => boolean): void => {
+      for (const series of state.rounds[state.rounds.length - 1]!) {
+        while (!seriesWinner(series)) play(nextGame(series)!, topWins(series), series);
+      }
+      state = drawNextRound(state);
+    };
+    sweep(() => true);
+    expect(state.rounds[1]!.map(s => [s.top, s.bottom])).toEqual([[10, 13], [11, 12]]);
+    sweep(s => s.top !== 10);
+    expect(state.rounds[2]!.map(s => [s.top, s.bottom, s.bestOf])).toEqual([[11, 13, 5]]);
+    expect(playoffWinner(state)).toBeNull();
+    sweep(() => false);
+    expect(playoffWinner(state)).toBe(13);
+    expect(playoffExit(state, 13)).toBe(3);
+    expect(playoffExit(state, 10)).toBe(1);
+    expect(playoffExit(state, 17)).toBe(0);
+    expect(playoffExit(state, 19)).toBeNull();
+    expect(state.rounds).toHaveLength(3);
   });
 });

@@ -16,12 +16,13 @@ npm run sim            # simula jogos em massa e mostra o relatório de equilíb
 npm run watch-match    # mostra um jogo em texto: npm run watch-match -- 42
 npm run dev            # abre o jogo no browser, em http://localhost:5173
 npm run browser-check  # testa o jogo num browser verdadeiro e guarda imagens em dist-check/
+npm run anim-check     # desenha as poses e os movimentos especiais em dist-check/, sem correr o jogo
 npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
 ```
 
 Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. Usa o Edge; noutra máquina, define `BROWSER_CHANNEL=chrome`.
 
-Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 15 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
+Corre `npm run check` antes de dares uma tarefa por terminada. Confirma o equilíbrio com milhares de jogos; os testes da simulação estão divididos em ficheiros `src/sim/sim-*.test.ts` para correrem em paralelo, e num computador com vários processadores demoram uns minutos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 
 ## Regras da simulação (`src/sim/`)
 

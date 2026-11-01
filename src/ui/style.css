@@ -763,3 +763,14 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .kit[aria-pressed="true"]:hover { background: var(--gold); }
 .clubbadge { flex: 1; display: grid; justify-items: center; align-content: center; gap: 6px; font: 400 24px/1 var(--ui); }
 .clubbadge img { width: 96px; height: 96px; }
+
+/* No computador, a ficha do jogador tem espaço para a época dele mesmo com as cartas escolhidas, e o quadro de cartas usa a largura toda. */
+.pfoot.spare { display: none; }
+#game.landscape .pfoot.spare { display: grid; }
+#game.landscape .whiteboard { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); gap: 12px 6px; }
+#game.landscape .frame { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+#game.landscape .gcard { width: 100%; max-width: 62px; }
+#game.landscape .gcard > img { width: 100%; height: auto; aspect-ratio: 46 / 38; }
+.chalkarrow { min-height: 22px; padding: 0; font: 400 20px/1 var(--ui); color: var(--chalk); background: transparent; border: 1px solid var(--chalk-2); box-shadow: none; }
+.chalkarrow:disabled { opacity: .3; }
+.edot.target { background: var(--away); border-radius: 0; transform: rotate(45deg); }

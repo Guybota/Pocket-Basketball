@@ -12,7 +12,7 @@ import { drawTown, townPlaces } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { tacticsControls } from './club-screens.ts';
 import { activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
-import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openHalf, openMenu, showTopNote, type GameKind } from './menus.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, showTopNote, type GameKind } from './menus.ts';
 import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
@@ -262,7 +262,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], visitorOf(current), activeKit(current));
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current));
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -328,7 +328,8 @@ function showNewClub(): void {
     club = newClub(newSeed(), 0, club ? careerOf(club) : []);
     saveUnreadable = false;
     saveClub();
-    showClub();
+    applyClubColors();
+    openCreate();
   });
 }
 
@@ -353,6 +354,7 @@ function showClub(): void {
   panel.innerHTML = cityPanel(current, saveFailed);
   setStage('town');
   element('startBtn').addEventListener('click', openArena);
+  document.getElementById('practiceBtn')?.addEventListener('click', openOffers);
   document.getElementById('skipWeekBtn')?.addEventListener('click', () => {
     club = skipWeek(club!);
     saveClub();
@@ -774,6 +776,11 @@ Object.assign(window, {
       saveClub();
       showClub();
     },
+    /** Para a verificação não depender da sorte da época. */
+    setConfidence: (value: number) => {
+      club = { ...club!, confidence: value };
+      saveClub();
+    },
     fire: () => {
       club = { ...club!, fired: true };
       saveClub();
@@ -818,14 +825,14 @@ Object.assign(window, {
       speed = value;
     },
     /** Pausa o jogo no momento pedido, para a verificação poder fotografá-lo. */
-    pauseAt: (eventType: string, extraTicks: number, maxDistance = Infinity) => {
+    pauseAt: (eventType: string, extraTicks: number, maxDistance = Infinity, move?: string) => {
       paused = true;
       const current = view!;
       const { s } = current;
       let seen = s.events.length;
       while (s.phase !== 'end') {
         current.stepSim();
-        const found = eventType === `fase:${s.phase}` || s.events.slice(seen).some(e => e.type === eventType && (e.distance ?? 0) <= maxDistance);
+        const found = eventType === `fase:${s.phase}` || s.events.slice(seen).some(e => e.type === eventType && (e.distance ?? 0) <= maxDistance && (move === undefined || e.move === move));
         seen = s.events.length;
         if (found) break;
       }

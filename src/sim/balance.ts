@@ -156,24 +156,24 @@ export const BALANCE = {
   referenceWeight: 95,
   referenceBmi: 25,
   speedLossPerBmi: 0.06,
-  fatiguePerBmi: 0.03,
+  fatiguePerBmi: 0.01,
   reboundPerCm: 0.012,
-  reboundPerKg: 0.002,
+  reboundPerKg: 0.007,
   blockPerCm: 0.003,
   finishPerCm: 0.0015,
   finishPerKg: 0.0006,
   contestPerCm: 0.002,
 
   // Movimentos especiais
-  crossoverChance: 0.7,
+  crossoverChance: 0.85,
   crossoverMinPressure: 0.3,
-  crossoverStunSeconds: 1.5,
-  stepBackChance: 0.6,
+  crossoverStunSeconds: 2.2,
+  stepBackChance: 0.75,
   stepBackMinPressure: 0.3,
   stepBackMinDistance: 3.5,
   stepBackMaxDistance: 8.5,
-  stepBackMeters: 1.3,
-  alleyOopChance: 0.06,
+  stepBackMeters: 1.8,
+  alleyOopChance: 0.1,
   alleyOopRange: 2.6,
   alleyOopMaxPressure: 0.4,
   alleyOopMinJumping: 55,
@@ -184,15 +184,19 @@ export const BALANCE = {
 
   // Comportamentos sem bola
   cutterCutFactor: 0.6,
+  // Quem vive do ressalto ofensivo chega-lhe melhor colocado.
+  crasherReboundBonus: 0.3,
   shadowGap: 0.8,
   screenDistance: 1.1,
   screenSlowRange: 0.9,
   screenSlowdown: 0.55,
   leakU: 11,
-  leakMinShotDistance: 5,
+  leakMinShotDistance: 6.3,
   spotUpBonus: 0.06,
   catchAndShootSeconds: 1.2,
-  slasherFinishBonus: 0.07,
+  slasherFinishBonus: 0.1,
+  cutterFinishBonus: 0.07,
+  postUpFinishBonus: 0.07,
 
   // Comportamentos com bola: multiplicam a vontade de lançar, lançar de 3, passar, ir para o cesto e esperar
   onBall: {
@@ -218,6 +222,12 @@ export const BALANCE = {
   tacticPressureSteal: 0.6,
   tacticPressureFoul: 0.6,
   tacticPressureFatigue: 0.2,
+  // Alvos: quem marca um alvo cola-se a ele e contesta-lhe cada lançamento. Os outros dez encontram um nadinha mais de espaço:
+  // mais do que isto, e marcar os melhores deixava de compensar, porque são muitos a aproveitar.
+  focusGap: 0.8,
+  unfocusedGap: 1,
+  focusShotPenalty: 0.1,
+  unfocusedShotBonus: 0.01,
 
   // Descontos de tempo
   timeoutsPerHalf: 2,
@@ -230,7 +240,7 @@ export const BALANCE = {
   // Colisões. O corpo ocupa este raio, e quem tem mais físico e peso é empurrado menos.
   bodyRadius: 0.41,
   bodyRadiusPerBmi: 0.012,
-  pushPerKg: 0.5,
+  pushPerKg: 0.8,
   pushPerCm: 0.1,
   pushFatigueLoss: 0.3,
   pushPowerMin: 15,
@@ -270,6 +280,7 @@ export const BALANCE = {
   confidenceChampion: 20,
   confidencePromoted: 15,
   confidenceRelegated: 15,
+  confidenceCup: 10,
   clubLevelSpread: 6,
   clubLevelPull: 0.4,
   clubLevelDrift: 1.5,

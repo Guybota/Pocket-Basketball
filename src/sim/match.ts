@@ -302,8 +302,10 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
   const physical = dist <= B.midDistance
     ? (b.player.heightCm - B.referenceHeight) * B.finishPerCm + (b.player.weightKg - B.referenceWeight) * B.finishPerKg
     : 0;
+  const focus = s.tactics[other(b.team)].focus ?? [];
+  const marked = focus.length === 0 ? 0 : focus.includes(s.teams[b.team].roster.indexOf(b.player)) ? -B.focusShotPenalty : B.unfocusedShotBonus;
   const probability = shotChance(b.player.attributes, {
-    bonus: physical + extraBonus,
+    bonus: physical + extraBonus + marked,
     distanceToHoop: dist,
     three,
     pressure,
@@ -650,10 +652,14 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
   const powerDunk = !lob && nearRim && hasMove(shooter, 'powerDunk');
   if (powerDunk) emitMove(s, shooter, 'powerDunk');
   const pressure = pressureOn(s, shooter);
-  // O atirador parado acerta mais a receber e lançar; o penetrador, a acabar um drible.
-  const catchAndShoot = shooter.player.offBall === 'spotUp' && s.lastPasser !== null && s.tick - s.lastPassTick <= seconds(B.catchAndShootSeconds);
+  // Cada comportamento acerta mais na jogada que é a sua: o atirador a receber e lançar, o cortador a receber junto ao cesto,
+  // o penetrador a acabar um drible e o poste a lançar de costas.
+  const justReceived = s.lastPasser !== null && s.tick - s.lastPassTick <= seconds(B.catchAndShootSeconds);
+  const catchAndShoot = shooter.player.offBall === 'spotUp' && justReceived;
+  const cutting = shooter.player.offBall === 'cutter' && justReceived && hoopDistance(toU(s, shooter.team, shooter.x), shooter.y) <= B.midDistance;
   const slashing = shooter.player.onBall === 'slasher' && s.driving;
-  const styleBonus = (catchAndShoot ? B.spotUpBonus : 0) + (slashing ? B.slasherFinishBonus : 0);
+  const posting = shooter.player.onBall === 'postUp' && s.posting === shooter;
+  const styleBonus = (catchAndShoot ? B.spotUpBonus : 0) + (cutting ? B.cutterFinishBonus : 0) + (slashing ? B.slasherFinishBonus : 0) + (posting ? B.postUpFinishBonus : 0);
   const odds = shotOdds(s, shooter, s.posting === shooter ? pressure * postRelief(s, shooter) : pressure, styleBonus + (lob ? B.alleyOopBonus : powerDunk ? B.powerDunkBonus : 0));
   const unstoppable = lob || powerDunk;
   const defender = nearestDefender(s, shooter);
@@ -788,7 +794,8 @@ function resolveRebound(s: MatchState): void {
     const size = (b.player.heightCm - B.referenceHeight) * B.reboundPerCm + (b.player.weightKg - B.referenceWeight) * B.reboundPerKg;
     const skill = Math.max(0.1, 0.25 + (a.jumping * 0.5 + a.strength * 0.5) / 100 + size);
     const closeness = 1 / (1 + dist * dist);
-    return skill * closeness * (b.team === s.offense ? 1 : B.reboundDefenseBonus);
+    const eager = b.team === s.offense && b.player.offBall === 'crasher' ? 1 + B.crasherReboundBonus : 1;
+    return skill * closeness * eager * (b.team === s.offense ? 1 : B.reboundDefenseBonus);
   });
   const rebounder = candidates[weightedIndex(s.rng, weights)]!;
   const offensive = rebounder.team === s.offense;
@@ -958,7 +965,7 @@ function decide(s: MatchState): void {
     (onTheLine ? 0 : 1) * cube(shootValue) * B.shootWeight * urgency * (odds.points === 3 ? style.three * (1 + B.tacticThree * tactics.spacing) : style.shoot) * (1 + B.tacticPaceShoot * tactics.pace),
     B.holdWeight * style.hold * (1 - B.tacticPaceHold * tactics.pace),
     cube(driveValue) * B.driveWeight * style.drive * (1 - B.tacticInsideDrive * tactics.spacing),
-    ...passValues.map((value, i) => cube(value) * B.passWeight * style.pass * (1 - B.tacticPacePass * tactics.pace) * (h.slot >= 3 && u > B.outletU && teammates[i]!.slot === 0 ? B.outletBoost : 1)),
+    ...passValues.map((value, i) => cube(value) * B.passWeight * style.pass * (1 - B.tacticPacePass * tactics.pace) * (h.slot >= 3 && u > B.outletU && (teammates[i]!.slot === 0 || teammates[i]!.player.offBall === 'leaker') ? B.outletBoost : 1)),
   ];
   const choice = weightedIndex(s.rng, weights);
   if (choice === 0) shoot(s, h);
@@ -1091,11 +1098,14 @@ function updateTargets(s: MatchState): void {
       r.body.targetY = r.y;
     }
   }
+  const focus = s.tactics[defense].focus ?? [];
+  const attackers = s.teams[offense].roster;
   for (const b of s.court[defense]) {
     const man = s.court[offense][b.slot]!;
     const hoopX = fromU(s, offense, 1.575);
     const baseGap = b.player.offBall === 'shadow' ? B.shadowGap : man === s.holder ? 1 : 1.5;
-    const gap = Math.max(0.5, baseGap - B.tacticPressureGap * s.tactics[defense].pressure);
+    const marking = focus.length === 0 ? 1 : focus.includes(attackers.indexOf(man.player)) ? B.focusGap : B.unfocusedGap;
+    const gap = Math.max(0.5, baseGap * marking - B.tacticPressureGap * s.tactics[defense].pressure);
     const dist = distance(man.x, man.y, hoopX, 0) || 1;
     b.targetX = man.x + ((hoopX - man.x) / dist) * gap;
     b.targetY = man.y + ((0 - man.y) / dist) * gap;
