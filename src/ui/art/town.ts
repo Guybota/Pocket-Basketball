@@ -1,4 +1,5 @@
 import { fillPolygon, pixelLine } from './court.ts';
+import { text } from './font.ts';
 import { drawShadow, drawSprite, INK, type Look, type PoseName } from './sprites.ts';
 
 // A cidade do estudo visual: um mapa isométrico em que cada edifício é uma função.
@@ -78,7 +79,30 @@ interface Town {
   target(g: Pixels): void;
 }
 
-function buildTown(width: number, height: number, division: number): Town {
+/** O que a cidade mostra do clube: as cores no pavilhão e nas bandeiras, o cartaz do próximo jogo, e faixas depois de um título. */
+export interface TownDress {
+  jersey: string;
+  trim: string;
+  poster: string;
+  festive: boolean;
+}
+
+/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve ou chuva em certas semanas. */
+export type Weather = { tint: string | null; snow: boolean; rain: boolean; night: boolean };
+export function weatherFor(week: number): Weather {
+  // 29 semanas, de setembro a março: a luz muda com os meses, e o tempo com a semana.
+  const month = Math.floor((week - 1) / 4);
+  const rain = week % 7 === 3;
+  if (month <= 0) return { tint: null, snow: false, rain, night: false };
+  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, rain, night: false };
+  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, rain, night: false };
+  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, rain: false, night: true };
+  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, rain: false, night: false };
+  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, rain: false, night: false };
+  return { tint: 'rgba(255,230,160,0.1)', snow: false, rain, night: false };
+}
+
+function buildTown(width: number, height: number, division: number, dress: TownDress): Town {
   const ground = document.createElement('canvas');
   ground.width = width;
   ground.height = height;
@@ -198,6 +222,19 @@ function buildTown(width: number, height: number, division: number): Town {
       onLeft(i + a / 2 - 1, j + b, 0.95, 0, 1.05, '#3d5a78');
       onLeft(i + a / 2 + 0.05, j + b, 0.95, 0, 1.05, '#3d5a78');
       onLeft(i + a / 2 - 1.5, j + b + 0.01, 3, 1.15, 0.22, '#f4efe0');
+      // O emblema do clube na frente, com as cores do equipamento, e o cartaz do próximo jogo ao lado da entrada.
+      onLeft(i + a / 2 - 0.55, j + b + 0.02, 1.1, 1.55, 1.1, INK);
+      onLeft(i + a / 2 - 0.45, j + b + 0.02, 0.9, 1.65, 0.9, dress.jersey);
+      onLeft(i + a / 2 - 0.2, j + b + 0.02, 0.4, 1.9, 0.4, dress.trim);
+      if (dress.poster) {
+        const [px, py] = P(i + a - 2.4, j + b, 1.55);
+        const w = Math.max(30, dress.poster.length * 6 + 6);
+        g.fillStyle = INK;
+        g.fillRect(Math.round(px) - 1, Math.round(py) - 1, w + 2, 11);
+        g.fillStyle = '#f2c230';
+        g.fillRect(Math.round(px), Math.round(py), w, 9);
+        text(g, dress.poster, Math.round(px) + 3, Math.round(py) + 2, INK, 1);
+      }
       // O telhado: chapa com nervuras, rebordo e uma lanterna envidraçada, que dá luz ao campo lá dentro.
       for (let n = 0; n < a - 0.8; n += 0.9) flat(i + 0.5 + n, j + 0.4, 0.14, b - 0.8, '#c25024', h);
       flat(i, j, a, 0.3, '#f07238', h);
@@ -370,6 +407,20 @@ function buildTown(width: number, height: number, division: number): Town {
       add(ti + tj, () => tree(ti, tj, hash % 2 === 1));
     }
   }
+  // Bandeiras na rotunda com as cores do clube; depois de um título, faixas de festa à volta dela.
+  for (const [fi, fj] of [[PLAZA - 1.3, PLAZA - 1.3], [PLAZA + 1.1, PLAZA - 1.3], [PLAZA - 1.3, PLAZA + 1.1], [PLAZA + 1.1, PLAZA + 1.1]] as const) {
+    add(fi + fj + 0.2, () => {
+      const [x, y] = P(fi, fj).map(Math.round) as Point;
+      g.fillStyle = INK;
+      g.fillRect(x, y - 14, 1, 14);
+      g.fillStyle = fi < PLAZA ? dress.jersey : dress.trim;
+      g.fillRect(x + 1, y - 14, 5, 4);
+      if (dress.festive) {
+        g.fillStyle = '#f2c230';
+        for (let n = 0; n < 5; n++) g.fillRect(x + 2 + n * 3, y - 9 + (n % 2), 2, 2);
+      }
+    });
+  }
   operations.sort((a, b) => a[0] - b[0]);
   return {
     ground,
@@ -400,23 +451,52 @@ export function townPlaces(width: number, height: number): Record<TownPlace, { x
   };
 }
 
+/** A caixa de cada edifício no ecrã, em frações da janela, para se poder tocar nele e não só na etiqueta. */
+export function townBoxes(width: number, height: number, division: number): Record<TownPlace, { x0: number; y0: number; x1: number; y1: number }> {
+  const grid = gridFor(width, height);
+  const box = (i: number, j: number, a: number, b: number, h: number): { x0: number; y0: number; x1: number; y1: number } => {
+    const corners = [project(grid, i, j, 0), project(grid, i + a, j, 0), project(grid, i, j + b, 0), project(grid, i + a, j + b, 0), project(grid, i, j, h), project(grid, i + a, j, h), project(grid, i, j + b, h), project(grid, i + a, j + b, h)];
+    const xs = corners.map(c => c[0] / width);
+    const ys = corners.map(c => c[1] / height);
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  };
+  return {
+    arena: box(PAVILION.i, PAVILION.j, PAVILION.a, PAVILION.b, arenaHeight(division) + 1.4),
+    office: box(OFFICE.i, OFFICE.j, OFFICE.a, OFFICE.b, OFFICE.h + 0.4),
+    training: box(TRAINING.i, TRAINING.j, TRAINING.a, TRAINING.b, 1),
+    federation: box(FEDERATION.i, FEDERATION.j, FEDERATION.a, FEDERATION.b, FEDERATION.h + FEDERATION.roof + 0.4),
+    tower: box(TOWER.i, TOWER.j, TOWER.a, TOWER.b, TOWER.h + 1.2),
+    airport: box(AIRPORT.i, AIRPORT.j, AIRPORT.a, AIRPORT.b, 4),
+  };
+}
+
+/** Qual o edifício debaixo do dedo. Os da frente ganham aos de trás quando as caixas se cruzam. */
+export function townHit(width: number, height: number, division: number, fx: number, fy: number): TownPlace | null {
+  const boxes = townBoxes(width, height, division);
+  const order: TownPlace[] = ['airport', 'tower', 'federation', 'training', 'office', 'arena'];
+  return order.find(place => {
+    const b = boxes[place];
+    return fx >= b.x0 && fx <= b.x1 && fy >= b.y0 && fy <= b.y1;
+  }) ?? null;
+}
+
 let cached: { key: string; town: Town } | null = null;
 
 /** O chão só se refaz quando muda o tamanho ou a divisão. Os edifícios e as árvores desenham-se por ordem de profundidade, misturados com os jogadores, para eles poderem passar por trás. */
-export function drawTown(g: Pixels, width: number, height: number, division: number, walkers: readonly Look[], now: number): void {
-  const key = `${width}x${height}x${division}`;
-  if (cached?.key !== key) cached = { key, town: buildTown(width, height, division) };
+export function drawTown(g: Pixels, width: number, height: number, division: number, walkers: readonly Look[], now: number, dress: TownDress, weather: Weather): void {
+  const key = `${width}x${height}x${division}|${dress.jersey}|${dress.trim}|${dress.poster}|${dress.festive}`;
+  if (cached?.key !== key) cached = { key, town: buildTown(width, height, division, dress) };
   const { town } = cached;
   g.drawImage(town.ground, 0, 0);
   town.target(g);
   const grid = gridFor(width, height);
   // Um percurso só um pouco maior do que a janela, para os bonecos estarem quase sempre à vista.
   const span = Math.ceil(width / grid.tw) + 8;
-  const placed = walkers.slice(0, 4).map((look, n) => {
+  const placed = walkers.slice(0, 6).map((look, n) => {
     const travelled = (now / 1000 * WALK_TILES_PER_SECOND + n * 13) % span - span / 2;
     const forward = n % 2 === 0;
     const along = PLAZA + (forward ? travelled : -travelled);
-    const onRoadJ = n < 2;
+    const onRoadJ = n < 3;
     const lane = ROAD_A + 0.45 + (n % 2) * 0.6;
     const i = onRoadJ ? along : lane;
     const j = onRoadJ ? lane : along;
@@ -433,9 +513,64 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       drawSprite(g, WALK_FRAMES[frame]!, look, x, y, !right, false, false);
     }
   };
+  // Um carro a dar a volta à cidade pela estrada de fora, e pombos na rotunda.
+  const carT = (now / 14000) % 1;
+  const lap = carT < 0.5 ? carT * 2 : (carT - 0.5) * 2;
+  const car = { i: carT < 0.5 ? ROAD_B_I + 0.3 : PLAZA - 10 + lap * 20, j: carT < 0.5 ? PLAZA - 10 + lap * 20 : ROAD_B_J + 0.3, depth: 0 };
+  car.depth = car.i + car.j;
+  const drawCar = (): void => {
+    const [x, y] = project(grid, car.i, car.j).map(Math.round) as Point;
+    const along = carT < 0.5;
+    g.fillStyle = 'rgba(10,40,44,.3)';
+    g.fillRect(x - 7, y - 2, 14, 4);
+    g.fillStyle = INK;
+    g.fillRect(x - 6, y - 7, 12, 6);
+    g.fillStyle = along ? '#cf3a2c' : '#2b5fd9';
+    g.fillRect(x - 5, y - 6, 10, 4);
+    g.fillStyle = '#8fd0e6';
+    g.fillRect(x - 2, y - 6, 4, 2);
+  };
+  const birds = [[PLAZA + 0.2, PLAZA - 0.4], [PLAZA - 0.5, PLAZA + 0.3], [PLAZA + 0.6, PLAZA + 0.5]] as const;
+  let carDrawn = false;
   for (const [depth, draw] of town.objects) {
     walkersUpTo(depth);
+    if (!carDrawn && car.depth < depth) {
+      drawCar();
+      carDrawn = true;
+    }
     draw();
   }
   walkersUpTo(Infinity);
+  if (!carDrawn) drawCar();
+  birds.forEach(([bi, bj], n) => {
+    const hop = Math.floor(now / 400 + n) % 3 === 0 ? 1 : 0;
+    const [x, y] = project(grid, bi + Math.sin(now / 2300 + n) * 0.3, bj).map(Math.round) as Point;
+    g.fillStyle = '#6d7a86';
+    g.fillRect(x, y - 2 - hop, 2, 2);
+    g.fillStyle = INK;
+    g.fillRect(x + 2, y - 3 - hop, 1, 1);
+  });
+  // A luz do dia e o tempo, por cima de tudo.
+  if (weather.tint) {
+    g.fillStyle = weather.tint;
+    g.fillRect(0, 0, width, height);
+  }
+  if (weather.night) {
+    // Janelas acesas: pontos quentes por cima das casas.
+    g.fillStyle = 'rgba(255,220,140,0.9)';
+    for (const [hi, hj] of TOWN_HOUSES) {
+      const [x, y] = project(grid, hi + HOUSE_SIZE / 2, hj + HOUSE_SIZE).map(Math.round) as Point;
+      g.fillRect(x - 3, y - 6, 2, 2);
+      g.fillRect(x + 2, y - 6, 2, 2);
+    }
+  }
+  if (weather.snow || weather.rain) {
+    g.fillStyle = weather.snow ? 'rgba(255,255,255,0.9)' : 'rgba(200,220,240,0.7)';
+    const speed = weather.snow ? 22 : 180;
+    for (let n = 0; n < 60; n++) {
+      const x = ((n * 97) % width + Math.sin(now / 900 + n) * 6 + width) % width;
+      const y = ((n * 61) % height + (now / 1000) * speed + n * 3) % height;
+      g.fillRect(Math.round(x), Math.round(y), weather.snow ? 2 : 1, weather.snow ? 2 : 4);
+    }
+  }
 }

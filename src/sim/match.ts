@@ -1618,10 +1618,10 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
 }
 
 /** Reproduz um jogo a partir da semente, das equipas e das decisões do treinador. */
-export function replayMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean], commands: readonly Command[], visitor: TeamIndex = 1): MatchState {
+export function replayMatch(home: Team, away: Team, seed: number, controlled: [boolean, boolean], commands: readonly Command[], visitor: TeamIndex = 1, untilTick = Infinity): MatchState {
   const s = createMatch(home, away, seed, controlled, visitor);
   let next = 0;
-  const maxTicks = seconds(B.periodSeconds) * 200;
+  const maxTicks = Math.min(untilTick, seconds(B.periodSeconds) * 200);
   while (s.phase !== 'end' && s.tick < maxTicks) {
     while (next < commands.length && commands[next]!.tick === s.tick) applyCommand(s, commands[next++]!);
     step(s);

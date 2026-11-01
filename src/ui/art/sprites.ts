@@ -47,6 +47,10 @@ const POSES = {
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  // Reações: punhos no ar depois de um cesto decisivo, mãos na cabeça depois de um erro ou de uma falta, cabisbaixo a perder.
+  fists: (L: number): PoseShape => ({ a: [-5, -7], b: [5, -7], f: [-2, L], g: [2, L], jump: 2 }),
+  handsHead: (L: number): PoseShape => ({ a: [-2, -9], b: [2, -9], f: [-2, L], g: [2, L] }),
+  slump: (L: number): PoseShape => ({ a: [-1, 8], b: [1, 8], f: [-2, L], g: [2, L] }),
 };
 export type PoseName = keyof typeof POSES;
 

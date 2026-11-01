@@ -6,6 +6,7 @@ import { foundCards } from './club-screens.ts';
 import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
 import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
+import { presidentFired, presidentSeason, say, secretaryMood } from './staff.ts';
 
 // A letra do jogo não tem o «º», por isso diz-se por extenso.
 const place = (position: number): string => `Lugar ${position + 1}`;
@@ -82,7 +83,7 @@ export function cityPanel(club: ClubState, saveFailed: boolean): string {
     ? `Semana livre · ${cupWeek && status ? (status.winner === PLAYER_CLUB ? `Vencedores da ${CUP_NAMES[cupWeek.cup]}` : status.entered ? `Fora da ${CUP_NAMES[cupWeek.cup]}` : `Semana da ${CUP_NAMES[cupWeek.cup]}`) : 'Sem jogo oficial'}`
     : `${officialLabel(club)} · ${game.fixture.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
   return `<div class="cityp">
-    <p id="staffNote"><b>Secretária:</b> ${escapeHtml(staffNote(club))}</p>
+    ${say('secretary', secretaryMood(club, staffNote(club)), staffNote(club), 'staffNote')}
     <div class="citydetail">${label}</div>
     <div class="citydetail">Época ${club.season} · ${divisionName(club.division)}${own.played > 0 ? ` · ${place(leaguePosition(club))}` : ''} · ${own.wins} V · ${own.losses} D</div>
     ${round === null
@@ -139,6 +140,7 @@ const outcomeTitle = (record: SeasonRecord): string => {
 export function seasonReportHtml(club: ClubState, record: SeasonRecord): string {
   return `<div class="result">
       <div class="winner">${outcomeTitle(record)}</div>
+      ${say('president', ...presidentSeason(record))}
       <div class="league-line"><span>Época ${record.season} · ${divisionName(record.division)}</span><span>${place(record.position)} · ${record.wins} V · ${record.losses} D</span></div>
       ${tableRows(club, record.table, record.division)}
       ${playoffLine(record)}
@@ -159,7 +161,8 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
 /** Abaixo de 3% de confiança, acaba a carreira neste clube. */
 export function firedHtml(club: ClubState): string {
   return `<div class="start">
-    <div class="club-week"><b>Despedido</b><span>A direção agradece os serviços e pede as chaves do pavilhão.</span></div>
+    <div class="club-week"><b>Despedido</b></div>
+    ${say('president', ...presidentFired())}
     ${confidenceBar(club.confidence)}
     <div class="card-stats office-stats">${[['Épocas', club.season], ['Vitórias', club.wins], ['Derrotas', club.losses], ['Títulos', club.history.filter(r => r.outcome === 'champion').length]].map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>
     <p class="hint">O ${escapeHtml(club.team.name)} despediu-te na semana ${club.week} da época ${club.season}.</p>

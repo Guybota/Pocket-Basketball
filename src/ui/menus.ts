@@ -12,14 +12,15 @@ import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
 import { KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
-import { INK, KITS, drawSprite, lookOf, type Look } from './art/sprites.ts';
-import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, applyRenewals, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { INK, KITS, drawSprite, lookOf, type Look, type PoseName } from './art/sprites.ts';
+import { CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, escapeHtml as esc, panelContent } from './panel.ts';
 import { drawShelf, trophyList } from './trophies.ts';
+import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
 type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
@@ -287,6 +288,7 @@ function reportScreen(): Rendered {
     top: combo
       ? `<button type="button" class="combofx" data-act="skipFx" aria-label="Ver já o resultado">
           <span class="fx-rays"></span>
+          <canvas id="fxScene" class="fx-scene" width="90" height="50"></canvas>
           ${heroCards}
           ${sparks}
           <span class="fx-flash"></span>
@@ -297,20 +299,27 @@ function reportScreen(): Rendered {
   };
 }
 
-const offers = (): number[] => club.divisions.flatMap((ids, d) => {
-  const others = ids.filter(id => id !== PLAYER_CLUB);
-  const count = d === club.division ? 5 : d === club.division + 1 ? 3 : 0;
-  // Todas as semanas há clubes diferentes a propor jogos.
-  const start = (club.week * 3 + club.season) % others.length;
-  return [...others.slice(start), ...others.slice(0, start)].slice(0, count);
-});
+const offers = (): number[] => [
+  ...club.divisions.flatMap((ids, d) => {
+    const others = ids.filter(id => id !== PLAYER_CLUB);
+    const count = d === club.division ? 5 : d === club.division + 1 ? 3 : 0;
+    // Todas as semanas há clubes diferentes a propor jogos.
+    const start = (club.week * 3 + club.season) % others.length;
+    return [...others.slice(start), ...others.slice(0, start)].slice(0, count);
+  }),
+  // Os especiais só para jogos-treino, no fim da lista.
+  ...(offerKind === 'practice' ? SPECIAL_RIVALS.map(r => r.id) : []),
+];
+const offerLabel = (id: number): [string, string] => {
+  const special = SPECIAL_RIVALS.find(r => r.id === id);
+  return special ? [special.name, special.note] : [club.clubs[id]!.name, DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name.replace('Liga ', '')];
+};
 const practiceAllowed = (): boolean => !club.practicedThisWeek;
 const friendlyAllowed = (): boolean => !currentFixture(club);
 
 function offersScreen(): Rendered {
   const list = offers();
-  const pick = club.clubs[list[offerClub] ?? list[0]!]!;
-  const rival = aiTeam(pick);
+  const rival = rivalTeam(club, list[offerClub] ?? list[0]!);
   const compare = (label: string, a: number, b: number): string => `<div class="compare"><div class="left"><i style="width:${a}%"></i></div><span>${label}</span><div class="right"><i style="width:${b}%"></i></div></div>`;
   const avg = (team: Team, key: keyof Attributes): number => team.roster.slice(0, 5).reduce((sum, p) => sum + p.attributes[key], 0) / 5;
   return {
@@ -321,13 +330,13 @@ function offersScreen(): Rendered {
     </div></div>`),
     bottom: `<div class="chalk"><h2>Propostas de jogo</h2>
       <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}" ${practiceAllowed() ? '' : 'disabled'}>${practiceAllowed() ? 'Jogo-treino' : 'Jogo-treino feito'}</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}" ${friendlyAllowed() ? '' : 'disabled'}>Particular</button></div>
-      <div class="scroll">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(club.clubs[id]!.name)}</span><img alt="" src="${offerKind === 'practice' ? ICON_WHISTLE : ICON_BALL}"><small>${DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name.replace('Liga ', '')}</small></button>`).join('')}</div>
+      <div class="scroll">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(offerLabel(id)[0])}</span><img alt="" src="${offerKind === 'practice' ? ICON_WHISTLE : ICON_BALL}"><small>${esc(offerLabel(id)[1])}</small></button>`).join('')}</div>
     </div>${bar(backBtn('town'), `<button type="button" class="primary" data-pre="${offerKind}">Aceitar</button>`)}`,
   };
 }
 
 const rivalId = (): number => (gameKind === 'official' ? opponentId(club) : offers()[offerClub] ?? offers()[0]!);
-const currentRival = (): Team => aiTeam(club.clubs[rivalId()]!);
+const currentRival = (): Team => rivalTeam(club, rivalId());
 
 function preScreen(): Rendered {
   const rival = currentRival();
@@ -343,7 +352,7 @@ function preScreen(): Rendered {
   ];
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
-    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div><div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
+    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantHalf(view.s.score[0], view.s.score[1]) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
   };
 }
 
@@ -405,6 +414,7 @@ function renewalsScreen(): Rendered {
       <div class="kv"><span>Orçamento</span><b>${club.money} mil</b></div>
       <div class="kv"><span>Salários</span><b>${total} mil</b></div>
       <div class="kv"><span>Sobra</span><b style="color:${left < 0 ? 'var(--bad)' : 'var(--good)'}">${left} mil</b></div>
+      ${say('president', ...presidentRenewals(club))}
       <div class="quote">Contratos de um ano. Cada jogador pede o salário que vale agora; quem não ficar sai, e abaixo de 10 jogadores entram livres.</div>
     </div></div>`),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span><span style="grid-column:span 7;text-align:right">Era › Pede</span></div>
@@ -680,13 +690,6 @@ function trophyScreen(): Rendered {
 
 const OUTCOME_LABEL = { champion: 'Campeões', promoted: 'Subiram', stayed: 'Ficaram', relegated: 'Desceram' } as const;
 
-function boardQuote(): string {
-  if (club.confidence < 15) return '"Vamos ser francos: ou isto muda já, ou muda o treinador."';
-  if (club.confidence < 40) return '"Estamos a ver alguns sinais. Acabe no meio da tabela e ninguém faz perguntas."';
-  if (club.confidence < 70) return '"Bom trabalho. Mantenha a equipa a subir e o presidente fica contente."';
-  return '"O presidente já anda a falar de si aos amigos. Continue assim."';
-}
-
 function officeScreen(): Rendered {
   if (officeItem === 'trophies') return trophyScreen();
   const titles = club.history.filter(record => record.outcome === 'champion').length;
@@ -695,7 +698,7 @@ function officeScreen(): Rendered {
     board: `<div class="note"><header><b>Direção do clube</b><span>${Math.round(club.confidence)}%</span></header><div class="inner">
       <div>Confiança no treinador</div><div class="gauge"><i style="width:${club.confidence}%;background:${club.confidence < 15 ? 'var(--bad)' : club.confidence < 40 ? 'var(--gold)' : 'var(--good)'}"></i></div>
       <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>Orçamento ${club.money}</span><span>Salários ${totalSalaries(club)}</span><span>Sobra ${surplus(club)}</span></div>
-      <div class="quote">${boardQuote()}</div>
+      ${say('president', ...presidentBoard(club))}
       <div>Abaixo de ${B.confidenceFired}% de confiança, a direção despede-te.</div>
     </div></div>`,
     history: `<div class="note"><header><b>Historial</b><span>${club.wins} V · ${club.losses} D · ${titles} títulos</span></header><div class="inner">${seasons
@@ -1058,8 +1061,45 @@ export function menusResized(): void {
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** Durante o combo, o jogador faz o treino de cada carta: salta, dribla, descansa ou estuda. */
+const TRAINING_POSES: Record<CardCategory, PoseName[]> = { physical: ['block', 'idle', 'block', 'defend'], technique: ['drib0', 'drib1', 'crossover', 'drib1'], tactic: ['idle', 'pass', 'defend', 'pass'], support: ['sit', 'sit', 'cheer0', 'sit'] };
+let fxStarted = 0;
+function drawTrainingFx(canvas: HTMLCanvasElement, now: number): void {
+  if (!lastTraining) return;
+  if (!fxStarted) fxStarted = now;
+  const age = now - fxStarted;
+  const g = canvas.getContext('2d')!;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  if (age > 1150 && !reducedMotion) return;
+  const look = lookFor(club.team.roster[lastTraining.index]!);
+  lastTraining.cards.forEach((id, n) => {
+    const poses = TRAINING_POSES[CARDS[id].category];
+    const pose = poses[Math.floor(now / 180 + n) % poses.length]!;
+    drawSprite(g, pose, look, 15 + n * 30, 46, n === 2, false, CARDS[id].category === 'technique');
+  });
+}
+
+/** Confetti por cima do emblema, no fim de uma época com título. */
+function drawConfetti(canvas: HTMLCanvasElement, now: number): void {
+  const g = canvas.getContext('2d')!;
+  const kit = activeKit(club);
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  const colors = [kit.jersey, kit.trim, '#f2c230', '#f4efe0'];
+  for (let n = 0; n < 40; n++) {
+    const x = ((n * 53) % canvas.width + Math.sin(now / 700 + n) * 8 + canvas.width) % canvas.width;
+    const y = ((n * 37) % canvas.height + (now / 1000) * (18 + (n % 4) * 6)) % canvas.height;
+    g.fillStyle = colors[n % colors.length]!;
+    g.fillRect(Math.round(x), Math.round(y), 3, n % 3 === 0 ? 2 : 3);
+  }
+}
+
 /** As cenas têm vida, por isso desenham-se a cada imagem. */
 export function menuFrame(now: number): void {
+  const fx = document.getElementById('fxScene') as HTMLCanvasElement | null;
+  if (fx) drawTrainingFx(fx, now);
+  else fxStarted = 0;
+  const confetti = document.getElementById('confetti') as HTMLCanvasElement | null;
+  if (confetti && !reducedMotion) drawConfetti(confetti, now);
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
   if (!canvas) return;
   const view = host.match();

@@ -7,6 +7,7 @@ Lê antes de começar:
 - [Pesquisa sobre o original](docs/01-pesquisa-npfc.md)
 - [Plano e fases](docs/02-plano-desenvolvimento.md)
 - [Estudo visual](docs/03-estudo-visual.html)
+- [Análise visual e charme, antes da Fase 5](docs/05-analise-visual-charme.md)
 
 ## Comandos
 

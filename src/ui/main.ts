@@ -8,15 +8,17 @@ import { cardImage } from './art/cards.ts';
 import { CLOSED_GYM } from './art/court.ts';
 import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
-import { drawTown, townPlaces } from './art/town.ts';
+import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { tacticsControls } from './club-screens.ts';
-import { activeKit, aiTeam, careerOf, clubTeam, currentFixture, finishMatch, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, currentGame, finishMatch, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, showTopNote, type GameKind } from './menus.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, seasonReportHtml, townOverlay } from './season-screens.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
-import { escapeHtml, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
+import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
+import { assistantResult, say, secretaryFarewell } from './staff.ts';
+import { portraitImage } from './art/portrait.ts';
 
 const TICKS_PER_SECOND = 20;
 const MAX_STEPS_PER_FRAME = 40;
@@ -90,6 +92,14 @@ let subsOpen = false;
 let subOut: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+// A apresentação antes do jogo, a cena do fim, e a repetição do lance decisivo.
+let introTimer = 0;
+let endAt = 0;
+let resultHtml = '';
+let replay: MatchView | undefined;
+let replayUntil = 0;
+let replayAccumulator = 0;
+const REPLAY_SPEED = 0.5;
 const townExtras = newClub(1);
 const soundsPlayed = new Set<Sound>();
 const announced = new Set<string>();
@@ -202,18 +212,33 @@ function setTopSize(width: number, height: number, zoom: number): void {
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: typeof stage): void {
   stage = next;
+  if (next === 'town' || next === 'title') audio.music('town');
+  else if (next === 'match') audio.music('arena');
+  // Uma cortina curta entre ecrãs, em vez de uma troca seca.
+  game.classList.remove('stage-in');
+  void game.offsetWidth;
+  game.classList.add('stage-in');
   game.classList.toggle('city-home', next === 'town');
   townUi.hidden = next !== 'town';
   topUi.hidden = next !== 'menu';
   fit();
 }
 
+/** Tocar num edifício é o mesmo que tocar na etiqueta dele. */
+canvas.addEventListener('click', event => {
+  if (stage !== 'town' || !club) return;
+  const rect = canvas.getBoundingClientRect();
+  const place = townHit(canvas.width, canvas.height, club.division, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+  const chips: Record<TownPlace, string> = { arena: 'arenaChip', office: 'officeBtn', training: 'trainBtn', federation: 'federationBtn', tower: 'towerChip', airport: 'airportChip' };
+  if (place) document.getElementById(chips[place])?.click();
+});
+
 function placeTownUi(): void {
   const current = club!;
   townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height));
   const note = (text: string): void => {
-    const box = document.getElementById('staffNote');
-    if (box) box.innerHTML = `<b>Secretária:</b> ${escapeHtml(text)}`;
+    const box = document.querySelector('#staffNote .t');
+    if (box) box.textContent = text;
   };
   element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página.' : TOWER_NOTE));
@@ -251,7 +276,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   found = [];
   drop.hidden = true;
   // Um jogo-treino é à porta fechada, por isso joga-se num pavilhão sem público.
-  view = new MatchView(context, clubTeam(current), aiTeam(current.clubs[rivalId]!), seed, kind === 'practice' ? CLOSED_GYM : current.division, {
+  view = new MatchView(context, clubTeam(current), rivalTeam(current, rivalId), seed, kind === 'practice' ? CLOSED_GYM : current.division, {
     announce,
     event: e => {
       // A vista já recebe o início do jogo ao ser criada, antes de o jogo começar a sério.
@@ -273,6 +298,8 @@ function makeView(kind: GameKind, rivalId: number): void {
   audio.setVenue(kind === 'practice' ? 0 : current.division);
   banner.hidden = true;
   hudText = '';
+  endAt = 0;
+  replay = undefined;
 }
 
 /** A carta aparece por cima do jogo, sem o parar. */
@@ -375,12 +402,32 @@ function showSeasonReport(): void {
   const current = club!;
   closeMenus();
   setStage('menu');
-  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), clubBadge(current));
+  const festive = current.seasonReport!.outcome === 'champion' || current.seasonReport!.cups.length > 0;
+  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${clubBadge(current)}${festive ? '<canvas id="confetti" class="confetti" width="180" height="120"></canvas>' : ''}`);
+  audio.music(festive ? 'win' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
+  const report = current.seasonReport!;
   element('seasonContinue').addEventListener('click', () => {
     club = { ...club!, seasonReport: null };
     saveClub();
-    if (club.pendingRenewals && !club.fired) openRenewals();
+    if (report.farewells?.length && !club.fired) showFarewell(report);
+    else if (club.pendingRenewals && !club.fired) openRenewals();
+    else showClub();
+  });
+}
+
+/** Quem chegou ao fim do Potencial despede-se, com o retrato e os números de uma carreira. */
+function showFarewell(report: SeasonRecord): void {
+  const farewells = report.farewells ?? [];
+  setStage('menu');
+  showTopNote('Despedida', `Época ${report.season}`, say('secretary', ...secretaryFarewell(farewells.map(f => f.player.name))));
+  audio.music('farewell');
+  panel.innerHTML = `<div class="result"><div class="winner">Até sempre</div>
+    ${farewells.map(f => `<div class="mvp farewell"><img class="face" alt="" src="${portraitImage({ ...lookOf(f.player, 'blue'), custom: activeKit(club!) }, 'sad')}"><span><b>${escapeHtml(f.player.name)}</b><br>${f.seasons} ${f.seasons === 1 ? 'época' : 'épocas'} no clube · ${f.games} jogos · ${f.points} pontos</span></div>`).join('')}
+    <p class="hint">O Potencial chegou ao fim. O que aprendeu, levou; o lugar no balneário fica para quem vier.</p></div>
+    <div class="end-actions"><button type="button" class="primary" id="farewellContinue">Adeus</button></div>`;
+  element('farewellContinue').addEventListener('click', () => {
+    if (club!.pendingRenewals) openRenewals();
     else showClub();
   });
 }
@@ -434,7 +481,7 @@ function bindControls(): void {
     showMatch();
   });
   element('muteBtn').addEventListener('click', () => {
-    audio.muted = !audio.muted;
+    audio.setMuted(!audio.muted);
     showMatch();
   });
 }
@@ -594,8 +641,76 @@ function startGame(kind: GameKind, rivalId: number): void {
   applyClubColors();
   setStage('match');
   makeView(kind, rivalId);
+  showIntro();
+}
+
+/** Os cinco de cada lado entram em campo. Toca-se para saltar, ou espera-se uns segundos. */
+function showIntro(): void {
+  const current = club!;
+  const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
+  panel.innerHTML = introScreen(view!, label);
+  element('introSkip').addEventListener('click', beginPlay);
+  clearTimeout(introTimer);
+  introTimer = window.setTimeout(beginPlay, 3500);
+}
+
+function beginPlay(): void {
+  if (started) return;
+  clearTimeout(introTimer);
   started = true;
   showMatch();
+}
+
+/** A repetição: o jogo volta a correr só com as decisões do treinador, até três segundos antes do lance, e mostra-se em câmara lenta. */
+function startReplay(): void {
+  const { s } = view!;
+  const tick = decisiveTick(s);
+  const from = Math.max(0, tick - 60);
+  const state = replayMatch(s.teams[0], s.teams[1], s.seed, s.controlled, s.commands, s.visitor, from);
+  let live = false;
+  replay = new MatchView(context, s.teams[0], s.teams[1], s.seed, gameKind === 'practice' ? CLOSED_GYM : club!.division, {
+    announce: () => {},
+    event: () => {},
+    sound: name => {
+      if (live) audio.play(name);
+    },
+  }, s.controlled, s.visitor, activeKit(club!), state);
+  live = true;
+  replay.snapCamera();
+  replayUntil = tick + 30;
+  replayAccumulator = 0;
+  announce('Repetição');
+  bannerUntil = Infinity;
+  panel.innerHTML = `<div class="result"><div class="winner">O lance decisivo</div><p class="hint">Em câmara lenta, três segundos antes do cesto que decidiu o jogo.</p></div>
+    <div class="end-actions"><button type="button" id="replayBack">Voltar ao resultado</button></div>`;
+  element('replayBack').addEventListener('click', endReplay);
+}
+
+function endReplay(): void {
+  replay = undefined;
+  banner.hidden = true;
+  showResultPanel();
+}
+
+function showResultPanel(): void {
+  panel.innerHTML = `${resultHtml}
+    <div class="end-actions two"><button type="button" id="replayBtn">Rever o lance</button><button type="button" class="primary" id="againBtn">Continuar</button></div>`;
+  element('againBtn').addEventListener('click', showClub);
+  element('replayBtn').addEventListener('click', startReplay);
+  countUp(panel.querySelectorAll<HTMLElement>('.final-score b'));
+}
+
+/** Os números sobem até ao valor, em menos de um segundo. */
+function countUp(elements: NodeListOf<HTMLElement>): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const targets = [...elements].map(el => ({ el, value: Number(el.textContent) }));
+  const start = performance.now();
+  const tick = (now: number): void => {
+    const t = Math.min(1, (now - start) / 700);
+    for (const { el, value } of targets) el.textContent = String(Math.round(value * (1 - (1 - t) * (1 - t))));
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 /** O jogo fica à espera no balneário, até o treinador o mandar voltar. */
@@ -635,11 +750,10 @@ function showResult(): void {
   const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found);
   club = result.club;
   saveClub();
-  panel.innerHTML = `${resultScreen(view!, result.cards, matchLeagueSummary(result, gameKind === 'practice'))}
-    <div class="end-actions">
-      <button type="button" class="primary" id="againBtn">Continuar</button>
-    </div>`;
-  element('againBtn').addEventListener('click', showClub);
+  const { score } = view!.s;
+  audio.music(score[0] > score[1] ? 'win' : 'loss');
+  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${matchLeagueSummary(result, gameKind === 'practice')}`);
+  showResultPanel();
 }
 
 /** O marcador é HTML: a letra fica nítida a qualquer tamanho e só muda quando algo muda. */
@@ -666,7 +780,8 @@ function updateHud(): void {
 }
 
 function frame(now: number): void {
-  const elapsed = Math.min(0.1, (now - lastFrame) / 1000);
+  const rawElapsed = (now - lastFrame) / 1000;
+  const elapsed = Math.min(0.1, rawElapsed);
   lastFrame = now;
   let simSeconds = 0;
   const current = view;
@@ -683,7 +798,12 @@ function frame(now: number): void {
       if (gameKind === 'practice') showResult();
       else showHalfTime();
     } else if (current.s.phase === 'end') {
-      showResult();
+      // Uns segundos de festa, ou de cabeças baixas, antes do relatório.
+      if (endAt === 0) {
+        endAt = now;
+        announce(current.s.score[0] > current.s.score[1] ? 'Vitória!' : 'Derrota...');
+        bannerUntil = Infinity;
+      } else if (now - endAt > 2500) showResult();
     } else if (current.s.phase === 'break') {
       const message = current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`;
       if (banner.textContent !== message || banner.hidden) announce(message);
@@ -706,11 +826,27 @@ function frame(now: number): void {
   if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
   if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();
-  hud.hidden = stage !== 'match';
-  if (stage === 'town' || stage === 'title') {
+  hud.hidden = stage !== 'match' || replay !== undefined;
+  if (replay) {
+    replayAccumulator += Math.min(0.5, rawElapsed) * REPLAY_SPEED * TICKS_PER_SECOND;
+    while (replayAccumulator >= 1 && replay.s.tick < replayUntil && replay.s.phase !== 'end') {
+      replay.stepSim();
+      replayAccumulator -= 1;
+    }
+    if (replay.s.tick >= replayUntil || replay.s.phase === 'end') endReplay();
+    else replay.render(Math.min(1, replayAccumulator), elapsed * REPLAY_SPEED);
+  } else if (stage === 'town' || stage === 'title') {
     // A cidade passeia sempre uma equipa, mesmo antes de haver clube.
     const walkers = club ?? townExtras;
-    drawTown(context, canvas.width, canvas.height, walkers.division, walkers.team.roster.slice(0, 5).map(p => ({ ...lookOf(p, 'blue'), custom: activeKit(walkers) })), townClock ?? now);
+    const kit = activeKit(walkers);
+    const game = club ? currentGame(club) : null;
+    const looks = [...walkers.team.roster.slice(0, 4).map(p => ({ ...lookOf(p, 'blue'), custom: kit })), lookOf({ ...walkers.team.roster[5]!, name: 'Vizinha' }, 'cream'), lookOf({ ...walkers.team.roster[6]!, name: 'Vizinho' }, 'coach')];
+    drawTown(context, canvas.width, canvas.height, walkers.division, looks, townClock ?? now, {
+      jersey: kit.jersey,
+      trim: kit.trim,
+      poster: club && game ? `${game.fixture.home === PLAYER_CLUB ? 'DOMINGO' : 'FORA'} ${opponentOf(club).short}` : '',
+      festive: club !== null && club.week <= 2 && (club.history.at(-1)?.outcome === 'champion' || (club.history.at(-1)?.cups.length ?? 0) > 0),
+    }, weatherFor(club?.week ?? 1));
   } else if (stage === 'menu') {
     menuFrame(now);
   } else if (current) {
@@ -764,6 +900,8 @@ Object.assign(window, {
     },
     club: () => club,
     found: () => [...found],
+    /** Onde está cada edifício, para a verificação lhe poder tocar. */
+    townBox: (place: TownPlace) => townBoxes(canvas.width, canvas.height, club!.division)[place],
     /** Para a cidade num instante, para a verificação a poder fotografar. */
     setTownClock: (value: number | null) => {
       townClock = value;
@@ -825,6 +963,7 @@ Object.assign(window, {
       finished,
       announced: [...announced],
       canvas: { width: canvas.width, height: canvas.height },
+      replay: replay ? { tick: replay.s.tick, until: replayUntil, phase: replay.s.phase } : null,
     }),
     setSpeedRaw: (value: number) => {
       speed = value;

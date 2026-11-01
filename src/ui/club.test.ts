@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { simulateMatch } from '../sim/match.ts';
-import { generateTeam } from '../sim/teamgen.ts';
+import { generateTeam, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, comboFor, cardFromEvent, endOfMatchCards, independentPractice, previewGains, trainPlayer, trainingFactor, type CardId } from '../sim/training.ts';
 import { makeRng } from '../sim/rng.ts';
 import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/types.ts';
@@ -9,7 +9,7 @@ import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, salaryFor, sellPlayer, signPlayer, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -568,6 +568,8 @@ describe('época', () => {
       if (before) expect(player.potential).toBeLessThan(before.potential);
     }
     expect(record.departures).toEqual([doomed]);
+    expect(record.farewells?.map(f => f.player.name)).toEqual([doomed]);
+    expect(record.farewells![0]!.seasons).toBeGreaterThanOrEqual(1);
     expect(record.arrivals).toHaveLength(1);
     expect(after.team.roster.some(p => p.name === doomed)).toBe(false);
     expect(after.team.roster.length).toBe(12);
@@ -655,6 +657,22 @@ describe('época', () => {
     const joined = current.team.roster.some(p => p.name === foreign.player.name);
     expect(joined ? current.money : current.money).toBe(joined ? signed.money - foreign.fee : signed.money);
     expect(parseClub(JSON.stringify(offered))).toEqual(offered);
+  });
+
+  it('os adversários especiais: a universidade é fraca com potencial no máximo, os veteranos não têm resistência, os sósias somos nós', () => {
+    const c = newClub(113, 1);
+    const uni = specialTeam(c, -1);
+    expect(uni.roster.every(p => p.potential === 95)).toBe(true);
+    expect(teamRating(uni)).toBeLessThan(teamRating(c.team));
+    const vets = specialTeam(c, -2);
+    expect(vets.roster.every(p => p.attributes.stamina === 15 && p.potential === 5)).toBe(true);
+    const twins = specialTeam(c, -3);
+    expect(twins.roster.map(p => p.name)).toEqual(c.team.roster.map(p => `${p.name} II`));
+    expect(rivalTeam(c, -3)).toEqual(twins);
+    expect(rivalTeam(c, 1)).toEqual(aiTeam(c.clubs[1]!));
+    // Uma equipa especial sobrevive ao JSON e joga.
+    expect(JSON.parse(JSON.stringify(uni))).toEqual(uni);
+    expect(simulateMatch(clubTeam(c), twins, 1).phase).toBe('end');
   });
 
   it('vender dá o valor do jogador, mas nunca abaixo do mínimo do plantel', () => {

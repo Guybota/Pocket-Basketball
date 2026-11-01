@@ -26,8 +26,11 @@ function mix(a: string, b: string, k: number): string {
   return `#${part(0)}${part(1)}${part(2)}`;
 }
 
-export function portraitImage(look: Look): string {
-  const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.build}|${look.face}`;
+/** A expressão: as sobrancelhas e a boca mudam; o resto da cara fica igual. */
+export type Mood = 'neutral' | 'happy' | 'worried' | 'sad';
+
+export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
+  const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.build}|${look.face}|${mood}`;
   const cached = cache.get(key);
   if (cached) return cached;
 
@@ -161,9 +164,10 @@ export function portraitImage(look: Look): string {
   // Sobrancelhas.
   const browRow = 6;
   const browColor = look.style === 3 ? mix(skinShade, INK, 0.5) : mix(hair, INK, 0.25);
-  const browMood = trait(4, 3);
+  // Preocupado ou triste, as pontas de fora descem; contente, as sobrancelhas sobem.
+  const browMood = mood === 'neutral' ? trait(4, 3) : mood === 'happy' ? 0 : 2;
   for (let i = 0; i < 3; i++) {
-    const tilt = browMood === 1 && i === 2 ? 1 : browMood === 2 && i === 0 ? 1 : 0;
+    const tilt = (browMood === 1 && i === 2 ? 1 : browMood === 2 && i === 0 ? 1 : 0) - (mood === 'happy' ? 1 : 0);
     put(CX - 6 + i, rowY(browRow + tilt), browColor);
     put(CX + 5 - i, rowY(browRow + tilt), browColor);
   }
@@ -209,9 +213,14 @@ export function portraitImage(look: Look): string {
   }
 
   // Boca: uma linha, às vezes aberta ou com os cantos para cima.
-  const mouth = trait(12, 4);
+  const mouth = mood === 'neutral' ? trait(12, 4) : mood === 'happy' ? 2 : mood === 'worried' ? 0 : 4;
   const lips = mix(skinShade, INK, 0.5);
-  if (mouth === 3) {
+  if (mouth === 4) {
+    // Triste: os cantos para baixo.
+    span(rowY(13), 2, lips);
+    put(CX - 3, rowY(14), lips);
+    put(CX + 2, rowY(14), lips);
+  } else if (mouth === 3) {
     span(rowY(13), 2, lips);
     span(rowY(14), 2, INK);
     span(rowY(13), 1, '#fbf6e2');

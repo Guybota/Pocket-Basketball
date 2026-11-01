@@ -91,6 +91,9 @@ export class MatchView {
   // Quem recua num step-back muda de sítio num só passo da simulação; aqui desliza até lá.
   private readonly slides = new Map<Body, { x: number; y: number; start: number }>();
   private readonly floaters: Floater[] = [];
+  // O que a bancada diz, em balões por cima do público.
+  private readonly bubbles: { label: string; x: number; born: number }[] = [];
+  private coachUpsetUntil: [number, number] = [0, 0];
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
   // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
   private readonly referee = { x: 14, y: -1, prevX: 14, prevY: -1, flip: false, moving: false, signalUntil: 0 };
@@ -111,10 +114,10 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState) {
     this.g = g;
     this.callbacks = callbacks;
-    this.s = createMatch(home, away, seed, controlled, visitor);
+    this.s = state ?? createMatch(home, away, seed, controlled, visitor);
     this.textures = courtTextures(division);
     this.image = g.createImageData(g.canvas.width, g.canvas.height);
     this.pixels = new Uint32Array(this.image.data.buffer);
@@ -127,6 +130,9 @@ export class MatchView {
     this.coaches = [coachLook(home), coachLook(away)];
     this.refereeLook = { ...lookOf({ ...home.roster[0]!, name: 'Árbitro' }, 'referee'), style: 0, legs: 7, torso: 7, build: 'athletic' };
     this.camera.aim(this.cameraTarget());
+    // Num jogo já a meio, o que aconteceu antes não se mostra: nem balões, nem poses, nem sons.
+    this.seenEvents = state ? state.events.length : 0;
+    if (state) for (let p = 0; p < state.period; p++) this.periodScores.forEach(scores => scores.push(0));
     this.processEvents();
   }
 
@@ -151,6 +157,24 @@ export class MatchView {
     return this.s.bodies.find(b => b.team === e.team && b.player.name === e.player);
   }
 
+  /** A equipa da casa, por quem a bancada torce. */
+  private get crowdTeam(): TeamIndex {
+    return this.s.visitor === 0 ? 1 : 0;
+  }
+
+  /** Um adepto diz qualquer coisa. Num pavilhão sem público, ninguém diz nada. */
+  private crowdSay(label: string): void {
+    if (!this.textures.theme.crowd) return;
+    const { s } = this;
+    this.bubbles.push({ label, x: 0.12 + ((s.tick * 7919 + this.bubbles.length * 131) % 70) / 100, born: s.tick });
+  }
+
+  private nearestOpponent(body: Body): Body | undefined {
+    const others = this.s.court[body.team === 0 ? 1 : 0];
+    const d2 = (o: Body): number => (o.x - body.x) * (o.x - body.x) + (o.y - body.y) * (o.y - body.y);
+    return [...others].sort((a, b) => d2(a) - d2(b))[0];
+  }
+
   private processEvents(): void {
     const { s, callbacks } = this;
     for (; this.seenEvents < s.events.length; this.seenEvents++) {
@@ -169,11 +193,24 @@ export class MatchView {
           this.overrides.set(body, { pose: dunk ? 'dunk' : 'shoot', until: s.tick + (dunk ? 12 : 16) });
           break;
         }
-        case 'made':
+        case 'made': {
           this.addPoints(e, e.points!);
+          const dunk = body ? this.overrides.get(body)?.pose === 'dunk' : false;
           this.announceMade(e, body);
-          if (body) this.overrides.set(body, { pose: 'cheer1', until: s.tick + 14 });
+          const decisive = s.clock <= 20 || (s.period >= 4 && s.clock < 600 && s.score[e.team] - s.score[e.team === 0 ? 1 : 0] <= e.points! && s.score[e.team] > s.score[e.team === 0 ? 1 : 0]);
+          if (body) this.overrides.set(body, { pose: decisive ? 'fists' : 'cheer1', until: s.tick + 14 });
+          if (dunk && body) {
+            const beaten = this.nearestOpponent(body);
+            if (beaten) this.overrides.set(beaten, { pose: 'handsHead', until: s.tick + 12 });
+            this.coachUpsetUntil[e.team === 0 ? 1 : 0] = s.tick + 16;
+          }
+          if (e.team === this.crowdTeam) {
+            if (dunk) this.crowdSay('!!!');
+            else if (e.points === 3) this.crowdSay('QUE BOMBA!');
+            else if (decisive) this.crowdSay('VAMOS!');
+          } else if (e.points === 3 || dunk) this.crowdSay('OH NAO...');
           break;
+        }
         case 'freeThrowMade':
           this.addPoints(e, 1);
           this.swishUntil = s.tick + SWISH_TICKS;
@@ -181,14 +218,18 @@ export class MatchView {
           callbacks.sound('swish');
           break;
         case 'missed':
+          callbacks.sound('rim');
+          break;
         case 'freeThrowMissed':
           callbacks.sound('rim');
+          if (body) this.overrides.set(body, { pose: 'slump', until: s.tick + 10 });
           break;
         case 'block':
           if (body) this.overrides.set(body, { pose: 'block', until: s.tick + 12 });
           this.excitedUntil = s.tick + 24;
           callbacks.sound('block');
           callbacks.announce('Desarme!');
+          if (e.team === this.crowdTeam) this.crowdSay('NAO ENTRA!');
           break;
         case 'rebound':
           if (body) this.overrides.set(body, { pose: 'block', until: s.tick + 8 });
@@ -212,6 +253,10 @@ export class MatchView {
         case 'foul':
           callbacks.sound('whistle');
           this.refereeSignal('FALTA');
+          // Quem fez a falta protesta, e o treinador dele também.
+          if (body) this.overrides.set(body, { pose: 'handsHead', until: s.tick + 8 });
+          this.coachUpsetUntil[e.team] = s.tick + 12;
+          if (e.team === this.crowdTeam) this.crowdSay('ARBITRO!');
           break;
         case 'periodEnd':
           callbacks.sound('buzzer');
@@ -219,12 +264,14 @@ export class MatchView {
           break;
         case 'end':
           this.excitedUntil = s.tick + 100000;
+          this.crowdSay(s.score[this.crowdTeam] > s.score[this.crowdTeam === 0 ? 1 : 0] ? 'QUE EQUIPA!' : 'PARA CASA...');
           break;
         case 'timeout':
           callbacks.sound('whistle');
           callbacks.sound('horn');
           callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
           this.refereeSignal(null);
+          if (e.team !== this.crowdTeam) this.crowdSay('ESTAO COM MEDO');
           break;
         case 'shotClockViolation':
           callbacks.sound('shotClockBuzzer');
@@ -250,7 +297,10 @@ export class MatchView {
           break;
         case 'substitution':
           // Várias trocas na mesma paragem só dão um toque de buzzer.
-          if (this.lastHornTick !== s.tick) callbacks.sound('horn');
+          if (this.lastHornTick !== s.tick) {
+            callbacks.sound('horn');
+            if (e.team === this.crowdTeam) this.crowdSay('EU TAMBEM O TIRAVA');
+          }
           this.lastHornTick = s.tick;
           break;
       }
@@ -315,6 +365,7 @@ export class MatchView {
       if (previousRun < threshold && this.run.points >= threshold) {
         this.callbacks.announce(`Parcial de ${this.run.points}-0!`);
         this.callbacks.sound('bigCheer');
+        if (e.team === this.crowdTeam) this.crowdSay('VAMOS!');
       }
     }
   }
@@ -431,7 +482,7 @@ export class MatchView {
     const frame = Math.floor(s.tick / 2.5);
     if (s.phase === 'end') {
       const won = s.score[b.team] > s.score[b.team === 0 ? 1 : 0];
-      return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'idle', withBall: false };
+      return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'slump', withBall: false };
     }
     const override = this.overrides.get(b);
     // A bola ao alto: primeiro fletem as pernas, e depois saltam de braços no ar.
@@ -484,11 +535,13 @@ export class MatchView {
       const [cx, cy] = camera.project(coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, COACH_Y);
       const walking = Math.abs(Math.cos(time * 0.5 + team * 2)) > 0.3;
       const coachFrame = Math.floor(time * 6) % 4;
+      // O treinador festeja com o banco, protesta nas faltas, e fica de mãos na cabeça quando leva um afundanço.
+      const coachPose: PoseName = s.tick < this.coachUpsetUntil[team] ? 'handsHead' : cheering ? (Math.floor(s.tick / 3) % 2 ? 'cheer0' : 'fists') : walking ? RUN_FRAMES[coachFrame]! : 'idle';
       drawables.push({
         y: cy,
         draw: () => {
           drawShadow(g, cx, cy);
-          drawSprite(g, walking ? RUN_FRAMES[coachFrame]! : 'idle', this.coaches[team], cx, cy, Math.cos(time * 0.5 + team * 2) < 0, false, false);
+          drawSprite(g, coachPose, this.coaches[team], cx, cy, Math.cos(time * 0.5 + team * 2) < 0, false, false);
         },
       });
     }
@@ -603,6 +656,7 @@ export class MatchView {
     for (const d of drawables) d.draw();
     this.drawCarrier(alpha);
     this.drawFloaters();
+    this.drawBubbles();
     if (!this.reducedMotion && s.tick < this.shakeUntil) {
       const dx = s.tick % 2 ? 2 : -2;
       g.canvas.style.transform = `translate(${dx}px, ${s.tick % 3 === 0 ? 1 : -1}px)`;
@@ -630,6 +684,30 @@ export class MatchView {
       g.fillRect((x | 0) - 3, top - 4, 7, 2);
       g.fillRect((x | 0) - 2, top - 2, 5, 2);
       g.fillRect((x | 0) - 1, top, 3, 1);
+    }
+  }
+
+  /** Os balões da bancada: aparecem por cima do público e desaparecem passados dois segundos. */
+  private drawBubbles(): void {
+    const { g, s, camera } = this;
+    for (let i = this.bubbles.length - 1; i >= 0; i--) {
+      const b = this.bubbles[i]!;
+      const age = s.tick - b.born;
+      if (age > 44) {
+        this.bubbles.splice(i, 1);
+        continue;
+      }
+      const w = textWidth(b.label, 2) + 8;
+      const x = Math.max(2, Math.min(camera.width - w - 2, Math.round(b.x * camera.width) - (w >> 1)));
+      // Abaixo do marcador, por cima do público. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
+      const y = Math.round(camera.height * 0.2) + (i % 3) * 16 - Math.min(4, age);
+      g.fillStyle = '#1b2230';
+      g.fillRect(x - 1, y - 1, w + 2, 16);
+      g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
+      g.fillStyle = '#fbf6e2';
+      g.fillRect(x, y, w, 14);
+      g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
+      text(g, b.label, x + 4, y + 2, '#1b2230', 2);
     }
   }
 

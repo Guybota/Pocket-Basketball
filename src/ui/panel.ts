@@ -190,6 +190,35 @@ export function panelContent(view: MatchView, tab: PanelTab, found: readonly Car
   }
 }
 
+/** Antes da bola ao alto: os cinco de cada equipa entram em campo, um a um. */
+export function introScreen(view: MatchView, label: string): string {
+  const { s } = view;
+  const column = (team: 0 | 1): string => `<div class="intro-team team-${team}"><div class="intro-name">${crest(s, team)}<span>${escapeHtml(s.teams[team].name)}</span></div>${s.court[team]
+    .map((b, i) => `<div class="intro-row" style="--d:${i * 140}ms"><img alt="" src="${faceImage(view.lookFor(b))}"><b>${escapeHtml(b.player.name)}</b><span>${b.player.position}</span></div>`)
+    .join('')}</div>`;
+  return `<div class="intro"><div class="intro-head">${escapeHtml(label)}</div><div class="intro-teams">${column(0)}${column(1)}</div></div>
+    <div class="end-actions"><button type="button" class="primary" id="introSkip">Bola ao alto</button></div>`;
+}
+
+/** O instante do cesto que decidiu o jogo: a última vez que o vencedor passou para a frente, ou o último cesto. */
+export function decisiveTick(s: MatchState): number {
+  let a = 0;
+  let b = 0;
+  let last = 0;
+  let decisive = 0;
+  for (const e of s.events) {
+    if (e.type !== 'made' && e.type !== 'freeThrowMade') continue;
+    const points = e.points ?? 1;
+    const before = e.team === 0 ? a - b : b - a;
+    if (e.team === 0) a += points;
+    else b += points;
+    const after = e.team === 0 ? a - b : b - a;
+    last = e.tick;
+    if (before <= 0 && after > 0) decisive = e.tick;
+  }
+  return decisive || last;
+}
+
 export function resultScreen(view: MatchView, cards: readonly CardId[], league: string): string {
   const { s } = view;
   const winner: 0 | 1 = s.score[0] > s.score[1] ? 0 : 1;

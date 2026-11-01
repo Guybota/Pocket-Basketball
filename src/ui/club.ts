@@ -65,6 +65,8 @@ export interface SeasonRecord {
   arrivals: string[];
   /** O dinheiro ganho em prémios nesta época, em milhares. */
   prizeMoney: number;
+  /** Quem saiu, com o que fez no clube, para a despedida. Os clubes guardados antes disto não o têm. */
+  farewells?: { player: Player; games: number; points: number; seasons: number }[];
 }
 
 /** Um jogador à venda esta semana: livre, ou de outro clube, com o que custa. */
@@ -712,6 +714,7 @@ function endSeason(club: ClubState): ClubState {
     departures,
     arrivals: [],
     prizeMoney,
+    farewells: aged.filter(player => player.potential <= 0).map(player => ({ player, games: club.stats[player.name]?.games ?? 0, points: club.stats[player.name]?.points ?? 0, seasons: yearsAtClub(club, player.name) })),
   };
   const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup));
   const qualified = orders[DIVISIONS.length - 1]!.slice(0, CONTINENTAL_PLACES);
@@ -861,6 +864,32 @@ export function finishPractice(club: ClubState, s: MatchState, found: readonly C
   });
   return { club: { ...club, cards: owned, team: { ...club.team, roster }, practicedThisWeek: true }, cards, round: null, cup: null, series: null, confidenceDelta: 0 };
 }
+
+/** Os adversários de jogo-treino que não são clubes: números negativos, para não se confundirem com os da liga. */
+export const SPECIAL_RIVALS: readonly { id: number; name: string; note: string }[] = [
+  { id: -1, name: 'Universidade do Cais', note: 'Aprendem depressa' },
+  { id: -2, name: 'Veteranos Unidos', note: 'Sem fôlego' },
+  { id: -3, name: 'Os Sósias', note: 'Nós, ao espelho' },
+];
+
+/** A equipa de um adversário especial. A universidade é fraca com potencial máximo; os veteranos são bons sem resistência; os sósias somos nós. */
+export function specialTeam(club: ClubState, id: number): Team {
+  const level = DIVISIONS[club.division]!.level;
+  const seed = (club.season * 977 + club.week * 31 - id) & 0x7fffffff;
+  if (id === -1) {
+    const team = generateTeam(seed, 'Universidade do Cais', Math.max(20, level - 10));
+    return { ...team, short: 'UNI', roster: team.roster.map(p => ({ ...p, potential: 95 })) };
+  }
+  if (id === -2) {
+    const team = generateTeam(seed, 'Veteranos Unidos', level + 8);
+    return { ...team, short: 'VET', roster: team.roster.map(p => ({ ...p, potential: 5, attributes: { ...p.attributes, stamina: 15 } })) };
+  }
+  const own = clubTeam(club);
+  return { name: 'Os Sósias', short: 'SOS', roster: own.roster.map(p => ({ ...p, name: `${p.name} II`, fatigue: 0 })) };
+}
+
+/** A equipa de qualquer adversário, da liga ou especial. */
+export const rivalTeam = (club: ClubState, id: number): Team => (id < 0 ? specialTeam(club, id) : aiTeam(club.clubs[id]!));
 
 /** Numa semana livre, pode-se passar à frente sem jogar. */
 export function skipWeek(club: ClubState): ClubState {

@@ -400,6 +400,29 @@ button:disabled { opacity: 0.45; cursor: default; }
 .mvp .face { width: 28px; height: 28px; }
 
 .end-actions { flex: none; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); border-top: 3px solid var(--ink); }
+.end-actions.two { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; }
+/* Transições: a cortina entre ecrãs, as cartas a entrar e a nota a subir. */
+#game.stage-in { animation: stage-in .18s ease-out; }
+@keyframes stage-in { from { opacity: .35; } to { opacity: 1; } }
+.found-card img { animation: card-in .35s both; }
+@keyframes card-in { from { opacity: 0; transform: rotateY(90deg); } to { opacity: 1; transform: none; } }
+.gainrow > .gr:nth-of-type(2) { animation: grade-pop .4s .25s both; }
+@keyframes grade-pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { #game.stage-in, .found-card img, .gainrow > .gr:nth-of-type(2) { animation: none; } }
+/* A apresentação antes do jogo: os cinco de cada lado entram um a um. */
+.intro { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); color: var(--paper); }
+.intro-head { text-align: center; font: 400 22px/1 var(--display); color: var(--gold); }
+.intro-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.intro-name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; font: 400 15px/1 var(--small); overflow: hidden; }
+.intro-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.intro-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 4px; align-items: center; padding: 3px 4px; margin-bottom: 3px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); animation: intro-in .35s var(--d) both; }
+.intro-team.team-1 .intro-row { animation-name: intro-in-right; }
+.intro-row img { display: block; width: 24px; height: 24px; image-rendering: pixelated; }
+.intro-row b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.intro-row span { font: 400 15px/1 var(--small); color: var(--muted); }
+@keyframes intro-in { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: none; } }
+@keyframes intro-in-right { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .intro-row { animation: none; } }
 
 #drop {
   position: absolute;
@@ -504,11 +527,13 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
   position: absolute;
   zoom: var(--hud-zoom, 1);
   transform: translate(-50%, -50%);
-  min-height: 26px;
-  padding: 2px 6px;
+  min-height: 18px;
+  padding: 1px 5px;
+  font: 400 15px/1 var(--small);
   line-height: 1;
   white-space: nowrap;
   pointer-events: auto;
+  box-shadow: 1px 2px 0 var(--ink);
 }
 
 .town-chip:active { transform: translate(-50%, -50%) translate(1px, 1px); }
@@ -668,6 +693,14 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 /* Cidade e combo */
 .cityp { flex: 1; min-height: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
 .cityp p { margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); }
+/* Quem fala, com cara: a secretária, o adjunto e o presidente. */
+.say { flex: none; display: grid; grid-template-columns: 40px 1fr; gap: 6px; align-items: center; margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); color: var(--ink); text-align: left; }
+.say img { display: block; width: 40px; height: 40px; image-rendering: pixelated; border: 2px solid var(--ink); background: #8fd0e6; }
+.say b { display: block; font-weight: 400; color: var(--ball); }
+/* Na cidade o painel é baixo: retrato mais pequeno e o nome na mesma linha. */
+.cityp .say { grid-template-columns: 32px 1fr; padding: 2px 6px; }
+.cityp .say img { width: 32px; height: 32px; }
+.cityp .say b { display: inline; margin-right: 4px; }
 .citydetail { text-align: center; font: 400 15px/1 var(--small); color: var(--muted); }
 .cityp p b { font-weight: 400; color: var(--ball); }
 .cityp .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -693,6 +726,13 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .fx-spark { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; background: var(--gold); opacity: 0; animation: fx-spark .7s 1.15s ease-out both; }
 .fx-text { position: absolute; inset: 0; display: grid; justify-items: center; align-content: center; gap: 6px; text-align: center; animation: fx-text .4s 1.35s both; }
 .fx-text .k { color: var(--gold); }
+.fx-scene { position: absolute; left: 50%; top: 1%; width: 180px; height: 100px; margin-left: -90px; image-rendering: pixelated; pointer-events: none; }
+.combofx.done .fx-scene { display: none; }
+.confetti { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.note .inner { position: relative; }
+.mvp.farewell { justify-content: flex-start; text-align: left; }
+.mvp.farewell img { width: 40px; height: 40px; border: 2px solid var(--ink); }
+.mvp.farewell b { font-weight: 400; color: var(--ball); }
 .fx-text .n { font: 400 36px/.9 var(--display); padding-inline: 8px; }
 .fx-text .cs { display: flex; gap: 6px; }
 .fx-text .cs img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }

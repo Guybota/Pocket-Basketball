@@ -11,6 +11,7 @@ interface Pocket {
   hashFor(seed: number, division: number): string;
   state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number } };
   setSpeedRaw(value: number): void;
+  townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
   replayMatchesCurrent(): boolean;
   soundsPlayed(): string[];
@@ -41,9 +42,17 @@ const firstMatch = (seed: number, division: number) => {
   const club = newClub(seed, division);
   return simulateMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false], visitorOf(club));
 };
+/** Depois da bola ao alto há a apresentação dos cinco; a verificação fotografa-a e salta-a. */
+const skipIntro = async (p: Page): Promise<void> => {
+  await p.waitForSelector('#introSkip');
+  await p.click('#introSkip');
+};
 const kick = async (p: Page): Promise<void> => {
   await p.click('#startBtn');
   await p.click('#kickoffBtn');
+  await p.waitForTimeout(700);
+  await p.screenshot({ path: `${OUT}/apresentacao.png` });
+  await skipIntro(p);
 };
 /** Joga o resto do jogo depressa, passando pelo balneário ao intervalo. */
 const playToEnd = async (p: Page): Promise<void> => {
@@ -242,6 +251,17 @@ try {
   await coach.locator('[data-kit-second="#f2c230"]').click();
   await coach.screenshot({ path: `${OUT}/equipamento-editor.png` });
   await coach.click('.back');
+  // Tocar no edifício abre o mesmo que a etiqueta.
+  await coach.click('.back');
+  await coach.waitForSelector('#startBtn');
+  const arenaBox = await coach.evaluate(() => window.__pocket.townBox('arena'));
+  const courtBox = (await coach.locator('#court').boundingBox())!;
+  await coach.mouse.click(courtBox.x + courtBox.width * (arenaBox.x0 + arenaBox.x1) / 2, courtBox.y + courtBox.height * (arenaBox.y0 + arenaBox.y1) / 2);
+  await coach.waitForSelector('#kickoffBtn, [data-offer]');
+  check('Tocar no pavilhão abre o pavilhão', true);
+  await coach.click('.back');
+  await coach.waitForSelector('#startBtn');
+  await coach.click('#officeBtn');
   await coach.click('[data-go="market"]');
   await coach.screenshot({ path: `${OUT}/mercado.png` });
   const marketBefore = await coach.evaluate(() => ({ roster: window.__pocket.club()!.team.roster.length, money: window.__pocket.club()!.money }));
@@ -276,6 +296,7 @@ try {
   await coach.click('[data-kit="gold"]');
   await coach.click('.back');
   await coach.click('#kickoffBtn');
+  await skipIntro(coach);
   await coach.click('#matchTacticsBtn');
   await coach.waitForSelector('[data-tactic]');
   await coach.click('[data-tactic="pressure"][data-tactic-value="1"]');
@@ -389,6 +410,12 @@ try {
   await coach.waitForSelector('#seasonContinue');
   check('O balanço da época continua lá depois de recarregar', true);
   await coach.click('#seasonContinue');
+  // Quando alguém chega ao fim do Potencial, há primeiro a despedida.
+  await coach.waitForSelector('#farewellContinue, #renewalsConfirm');
+  if (await coach.$('#farewellContinue')) {
+    await coach.screenshot({ path: `${OUT}/despedida.png` });
+    await coach.click('#farewellContinue');
+  }
   await coach.waitForSelector('#renewalsConfirm');
   await coach.screenshot({ path: `${OUT}/renovacoes.png` });
   const squadBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.length);
@@ -464,6 +491,7 @@ try {
   await practice.waitForTimeout(200);
   await practice.screenshot({ path: `${OUT}/jogo-treino-pavilhao.png` });
   await practice.click('#kickoffBtn');
+  await skipIntro(practice);
   await practice.waitForTimeout(800);
   await practice.locator('.screen').screenshot({ path: `${OUT}/jogo-treino-campo.png` });
   await practice.evaluate(() => window.__pocket.setSpeedRaw(40));
@@ -652,6 +680,7 @@ try {
     await wide.waitForTimeout(150);
     await wide.screenshot({ path: `${OUT}/landscape-${name}-balneario.png` });
     await wide.click('#kickoffBtn');
+    await skipIntro(wide);
     await wide.waitForTimeout(600);
     await wide.evaluate(() => window.__pocket.pauseAt('made', 2));
     await wide.waitForTimeout(200);
