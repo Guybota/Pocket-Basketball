@@ -513,35 +513,13 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       drawSprite(g, WALK_FRAMES[frame]!, look, x, y, !right, false, false);
     }
   };
-  // Um carro a dar a volta à cidade pela estrada de fora, e pombos na rotunda.
-  const carT = (now / 14000) % 1;
-  const lap = carT < 0.5 ? carT * 2 : (carT - 0.5) * 2;
-  const car = { i: carT < 0.5 ? ROAD_B_I + 0.3 : PLAZA - 10 + lap * 20, j: carT < 0.5 ? PLAZA - 10 + lap * 20 : ROAD_B_J + 0.3, depth: 0 };
-  car.depth = car.i + car.j;
-  const drawCar = (): void => {
-    const [x, y] = project(grid, car.i, car.j).map(Math.round) as Point;
-    const along = carT < 0.5;
-    g.fillStyle = 'rgba(10,40,44,.3)';
-    g.fillRect(x - 7, y - 2, 14, 4);
-    g.fillStyle = INK;
-    g.fillRect(x - 6, y - 7, 12, 6);
-    g.fillStyle = along ? '#cf3a2c' : '#2b5fd9';
-    g.fillRect(x - 5, y - 6, 10, 4);
-    g.fillStyle = '#8fd0e6';
-    g.fillRect(x - 2, y - 6, 4, 2);
-  };
+  // Pombos na rotunda.
   const birds = [[PLAZA + 0.2, PLAZA - 0.4], [PLAZA - 0.5, PLAZA + 0.3], [PLAZA + 0.6, PLAZA + 0.5]] as const;
-  let carDrawn = false;
   for (const [depth, draw] of town.objects) {
     walkersUpTo(depth);
-    if (!carDrawn && car.depth < depth) {
-      drawCar();
-      carDrawn = true;
-    }
     draw();
   }
   walkersUpTo(Infinity);
-  if (!carDrawn) drawCar();
   birds.forEach(([bi, bj], n) => {
     const hop = Math.floor(now / 400 + n) % 3 === 0 ? 1 : 0;
     const [x, y] = project(grid, bi + Math.sin(now / 2300 + n) * 0.3, bj).map(Math.round) as Point;
