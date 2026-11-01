@@ -1,9 +1,9 @@
-import { CUP_NAMES, FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { CUP_NAMES, CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, weekCup, weekRound, type Standing } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import type { TownPlace } from './art/town.ts';
 import { foundCards } from './club-screens.ts';
-import { PLAYER_CLUB, cupRoundName, currentGame, currentSeries, federationStatus, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
 import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
 
@@ -69,7 +69,7 @@ export function officialLabel(club: ClubState): string {
     const wins = series.top === PLAYER_CLUB ? [top, bottom] : [bottom, top];
     return `${playoffFormat(club)!.name} · ${playoffFormat(club)!.roundNames[game.round]} · Jogo ${series.games.length + 1} (${wins[0]}-${wins[1]})`;
   }
-  return game.cup ? `${CUP_NAMES[game.cup]} · ${cupRoundName(game.round)}` : `Jornada ${game.round + 1} de ${(LEAGUE_SIZE - 1) * 2}`;
+  return game.cup ? `${CUP_NAMES[game.cup]} · ${cupRoundName(game.cup, game.round)}` : `Jornada ${game.round + 1} de ${(LEAGUE_SIZE - 1) * 2}`;
 }
 
 export function cityPanel(club: ClubState, saveFailed: boolean): string {
@@ -77,9 +77,9 @@ export function cityPanel(club: ClubState, saveFailed: boolean): string {
   const round = game ? game.round : null;
   const own = leagueTable(club).find(row => row.club === PLAYER_CLUB)!;
   const cupWeek = weekCup(club.week);
-  const status = federationStatus(club);
+  const status = cupWeek ? cupStatus(club, cupWeek.cup) : null;
   const label = !game
-    ? `Semana livre · ${cupWeek?.cup === 'federation' ? (status.winner === PLAYER_CLUB ? 'Vencedores da taça' : `Fora da ${CUP_NAMES.federation}`) : 'Sem jogo oficial'}`
+    ? `Semana livre · ${cupWeek && status ? (status.winner === PLAYER_CLUB ? `Vencedores da ${CUP_NAMES[cupWeek.cup]}` : status.entered ? `Fora da ${CUP_NAMES[cupWeek.cup]}` : `Semana da ${CUP_NAMES[cupWeek.cup]}`) : 'Sem jogo oficial'}`
     : `${officialLabel(club)} · ${game.fixture.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
   return `<div class="cityp">
     <p id="staffNote"><b>Secretária:</b> ${escapeHtml(staffNote(club))}</p>
@@ -128,7 +128,7 @@ function playoffLine(record: SeasonRecord): string {
 const outcomeTitle = (record: SeasonRecord): string => {
   const top = record.division === DIVISIONS.length - 1;
   switch (record.outcome) {
-    case 'champion': return record.cups.length > 0 ? 'Dobradinha!' : top ? 'Campeões nacionais!' : 'Campeões! E sobem!';
+    case 'champion': return top && record.cups.includes('federation') && record.cups.includes('world') ? 'Triplete!' : record.cups.length > 0 ? 'Dobradinha!' : top ? 'Campeões nacionais!' : 'Campeões! E sobem!';
     case 'promoted': return 'Subiram de divisão!';
     case 'stayed': return 'Ficam onde estão';
     case 'relegated': return 'Desceram de divisão';
@@ -142,7 +142,9 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       <div class="league-line"><span>Época ${record.season} · ${divisionName(record.division)}</span><span>${place(record.position)} · ${record.wins} V · ${record.losses} D</span></div>
       ${tableRows(club, record.table, record.division)}
       ${playoffLine(record)}
-      <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName(record.federationExit).toLowerCase()}`}</span></div>
+      <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('federation', record.federationExit).toLowerCase()}`}</span></div>
+      ${record.continentalExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.continental}</span><span>${record.continentalExit >= CUP_ROUNDS.continental.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('continental', record.continentalExit).toLowerCase()}`}</span></div>`}
+      ${record.worldExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.world}</span><span>${record.worldExit >= CUP_ROUNDS.world.length ? 'Campeões do mundo!' : 'Perdida a final'}</span></div>`}
       ${record.topScorer ? `<div class="mvp"><span>Melhor marcador: ${escapeHtml(record.topScorer)}, ${record.topScorerPoints} pontos</span></div>` : ''}
       <div class="section-head plain"><span>Prémio da época</span><span>${record.cards.length} cartas</span></div>
       ${foundCards(record.cards)}

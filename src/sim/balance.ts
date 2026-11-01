@@ -281,6 +281,9 @@ export const BALANCE = {
   confidencePromoted: 15,
   confidenceRelegated: 15,
   confidenceCup: 10,
+  // Os clubes de fora: os da Taça Continental acima da Pro Liga 1, e o campeão do outro continente acima de todos.
+  continentalLevelOffset: 4,
+  worldLevelOffset: 12,
   clubLevelSpread: 6,
   clubLevelPull: 0.4,
   clubLevelDrift: 1.5,

@@ -357,6 +357,10 @@ try {
   await coach.screenshot({ path: `${OUT}/federacao-jornada.png` });
   await coach.click('[data-fed-tab="cup"]');
   await coach.screenshot({ path: `${OUT}/federacao-taca.png` });
+  await coach.click('[data-cup-view="continental"]');
+  await coach.screenshot({ path: `${OUT}/federacao-continental.png` });
+  await coach.click('[data-cup-view="world"]');
+  await coach.click('[data-cup-view="federation"]');
   await coach.click('.back');
   await coach.evaluate(() => window.__pocket.fastForward(3));
   check('A semana 12 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 12 && !document.getElementById('practiceBtn')));

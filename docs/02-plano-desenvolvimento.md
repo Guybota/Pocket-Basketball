@@ -443,6 +443,30 @@ Um erro que vale a pena lembrar: o nosso clube tem o número 0, e um `0` é fals
 
 As outras duas taças passam a ser o passo 3.
 
+### Estado do passo 3: Taça Continental e Mundial de Clubes
+
+Feito a 1 de novembro de 2026.
+
+- **Clubes de fora:** 13 clubes gerados, com nomes nossos, a seguir aos 40 da liga: 12 continentais com nível acima da Pro Liga 1, e um campeão de outro continente acima de todos. Os níveis só oscilam de época para época.
+- **Taça Continental:** os 4 primeiros da Pro Liga 1 da época anterior (na primeira época, os 4 mais fortes) e os 12 de fora. Oitavos, quartos, meias e final, a um jogo, nas semanas 4, 12, 20 e 26.
+- **Mundial de Clubes:** nasce quando há campeão continental: uma final na semana 28 contra o campeão do outro continente.
+- **Prémios:** 4, 5 e 6 cartas por ganhar a Federação, a Continental e o Mundial; 2, 2 e 3 por perder a final. Cada taça dá 10% de confiança.
+- **Troféus:** Taça Continental, Mundial e Triplete (Pro Liga 1, Taça da Federação e Mundial na mesma época) deixaram de ser exemplos. O balanço da época diz "Triplete!" ou "Dobradinha!".
+- **Federação:** o separador Taça escolhe entre Federação, Continental e Mundial, com o quadro desenhado de cada uma.
+- O clube guardado está na versão 6; os anteriores recebem os clubes de fora e a Taça Continental ao abrir.
+
+Com o treinador automático, 10 carreiras de 12 épocas (2 despedidos na época 2):
+
+| Época | Divisão | Taça da Federação | Continental | Mundial | Triplete |
+|---|---|---|---|---|---|
+| 5 | Pro Liga 2 a 1 | 3 em 8 | 0 | 0 | 0 |
+| 6 | Pro Liga 1 | 3 em 8 | 1 | 0 | 0 |
+| 7 | Pro Liga 1 | 4 em 8 | 4 | 1 | 1 |
+| 8 a 9 | Pro Liga 1 | 5 a 6 em 8 | 1 a 3 | 1 | 1 |
+| 10 a 12 | Pro Liga 1 | 7 em 8 | 3 a 6 | 2 a 4 | 2 a 4 |
+
+O primeiro triplete chega na época 7, e nas épocas 10 a 12 acontece em cerca de metade das carreiras. **O critério da Fase 4, triplete possível em 8 a 12 épocas, está cumprido.** O que ainda não bate certo é a equipa continuar a subir de nível sem parar, até 93 na época 12: é o que a idade, no passo 4, vai travar.
+
 ## 8. Riscos
 
 | Risco | Mitigação |

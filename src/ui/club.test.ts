@@ -7,9 +7,9 @@ import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/typ
 import { BALANCE as B } from '../sim/balance.ts';
 import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
-import { FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, currentGame, currentSeries, federationStatus, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, careerOf, clubTeam, cupStatus, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -328,7 +328,7 @@ describe('clube', () => {
   });
 
   it('a carreira do treinador passa de clube para clube', () => {
-    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [], cups: [], federationExit: 2, playoffExit: null };
+    const record = { season: 1, division: 0, position: 0, wins: 15, losses: 3, outcome: 'champion' as const, topScorer: 'Fonseca', topScorerPoints: 200, cards: [], table: [], cups: [], federationExit: 2, continentalExit: null, worldExit: null, playoffExit: null };
     const first = { ...club(), history: [record] };
     const second = newClub(22, 0, careerOf(first));
     expect(careerOf(second)).toEqual([{ ...record, club: first.team.name }]);
@@ -386,7 +386,8 @@ describe('época', () => {
   it('há 40 clubes diferentes, com o nosso na última divisão', () => {
     const c = newClub(5);
     expect(c.divisions.flat().sort((a, b) => a - b)).toEqual(Array.from({ length: 40 }, (_, i) => i));
-    expect(new Set(c.clubs.map(club => club.name)).size).toBe(40);
+    expect(new Set(c.clubs.map(club => club.name)).size).toBe(53);
+    expect(c.clubs[WORLD_CLUB]!.level).toBeGreaterThan(c.clubs[FOREIGN_START]!.level);
     expect(c.divisions[0]).toContain(PLAYER_CLUB);
     expect(c.division).toBe(0);
   });
@@ -491,7 +492,7 @@ describe('época', () => {
     expect(record.federationExit).toBe(FEDERATION_ROUNDS.length);
     expect(record.cards.length).toBeGreaterThan(season(newClub(61)).history[0]!.cards.length);
     expect(careerOf(won!)[0]!.cups).toContain('federation');
-    expect(federationStatus(perfect(61)).alive).toBe(true);
+    expect(cupStatus(perfect(61), 'federation').alive).toBe(true);
   });
 
   it('não se pode saltar uma jornada', () => {
@@ -514,6 +515,43 @@ describe('época', () => {
     expect(Object.keys(after.stats)).toHaveLength(0);
     expect(record.topScorerPoints).toBeGreaterThan(0);
     expect(parseClub(JSON.stringify(after))).toEqual(after);
+  });
+
+  it('a Taça Continental joga-se com os 4 da Pro Liga 1 e os 12 de fora, e o Mundial a seguir', () => {
+    let c = newClub(23);
+    expect(c.continentalQualified).toHaveLength(4);
+    expect(c.continentalQualified.every(id => c.divisions[3]!.includes(id))).toBe(true);
+    expect(c.cups.continental.alive).toHaveLength(4 + CONTINENTAL_CLUBS);
+    expect(cupStatus(c, 'continental').entered).toBe(false);
+    for (let i = 0; i < SEASON_WEEKS - 1; i++) {
+      c = week(c);
+      const sizes = c.cups.continental.rounds.map(round => round.length);
+      expect(sizes, `semana ${c.week}`).toEqual([8, 4, 2, 1].slice(0, sizes.length));
+    }
+    expect(c.cups.continental.alive).toHaveLength(1);
+    expect(c.cups.world).toBeDefined();
+    expect(c.cups.world!.alive).toHaveLength(1);
+    expect(c.cups.world!.rounds[0]![0]!.score).not.toBeNull();
+    expect([c.cups.world!.rounds[0]![0]!.home, c.cups.world!.rounds[0]![0]!.away]).toContain(WORLD_CLUB);
+    const after = week(c);
+    expect(after.history[0]!.continentalExit).toBeNull();
+    expect(after.history[0]!.worldExit).toBeNull();
+    expect(after.cups.world).toBeUndefined();
+    expect(after.continentalQualified).toHaveLength(4);
+    expect(parseClub(JSON.stringify(after))).toEqual(after);
+  });
+
+  it('o campeão da Pro Liga 1 entra na Taça Continental na época seguinte', () => {
+    const first = season(stronger(newClub(91, 3), 30));
+    expect(first.history[0]!.outcome).toBe('champion');
+    expect(first.continentalQualified).toContain(PLAYER_CLUB);
+    expect(cupStatus(first, 'continental').entered).toBe(true);
+    const second = season({ ...first, seasonReport: null });
+    const record = second.history[1]!;
+    expect(record.continentalExit).not.toBeNull();
+    expect(record.continentalExit).toBeLessThanOrEqual(CUP_ROUNDS.continental.length);
+    expect(record.worldExit !== null).toBe(record.continentalExit === CUP_ROUNDS.continental.length);
+    expect(record.cups.includes('continental')).toBe(record.continentalExit === CUP_ROUNDS.continental.length);
   });
 
   it('nas divisões de baixo a época acaba na fase regular, sem playoffs', () => {
@@ -612,7 +650,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -620,7 +658,7 @@ describe('época', () => {
     expect(migrated.team).toEqual(trained.team);
     expect(migrated.knownCombos).toEqual(['lazyWeekend']);
     expect(migrated.divisions[2]).toContain(PLAYER_CLUB);
-    expect(new Set(migrated.clubs.map(club => club.name)).size).toBe(40);
+    expect(new Set(migrated.clubs.map(club => club.name)).size).toBe(53);
     expect(leaguePosition(migrated)).toBeGreaterThanOrEqual(0);
     expect(parseClub(JSON.stringify(migrated))).toEqual(migrated);
   });
@@ -629,7 +667,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

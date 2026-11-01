@@ -32,6 +32,9 @@ export function trophyList(club: ClubState): Trophy[] {
   const scorer = [...career].sort((a, b) => b.topScorerPoints - a.topScorerPoints)[0];
   const federationWins = career.filter(r => (r.cups ?? []).includes('federation')).length;
   const federation = career.filter(r => (r.cups ?? []).includes('federation')).at(-1);
+  const continental = career.filter(r => (r.cups ?? []).includes('continental')).at(-1);
+  const world = career.filter(r => (r.cups ?? []).includes('world')).at(-1);
+  const treble = career.filter(r => r.outcome === 'champion' && r.division === last && (r.cups ?? []).includes('federation') && (r.cups ?? []).includes('world')).at(-1);
   return [
     ...cups,
     { name: 'Subida de divisão', kind: 'medal', won: rises.length > 0, detail: rises.length > 0 ? `${rises.length === 1 ? 'Uma subida' : `${rises.length} subidas`}. A última na ${when(rises.at(-1)!).toLowerCase()}.` : 'Sobe de divisão pela primeira vez.' },
@@ -39,7 +42,9 @@ export function trophyList(club: ClubState): Trophy[] {
     { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'O melhor marcador de uma época fica aqui.' },
     { name: 'Coleção de combos', kind: 'plate', won: club.knownCombos.length === COMBOS.length, detail: `Descobre todos os combos secretos. Já tens ${club.knownCombos.length} de ${COMBOS.length}.` },
     { name: 'Taça da Federação', kind: 'cup', won: federation !== undefined, detail: federation ? `${when(federation)}. ${federationWins > 1 ? `Ganha ${federationWins} vezes.` : 'A taça de todos os clubes.'}` : 'Seis rondas a um jogo, contra qualquer clube do país.' },
-    { name: 'Triplete', kind: 'bigCup', won: false, detail: 'Pro Liga 1, Taça da Federação e Mundial de Clubes na mesma época. O Mundial chega no passo 2 da Fase 4.' },
+    { name: 'Taça Continental', kind: 'cup', won: continental !== undefined, detail: continental ? `${when(continental)}. Contra os melhores do continente.` : 'Entram os 4 primeiros da Pro Liga 1. Quatro rondas contra clubes de fora, mais fortes do que os de cá.' },
+    { name: 'Mundial de Clubes', kind: 'bigCup', won: world !== undefined, detail: world ? `${when(world)}. Campeões do mundo.` : 'Uma final entre o campeão continental e o campeão de outro continente.' },
+    { name: 'Triplete', kind: 'bigCup', won: treble !== undefined, detail: treble ? `${when(treble)}. Pro Liga 1, Taça da Federação e Mundial na mesma época.` : 'Pro Liga 1, Taça da Federação e Mundial de Clubes na mesma época.' },
   ];
 }
 

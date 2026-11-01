@@ -23,6 +23,11 @@ export const CUP_WEEKS: Record<CupName, readonly number[]> = {
 export const CUP_NAMES: Record<CupName, string> = { federation: 'Taça da Federação', continental: 'Taça Continental', world: 'Mundial de Clubes' };
 
 export const FEDERATION_ROUNDS = ['Pré-eliminatória', '1/16 de final', 'Oitavos de final', 'Quartos de final', 'Meias-finais', 'Final'] as const;
+export const CUP_ROUNDS: Record<CupName, readonly string[]> = {
+  federation: FEDERATION_ROUNDS,
+  continental: ['Oitavos de final', 'Quartos de final', 'Meias-finais', 'Final'],
+  world: ['Final'],
+};
 const PRELIMINARY_FROM_ABOVE = 6;
 
 /** Todos os clubes entram. Os da última divisão e os mais fracos da seguinte começam na pré-eliminatória. */
@@ -31,10 +36,13 @@ export function createFederationCup(divisions: readonly (readonly number[])[], l
   return { alive: divisions.flat(), preliminary: [...divisions[0]!, ...weakest], rounds: [] };
 }
 
+/** Uma eliminatória simples: entram todos na primeira ronda. */
+export const createKnockoutCup = (ids: readonly number[]): CupState => ({ alive: [...ids], preliminary: [], rounds: [] });
+
 /** Sorteia a ronda seguinte entre quem ainda está na taça. O primeiro de cada par joga em casa. */
 export function drawCupRound(cup: CupState, seed: number): CupState {
   const round = cup.rounds.length;
-  const pool = round === 0 ? cup.alive.filter(id => cup.preliminary.includes(id)) : cup.alive;
+  const pool = round === 0 && cup.preliminary.length > 0 ? cup.alive.filter(id => cup.preliminary.includes(id)) : cup.alive;
   const order = shuffled(pool, makeRng((seed ^ ((round + 1) * 0x3d1f)) & 0x7fffffff));
   const fixtures: Fixture[] = [];
   for (let i = 0; i + 1 < order.length; i += 2) fixtures.push({ home: order[i]!, away: order[i + 1]!, score: null });

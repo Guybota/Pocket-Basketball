@@ -1,16 +1,16 @@
 import { BALANCE as B } from '../sim/balance.ts';
 import { PLAYOFF_FORMATS, PLAYOFF_WEEKS, createPlayoffs, drawNextRound, nextGame, playoffExit, playoffWinner, seriesWinner, seriesWins, type PlayoffState, type Series } from '../sim/playoff.ts';
-import { CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, cupExit, cupWinner, drawCupRound, settleCupRound, type CupName, type CupState } from '../sim/cup.ts';
+import { CUP_ROUNDS, CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, createKnockoutCup, cupExit, cupWinner, drawCupRound, settleCupRound, type CupName, type CupState } from '../sim/cup.ts';
 import { LEAGUE_SIZE, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
-import { between, makeRng, next } from '../sim/rng.ts';
+import { between, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, generateTeam, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { NEUTRAL_TACTICS, validateTactics, validateTeam, type Tactics, type Team } from '../sim/types.ts';
 import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
-import { CLUB_NAMES, shortName } from './setup.ts';
+import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 // Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
 const PLAYOFF_GAME_FATIGUE = 0.6;
 const MATCH_FATIGUE = 0.22;
@@ -23,9 +23,13 @@ const STARTING_CARDS: readonly CardId[] = ['shooting', 'dribble', 'sprints', 're
 export const PLAYER_CLUB = 0;
 const TACTIC_CHOICES = [-1, 0, 0, 1] as const;
 const RECENT_TRAINING = 4;
-// Cartas por ganhar a taça, ou por chegar à final.
-const CUP_WINNER_CARDS = 4;
-const CUP_FINALIST_CARDS = 2;
+// Cartas por ganhar cada taça, ou por chegar à final.
+const CUP_PRIZES: Record<CupName, { winner: number; finalist: number }> = { federation: { winner: 4, finalist: 2 }, continental: { winner: 5, finalist: 2 }, world: { winner: 6, finalist: 3 } };
+/** Os clubes de fora vêm a seguir aos 40 da liga. */
+export const FOREIGN_START = DIVISIONS.length * LEAGUE_SIZE;
+export const CONTINENTAL_CLUBS = 12;
+export const WORLD_CLUB = FOREIGN_START + CONTINENTAL_CLUBS;
+const CONTINENTAL_PLACES = 4;
 const SEASON_CARDS: Record<SeasonOutcome, number> = { champion: 5, promoted: 3, stayed: 2, relegated: 1 };
 
 export interface PlayerSeason {
@@ -51,6 +55,9 @@ export interface SeasonRecord {
   cups: CupName[];
   /** Até onde chegou na Taça da Federação: a ronda em que caiu, ou o total se a ganhou. */
   federationExit: number;
+  /** O mesmo para a Taça Continental e o Mundial. Null se não entrou. */
+  continentalExit: number | null;
+  worldExit: number | null;
   /** Nos playoffs: a ronda em que caiu, ou o total se os ganhou. Null se a divisão não tem playoffs ou não se apurou. */
   playoffExit: number | null;
 }
@@ -93,7 +100,9 @@ export interface ClubState {
   divisions: number[][];
   rounds: Fixture[][];
   /** As taças desta época. Por agora só a da Federação; as outras entram no passo 2 da Fase 4. */
-  cups: Partial<Record<CupName, CupState>> & { federation: CupState };
+  cups: Partial<Record<CupName, CupState>> & { federation: CupState; continental: CupState };
+  /** Os 4 da Pro Liga 1 que jogam a Taça Continental nesta época. */
+  continentalQualified: number[];
   /** Os playoffs desta época, depois da fase regular, nas divisões que os têm. */
   playoffs: PlayoffState | null;
   stats: Record<string, PlayerSeason>;
@@ -114,8 +123,28 @@ function createWorld(seed: number, division: number, playerName: string): { club
     for (const id of ids) clubs[id]!.level = d.level + between(rng, -B.clubLevelSpread, B.clubLevelSpread);
     return index === division ? [PLAYER_CLUB, ...ids] : ids;
   });
+  clubs.push(...foreignClubs(seed, rng));
   return { clubs, divisions };
 }
+
+/** Os clubes de fora, sempre pela mesma ordem: 12 continentais e o campeão de outro continente. */
+function foreignClubs(seed: number, rng: Rng): LeagueClub[] {
+  const top = DIVISIONS[DIVISIONS.length - 1]!.level;
+  return FOREIGN_NAMES.map((name, i) => ({
+    name,
+    short: shortName(name),
+    seed: (seed * 31 + (FOREIGN_START + i + 1) * 7919) & 0x7fffffff,
+    level: Math.round((top + (i === CONTINENTAL_CLUBS ? B.worldLevelOffset : B.continentalLevelOffset + between(rng, -B.clubLevelSpread, B.clubLevelSpread))) * 10) / 10,
+  }));
+}
+
+/** A Taça Continental desta época: os apurados da Pro Liga 1 e os 12 de fora. */
+const continentalCup = (qualified: readonly number[]): CupState =>
+  createKnockoutCup([...qualified, ...Array.from({ length: CONTINENTAL_CLUBS }, (_, i) => FOREIGN_START + i)]);
+
+/** Na primeira época ainda não há classificação: entram os 4 mais fortes da Pro Liga 1. */
+const firstQualified = (clubs: readonly LeagueClub[], divisions: readonly (readonly number[])[], seed: number): number[] =>
+  orderByLevel(divisions[DIVISIONS.length - 1]!, id => clubs[id]!.level, makeRng(seed ^ 0x5a17)).slice(0, CONTINENTAL_PLACES);
 
 /** O que um clube guarda além da liga, com os valores de quem acabou de chegar. */
 const clubExtras = (team: Team): Pick<ClubState, 'practicedThisWeek' | 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice'> => ({
@@ -135,6 +164,7 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
   const team = generateTeam(seed * 2 + 1, name, DIVISIONS[division]!.level + B.playerClubLevelOffset);
   const world = createWorld(seed, division, name);
   const squad: Team = { ...team, short: shortName(name), roster: team.roster.map(player => ({ ...player, moves: [] })) };
+  const qualified = firstQualified(world.clubs, world.divisions, seed);
   return {
     version: SAVE_VERSION,
     seed,
@@ -154,7 +184,8 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
     fired: false,
     ...world,
     rounds: roundRobin(world.divisions[division]!, seed),
-    cups: { federation: createFederationCup(world.divisions, id => world.clubs[id]!.level) },
+    cups: { federation: createFederationCup(world.divisions, id => world.clubs[id]!.level), continental: continentalCup(qualified) },
+    continentalQualified: qualified,
     playoffs: null,
     stats: {},
     history: [],
@@ -194,13 +225,14 @@ export function currentGame(club: ClubState): OfficialGame | null {
     return fixture ? { fixture, cup: null, playoff: false, round } : null;
   }
   const cup = weekCup(club.week);
-  if (cup?.cup !== 'federation') return null;
-  const fixture = club.cups.federation.rounds[cup.round]?.find(mine);
+  const state = cup ? club.cups[cup.cup] : undefined;
+  if (!cup || !state) return null;
+  const fixture = state.rounds[cup.round]?.find(mine);
   return fixture ? { fixture, cup: cup.cup, playoff: false, round: cup.round } : null;
 }
 
 /** O nome da ronda de uma taça. */
-export const cupRoundName = (round: number): string => FEDERATION_ROUNDS[round] ?? `Ronda ${round + 1}`;
+export const cupRoundName = (cup: CupName, round: number): string => CUP_ROUNDS[cup][round] ?? `Ronda ${round + 1}`;
 
 /** A semente do jogo desta semana. */
 export const weekSeed = (club: ClubState): number => (club.seed + club.season * 10007 + club.week * 97) & 0x7fffffff;
@@ -272,12 +304,13 @@ export const careerOf = (club: ClubState): CareerRecord[] =>
 /** O nome e as regras dos playoffs da divisão do clube, se os houver. */
 export const playoffFormat = (club: ClubState) => PLAYOFF_FORMATS[club.division];
 
-/** Onde o clube está na Taça da Federação, para os ecrãs. */
-export const federationStatus = (club: ClubState): { alive: boolean; exit: number | null; winner: number | null } => ({
-  alive: club.cups.federation.alive.includes(PLAYER_CLUB),
-  exit: cupExit(club.cups.federation, PLAYER_CLUB, FEDERATION_ROUNDS.length),
-  winner: cupWinner(club.cups.federation, FEDERATION_ROUNDS.length),
-});
+/** Onde o clube está numa taça, para os ecrãs. `entered` diz se chegou a entrar nela. */
+export function cupStatus(club: ClubState, cup: CupName): { entered: boolean; alive: boolean; exit: number | null; winner: number | null } {
+  const state = club.cups[cup];
+  if (!state) return { entered: false, alive: false, exit: null, winner: null };
+  const entered = cup === 'federation' || state.alive.includes(PLAYER_CLUB) || state.rounds.some(r => r.some(f => f.home === PLAYER_CLUB || f.away === PLAYER_CLUB));
+  return { entered, alive: state.alive.includes(PLAYER_CLUB), exit: entered ? cupExit(state, PLAYER_CLUB, CUP_ROUNDS[cup].length) : null, winner: cupWinner(state, CUP_ROUNDS[cup].length) };
+}
 
 export interface TrainingOutcome {
   club: ClubState;
@@ -375,22 +408,30 @@ function afterRegularSeason(club: ClubState): ClubState {
 /** Numa semana de taça em que não jogámos, os jogos dos outros simulam-se na mesma, para a ronda ficar fechada. */
 function settlePendingCup(club: ClubState): ClubState {
   const cup = weekCup(club.week);
-  if (cup?.cup !== 'federation') return club;
-  const fixtures = club.cups.federation.rounds[cup.round];
+  const state = cup ? club.cups[cup.cup] : undefined;
+  if (!cup || !state) return club;
+  const fixtures = state.rounds[cup.round];
   if (!fixtures || fixtures.every(f => f.score)) return club;
   const played = fixtures.map((fixture, i) => {
     if (fixture.score) return fixture;
     const other = simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), (weekSeed(club) + (i + 1) * 257) & 0x7fffffff);
     return { ...fixture, score: [other.score[0], other.score[1]] as [number, number] };
   });
-  return { ...club, cups: { ...club.cups, federation: settleCupRound(club.cups.federation, cup.round, played) } };
+  return { ...club, cups: { ...club.cups, [cup.cup]: settleCupRound(state, cup.round, played) } };
 }
 
-/** Numa semana de taça, sorteia-se a ronda ao chegar a ela. */
+/** Numa semana de taça, sorteia-se a ronda ao chegar a ela. O Mundial nasce quando há campeão continental. */
 function drawCups(club: ClubState): ClubState {
   const cup = weekCup(club.week);
-  if (cup?.cup !== 'federation' || club.cups.federation.rounds.length > cup.round) return club;
-  return { ...club, cups: { ...club.cups, federation: drawCupRound(club.cups.federation, weekSeed(club)) } };
+  if (!cup) return club;
+  let state = club.cups[cup.cup];
+  if (cup.cup === 'world' && !state) {
+    const champion = cupWinner(club.cups.continental, CUP_ROUNDS.continental.length);
+    if (champion === null) return club;
+    state = createKnockoutCup([champion, WORLD_CLUB]);
+  }
+  if (!state || state.rounds.length > cup.round) return club;
+  return { ...club, cups: { ...club.cups, [cup.cup]: drawCupRound(state, weekSeed(club)) } };
 }
 
 /** Fecha a época: subidas e descidas, prémio em cartas e o calendário da próxima. */
@@ -408,15 +449,18 @@ function endSeason(club: ClubState): ClubState {
     d === club.division ? order : orderByLevel(ids, id => club.clubs[id]!.level, rng));
   const divisions = moveDivisions(orders);
   const division = divisions.findIndex(ids => ids.includes(PLAYER_CLUB));
-  // Quem muda de divisão aproxima-se do nível dela, para as divisões continuarem a ser diferentes.
+  // Quem muda de divisão aproxima-se do nível dela, para as divisões continuarem a ser diferentes. Os de fora só oscilam.
   const clubs = club.clubs.map((c, id) => {
     const d = divisions.findIndex(ids => ids.includes(id));
-    const level = c.level + (DIVISIONS[d]!.level - c.level) * B.clubLevelPull + between(rng, -B.clubLevelDrift, B.clubLevelDrift);
+    const level = d < 0 ? c.level + between(rng, -B.clubLevelDrift, B.clubLevelDrift) : c.level + (DIVISIONS[d]!.level - c.level) * B.clubLevelPull + between(rng, -B.clubLevelDrift, B.clubLevelDrift);
     return { ...c, level: Math.round(level * 10) / 10 };
   });
   const federationExit = cupExit(club.cups.federation, PLAYER_CLUB, FEDERATION_ROUNDS.length) ?? 0;
-  const cups: CupName[] = federationExit === FEDERATION_ROUNDS.length ? ['federation'] : [];
-  const prize = SEASON_CARDS[outcome] + (cups.length > 0 ? CUP_WINNER_CARDS : federationExit === FEDERATION_ROUNDS.length - 1 ? CUP_FINALIST_CARDS : 0);
+  const continentalExit = cupStatus(club, 'continental').exit;
+  const worldExit = cupStatus(club, 'world').exit;
+  const exits: [CupName, number | null][] = [['federation', federationExit], ['continental', continentalExit], ['world', worldExit]];
+  const cups: CupName[] = exits.filter(([cup, exit]) => exit === CUP_ROUNDS[cup].length).map(([cup]) => cup);
+  const prize = SEASON_CARDS[outcome] + exits.reduce((sum, [cup, exit]) => sum + (exit === CUP_ROUNDS[cup].length ? CUP_PRIZES[cup].winner : exit === CUP_ROUNDS[cup].length - 1 ? CUP_PRIZES[cup].finalist : 0), 0);
   const cards = Array.from({ length: prize }, () => CARD_IDS[Math.floor(next(rng) * CARD_IDS.length)]!);
   const owned = { ...club.cards };
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
@@ -435,9 +479,12 @@ function endSeason(club: ClubState): ClubState {
     table,
     cups,
     federationExit,
+    continentalExit,
+    worldExit,
     playoffExit: club.playoffs ? playoffExit(club.playoffs, PLAYER_CLUB) : null,
   };
-  const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + (cups.length > 0 ? B.confidenceCup : 0)));
+  const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup));
+  const qualified = orders[DIVISIONS.length - 1]!.slice(0, CONTINENTAL_PLACES);
   return {
     ...club,
     division,
@@ -446,7 +493,8 @@ function endSeason(club: ClubState): ClubState {
     clubs,
     divisions,
     rounds: roundRobin(divisions[division]!, club.seed + club.season * 131),
-    cups: { federation: createFederationCup(divisions, id => clubs[id]!.level) },
+    cups: { federation: createFederationCup(divisions, id => clubs[id]!.level), continental: continentalCup(qualified) },
+    continentalQualified: qualified,
     playoffs: null,
     cards: owned,
     confidence,
@@ -584,22 +632,32 @@ function validRounds(club: ClubState): boolean {
 }
 
 function validCups(club: ClubState): boolean {
-  const cup = club.cups?.federation;
   const known = (id: number): boolean => Number.isInteger(id) && Boolean(club.clubs[id]);
-  return typeof cup === 'object' && cup !== null && Array.isArray(cup.alive) && cup.alive.every(known) && Array.isArray(cup.preliminary) && cup.preliminary.every(known)
-    && Array.isArray(cup.rounds) && cup.rounds.length <= FEDERATION_ROUNDS.length && cup.rounds.every(round => Array.isArray(round) && round.every(f => known(f.home) && known(f.away)));
+  const valid = (cup: CupState | undefined, name: CupName): boolean => typeof cup === 'object' && cup !== null && Array.isArray(cup.alive) && cup.alive.every(known) && Array.isArray(cup.preliminary) && cup.preliminary.every(known)
+    && Array.isArray(cup.rounds) && cup.rounds.length <= CUP_ROUNDS[name].length && cup.rounds.every(round => Array.isArray(round) && round.every(f => known(f.home) && known(f.away)));
+  return typeof club.cups === 'object' && club.cups !== null && valid(club.cups.federation, 'federation') && valid(club.cups.continental, 'continental')
+    && (club.cups.world === undefined || valid(club.cups.world, 'world')) && Array.isArray(club.continentalQualified) && club.continentalQualified.every(known)
+    && club.clubs.length === FOREIGN_START + FOREIGN_NAMES.length;
+}
+
+/** Antes das taças de fora: entram os clubes estrangeiros e a Taça Continental desta época, sem nós. */
+function migrateV5(old: ClubState): ClubState {
+  const clubs = [...old.clubs.slice(0, FOREIGN_START), ...foreignClubs(old.seed, makeRng(old.seed ^ 0x77a1c3))];
+  const qualified = firstQualified(clubs, old.divisions, old.seed);
+  return { ...old, version: SAVE_VERSION, clubs, continentalQualified: qualified, cups: { ...old.cups, continental: continentalCup(qualified) } };
 }
 
 /** Antes dos playoffs, a época acabava na fase regular. */
 function migrateV4(old: ClubState): ClubState {
-  return { ...old, version: SAVE_VERSION, playoffs: null };
+  return migrateV5({ ...old, version: 5, playoffs: null });
 }
 
 /** Antes das taças, a época tinha 19 semanas. O clube entra na taça desta época só se ela ainda não começou. */
 function migrateV3(old: ClubState): ClubState {
   const cup = createFederationCup(old.divisions, id => old.clubs[id]!.level);
   const started = old.week > CUP_WEEKS.federation[0]!;
-  return migrateV4(drawCups({ ...old, version: 4, cups: { federation: started ? { ...cup, alive: cup.alive.filter(id => id !== PLAYER_CLUB) } : cup } }));
+  // Nesta versão ainda não havia Taça Continental: a migração seguinte acrescenta-a.
+  return migrateV4(drawCups({ ...old, version: 4, cups: { federation: started ? { ...cup, alive: cup.alive.filter(id => id !== PLAYER_CLUB) } : cup } as ClubState['cups'] }));
 }
 
 /** Um clube guardado antes de haver época entra numa liga nova, com tudo o que já tinha treinado. */
@@ -617,7 +675,8 @@ function migrateV1(old: ClubState): ClubState {
     fired: false,
     ...world,
     rounds: roundRobin(world.divisions[old.division]!, old.seed),
-    cups: { federation: createFederationCup(world.divisions, id => world.clubs[id]!.level) },
+    cups: { federation: createFederationCup(world.divisions, id => world.clubs[id]!.level), continental: continentalCup(firstQualified(world.clubs, world.divisions, old.seed)) },
+    continentalQualified: firstQualified(world.clubs, world.divisions, old.seed),
     playoffs: null,
     stats: {},
     history: [],
@@ -658,6 +717,7 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 2) parsed = migrateV2(parsed);
     if (parsed.version === 3) parsed = migrateV3(parsed);
     if (parsed.version === 4) parsed = migrateV4(parsed);
+    if (parsed.version === 5) parsed = migrateV5(parsed);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;

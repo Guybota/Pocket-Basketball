@@ -12,6 +12,13 @@ export const CLUB_NAMES = [
   'Jardim do Paço', 'Bairro da Graça', 'Ginásio da Nora', 'Zambujal BC', 'Kartódromo BC',
 ] as const;
 
+/** Os clubes de fora: 12 da Taça Continental e, no fim, o campeão de outro continente, para o Mundial. */
+export const FOREIGN_NAMES = [
+  'Reyes del Sol', 'Lindhaven Lions', 'Dinamo Zelenograd', 'Castelrosso Basket', 'Aurora Boreal', 'Kronberg Löwen',
+  'Port-Marin Océan', 'Sankt Ludwig', 'Vallecito Toros', 'Marmara Yildiz', 'Brightwater Union', 'Ferrovia Bianconera',
+  'Pacific Harbor Breakers',
+] as const;
+
 /** A abreviatura do marcador: três letras da última palavra com mais de três letras. */
 export function shortName(name: string): string {
   const word = name.split(' ').filter(part => part.length > 3 && part !== 'Basket').at(-1) ?? name;

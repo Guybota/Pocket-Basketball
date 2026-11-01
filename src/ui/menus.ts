@@ -1,6 +1,6 @@
 // Os menus do jogo: em cima a ficha ou a cena, em baixo as decisões. A cidade e o jogo em si ficam em main.ts.
 import { BALANCE as B } from '../sim/balance.ts';
-import { CUP_NAMES, FEDERATION_ROUNDS } from '../sim/cup.ts';
+import { CUP_NAMES, CUP_ROUNDS, FEDERATION_ROUNDS, type CupName } from '../sim/cup.ts';
 import { seriesWinner, seriesWins } from '../sim/playoff.ts';
 import { drawBracket, fullBracket, type BracketRound, type BracketSlot } from './art/bracket.ts';
 import { LEAGUE_SIZE, MOVING_PLACES } from '../sim/league.ts';
@@ -13,7 +13,7 @@ import { KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type E
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { INK, KITS, drawSprite, lookOf, type Look } from './art/sprites.ts';
-import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, cupRoundName, currentFixture, federationStatus, leagueTable, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { CLUB_NAME_MAX, PLAYER_CLUB, activeKit, aiTeam, cupRoundName, cupStatus, currentFixture, leagueTable, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
@@ -65,6 +65,7 @@ let tacticsBack: GoTo = 'town';
 let kitEditBack: GoTo = 'office';
 let emblemBack: GoTo = 'office';
 let federationRound = 0;
+let cupView: CupName = 'federation';
 let kitEditing = 'home';
 let gameKind: GameKind = 'official';
 let half = false;
@@ -371,7 +372,7 @@ function rivalScreen(): Rendered {
   const rival = currentRival();
   const id = rivalId();
   const focus = club.tactics.focus ?? [];
-  const played = [...club.rounds.flat(), ...club.cups.federation.rounds.flat()].filter(f => f.score && (f.home === id || f.away === id));
+  const played = [...club.rounds.flat(), ...Object.values(club.cups).flatMap(cup => cup.rounds.flat())].filter(f => f.score && (f.home === id || f.away === id));
   const wins = played.filter(f => (f.home === id ? f.score![0] > f.score![1] : f.score![1] > f.score![0])).length;
   const best = [...rival.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!;
   const tallest = [...rival.roster].sort((a, b) => b.heightCm - a.heightCm)[0]!;
@@ -492,17 +493,19 @@ function emblemScreen(): Rendered {
 
 const slotOf = (id: number, score: string, winner: boolean): BracketSlot => ({ short: club.clubs[id]!.short, mine: id === PLAYER_CLUB, score, winner });
 
-/** O quadro da taça: as três últimas rondas, que são as que cabem no ecrã. As primeiras ficam na lista. */
+/** O quadro de uma taça: as três últimas rondas, que são as que cabem no ecrã. As primeiras ficam na lista. */
 function cupBracket(): [BracketRound[], string] {
-  const from = FEDERATION_ROUNDS.length - 3;
-  const rounds: BracketRound[] = club.cups.federation.rounds.slice(from).map((fixtures, n) => ({
-    label: ['Quartos', 'Meias', 'Final'][n]!,
+  const total = CUP_ROUNDS[cupView].length;
+  const shown = Math.min(3, total);
+  const labels = CUP_ROUNDS[cupView].slice(total - shown).map(name => name.replace(' de final', '').replace('-finais', ''));
+  const rounds: BracketRound[] = (club.cups[cupView]?.rounds ?? []).slice(total - shown).map((fixtures, n) => ({
+    label: labels[n]!,
     pairs: fixtures.map(f => {
       const homeWon = f.score ? f.score[0] > f.score[1] : false;
       return [slotOf(f.home, f.score ? String(f.score[0]) : '', Boolean(f.score) && homeWon), slotOf(f.away, f.score ? String(f.score[1]) : '', Boolean(f.score) && !homeWon)];
     }),
   }));
-  return [fullBracket(rounds, ['Quartos', 'Meias', 'Final'], 4), CUP_NAMES.federation];
+  return [fullBracket(rounds, labels, 1 << (shown - 1)), CUP_NAMES[cupView]];
 }
 
 function playoffBracket(): [BracketRound[], string] {
@@ -560,18 +563,24 @@ function federationScreen(): Rendered {
     const format = playoffFormat(club)!;
     const state = club.playoffs;
     const entry = format.decidesTitle ? `Os ${format.places.length} primeiros da fase regular. Quartos e meias à melhor de 3, final à melhor de 5. O vencedor é o campeão; os 2 últimos descem.` : `Do 2.º ao 5.º da fase regular, à melhor de 3. O 1.º sobe logo; o vencedor do playoff sobe com ele.`;
-    body = `<div class="crow round" style="grid-template-columns:1fr"><span class="name">${entry}</span></div>` + (state
+    body = `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${entry}</span></div>` + (state
       ? [...state.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${format.roundNames[n]}</span><span>melhor de ${round[0]!.bestOf}</span></div>` + round.map(series => {
         const [top, bottom] = seriesWins(series);
         const winner = seriesWinner(series);
         return `<div class="crow round${series.top === PLAYER_CLUB || series.bottom === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[series.top]!.name)}${winner === series.top ? ' ✓' : ''}</span><b>${top}-${bottom}</b><span class="name">${esc(club.clubs[series.bottom]!.name)}${winner === series.bottom ? ' ✓' : ''}</span></div>`;
       }).join('')).join('')
-      : `<div class="crow round" style="grid-template-columns:1fr"><span class="name">Começam depois da jornada ${(LEAGUE_SIZE - 1) * 2}. Cada ronda é uma semana, com os jogos da série seguidos.</span></div>`);
+      : `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">Começam depois da jornada ${(LEAGUE_SIZE - 1) * 2}. Cada ronda é uma semana, com os jogos da série seguidos.</span></div>`);
   } else if (federationTab === 'cup') {
-    const { federation } = club.cups;
-    const status = federationStatus(club);
-    const headline = status.winner === PLAYER_CLUB ? 'Vencedores!' : status.alive ? 'Ainda em prova' : status.exit === null ? '' : `Eliminados: ${cupRoundName(status.exit).toLowerCase()}`;
-    body = `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${CUP_NAMES.federation}</span><span>${headline}</span></div>` + [...federation.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${cupRoundName(n)}</span><span>${round.length} ${round.length === 1 ? 'jogo' : 'jogos'}</span></div>` + round.map(f => `<div class="crow round${f.home === PLAYER_CLUB || f.away === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('')).join('') + (federation.rounds.length === 0 ? '<div class="crow round" style="grid-template-columns:1fr"><span class="name">O sorteio da pré-eliminatória é na semana 2.</span></div>' : '') + `<div class="crow round" style="grid-template-columns:1fr"><span class="name">${FEDERATION_ROUNDS.length} rondas a um jogo. Entram os 40 clubes; os da ${DIVISIONS[0]!.name} e os mais fracos da ${DIVISIONS[1]!.name} começam na pré-eliminatória.</span></div>`;
+    const state = club.cups[cupView];
+    const status = cupStatus(club, cupView);
+    const headline = status.winner === PLAYER_CLUB ? 'Vencedores!' : status.alive ? 'Ainda em prova' : !status.entered ? 'Não entrámos' : status.exit === null ? '' : `Eliminados: ${cupRoundName(cupView, status.exit).toLowerCase()}`;
+    const about: Record<CupName, string> = {
+      federation: `${FEDERATION_ROUNDS.length} rondas a um jogo. Entram os 40 clubes; os da ${DIVISIONS[0]!.name} e os mais fracos da ${DIVISIONS[1]!.name} começam na pré-eliminatória.`,
+      continental: `Os 4 primeiros da ${DIVISIONS[DIVISIONS.length - 1]!.name} da época anterior e 12 clubes de fora, mais fortes do que os de cá. Quatro rondas a um jogo.`,
+      world: 'Uma final entre o campeão continental e o campeão de outro continente.',
+    };
+    const picker = `<div class="chalktabs">${(['federation', 'continental', 'world'] as CupName[]).map(cup => `<button type="button" data-cup-view="${cup}" aria-pressed="${cupView === cup}">${CUP_NAMES[cup].replace('Taça da ', '').replace('Taça ', '').replace(' de Clubes', '')}</button>`).join('')}</div>`;
+    body = picker + `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${CUP_NAMES[cupView]}</span><span>${headline}</span></div>` + (state ? [...state.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${cupRoundName(cupView, n)}</span><span>${round.length} ${round.length === 1 ? 'jogo' : 'jogos'}</span></div>` + round.map(f => `<div class="crow round${f.home === PLAYER_CLUB || f.away === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('')).join('') : '') + ((state?.rounds.length ?? 0) === 0 ? `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${cupView === 'world' ? 'Só se joga quando houver campeão continental, na semana 28.' : `O sorteio da primeira ronda é na semana ${cupView === 'federation' ? 2 : 4}.`}</span></div>` : '') + `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${about[cupView]}</span></div>`;
   } else {
     body = [...DIVISIONS].map((d, n) => ({ d, n })).reverse().map(({ d, n }) => `<div class="crow round" style="grid-template-columns:1fr auto;font:400 18px/1 var(--ui);min-height:44px${n === club.division ? ';color:var(--gold)' : ''}"><span class="name">${d.name}</span><small>${n === club.division ? 'Estás aqui' : `${LEAGUE_SIZE} clubes`}</small></div>`).join('');
   }
@@ -796,6 +805,9 @@ function onClick(event: Event): void {
     render();
   } else if (data.fedClub !== undefined) {
     federationClub = Number(data.fedClub);
+    render();
+  } else if (data.cupView) {
+    cupView = data.cupView as CupName;
     render();
   } else if (data.fedRound !== undefined) {
     federationRound = Math.max(0, Math.min(club.rounds.length - 1, federationRound + Number(data.fedRound)));
