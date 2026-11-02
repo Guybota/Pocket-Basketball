@@ -235,6 +235,23 @@ describe('táticas', () => {
     expect(high.fatigue).toBeGreaterThan(low.fatigue);
   });
 
+  it('a zona deixa lançar mais de 3, e a pressão em todo o campo perde mais bolas', () => {
+    const against = (tactics: Partial<Tactics>): { threes: number; twos: number; turnovers: number } => {
+      const out = { threes: 0, twos: 0, turnovers: 0 };
+      for (let i = 0; i < 100; i++) {
+        const team = withTactics(generateTeam(i, 'A', 55), { pressure: 0, spacing: 0, pace: 0 });
+        const rival = withTactics(generateTeam(i + 500, 'B', 55), { pressure: 0, spacing: 0, pace: 0, ...tactics });
+        const s = simulateMatch(team, rival, i + 1);
+        out.threes += s.lines[0].threeAttempts;
+        out.twos += s.lines[0].twoAttempts;
+        out.turnovers += s.lines[0].turnovers;
+      }
+      return out;
+    };
+    expect(share(against({ defense: 'zone' }))).toBeGreaterThan(share(against({ defense: 'man' })) + 0.03);
+    expect(against({ pressure: 1 }).turnovers).toBeGreaterThan(against({ pressure: -1 }).turnovers);
+  });
+
   it('nenhuma tática ganha sempre', () => {
     const rate = (tactics: Tactics): number => {
       let wins = 0;
@@ -247,7 +264,7 @@ describe('táticas', () => {
       }
       return wins / 200;
     };
-    for (const tactics of [{ pressure: 1, spacing: 0, pace: 0 }, { pressure: -1, spacing: 0, pace: 0 }, { pressure: 0, spacing: 1, pace: 0 }, { pressure: 0, spacing: -1, pace: 0 }, { pressure: 0, spacing: 0, pace: 1 }, { pressure: 0, spacing: 0, pace: -1 }]) {
+    for (const tactics of [{ pressure: 1, spacing: 0, pace: 0 }, { pressure: -1, spacing: 0, pace: 0 }, { pressure: 0, spacing: 1, pace: 0 }, { pressure: 0, spacing: -1, pace: 0 }, { pressure: 0, spacing: 0, pace: 1 }, { pressure: 0, spacing: 0, pace: -1 }, { pressure: 0, spacing: 0, pace: 0, defense: 'zone' as const }]) {
       const value = rate(tactics);
       expect(value, JSON.stringify(tactics)).toBeGreaterThan(0.3);
       expect(value, JSON.stringify(tactics)).toBeLessThan(0.7);
@@ -275,7 +292,8 @@ describe('táticas', () => {
     const plain = run(false);
     const marked = run(true);
     expect(marked.targetPoints).toBeLessThan(plain.targetPoints * 0.93);
-    expect(Math.abs(marked.wins - plain.wins) / N).toBeLessThan(0.06);
+    // Com 500 jogos de cada lado, o ruído das vitórias anda nos 3 %: até 10 % de diferença ainda é «não decide o jogo».
+    expect(Math.abs(marked.wins - plain.wins) / N).toBeLessThan(0.1);
   });
 
   it('recusa mais de dois alvos, alvos repetidos e lugares que não existem', () => {

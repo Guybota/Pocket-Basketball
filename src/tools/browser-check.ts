@@ -3,6 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 import { preview, build } from 'vite';
+import { PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { matchHash } from '../sim/hash.ts';
 import { simulateMatch } from '../sim/match.ts';
 import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } from '../ui/club.ts';
@@ -40,7 +41,7 @@ const OUT = 'dist-check';
 mkdirSync(OUT, { recursive: true });
 const failures: string[] = [];
 const firstMatch = (seed: number, division: number) => {
-  const club = newClub(seed, division);
+  const club = { ...newClub(seed, division), week: PRESEASON_WEEKS + 1 };
   return simulateMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false], visitorOf(club));
 };
 /** Depois da bola ao alto há a apresentação dos cinco; a verificação fotografa-a e salta-a. */
@@ -49,17 +50,29 @@ const skipIntro = async (p: Page): Promise<void> => {
   await p.click('#introSkip');
 };
 const kick = async (p: Page): Promise<void> => {
-  await p.click('#startBtn');
+  await p.click('#arenaChip');
   await p.click('#kickoffBtn');
   await p.waitForTimeout(700);
   await p.screenshot({ path: `${OUT}/apresentacao.png` });
   await skipIntro(p);
 };
+/** Espera por algo, continuando o jogo nos descontos do adversário, que também o param à espera do treinador. */
+const waitThrough = async (p: Page, done: () => Promise<boolean>, timeout = 90_000): Promise<void> => {
+  const deadline = Date.now() + timeout;
+  while (!(await done())) {
+    if (Date.now() > deadline) throw new Error('waitThrough: tempo esgotado');
+    if (await p.locator('.subs-title').count()) await p.click('[data-subs-close]');
+    else await p.waitForTimeout(200);
+  }
+};
+const atHalf = (p: Page) => async (): Promise<boolean> => (await p.locator('#secondHalfBtn').count()) > 0;
+const isFinished = (p: Page) => (): Promise<boolean> => p.evaluate(() => window.__pocket.state().finished);
 /** Joga o resto do jogo depressa, passando pelo balneário ao intervalo. */
 const playToEnd = async (p: Page): Promise<void> => {
   await p.evaluate(() => window.__pocket.setSpeedRaw(40));
-  await p.click('#secondHalfBtn', { timeout: 90_000 });
-  await p.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+  await waitThrough(p, atHalf(p));
+  await p.click('#secondHalfBtn');
+  await waitThrough(p, isFinished(p));
 };
 /** Recarregar a página volta ao título; o clube guardado continua a partir dele. */
 const reloadClub = async (p: Page): Promise<void> => {
@@ -72,7 +85,7 @@ const createClub = async (p: Page, name = ''): Promise<void> => {
   await p.waitForSelector('#startClubBtn');
   if (name) await p.locator('#clubName').fill(name);
   await p.click('#startClubBtn');
-  await p.waitForSelector('#startBtn');
+  await p.waitForSelector('#arenaChip');
 };
 const check = (name: string, ok: boolean, detail = ''): void => {
   console.log(`${ok ? 'OK    ' : 'FALHOU'} ${name}${detail ? `: ${detail}` : ''}`);
@@ -133,7 +146,6 @@ try {
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/relato.png` });
   await page.click('[data-tab="bench"]');
-  await page.click('[data-speed="4"]');
   await playToEnd(page);
   await page.screenshot({ path: `${OUT}/fim.png` });
   const final = await page.evaluate(() => window.__pocket.state());
@@ -144,7 +156,7 @@ try {
   await page.evaluate(() => window.__pocket.playAllSounds());
   check('Os avisos de momentos altos aparecem', final.announced.includes('Afundanço!') && final.announced.includes('Intervalo'), final.announced.join(', '));
   await page.click('#againBtn');
-  await page.waitForSelector('#startBtn');
+  await page.waitForSelector('#arenaChip');
   check('Sem erros na página', problems.length === 0, problems.join(' | '));
 
   // O ciclo de uma semana, como um jogador o faria, com o clube guardado a sério.
@@ -170,9 +182,11 @@ try {
   await coach.click('.back');
   await coach.screenshot({ path: `${OUT}/criar-clube.png` });
   await coach.click('#startClubBtn');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   await coach.screenshot({ path: `${OUT}/clube.png` });
   check('O clube novo começa na última divisão', await coach.evaluate(() => window.__pocket.club()!.division === 0));
+  check('O clube novo começa na pré-época, sem jogo', await coach.evaluate(() => window.__pocket.club()!.week === 1) && ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-época'));
+  await coach.evaluate(n => window.__pocket.fastForward(n), PRESEASON_WEEKS);
   check('O clube tem o nome escolhido, o nome curto e o emblema', await coach.evaluate(() => {
     const c = window.__pocket.club()!;
     return c.team.name === 'Dragões do Minho' && c.team.short === 'MIN' && c.emblem.shape === 'pennant' && c.emblem.letters === 'MIN';
@@ -187,11 +201,13 @@ try {
     });
   });
   check('As etiquetas dos edifícios cabem no telemóvel', chipsFit);
-  const cityFits = await coach.evaluate(() => {
-    const city = document.querySelector<HTMLElement>('.cityp')!;
-    return city.scrollHeight <= city.clientHeight + 1;
+  // A cidade é o menu: a nota da secretária fica dentro do mapa, sem painel nenhum.
+  const noteFits = await coach.evaluate(() => {
+    const note = document.querySelector('.town-note')!.getBoundingClientRect();
+    const map = document.querySelector('#court')!.getBoundingClientRect();
+    return getComputedStyle(document.querySelector('#panel')!).display === 'none' && note.bottom <= map.bottom + 1 && note.right <= map.right + 1;
   });
-  check('O menu da cidade não precisa de deslocamento', cityFits);
+  check('A cidade não tem painel, e a nota da secretária cabe no mapa', noteFits);
   // Os jogadores têm de passar por trás do que está à frente deles. O 3.º anda na estrada ao lado do escritório.
   for (const [name, seconds] of [['atras-escritorio', 19.1], ['atras-escritorio-2', 20.5], ['frente', 29]] as const) {
     await coach.evaluate(ms => window.__pocket.setTownClock(ms), seconds * 1000);
@@ -239,7 +255,7 @@ try {
   await coach.click('.back');
   await coach.click('.back');
   await reloadClub(coach);
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   check('O treino fica guardado ao recarregar a página', await coach.evaluate(() => window.__pocket.club()!.trainedThisWeek.length === 1 && window.__pocket.club()!.knownCombos.includes('brokenAnkles')));
   await coach.click('#trainBtn');
   await coach.click('[data-player="0"]');
@@ -264,14 +280,14 @@ try {
   await coach.click('.back');
   // Tocar no edifício abre o mesmo que a etiqueta.
   await coach.click('.back');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   const arenaBox = await coach.evaluate(() => window.__pocket.townBox('arena'));
   const courtBox = (await coach.locator('#court').boundingBox())!;
   await coach.mouse.click(courtBox.x + courtBox.width * (arenaBox.x0 + arenaBox.x1) / 2, courtBox.y + courtBox.height * (arenaBox.y0 + arenaBox.y1) / 2);
   await coach.waitForSelector('#kickoffBtn, [data-offer]');
   check('Tocar no pavilhão abre o pavilhão', true);
   await coach.click('.back');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   await coach.click('#officeBtn');
   await coach.click('[data-go="market"]');
   await coach.screenshot({ path: `${OUT}/mercado.png` });
@@ -285,16 +301,18 @@ try {
   await coach.click('.back');
   await coach.click('.back');
   await reloadClub(coach);
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   check('O emblema e o equipamento ficam guardados', await coach.evaluate(() => {
     const c = window.__pocket.club()!;
     return c.emblem.letters === 'XY7' && c.emblem.shape === 'circle' && c.kits[0]!.pattern === 'stripes' && c.kits[0]!.second === '#f2c230';
   }));
-  await coach.click('#tacticsBtn');
+  await coach.click('#trainBtn');
+  await coach.click('[data-go="tactics"]');
   await coach.click('[data-tactic="spacing"][data-tactic-value="1"]');
   await coach.screenshot({ path: `${OUT}/taticas.png` });
   await coach.click('.back');
-  await coach.click('#startBtn');
+  await coach.click('.back');
+  await coach.click('#arenaChip');
   await coach.screenshot({ path: `${OUT}/balneario.png` });
   await coach.click('[data-go="rival"]');
   await coach.click('[data-target="0"]');
@@ -323,7 +341,7 @@ try {
   await coach.waitForSelector('#drop:not([hidden])');
   await coach.screenshot({ path: `${OUT}/carta-no-jogo.png` });
   await coach.evaluate(() => window.__pocket.setSpeedRaw(40));
-  await coach.waitForSelector('#secondHalfBtn', { timeout: 90_000 });
+  await waitThrough(coach, atHalf(coach));
   await coach.waitForTimeout(300);
   await coach.screenshot({ path: `${OUT}/intervalo.png` });
   await coach.click('[data-go="halfStats"]');
@@ -343,27 +361,28 @@ try {
   await coach.waitForTimeout(100);
   await coach.locator('.screen').screenshot({ path: `${OUT}/segunda-parte-equipamento.png` });
   check('Os alvos ficam no jogo', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2));
-  await coach.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+  await waitThrough(coach, isFinished(coach));
   await coach.screenshot({ path: `${OUT}/fim-cartas.png` });
   check('As cartas do jogo vão para o clube', (await coach.locator('.found-card').count()) > 0, `${await coach.locator('.found-card').count()} cartas`);
   check('Com decisões e táticas o jogo reproduz-se igual', await coach.evaluate(() => window.__pocket.replayMatchesCurrent()));
   await coach.click('#againBtn');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   await reloadClub(coach);
-  await coach.waitForSelector('#startBtn');
-  check('A semana 2 é a pré-eliminatória da taça', ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-eliminatória'));
+  await coach.waitForSelector('#arenaChip');
+  check('A semana 4 é a pré-eliminatória da taça', ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-eliminatória'));
   await coach.screenshot({ path: `${OUT}/semana-taca.png` });
-  check('Passa para a semana 2 e fica guardado', await coach.evaluate(() => window.__pocket.club()!.week === 2 && window.__pocket.club()!.trainedThisWeek.length === 0));
+  check('Passa para a semana 4 e fica guardado', await coach.evaluate(() => window.__pocket.club()!.week === 4 && window.__pocket.club()!.trainedThisWeek.length === 0));
   check('Os alvos esquecem-se no fim da semana', await coach.evaluate(() => (window.__pocket.club()!.tactics.focus ?? []).length === 0));
   await coach.click('#officeBtn');
   await coach.screenshot({ path: `${OUT}/gabinete.png` });
   await coach.click('[data-office="reset"]');
   await coach.click('#resetNo');
-  check('Cancelar o novo clube não apaga nada', await coach.evaluate(() => window.__pocket.club()!.week === 2));
+  check('Cancelar o novo clube não apaga nada', await coach.evaluate(() => window.__pocket.club()!.week === 4));
   await coach.click('.back');
 
   // Plantel: trocar dois jogadores muda os titulares e fica guardado.
-  await coach.click('#squadBtn');
+  await coach.click('#officeBtn');
+  await coach.click('[data-squad="office"]');
   await coach.screenshot({ path: `${OUT}/plantel.png` });
   const rosterBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
   await coach.click('[data-player="0"]');
@@ -372,7 +391,7 @@ try {
   await coach.screenshot({ path: `${OUT}/plantel-trocado.png` });
   await coach.click('.back');
   await reloadClub(coach);
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   const rosterAfter = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
   check('A troca no plantel fica guardada', rosterAfter[0] === rosterBefore[6] && rosterAfter[6] === rosterBefore[0], `${rosterBefore[0]} <> ${rosterBefore[6]}`);
 
@@ -402,15 +421,15 @@ try {
   await coach.click('[data-cup-view="federation"]');
   await coach.click('.back');
   await coach.evaluate(() => window.__pocket.fastForward(3));
-  check('A semana 12 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 12 && !document.getElementById('practiceBtn')));
+  check('A semana 14 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 14 && !document.getElementById('practiceBtn')));
   await coach.screenshot({ path: `${OUT}/semana-livre.png` });
-  await coach.click('#startBtn');
+  await coach.click('#arenaChip');
   await coach.waitForSelector('[data-offer]');
   await coach.screenshot({ path: `${OUT}/propostas.png` });
   await coach.click('[data-offer-kind="friendly"]');
   await coach.click('.back');
   await coach.click('#skipWeekBtn');
-  check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 13));
+  check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 15));
   await coach.screenshot({ path: `${OUT}/cidade-painel.png` });
   // Sem treino, um clube pode ser despedido antes do fim da época; aqui interessa ver o balanço.
   await coach.evaluate(() => window.__pocket.setConfidence(90));
@@ -433,7 +452,7 @@ try {
   check('As renovações ficam guardadas a meio', await coach.evaluate(() => window.__pocket.club()!.pendingRenewals !== null));
   await coach.click('[data-renew]:nth-child(2)');
   await coach.click('#renewalsConfirm');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   check('Começa a época 2', await coach.evaluate(() => window.__pocket.club()!.season === 2 && window.__pocket.club()!.week === 1));
   check('Quem não renova sai, e o plantel fica com os que ficaram', await coach.evaluate((b: number) => window.__pocket.club()!.team.roster.length === Math.max(10, b - 1) && window.__pocket.club()!.pendingRenewals === null, squadBefore));
   check('O orçamento cobre os salários', await coach.evaluate(() => window.__pocket.club()!.money >= Object.values(window.__pocket.club()!.salaries).reduce((a, b) => a + b, 0)));
@@ -448,11 +467,12 @@ try {
   await coach.click('#firedNewClub');
   await createClub(coach);
   check('Depois de despedido, pode-se treinar outro clube', await coach.evaluate(() => !window.__pocket.club()!.fired && window.__pocket.club()!.season === 1));
-  // Um jogo depois de recarregar o balanço da época tem de correr normalmente.
+  // Um jogo depois de recarregar o balanço da época tem de correr normalmente; o clube novo começa na pré-época.
+  await coach.evaluate(n => window.__pocket.fastForward(n), PRESEASON_WEEKS);
   await kick(coach);
   await playToEnd(coach);
   await coach.click('#againBtn');
-  await coach.waitForSelector('#startBtn');
+  await coach.waitForSelector('#arenaChip');
   await coach.evaluate(() => localStorage.setItem('pocket-basketball-clube', 'estragado'));
   await coach.reload();
   await coach.waitForSelector('#newClubBtn');
@@ -468,9 +488,9 @@ try {
   await playoffs.waitForFunction(() => window.__pocket !== undefined);
   await playoffs.evaluate(() => window.__pocket.setConfidence(90));
   await playoffs.evaluate(() => window.__pocket.fastForward(29));
-  const inPlayoffs = await playoffs.evaluate(() => window.__pocket.club()?.playoffs !== null && window.__pocket.club()!.week === 30);
+  const inPlayoffs = await playoffs.evaluate((first: number) => window.__pocket.club()?.playoffs !== null && window.__pocket.club()!.week === first, SEASON_WEEKS + 1);
   if (inPlayoffs) {
-    check('A Pro Liga 1 entra nos playoffs na semana 30', ((await playoffs.locator('.citydetail').first().textContent()) ?? '').includes('Playoffs'));
+    check('A Pro Liga 1 entra nos playoffs a seguir à última jornada', ((await playoffs.locator('.citydetail').first().textContent()) ?? '').includes('Playoffs'));
     await playoffs.screenshot({ path: `${OUT}/playoffs-cidade.png` });
     await playoffs.click('#federationBtn');
     await playoffs.click('[data-fed-tab="playoffs"]');
@@ -480,7 +500,7 @@ try {
     await playToEnd(playoffs);
     await playoffs.screenshot({ path: `${OUT}/playoffs-jogo.png` });
     const after = await playoffs.evaluate(() => ({ week: window.__pocket.club()!.week, games: window.__pocket.club()!.playoffs?.rounds[0]?.find(s => s.top === 0 || s.bottom === 0)?.games.length ?? 0, report: window.__pocket.club()!.seasonReport !== null }));
-    check('O primeiro jogo da série fica registado e a semana só fecha com a série decidida', after.games === 1 || after.report || after.week === 31, JSON.stringify(after));
+    check('O primeiro jogo da série fica registado e a semana só fecha com a série decidida', after.games === 1 || after.report || after.week === SEASON_WEEKS + 2, JSON.stringify(after));
   } else {
     console.log('AVISO  o clube de ensaio não chegou aos playoffs; o quadro não foi visto');
   }
@@ -490,12 +510,11 @@ try {
   const practice = await phone.newPage();
   const practiceProblems: string[] = [];
   practice.on('pageerror', error => practiceProblems.push(error.message));
-  await practice.goto(`${url}?semente=31&divisao=1`);
+  await practice.goto(`${url}?semente=31&divisao=1&semana=1`);
   await practice.waitForFunction(() => window.__pocket !== undefined);
-  await practice.evaluate(() => window.__pocket.fastForward(2));
   const beforePractice = await practice.evaluate(() => window.__pocket.club()!);
-  await practice.click('#practiceBtn');
-  check('Numa semana com jogo só há jogos-treino', await practice.locator('[data-offer-kind="friendly"]').isDisabled());
+  await practice.click('#arenaChip');
+  check('Na pré-época o pavilhão abre as propostas, com particulares', await practice.locator('[data-offer-kind="friendly"]').isEnabled());
   await practice.click('[data-offer="2"]');
   await practice.screenshot({ path: `${OUT}/jogo-treino-proposta.png` });
   await practice.click('[data-pre="practice"]');
@@ -506,15 +525,15 @@ try {
   await practice.waitForTimeout(800);
   await practice.locator('.screen').screenshot({ path: `${OUT}/jogo-treino-campo.png` });
   await practice.evaluate(() => window.__pocket.setSpeedRaw(40));
-  await practice.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+  await waitThrough(practice, isFinished(practice));
   await practice.screenshot({ path: `${OUT}/jogo-treino-fim.png` });
   const afterPractice = await practice.evaluate(() => ({ club: window.__pocket.club()!, state: window.__pocket.state() }));
   await practice.click('#againBtn');
-  await practice.waitForSelector('#startBtn');
+  await practice.waitForSelector('#arenaChip');
   await practice.screenshot({ path: `${OUT}/jogo-treino-depois.png` });
   check('O jogo-treino acaba ao fim de dois períodos', afterPractice.state.period === 2, `período ${afterPractice.state.period}`);
   check('O jogo-treino não mexe na confiança nem no recorde', afterPractice.club.confidence === beforePractice.confidence && afterPractice.club.wins + afterPractice.club.losses === beforePractice.wins + beforePractice.losses);
-  check('O jogo-treino não fecha a semana e só se joga uma vez', afterPractice.club.week === beforePractice.week && afterPractice.club.practicedThisWeek && await practice.locator('#practiceBtn').isDisabled());
+  check('O jogo-treino não fecha a semana e só se joga uma vez', afterPractice.club.week === beforePractice.week && afterPractice.club.practicedThisWeek);
   check('Os jogadores saem do jogo-treino mais cansados', afterPractice.club.team.roster.reduce((sum, p) => sum + p.fatigue, 0) > beforePractice.team.roster.reduce((sum, p) => sum + p.fatigue, 0));
   check('Sem erros no jogo-treino', practiceProblems.length === 0, practiceProblems.join(' | '));
 
@@ -687,7 +706,7 @@ try {
     check(`Em ${name}, os menus cabem na janela`, await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight));
     await wide.click('.back');
     await wide.click('.back');
-    await wide.click('#startBtn');
+    await wide.click('#arenaChip');
     await wide.waitForTimeout(150);
     await wide.screenshot({ path: `${OUT}/landscape-${name}-balneario.png` });
     await wide.click('#kickoffBtn');

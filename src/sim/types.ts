@@ -43,11 +43,15 @@ export interface Player {
   injuryWeeks?: number;
 }
 
-/** Cada tática vai de -1 a 1. Pressão: recuada a campo inteiro. Espaçamento: interior a exterior. Ritmo: lento a rápido. */
+export const DEFENSES = ['man', 'zone'] as const;
+export type Defense = (typeof DEFENSES)[number];
+/** Cada tática vai de -1 a 1. Pressão: normal (espera no meio-campo de defesa), meio campo, campo inteiro. Ataque (`spacing`): 2 pontos, livre, 3 pontos; as jogadas escolhem-se a partir daqui. Ritmo: lento a rápido. */
 export interface Tactics {
   pressure: number;
   spacing: number;
   pace: number;
+  /** Homem a homem (por omissão) ou zona: cada defensor guarda um sítio e fecha-se para a bola. */
+  defense?: Defense;
   /** Até dois adversários a marcar de perto, pelo lugar deles no plantel. Os outros ficam mais soltos. */
   focus?: number[];
 }
@@ -58,6 +62,7 @@ export function validateTactics(tactics: Tactics, label: string): void {
   for (const value of [tactics.pressure, tactics.spacing, tactics.pace]) {
     if (!Number.isFinite(value) || value < -1 || value > 1) throw new Error(`${label}: tática inválida`);
   }
+  if (tactics.defense !== undefined && !DEFENSES.includes(tactics.defense)) throw new Error(`${label}: defesa inválida`);
   if (tactics.focus !== undefined) {
     const { focus } = tactics;
     if (!Array.isArray(focus) || focus.length > MAX_FOCUS || new Set(focus).size !== focus.length || focus.some(i => !Number.isInteger(i) || i < 0 || i >= 15)) throw new Error(`${label}: alvos inválidos`);

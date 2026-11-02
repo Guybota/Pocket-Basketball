@@ -63,7 +63,8 @@ interface Grid {
 
 /** Os ladrilhos crescem com a janela até um limite, e o mapa fica centrado na altura que sobra. */
 function gridFor(width: number, height: number): Grid {
-  const th = Math.max(4, Math.min(6, Math.floor((height - 30) / MAP_DEPTH)));
+  // Num telemóvel ao alto a janela é estreita: os ladrilhos não crescem tanto, senão o mapa saía ainda mais pelos lados.
+  const th = Math.max(4, Math.min(width < 480 ? 5 : 6, Math.floor((height - 30) / MAP_DEPTH)));
   return { th, tw: th * 2, ox: Math.round(width / 2), oy: Math.max(26, Math.round((height - MAP_DEPTH * th) / 2) + 12) };
 }
 

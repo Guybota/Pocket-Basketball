@@ -10,10 +10,12 @@ import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
 import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio } from './audio.ts';
-import { tacticsControls } from './club-screens.ts';
+import { tacticValue, tacticsControls } from './club-screens.ts';
 import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, showTopNote, type GameKind } from './menus.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
+import { PRESEASON_WEEKS } from '../sim/league.ts';
+import { clubIdentity, kitAgainst } from './art/identity.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab } from './panel.ts';
@@ -22,7 +24,6 @@ import { portraitImage } from './art/portrait.ts';
 
 const TICKS_PER_SECOND = 20;
 const MAX_STEPS_PER_FRAME = 40;
-const SPEEDS = [1, 2, 4];
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
@@ -32,7 +33,6 @@ const LANDSCAPE_ART_HEIGHT = 290;
 // A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
 const LANDSCAPE_TOWN_HEIGHT = 360;
 // O que fica por baixo do mapa, no telemóvel: a secretária, o próximo jogo e dois botões.
-const CITY_PANEL_HEIGHT = 186;
 // Os menus têm uma ficha ou uma cena por cima, e essas precisam de mais altura do que o campo.
 const MENU_STAGE_WIDTH = 360;
 const MENU_STAGE_HEIGHT = 270;
@@ -96,6 +96,22 @@ let liveLeague: LiveLeague | null = null;
 let subPick: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+// Num desconto ou ao intervalo, sem ninguém tocar em nada durante 30 s, o jogo continua sozinho.
+const IDLE_RESUME_MS = 30_000;
+let idleTimer = 0;
+let idleResume: (() => void) | null = null;
+function resumeAfterIdle(resume: () => void): void {
+  clearTimeout(idleTimer);
+  idleResume = resume;
+  idleTimer = window.setTimeout(() => {
+    idleResume = null;
+    resume();
+  }, IDLE_RESUME_MS);
+}
+function clearIdle(): void {
+  clearTimeout(idleTimer);
+  idleResume = null;
+}
 // A apresentação antes do jogo, a cena do fim, e a repetição do lance decisivo.
 let introTimer = 0;
 let endAt = 0;
@@ -170,7 +186,8 @@ function fit(): void {
   game.classList.toggle('landscape', landscape);
   if (landscape) {
     const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.floor((innerHeight * 2) / 720) / 2);
-    const panelWidth = LANDSCAPE_PANEL_WIDTH * ui;
+    // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
+    const panelWidth = stage === 'town' ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
     const scale = stage === 'town' || stage === 'title'
@@ -195,7 +212,7 @@ function fit(): void {
     const finalScale = Math.min(scale, Math.max(available, 0.5));
     const gameHeight = Math.max(640, innerHeight / finalScale);
     // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
-    const stageHeight = stage === 'town' ? Math.floor(gameHeight - CITY_PANEL_HEIGHT) : stage === 'menu' ? MENU_STAGE_HEIGHT : MATCH_STAGE_HEIGHT;
+    const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? MENU_STAGE_HEIGHT : MATCH_STAGE_HEIGHT;
     setCanvasSize(360, stageHeight, 360, stageHeight);
     game.style.zoom = String(finalScale);
     game.style.height = `${gameHeight}px`;
@@ -222,6 +239,7 @@ function setTopSize(width: number, height: number, zoom: number): void {
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: typeof stage): void {
   stage = next;
+  if (next !== 'match' && next !== 'menu') clearIdle();
   if (next !== 'title') {
     clearTimeout(demoTimer);
     demo = undefined;
@@ -241,8 +259,13 @@ function setStage(next: typeof stage): void {
 
 /** Tocar num edifício é o mesmo que tocar na etiqueta dele. */
 canvas.addEventListener('click', event => {
-  if (stage !== 'town' || !club) return;
   const rect = canvas.getBoundingClientRect();
+  // Durante o jogo, tocar num jogador mostra-lhe o nome por cima.
+  if (stage === 'match' && view && !replay) {
+    view.tapAt(((event.clientX - rect.left) / rect.width) * canvas.width, ((event.clientY - rect.top) / rect.height) * canvas.height);
+    return;
+  }
+  if (stage !== 'town' || !club) return;
   const place = townHit(canvas.width, canvas.height, club.division, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
   const chips: Record<TownPlace, string> = { arena: 'arenaChip', office: 'officeBtn', training: 'trainBtn', federation: 'federationBtn', tower: 'towerChip', airport: 'airportChip' };
   if (place) document.getElementById(chips[place])?.click();
@@ -250,7 +273,7 @@ canvas.addEventListener('click', event => {
 
 function placeTownUi(): void {
   const current = club!;
-  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height));
+  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveFailed);
   const note = (text: string): void => {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
@@ -263,6 +286,11 @@ function placeTownUi(): void {
   element('trainBtn').addEventListener('click', () => {
     audio.unlock();
     openMenu('train');
+  });
+  document.getElementById('skipWeekBtn')?.addEventListener('click', () => {
+    club = skipWeek(club!);
+    saveClub();
+    showClub();
   });
 }
 
@@ -292,7 +320,8 @@ function makeView(kind: GameKind, rivalId: number): void {
   found = [];
   drop.hidden = true;
   // Um jogo-treino é à porta fechada, por isso joga-se num pavilhão sem público.
-  view = new MatchView(context, clubTeam(current), rivalTeam(current, rivalId), seed, kind === 'practice' ? CLOSED_GYM : current.division, {
+  const rival = rivalTeam(current, rivalId);
+  view = new MatchView(context, clubTeam(current), rival, seed, kind === 'practice' ? CLOSED_GYM : current.division, {
     announce,
     event: e => {
       // A vista já recebe o início do jogo ao ser criada, antes de o jogo começar a sério.
@@ -303,7 +332,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100);
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)));
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -403,17 +432,8 @@ function showClub(): void {
   applyClubColors();
   banner.hidden = true;
   drop.hidden = true;
-  panel.innerHTML = cityPanel(current, saveFailed);
+  panel.innerHTML = '';
   setStage('town');
-  element('startBtn').addEventListener('click', openArena);
-  document.getElementById('practiceBtn')?.addEventListener('click', openOffers);
-  document.getElementById('skipWeekBtn')?.addEventListener('click', () => {
-    club = skipWeek(club!);
-    saveClub();
-    showClub();
-  });
-  element('tacticsBtn').addEventListener('click', () => openMenu('tactics'));
-  element('squadBtn').addEventListener('click', () => openMenu('squad'));
 }
 
 /** Sem ninguém a tocar, o título mostra um jogo entre dois clubes da divisão de cima, como uma máquina de arcada. */
@@ -425,7 +445,8 @@ function startDemo(): void {
   const home = source.clubs[top[seed % top.length]!]!;
   const away = source.clubs[top[(seed + 1) % top.length]!]!;
   const quiet = { announce: () => {}, event: () => {}, sound: () => {} };
-  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, undefined, undefined, clubColor(home));
+  const homeKit = clubIdentity(home.name).kits[0];
+  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, homeKit, undefined, clubColor(home), 0.7, kitAgainst(away.name, homeKit));
   demo.snapCamera();
   demoAccumulator = 0;
 }
@@ -484,7 +505,6 @@ function showFired(): void {
 }
 
 function matchControls(): string {
-  const speedButtons = SPEEDS.map(value => `<button type="button" data-speed="${value}" aria-pressed="${value === speed}">×${value}</button>`).join('');
   return `<div class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="bench" aria-selected="${tab === 'bench'}">Banco</button>
       <button type="button" role="tab" data-tab="stats" aria-selected="${tab === 'stats'}">Stats</button>
@@ -494,7 +514,6 @@ function matchControls(): string {
     </div>
     <div id="tabContent" class="content"></div>
     <div class="controls">
-      <div class="speeds" role="group" aria-label="Velocidade">${speedButtons}</div>
       <button type="button" id="pauseBtn" aria-pressed="${paused || pauseRequested}">${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}</button>
       <button type="button" id="muteBtn" aria-pressed="${audio.muted}">${audio.muted ? 'Sem som' : 'Som'}</button>
       <div class="coach">
@@ -511,12 +530,6 @@ function bindControls(): void {
       tab = button.dataset.tab as PanelTab;
       cardBody = null;
       tacticsOpen = false;
-      showMatch();
-    });
-  });
-  panel.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach(button => {
-    button.addEventListener('click', () => {
-      speed = Number(button.dataset.speed);
       showMatch();
     });
   });
@@ -543,17 +556,18 @@ function refreshContent(): void {
   // Não mexer no painel durante um toque, senão o botão desaparece antes de o clique acabar.
   if (!content || pointerDown) return;
   updateCoachButtons();
-  // O separador das cartas tem uma animação de entrada: só se redesenha quando muda, senão pisca a cada passo.
-  content.dataset.shown = '';
   if (tacticsOpen) {
+    content.dataset.shown = '';
     content.innerHTML = `${tacticsControls(view!.s.tactics[0])}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
     return;
   }
   if (subsOpen) {
-    content.innerHTML = subsPanel(view!, subPick, view!.s.timeoutTeam === 0);
+    content.dataset.shown = '';
+    content.innerHTML = subsPanel(view!, subPick, view!.s.phase === 'timeout');
     return;
   }
   if (cardBody) {
+    content.dataset.shown = '';
     const card = content.querySelector<HTMLElement>('.card');
     const live = document.getElementById('cardLive');
     if (card && live && card.dataset.cardBody === String(view!.s.bodies.indexOf(cardBody))) {
@@ -565,8 +579,9 @@ function refreshContent(): void {
   }
   const focusedPlayer = document.activeElement instanceof HTMLElement && content.contains(document.activeElement) ? document.activeElement.dataset.player : undefined;
   const html = panelContent(view!, tab, found, liveLeague);
-  if (tab === 'cards' && content.dataset.shown === html) return;
-  content.dataset.shown = tab === 'cards' ? html : '';
+  // Só se redesenha quando muda: a cada 250 ms as caras recarregavam e o painel piscava.
+  if (content.dataset.shown === html) return;
+  content.dataset.shown = html;
   content.innerHTML = html;
   if (focusedPlayer) content.querySelector<HTMLElement>(`[data-player="${focusedPlayer}"]`)?.focus();
 }
@@ -605,8 +620,9 @@ function closeSubs(): void {
     openHalf(gameKind, rivalOf);
     return;
   }
-  // Se estava num desconto nosso, o jogo só continua quando o jogador quiser.
-  if (paused && view!.s.timeoutTeam === 0) paused = false;
+  // Se estava num desconto, o jogo só continua quando o jogador quiser.
+  if (paused && view!.s.phase === 'timeout') paused = false;
+  clearIdle();
   showMatch();
 }
 
@@ -616,7 +632,7 @@ panel.addEventListener('click', event => {
   if (!target || (target as HTMLButtonElement).disabled) return;
   pointerDown = false;
   if (target.dataset.tactic !== undefined) {
-    const tactics: Tactics = { ...club!.tactics, [target.dataset.tactic]: Number(target.dataset.tacticValue) };
+    const tactics: Tactics = { ...club!.tactics, [target.dataset.tactic]: tacticValue(target.dataset.tactic, target.dataset.tacticValue!) };
     club = { ...club!, tactics };
     saveClub();
     setTactics(view!.s, 0, tactics);
@@ -740,7 +756,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)));
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;
@@ -787,10 +803,14 @@ function showHalfTime(): void {
   banner.hidden = true;
   drop.hidden = true;
   openHalf(gameKind, rivalOf);
+  resumeAfterIdle(secondHalf);
 }
 
 function secondHalf(): void {
   const current = view!;
+  clearIdle();
+  halfSubsOpen = false;
+  subsOpen = false;
   closeMenus();
   while (current.s.phase === 'break') current.stepSim();
   current.snapCamera();
@@ -835,11 +855,11 @@ function updateHud(): void {
   hudText = next;
   const urgent = shotClock !== null && shotClock <= 3;
   hud.innerHTML = `<div class="scorebug">
-      <span class="side team-0"><i></i>${escapeHtml(s.teams[0].short)}</span>
+      <span class="side team-0"><img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(club!.emblem)}">${escapeHtml(s.teams[0].short)}</span>
       <b class="points">${s.score[0]}</b>
       <span class="time"><small>${period}</small>${clockText(s.clock)}</span>
       <b class="points">${s.score[1]}</b>
-      <span class="side team-1">${escapeHtml(s.teams[1].short)}<i></i></span>
+      <span class="side team-1">${escapeHtml(s.teams[1].short)}<img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(clubIdentity(s.teams[1].name).emblem)}"></span>
       <span class="shot-clock${urgent ? ' urgent' : ''}">${shotClock ?? '-'}</span>
     </div>
     ${carrier ? `<div class="carrier team-${carrier.team}"><i></i><span>${carrierPos}</span><b>${escapeHtml(carrierName)}</b></div>` : ''}`;
@@ -881,8 +901,8 @@ function frame(now: number): void {
       if (banner.textContent !== message || banner.hidden) announce(message);
     }
   }
-  // No nosso desconto, a equipa junta-se ao banco e depois o jogo espera pelo jogador, com as trocas abertas.
-  if (current?.s.phase === 'timeout' && current.s.timeoutTeam === 0 && current.s.timer <= TICKS_PER_SECOND) {
+  // Em qualquer desconto, a equipa junta-se ao banco e depois o jogo espera pelo jogador, com as trocas abertas.
+  if (current?.s.phase === 'timeout' && current.s.timer <= TICKS_PER_SECOND) {
     if (!timeoutHandled) {
       timeoutHandled = true;
       paused = true;
@@ -890,6 +910,7 @@ function frame(now: number): void {
       subPick = null;
       cardBody = null;
       showMatch();
+      resumeAfterIdle(closeSubs);
     }
   } else {
     timeoutHandled = false;
@@ -924,13 +945,14 @@ function frame(now: number): void {
     drawTown(context, canvas.width, canvas.height, walkers.division, looks, townClock ?? now, {
       jersey: kit.jersey,
       trim: kit.trim,
-      poster: club && game ? (game.fixture.home === PLAYER_CLUB ? `${club.team.short} VS ${opponentOf(club).short}` : `${opponentOf(club).short} VS ${club.team.short}`) : '',
+      // O aviso do jogo está no cimo do mapa, com os emblemas; o cartaz do pavilhão fica só com a arte.
+      poster: '',
       festive: club !== null && club.week <= 2 && (club.history.at(-1)?.outcome === 'champion' || (club.history.at(-1)?.cups.length ?? 0) > 0),
     }, weatherFor(club?.week ?? 1));
   } else if (stage === 'menu') {
     menuFrame(now);
   } else if (current) {
-    current.render(Math.min(1, accumulator), simSeconds);
+    current.render(Math.min(1, accumulator), simSeconds, elapsed);
     updateHud();
   }
   renderMs += performance.now() - start;
@@ -963,7 +985,8 @@ initMenus({
 });
 addEventListener('resize', fit);
 fit();
-club = testSeed !== null ? newClub(testSeed, testDivision) : loadClub();
+// O clube de ensaio começa já na primeira jornada, a não ser que a morada diga a semana.
+club = testSeed !== null ? { ...newClub(testSeed, testDivision), week: paramInt('semana') ?? PRESEASON_WEEKS + 1 } : loadClub();
 // Com semente na morada, a verificação automática entra logo na cidade; o título vê-se no fluxo sem clube.
 if (club && testSeed !== null) showClub();
 else showNewClub();
@@ -976,7 +999,7 @@ requestAnimationFrame(now => {
 Object.assign(window, {
   __pocket: {
     hashFor: (s: number, d: number) => {
-      const c = newClub(s, d);
+      const c = { ...newClub(s, d), week: PRESEASON_WEEKS + 1 };
       return matchHash(simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)));
     },
     club: () => club,
@@ -997,6 +1020,7 @@ Object.assign(window, {
           club = skipWeek(club);
         }
       }
+      saveClub();
       saveClub();
       showClub();
     },
@@ -1102,6 +1126,7 @@ document.addEventListener('contextmenu', event => {
   if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
 });
 document.addEventListener('pointerdown', event => {
+  if (idleResume) resumeAfterIdle(idleResume);
   const target = (event.target as HTMLElement).closest<HTMLElement>('[title], img[alt], [aria-label]');
   hideTip();
   if (!target) return;

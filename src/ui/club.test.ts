@@ -1,3 +1,4 @@
+import { PLAYER_POOL } from '../sim/teamgen.ts';
 import { describe, expect, it } from 'vitest';
 import { simulateMatch } from '../sim/match.ts';
 import { generateTeam, teamRating } from '../sim/teamgen.ts';
@@ -5,7 +6,7 @@ import { CARD_IDS, CARDS, COMBOS, comboFor, cardFromEvent, endOfMatchCards, inde
 import { makeRng } from '../sim/rng.ts';
 import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/types.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { LEAGUE_SIZE, SEASON_WEEKS } from '../sim/league.ts';
+import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
@@ -186,7 +187,8 @@ describe('cartas ganhas nos jogos', () => {
 });
 
 describe('clube', () => {
-  const club = (): ClubState => newClub(21, 2);
+  // Um clube já na primeira jornada, depois da pré-época.
+  const club = (): ClubState => ({ ...newClub(21, 2), week: PRESEASON_WEEKS + 1 });
   const playWeek = (c: ClubState): ClubState => finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false]), []).club;
 
   it('começa com cartas e sem movimentos, e o adversário nunca é o próprio clube', () => {
@@ -231,7 +233,7 @@ describe('clube', () => {
     const c = club();
     const s = simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false]);
     const { club: after, cards } = finishMatch(c, s, ['fado']);
-    expect(after.week).toBe(2);
+    expect(after.week).toBe(PRESEASON_WEEKS + 2);
     expect(after.wins + after.losses).toBe(1);
     expect(cards).toContain('fado');
     expect(after.cards.fado).toBeGreaterThanOrEqual(1);
@@ -396,7 +398,7 @@ describe('época', () => {
   });
 
   it('o adversário vem do calendário, e o nosso jogo fica lá escrito com a jornada inteira', () => {
-    const c = newClub(11);
+    const c = { ...newClub(11), week: PRESEASON_WEEKS + 1 };
     const fixture = currentFixture(c)!;
     expect([fixture.home, fixture.away]).toContain(opponentId(c));
     const result = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)), []);
@@ -405,6 +407,21 @@ describe('época', () => {
     expect(leagueTable(result.club).filter(row => row.played === 1)).toHaveLength(LEAGUE_SIZE);
     const own = leagueTable(result.club).find(row => row.club === PLAYER_CLUB)!;
     expect(own.pointsFor).toBe(result.club.wins === 1 ? Math.max(own.pointsFor, own.pointsAgainst) : Math.min(own.pointsFor, own.pointsAgainst));
+  });
+
+  it('os clubes de cada divisão e o pool de jogadores são iguais em todas as carreiras; os plantéis sorteiam-se', () => {
+    const a = newClub(5, 1);
+    const b = newClub(5 + CLUB_NAMES.length, 1);
+    expect(a.team.name).toBe(b.team.name);
+    for (let d = 0; d < DIVISIONS.length; d++) expect(a.divisions[d]!.map(id => a.clubs[id]!.name)).toEqual(b.divisions[d]!.map(id => b.clubs[id]!.name));
+    expect(a.clubs[1]!.players).not.toEqual(b.clubs[1]!.players);
+    const first = aiTeam(a.clubs[1]!).roster[0]!;
+    const body = PLAYER_POOL[a.clubs[1]!.players![0]!]!;
+    expect([first.name, first.heightCm]).toEqual([body.name, body.heightCm]);
+    // Nenhum jogador do pool está em dois clubes, e nenhum plantel repete um apelido.
+    const all = a.clubs.flatMap(c => c.players ?? []);
+    expect(new Set(all).size).toBe(all.length);
+    for (const c of a.clubs) if (c.players) expect(new Set(c.players.map(i => PLAYER_POOL[i]!.name)).size).toBe(c.players.length);
   });
 
   it('os resultados dos outros jogos repetem-se com o mesmo clube', () => {
@@ -421,15 +438,15 @@ describe('época', () => {
 
   it('a semana livre tem particular, não conta para a liga, e pode-se saltar', () => {
     let c = newClub(19);
-    for (let i = 1; i < 4; i++) c = week(c);
-    expect(c.week).toBe(4);
+    for (let i = 1; i < 4 + PRESEASON_WEEKS; i++) c = week(c);
+    expect(c.week).toBe(4 + PRESEASON_WEEKS);
     expect(currentFixture(c)).toBeNull();
     const before = leagueTable(c);
     const friendly = finishMatch(c, simulateMatch(clubTeam(c), opponentOf(c), 7), []);
     expect(friendly.round).toBeNull();
-    expect(friendly.club.week).toBe(5);
+    expect(friendly.club.week).toBe(5 + PRESEASON_WEEKS);
     expect(leagueTable(friendly.club)).toEqual(before);
-    expect(skipWeek(c).week).toBe(5);
+    expect(skipWeek(c).week).toBe(5 + PRESEASON_WEEKS);
   });
 
   it('a Taça da Federação sorteia-se ronda a ronda, e o nosso clube começa na pré-eliminatória', () => {
@@ -438,8 +455,8 @@ describe('época', () => {
     expect(c.cups.federation.alive).toHaveLength(40);
     expect(c.cups.federation.preliminary).toHaveLength(16);
     expect(c.cups.federation.preliminary).toContain(PLAYER_CLUB);
-    c = week(c);
-    expect(c.week).toBe(2);
+    for (let i = 0; i <= PRESEASON_WEEKS; i++) c = week(c);
+    expect(c.week).toBe(PRESEASON_WEEKS + 2);
     const game = currentGame(c)!;
     expect(game.cup).toBe('federation');
     expect(game.round).toBe(0);
@@ -499,7 +516,8 @@ describe('época', () => {
   });
 
   it('não se pode saltar uma jornada', () => {
-    expect(() => skipWeek(newClub(1))).toThrow();
+    expect(() => skipWeek({ ...newClub(1), week: PRESEASON_WEEKS + 1 })).toThrow();
+    expect(skipWeek(newClub(1)).week).toBe(2);
   });
 
   it('uma época inteira acaba com tudo jogado, balanço e calendário novo', () => {
@@ -782,7 +800,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(9);
+    expect(migrated.version).toBe(11);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -799,7 +817,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(9);
+    expect(migrated.version).toBe(11);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

@@ -1,9 +1,12 @@
 import { CUP_NAMES, CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
-import { LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, weekCup, weekRound, type Standing } from '../sim/league.ts';
+import { LEAGUE_SIZE, MOVING_PLACES, PRESEASON_WEEKS, SEASON_WEEKS, weekCup, weekRound, type Standing } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import type { TownPlace } from './art/town.ts';
+import { leagueIcon } from './art/leagues.ts';
 import { foundCards } from './club-screens.ts';
-import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { clubIdentity } from './art/identity.ts';
+import { emblemImage } from './art/kit.ts';
+import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord, weeksToNextGame } from './club.ts';
 import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
 import { presidentFired, presidentSeason, say, secretaryMood } from './staff.ts';
@@ -39,7 +42,7 @@ const MONTHS = ['Setembro', 'Outubro', 'Novembro', 'Dezembro', 'Janeiro', 'Fever
 const WEEKS_PER_MONTH = 4;
 
 /** Por cima do mapa: a data, a confiança e uma etiqueta tocável em cada edifício. */
-export function townOverlay(club: ClubState, places: Record<TownPlace, { x: number; y: number }>): string {
+export function townOverlay(club: ClubState, places: Record<TownPlace, { x: number; y: number }>, saveFailed = false): string {
   const cards = totalCards(club);
   const week = club.week - 1;
   const month = MONTHS[Math.floor(week / WEEKS_PER_MONTH)] ?? MONTHS[MONTHS.length - 1]!;
@@ -49,13 +52,47 @@ export function townOverlay(club: ClubState, places: Record<TownPlace, { x: numb
     const left = Math.max(0.14, Math.min(0.86, x));
     return `<button type="button" class="town-chip" id="${id}" style="left:${(left * 100).toFixed(1)}%;top:${(y * 100).toFixed(1)}%">${label}</button>`;
   };
-  return `<div class="town-bar"><span>${month} · Semana ${week % WEEKS_PER_MONTH + 1}</span><span class="${club.confidence < 15 ? 'low' : ''}">Confiança ${Math.round(club.confidence)}%</span></div>
+  // A barra diz quando é o jogo; numa semana livre deixa passar à frente.
+  const until = weeksToNextGame(club);
+  const game = until === null ? 'Época terminada' : until === 0 ? 'Jogo esta semana' : until === 1 ? 'Jogo na próxima semana' : `Jogo daqui a ${until} semanas`;
+  const skip = until !== 0 ? '<button type="button" id="skipWeekBtn">Passar a semana ›</button>' : '';
+  return `<div class="town-bar"><span>${month} · Semana ${week % WEEKS_PER_MONTH + 1}</span><span class="game">${game}</span>${skip}<span class="${club.confidence < 15 ? 'low' : ''}">Confiança ${Math.round(club.confidence)}%</span></div>${matchNotice(club, until)}
     ${chip('arena', 'arenaChip', 'Pavilhão')}
     ${chip('office', 'officeBtn', 'Escritório')}
     ${chip('training', 'trainBtn', `Treino (${cards})`)}
     ${chip('federation', 'federationBtn', 'Federação')}
     ${chip('tower', 'towerChip', 'Torre')}
-    ${chip('airport', 'airportChip', 'Aeroporto')}`;
+    ${chip('airport', 'airportChip', 'Aeroporto')}
+    ${townNote(club, saveFailed)}`;
+}
+
+/** O próximo jogo, no centro de cima do mapa, com os dois emblemas: quem joga em casa fica à esquerda. */
+function matchNotice(club: ClubState, until: number | null): string {
+  if (until === null) return '';
+  const then = { ...club, week: club.week + until };
+  const game = currentGame(then)!;
+  const rival = opponentOf(then);
+  const home = game.fixture.home === PLAYER_CLUB;
+  const own = `<img class="emblem" alt="" src="${emblemImage(club.emblem)}"><b>${escapeHtml(club.team.short)}</b>`;
+  const other = `<img class="emblem" alt="" src="${emblemImage(clubIdentity(rival.name).emblem)}"><b>${escapeHtml(rival.short)}</b>`;
+  const when = until === 0 ? 'Esta semana' : until === 1 ? 'Próxima semana' : `Daqui a ${until} semanas`;
+  return `<div class="town-match">${home ? own : other}<span>vs</span>${home ? other : own}<small>${officialLabel(then)} · ${when} · ${home ? 'Em casa' : 'Fora'}</small></div>`;
+}
+
+/** A secretária e a linha da semana, num canto do mapa: a cidade é o menu, não há painel. */
+function townNote(club: ClubState, saveFailed: boolean): string {
+  const game = currentGame(club);
+  const own = leagueTable(club).find(row => row.club === PLAYER_CLUB)!;
+  const cupWeek = weekCup(club.week);
+  const status = cupWeek ? cupStatus(club, cupWeek.cup) : null;
+  const label = !game
+    ? `${club.week <= PRESEASON_WEEKS ? 'Pré-época' : 'Semana livre'} · ${cupWeek && status ? (status.winner === PLAYER_CLUB ? `Vencedores da ${CUP_NAMES[cupWeek.cup]}` : status.entered ? `Fora da ${CUP_NAMES[cupWeek.cup]}` : `Semana da ${CUP_NAMES[cupWeek.cup]}`) : 'Sem jogo oficial'}`
+    : `${officialLabel(club)} · ${game.fixture.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
+  return `<div class="town-note">
+    ${say('secretary', secretaryMood(club, staffNote(club)), staffNote(club), 'staffNote')}
+    <div class="citydetail">${label} · Época ${club.season} · <img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.division)}"> ${divisionName(club.division)}${own.played > 0 ? ` · ${place(leaguePosition(club))}` : ''} · ${own.wins} V · ${own.losses} D</div>
+    ${saveFailed ? '<p class="hint warn">Este browser não deixa guardar: o clube perde-se ao fechar a página.</p>' : ''}
+  </div>`;
 }
 
 export const TOWER_NOTE = 'A torre guarda tudo sozinha. Este clube fica guardado neste browser.';
@@ -75,34 +112,13 @@ export function officialLabel(club: ClubState): string {
   return game.cup ? `${CUP_NAMES[game.cup]} · ${cupRoundName(game.cup, game.round)}` : `Jornada ${game.round + 1} de ${(LEAGUE_SIZE - 1) * 2}`;
 }
 
-export function cityPanel(club: ClubState, saveFailed: boolean): string {
-  const game = currentGame(club);
-  const round = game ? game.round : null;
-  const own = leagueTable(club).find(row => row.club === PLAYER_CLUB)!;
-  const cupWeek = weekCup(club.week);
-  const status = cupWeek ? cupStatus(club, cupWeek.cup) : null;
-  const label = !game
-    ? `Semana livre · ${cupWeek && status ? (status.winner === PLAYER_CLUB ? `Vencedores da ${CUP_NAMES[cupWeek.cup]}` : status.entered ? `Fora da ${CUP_NAMES[cupWeek.cup]}` : `Semana da ${CUP_NAMES[cupWeek.cup]}`) : 'Sem jogo oficial'}`
-    : `${officialLabel(club)} · ${game.fixture.home === PLAYER_CLUB ? 'Em casa' : 'Fora'} · ${escapeHtml(opponentOf(club).name)}`;
-  return `<div class="cityp">
-    ${say('secretary', secretaryMood(club, staffNote(club)), staffNote(club), 'staffNote')}
-    <div class="citydetail">${label}</div>
-    <div class="citydetail">Época ${club.season} · ${divisionName(club.division)}${own.played > 0 ? ` · ${place(leaguePosition(club))}` : ''} · ${own.wins} V · ${own.losses} D</div>
-    ${round === null
-      ? '<div class="two"><button type="button" class="primary" id="startBtn">Propostas de jogo</button><button type="button" id="skipWeekBtn">Próxima semana</button></div>'
-      : `<div class="two"><button type="button" class="primary" id="startBtn">Ir para o pavilhão</button><button type="button" id="practiceBtn" ${club.practicedThisWeek ? 'disabled' : ''}>${club.practicedThisWeek ? 'Jogo-treino feito' : 'Jogo-treino'}</button></div>`}
-    <div class="two"><button type="button" id="squadBtn">Plantel</button><button type="button" id="tacticsBtn">Táticas</button></div>
-    ${saveFailed ? '<p class="hint warn">Este browser não deixa guardar: o clube perde-se ao fechar a página.</p>' : ''}
-  </div>`;
-}
-
 function tableRows(club: ClubState, table: readonly Standing[], division: number): string {
   const rows = table.map((row, position) => {
     const up = position < MOVING_PLACES && division < DIVISIONS.length - 1;
     const down = position >= LEAGUE_SIZE - MOVING_PLACES && division > 0;
     const zone = up ? ' up' : down ? ' down' : '';
     const diff = row.pointsFor - row.pointsAgainst;
-    return `<div class="table-row${zone}${row.club === PLAYER_CLUB ? ' mine' : ''}"><span>${position + 1}</span><span class="name">${escapeHtml(clubName(club, row.club))}</span><span>${row.wins}</span><span>${row.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></div>`;
+    return `<div class="table-row${zone}${row.club === PLAYER_CLUB ? ' mine' : ''}"><span>${position + 1}</span><span class="name"><img class="emblem" alt="" style="width:14px;height:14px;margin-right:3px" src="${emblemImage(row.club === PLAYER_CLUB ? club.emblem : clubIdentity(clubName(club, row.club)).emblem)}">${escapeHtml(clubName(club, row.club))}</span><span>${row.wins}</span><span>${row.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></div>`;
   }).join('');
   return `<div class="table-row head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>${rows}`;
 }

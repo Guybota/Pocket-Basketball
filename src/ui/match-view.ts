@@ -30,6 +30,8 @@ const RUN_BANNERS = [8, 12, 16];
 // Os bancos ficam afastados da linha, com espaço para o treinador andar à frente deles.
 const BENCH_Y = -9.6;
 const COACH_Y = -8.6;
+// O treinador anda a passo, em metros por segundo.
+const COACH_SPEED = 2.5;
 const SWISH_TICKS = 10;
 const TRAIL_LENGTH = 6;
 const HOOP_FRONT_OFFSET = 0.5;
@@ -112,6 +114,12 @@ export class MatchView {
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
   private forecast: { ours: number; confident: boolean } | null = null;
   private coachUpsetUntil: [number, number] = [0, 0];
+  // Onde cada treinador está: segue o alvo a andar, e nunca salta de sítio.
+  private readonly coachPos: (Point | null)[] = [null, null];
+  // O relógio das animações: anda com a simulação e, com ela parada, com o tempo real, para ninguém ficar hirto numa pausa.
+  private animTime = 0;
+  private animTick = 0;
+  private frameSeconds = 0;
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
   // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
   private readonly referee = { x: 14, y: -1, prevX: 14, prevY: -1, flip: false, moving: false, signalUntil: 0 };
@@ -129,11 +137,13 @@ export class MatchView {
   private swishHoop = HOOP_LEFT;
   private shakeUntil = 0;
   private fadeInUntil = 0;
+  // Quem foi tocado, e até quando o nome fica por cima dele.
+  private readonly nameTags = new Map<Body, number>();
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit) {
     this.g = g;
     this.callbacks = callbacks;
     this.s = state ?? createMatch(home, away, seed, controlled, visitor);
@@ -142,7 +152,7 @@ export class MatchView {
     this.pixels = new Uint32Array(this.image.data.buffer);
     this.camera.setViewport(g.canvas.width, g.canvas.height);
     for (const b of this.s.bodies) {
-      this.looks.set(b, b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : lookOf(b.player, 'cream'));
+      this.looks.set(b, b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : { ...lookOf(b.player, 'cream'), custom: awayKit });
       this.previous.set(b, { x: b.x, y: b.y });
     }
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'suit'), style: 0, legs: 6, torso: 6, build: 'athletic' });
@@ -156,7 +166,7 @@ export class MatchView {
     for (let i = 0; i < 12; i++) {
       const fan: Player = { name: `Adepto ${i * 7919}`, attributes: { shooting: 50, speed: 50, stamina: 50, technique: 50, strength: 40 + ((i * 37) % 40), jumping: 50, willpower: 50 }, heightCm: 168 + ((i * 53) % 24), weightKg: 66 + ((i * 29) % 30), moves: [], offBall: 'balanced', onBall: 'balanced', potential: 50, fatigue: 0 };
       // Metade veste a camisola do clube; os outros, roupa de rua. Ninguém usa fita na cabeça, que é coisa de jogador.
-      const look: Look = i % 2 === 1 ? lookOf(fan, i % 4 === 1 ? 'fan' : 'fan2') : { ...lookOf(fan, crowdKit), custom: this.crowdTeam === 0 ? homeKit : undefined };
+      const look: Look = i % 2 === 1 ? lookOf(fan, i % 4 === 1 ? 'fan' : 'fan2') : { ...lookOf(fan, crowdKit), custom: this.crowdTeam === 0 ? homeKit : awayKit };
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
@@ -667,7 +677,7 @@ export class MatchView {
     }
     if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
-    if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((s.tick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
+    if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
     return { pose: b.team === s.offense ? 'idle' : 'defend', withBall: false };
   }
 
@@ -700,17 +710,28 @@ export class MatchView {
       // Nas paragens vai ter com a equipa, e fala-lhes de prancheta na mão.
       const huddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
       const coachBase = team === 0 ? 8 : 23.7;
-      const [cx, cy] = huddle ? camera.project(coachBase - 2.6, -6.4) : camera.project(coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, COACH_Y);
-      const walking = !huddle && Math.abs(Math.cos(time * 0.5 + team * 2)) > 0.3;
+      // O alvo é a roda da equipa, ou um passeio em frente ao banco; o treinador vai lá a andar, ao seu passo.
+      const target: Point = huddle ? { x: coachBase - 2.6, y: -6.4 } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
+      const pos = this.coachPos[team] ?? (this.coachPos[team] = { ...target });
+      const dx = target.x - pos.x;
+      const dy = target.y - pos.y;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.min(dist, COACH_SPEED * this.frameSeconds);
+      if (dist > 0.001) {
+        pos.x += (dx / dist) * step;
+        pos.y += (dy / dist) * step;
+      }
+      const walking = step > 0.006;
+      const [cx, cy] = camera.project(pos.x, pos.y);
       const coachFrame = Math.floor(time * 6) % 4;
       const standing: PoseName = (Math.floor(time / 6.3) + team) % 3 === 0 ? 'think' : (Math.floor(time / 6.3) + team) % 3 === 1 ? 'point' : 'idle';
       // Festeja com o banco, protesta nas faltas, fica de mãos na cabeça quando leva um afundanço, e dá instruções no desconto.
-      const coachPose: PoseName = s.tick < this.coachUpsetUntil[team] ? 'handsHead' : cheering ? (Math.floor(s.tick / 3) % 2 ? 'cheer0' : 'fists') : huddle ? ((s.tick >> 5) % 3 === 2 ? 'point' : 'board') : walking ? RUN_FRAMES[coachFrame]! : standing;
+      const coachPose: PoseName = s.tick < this.coachUpsetUntil[team] ? 'handsHead' : cheering ? (Math.floor(this.animTick / 3) % 2 ? 'cheer0' : 'fists') : walking ? RUN_FRAMES[coachFrame]! : huddle ? ((this.animTick >> 5) % 3 === 2 ? 'point' : 'board') : standing;
       drawables.push({
         y: cy,
         draw: () => {
           drawShadow(g, cx, cy);
-          drawSprite(g, coachPose, this.coaches[team], cx, cy, walking && Math.cos(time * 0.5 + team * 2) < 0, false, false);
+          drawSprite(g, coachPose, this.coaches[team], cx, cy, walking && dx < 0, false, false);
         },
       });
     }
@@ -733,15 +754,18 @@ export class MatchView {
   }
 
   /** Desenha um frame. `alpha` é a fração entre dois passos da simulação e `simSeconds` o tempo decorrido no jogo. */
-  render(alpha: number, simSeconds: number): void {
+  render(alpha: number, simSeconds: number, realSeconds = simSeconds): void {
     const { g, s, camera } = this;
-    const time = s.tick / 20;
+    this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
+    this.animTime += this.frameSeconds;
+    this.animTick = Math.floor(this.animTime * 20);
+    const time = this.animTime;
     const { theme } = this.textures;
     const [lookX, lookY] = this.cameraTarget();
     const ease = 1 - Math.exp(-simSeconds * 2.2);
     camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
     const excited = s.tick < this.excitedUntil;
-    const crowdFrame = excited ? (s.tick >> 2) % 2 ? 2 : 1 : (s.tick >> 5) % 3 === 0 ? 1 : 0;
+    const crowdFrame = excited ? (this.animTick >> 2) % 2 ? 2 : 1 : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
     camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
     if (excited && theme.flashes && !this.reducedMotion) {
       // Flashes de fotografia nas bancadas.
@@ -850,6 +874,7 @@ export class MatchView {
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
     this.drawCarrier(alpha);
+    this.drawNameTags(alpha);
     this.drawFloaters();
     this.drawBubbles();
     this.drawForecast();
@@ -1028,6 +1053,46 @@ export class MatchView {
   }
 
   /** O jogador com a bola, ou para quem ela vai a caminho. */
+  /** Toca-se num jogador e o nome fica uns segundos por cima dele. Devolve se acertou em alguém. */
+  tapAt(px: number, py: number): boolean {
+    const { camera, s } = this;
+    let best: Body | null = null;
+    let bestDistance = 18;
+    for (const b of [...s.court[0], ...s.court[1]]) {
+      const [sx, sy] = camera.project(b.x, b.y);
+      const d = Math.hypot(sx - px, sy - spriteHeight(this.looks.get(b)!) / 2 - py);
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = b;
+      }
+    }
+    if (!best) return false;
+    this.nameTags.set(best, s.tick + 50);
+    return true;
+  }
+
+  /** Os nomes por cima de quem foi tocado. A letra do jogo só tem maiúsculas sem acentos. */
+  private drawNameTags(alpha: number): void {
+    const { g, s, camera } = this;
+    for (const [b, until] of this.nameTags) {
+      if (s.tick >= until || b.slot < 0) {
+        this.nameTags.delete(b);
+        continue;
+      }
+      const prev = this.previous.get(b)!;
+      const [x, y] = camera.project(prev.x + (b.x - prev.x) * alpha, prev.y + (b.y - prev.y) * alpha);
+      const label = b.player.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+      const w = textWidth(label, 1) + 4;
+      const left = Math.max(1, Math.min(camera.width - w - 1, (x | 0) - (w >> 1)));
+      const top = Math.max(1, (y | 0) - spriteHeight(this.looks.get(b)!) - 12);
+      g.fillStyle = b.team === 0 ? '#2b5fd9' : '#cf3a2c';
+      g.fillRect(left, top, w, 9);
+      g.fillStyle = '#1b2230';
+      g.fillRect(left, top + 9, w, 1);
+      text(g, label, left + 2, top + 2, '#fbf6e2', 1);
+    }
+  }
+
   carrier(): Body | null {
     const { s } = this;
     return s.holder ?? (s.flight?.kind === 'pass' ? s.flight.target : null);

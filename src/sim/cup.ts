@@ -15,9 +15,9 @@ export interface CupState {
 
 /** As semanas de cada taça. Para quem não joga nessa semana, é uma semana livre. */
 export const CUP_WEEKS: Record<CupName, readonly number[]> = {
-  federation: [2, 6, 10, 14, 18, 22],
-  continental: [4, 12, 20, 26],
-  world: [28],
+  federation: [4, 8, 12, 16, 20, 24],
+  continental: [6, 14, 22, 28],
+  world: [30],
 };
 
 export const CUP_NAMES: Record<CupName, string> = { federation: 'Taça da Federação', continental: 'Taça Continental', world: 'Mundial de Clubes' };

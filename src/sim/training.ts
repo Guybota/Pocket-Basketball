@@ -91,7 +91,8 @@ export const COMBOS: readonly Combo[] = [
 
 export const MAX_CARDS_PER_PLAYER = 3;
 export const MAX_MOVES_PER_PLAYER = 2;
-const FATIGUE_BY_CATEGORY: Record<CardCategory, number> = { tactic: 0.03, technique: 0.05, physical: 0.08, support: -0.1 };
+// A condição física tem de aguentar uma época inteira de jogos e treinos: o treino cansa pouco, e descansar recupera bem.
+const FATIGUE_BY_CATEGORY: Record<CardCategory, number> = { tactic: 0.01, technique: 0.02, physical: 0.03, support: -0.1 };
 const ATTRIBUTE_MAX = 99;
 const ATTRIBUTE_MIN = 1;
 

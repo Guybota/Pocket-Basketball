@@ -7,11 +7,15 @@ export const BALANCE = {
   shotClockSeconds: 11,
   offensiveReboundShotClockSeconds: 7,
   deadBallSeconds: 0.4,
+  // Com trocas, a bola parada dura o bastante para quem entra e quem sai irem a andar antes da reposição.
+  substitutionSeconds: 1.6,
   // Reposição: quem repõe fica fora de campo, assenta os pés e passa a quem vem receber.
   // Quem repõe vai buscar a bola onde ela ficou e leva-a até à linha; só se espera por ele até aqui.
   inboundMaxWaitSeconds: 8,
   inboundSettleSeconds: 0.35,
   inboundOutside: 0.7,
+  // Uma bola perdida rola até à linha mais perto, a esta velocidade, antes de a reposição começar.
+  lostBallRollSpeed: 6,
   inboundTwoReceiversChance: 0.35,
   // Início do jogo: as equipas entram a andar e a bola sobe entre dois saltadores.
   introMaxSeconds: 5,
@@ -35,8 +39,28 @@ export const BALANCE = {
   outletSkillSlope: 0.02,
   // Ninguém sai das linhas com a bola em jogo: quem fica fora desliza para dentro a este ritmo, por passo.
   lineSlide: 0.4,
-  // Sem pressão, a defesa espera o ataque aqui, em vez de o seguir até ao outro lado.
+  // Pressão normal: a defesa espera o ataque aqui. A meio campo, espera na linha do meio. Campo inteiro: segue-o sempre.
   defensePickUpU: 10.5,
+  halfCourtPickUpU: 14,
+  // Zona: cada defensor guarda o seu sítio, puxado um pouco para a bola; quem a tem mais perto fecha-se sobre ela.
+  zoneBallPull: 0.45,
+  zoneCloseRange: 3,
+  zoneCloseGap: 0.8,
+  // Saída contra pressão: no campo de trás, um colega vem dar linha de passe, e quem tem a bola passa-a em vez de a segurar.
+  pressHelpDistance: 4,
+  pressBreakPressure: 0.3,
+  pressBreakPassChance: 0.8,
+  // Jogadas: o bloqueio conta quando o bloqueador está a esta distância do defensor; com ele posto, a penetração apetece mais.
+  screenSetRange: 1.4,
+  screenPressureFactor: 0.5,
+  pickRollDrive: 1.4,
+  // Livre e à distância, ninguém fica a segurar a bola.
+  openPressure: 0.25,
+  // Em cada posse, a equipa escolhe a jogada pelo foco do ataque: [livre, pick-and-roll, bloqueios sem bola].
+  playsInside: [0.3, 0.6, 0.1],
+  playsMixed: [0.5, 0.25, 0.25],
+  playsOutside: [0.3, 0.1, 0.6],
+  openHoldFactor: 0.6,
   // Lances livres: o árbitro vai buscar a bola ao aro e entrega-a ao lançador entre cada lance.
   freeThrowSeconds: 3,
   freeThrowSetupSeconds: 2,
@@ -67,8 +91,8 @@ export const BALANCE = {
   cutMaxSeconds: 2.4,
 
   // Decisões do portador da bola
-  decisionMinSeconds: 0.3,
-  decisionMaxSeconds: 0.64,
+  decisionMinSeconds: 0.33,
+  decisionMaxSeconds: 0.74,
   shootingRangeU: 10,
   forcedShotSeconds: 1,
   holdWeight: 0.32,

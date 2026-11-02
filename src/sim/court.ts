@@ -50,6 +50,8 @@ export const ARC_SPOTS: readonly (readonly [number, number])[] = [[1.3, 6.5], [5
 /** Pontos de quem joga de costas para o cesto. */
 export const LOW_POST_SPOTS: readonly (readonly [number, number])[] = [[2.6, 1.9], [2.2, 1.4], [3.2, 2.2]];
 /** Onde cada um ataca o ressalto, por lugar no ataque, para não irem todos para o mesmo sítio. */
+/** A zona 2-3: dois à frente, três atrás, de cada lado do garrafão. */
+export const ZONE_SPOTS: readonly (readonly [number, number])[] = [[6.6, -3.2], [6.6, 3.2], [2.6, -3.6], [2.6, 0], [2.6, 3.6]];
 export const CRASH_SPOTS: readonly (readonly [number, number])[] = [[3.6, 0], [3.2, -3], [3.2, 3], [3, 2.1], [2.6, -1.9]];
 /** Pontos de quem corta: uma posição aberta e duas junto ao cesto. */
 export const CUT_SPOTS: readonly (readonly [number, number])[] = [[5.4, 5.7], [1.9, 0.9], [2.4, 0.3]];

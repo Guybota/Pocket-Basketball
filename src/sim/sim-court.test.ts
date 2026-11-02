@@ -26,7 +26,8 @@ describe('ressaltos', () => {
       while (s.phase !== 'end') {
         const events = s.events.length;
         step(s);
-        if (s.phase === 'rebound' && s.loose) {
+        // Uma bola perdida a rolar para fora também é «rebound», mas ninguém a disputa.
+        if (s.phase === 'rebound' && s.loose && s.loose.chasers.length > 0) {
           if (!current) {
             current = { startZ: s.loose.fromZ, peak: s.ball.z, endX: s.ball.x, toX: s.loose.toX, blocked: s.events.slice(events).some(e => e.type === 'block'), caught: false };
             found.push(current);

@@ -1,23 +1,25 @@
 import { BALANCE as B } from '../sim/balance.ts';
 import { PLAYOFF_FORMATS, PLAYOFF_WEEKS, createPlayoffs, drawNextRound, nextGame, playoffExit, playoffWinner, seriesWinner, seriesWins, type PlayoffState, type Series } from '../sim/playoff.ts';
 import { CUP_ROUNDS, CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, createKnockoutCup, cupExit, cupWinner, drawCupRound, settleCupRound, type CupName, type CupState } from '../sim/cup.ts';
-import { LEAGUE_SIZE, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
+import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
-import { DIVISIONS, generatePlayer, generateTeam, playerRating, teamRating } from '../sim/teamgen.ts';
+import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
-import { DEFAULT_KITS, PALETTE, defaultEmblem, isLight, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
+import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
+import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 9;
+const SAVE_VERSION = 11;
 // Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
 const PLAYOFF_GAME_FATIGUE = 0.6;
-const MATCH_FATIGUE = 0.22;
+// Um jogo inteiro tira 10 % de condição; quem joga e treina todas as semanas fica à volta dos 70 %.
+const MATCH_FATIGUE = 0.1;
 // Dois períodos sem público cansam metade de um jogo a sério.
 const PRACTICE_FATIGUE = 0.5;
 export const CLUB_NAME_MAX = 24;
-const WEEKLY_RECOVERY = 0.5;
+const WEEKLY_RECOVERY = 0.4;
 // A resistência faz recuperar mais de semana para semana: com 90, fica 0,38 do cansaço; com 20, 0,59.
 const STAMINA_RECOVERY = 0.3;
 // Lesões, como no original: quem joga cansado arrisca-se, e fica de fora umas semanas.
@@ -160,17 +162,25 @@ export interface ClubState {
   seasonReport: SeasonRecord | null;
 }
 
-/** Os 40 clubes das 4 divisões. O nosso entra na divisão pedida e os outros são repartidos ao acaso. */
+/** Os 40 clubes das 4 divisões, sempre os mesmos em cada divisão, como no original. O nosso entra na divisão pedida no lugar do último dela. */
 function createWorld(seed: number, division: number, playerName: string): { clubs: LeagueClub[]; divisions: number[][] } {
   const rng = makeRng(seed ^ 0x77a1c3);
-  const names = shuffled(CLUB_NAMES.filter(name => name !== playerName), rng).slice(0, DIVISIONS.length * LEAGUE_SIZE - 1);
   const clubs: LeagueClub[] = [{ name: playerName, short: shortName(playerName), seed, level: 0 }];
-  names.forEach((name, i) => clubs.push({ name, short: shortName(name), seed: (seed * 31 + (i + 1) * 7919) & 0x7fffffff, level: 0 }));
-  const others = shuffled(names.map((_, i) => i + 1), rng);
+  const spare = CLUB_NAMES[DIVISIONS.length * LEAGUE_SIZE]!;
   const divisions: number[][] = DIVISIONS.map((d, index) => {
-    const ids = others.splice(0, index === division ? LEAGUE_SIZE - 1 : LEAGUE_SIZE);
-    for (const id of ids) clubs[id]!.level = d.level + between(rng, -B.clubLevelSpread, B.clubLevelSpread);
+    // Se o nosso clube tem o nome de um clube da lista, esse sai e entra o de reserva.
+    const group = CLUB_NAMES.slice(index * LEAGUE_SIZE, (index + 1) * LEAGUE_SIZE).filter(name => name !== playerName);
+    if (group.length < LEAGUE_SIZE) group.push(spare);
+    const ids = group.slice(0, index === division ? LEAGUE_SIZE - 1 : LEAGUE_SIZE).map(name => {
+      clubs.push({ name, short: shortName(name), seed: (seed * 31 + clubs.length * 7919) & 0x7fffffff, level: d.level + between(rng, -B.clubLevelSpread, B.clubLevelSpread) });
+      return clubs.length - 1;
+    });
     return index === division ? [PLAYER_CLUB, ...ids] : ids;
+  });
+  // Os jogadores vêm todos do mesmo pool, repartidos ao acaso nesta carreira.
+  const deal = dealPool(rng, clubs.length);
+  clubs.forEach((club, i) => {
+    club.players = deal[i];
   });
   clubs.push(...foreignClubs(seed, rng));
   return { clubs, divisions };
@@ -219,9 +229,9 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
   const cards: Partial<Record<CardId, number>> = {};
   for (const card of STARTING_CARDS) cards[card] = (cards[card] ?? 0) + 1;
   const name = CLUB_NAMES[Math.abs(seed) % CLUB_NAMES.length]!;
-  // No nosso clube, os movimentos especiais aprendem-se no treino.
-  const team = generateTeam(seed * 2 + 1, name, DIVISIONS[division]!.level + B.playerClubLevelOffset);
   const world = createWorld(seed, division, name);
+  // No nosso clube, os movimentos especiais aprendem-se no treino.
+  const team = generateTeamFrom(world.clubs[PLAYER_CLUB]!.players!.map(i => PLAYER_POOL[i]!), seed * 2 + 1, name, DIVISIONS[division]!.level + B.playerClubLevelOffset);
   const squad: Team = { ...team, short: shortName(name), roster: team.roster.map(player => ({ ...player, moves: [] })) };
   const qualified = firstQualified(world.clubs, world.divisions, seed);
   return {
@@ -316,7 +326,9 @@ export function aiTeam(club: LeagueClub): Team {
   if (cached) return cached;
   const rng = makeRng(club.seed ^ 0x1f3d5);
   const pick = (): number => TACTIC_CHOICES[Math.floor(next(rng) * TACTIC_CHOICES.length)]!;
-  const team: Team = { ...generateTeam(club.seed, club.name, club.level), short: club.short, tactics: { pressure: pick(), spacing: pick(), pace: pick() } };
+  const defense = next(rng) < 0.3 ? 'zone' : 'man';
+  const generated = club.players ? generateTeamFrom(club.players.map(i => PLAYER_POOL[i]!), club.seed, club.name, club.level) : generateTeam(club.seed, club.name, club.level);
+  const team: Team = { ...generated, short: club.short, tactics: { pressure: pick(), spacing: pick(), pace: pick(), defense } };
   if (teamCache.size > 60) teamCache.clear();
   teamCache.set(key, team);
   return team;
@@ -324,9 +336,8 @@ export function aiTeam(club: LeagueClub): Team {
 
 export const opponentOf = (club: ClubState): Team => aiTeam(club.clubs[opponentId(club)]!);
 
-/** A cor de cada clube da liga, para o pavilhão dele. Vem da semente, por isso não muda com os clubes guardados. */
-const VENUE_COLORS = PALETTE.filter(color => !isLight(color));
-export const clubColor = (club: LeagueClub): string => VENUE_COLORS[club.seed % VENUE_COLORS.length]!;
+/** A cor de cada clube da liga, para o pavilhão dele: a cor principal do emblema. */
+export const clubColor = (club: LeagueClub): string => clubIdentity(club.name).emblem.primary;
 
 /** A equipa como entra em campo, com as táticas escolhidas. */
 /** A equipa que vai a jogo: os lesionados ficam de fora, se sobrarem cinco. */
@@ -976,6 +987,14 @@ export function specialTeam(club: ClubState, id: number): Team {
 /** A equipa de qualquer adversário, da liga ou especial. */
 export const rivalTeam = (club: ClubState, id: number): Team => (id < 0 ? specialTeam(club, id) : aiTeam(club.clubs[id]!));
 
+/** Quantas semanas faltam para o próximo jogo oficial: 0 se é esta semana, null se a época já não tem mais. */
+export function weeksToNextGame(club: ClubState): number | null {
+  for (let week = club.week; week <= SEASON_WEEKS + PLAYOFF_WEEKS; week++) {
+    if (currentGame({ ...club, week })) return week - club.week;
+  }
+  return null;
+}
+
 /** Numa semana livre, pode-se passar à frente sem jogar. */
 export function skipWeek(club: ClubState): ClubState {
   if (currentFixture(club)) throw new Error('Esta semana há jogo oficial');
@@ -1024,9 +1043,20 @@ function stripPositions(value: unknown): void {
 }
 
 function migrateV8(old: ClubState): ClubState {
-  const next = { ...old, version: SAVE_VERSION };
+  const next = { ...old, version: 9 };
   stripPositions(next);
-  return next;
+  return migrateV9(next);
+}
+
+/** A época ganhou duas semanas de pré-época: o calendário todo andou duas semanas para a frente. */
+function migrateV9(old: ClubState): ClubState {
+  return migrateV10({ ...old, version: 10, week: old.week + PRESEASON_WEEKS });
+}
+
+/** Os jogadores passaram a vir de um pool fixo: os clubes guardados sem jogadores recebem os deles. O nosso plantel já está guardado. */
+function migrateV10(old: ClubState): ClubState {
+  const deal = dealPool(makeRng(old.seed ^ 0x77a1c3), FOREIGN_START);
+  return { ...old, version: SAVE_VERSION, clubs: old.clubs.map((club, i) => (i < FOREIGN_START && !club.players ? { ...club, players: deal[i] } : club)) };
 }
 
 /** Antes dos playoffs, a época acabava na fase regular. */
@@ -1037,7 +1067,8 @@ function migrateV4(old: ClubState): ClubState {
 /** Antes das taças, a época tinha 19 semanas. O clube entra na taça desta época só se ela ainda não começou. */
 function migrateV3(old: ClubState): ClubState {
   const cup = createFederationCup(old.divisions, id => old.clubs[id]!.level);
-  const started = old.week > CUP_WEEKS.federation[0]!;
+  // No calendário dessa altura a pré-eliminatória era na semana 2.
+  const started = old.week > 2;
   // Nesta versão ainda não havia Taça Continental: a migração seguinte acrescenta-a.
   return migrateV4(drawCups({ ...old, version: 4, cups: { federation: started ? { ...cup, alive: cup.alive.filter(id => id !== PLAYER_CLUB) } : cup } as ClubState['cups'] }));
 }
@@ -1105,10 +1136,13 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 6) parsed = migrateV6(parsed);
     if (parsed.version === 7) parsed = migrateV7(parsed);
     if (parsed.version === 8) parsed = migrateV8(parsed);
+    if (parsed.version === 9) parsed = migrateV9(parsed);
+    if (parsed.version === 10) parsed = migrateV10(parsed);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
     if (parsed.divisions.some(ids => !Array.isArray(ids) || ids.length !== LEAGUE_SIZE || ids.some(id => !parsed.clubs[id]))) return null;
+    if (parsed.clubs.some((c: LeagueClub) => c.players !== undefined && (!Array.isArray(c.players) || c.players.length !== ROSTER_SLOTS.length || c.players.some(i => !Number.isInteger(i) || i < 0 || i >= PLAYER_POOL.length)))) return null;
     if (!leagueIds(parsed).includes(PLAYER_CLUB) || !Array.isArray(parsed.rounds) || !validRounds(parsed) || !validCups(parsed)) return null;
     if (typeof parsed.stats !== 'object' || parsed.stats === null || !Array.isArray(parsed.history)) return null;
     return parsed;

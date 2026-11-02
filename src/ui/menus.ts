@@ -3,14 +3,16 @@ import { BALANCE as B } from '../sim/balance.ts';
 import { CUP_NAMES, CUP_ROUNDS, FEDERATION_ROUNDS, type CupName } from '../sim/cup.ts';
 import { seriesWinner, seriesWins } from '../sim/playoff.ts';
 import { drawBracket, fullBracket, type BracketRound, type BracketSlot } from './art/bracket.ts';
-import { LEAGUE_SIZE, MOVING_PLACES } from '../sim/league.ts';
+import { LEAGUE_SIZE, MOVING_PLACES, type Standing } from '../sim/league.ts';
 import { setTactics } from '../sim/match.ts';
 import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, MAX_CARDS_PER_PLAYER, previewGains, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, MAX_FOCUS, gradeOf, type Attributes, type Player, type Team } from '../sim/types.ts';
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
+import { clubIdentity } from './art/identity.ts';
 import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
 import { attributeIcon, iconFrom } from './art/icons.ts';
+import { leagueIcon } from './art/leagues.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { drawFlagScene } from './art/flag.ts';
@@ -18,7 +20,7 @@ import { drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, KITS, drawSprite, lookOf, type Look, type PoseName } from './art/sprites.ts';
 import { CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
-import { TACTIC_ROWS } from './club-screens.ts';
+import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, SLOT_NAMES, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
@@ -58,7 +60,10 @@ let swapping: number | null = null;
 let picked: CardId[] = [];
 let focusCard: CardId | null = null;
 let lastTraining: { before: Player; result: TrainingResult; cards: CardId[]; isNew: boolean; index: number } | null = null;
-let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' | 'ladder' = 'table';
+let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' | 'ladder' | 'squad' = 'table';
+// A divisão que se está a ver na federação, e o jogador escolhido no plantel de um clube.
+let federationDivision = 0;
+let federationPlayer = 0;
 let federationClub = PLAYER_CLUB;
 let officeItem: OfficeItem = 'board';
 let selectedTrophy = 0;
@@ -215,7 +220,7 @@ function trainScreen(): Rendered {
     top: inside(playerCard(selected)),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
-      ${bar(backBtn('town'), `<button type="button" data-go="combos">Combos ${club.knownCombos.length}/${COMBOS.length}</button>`, `<button type="button" class="primary" data-act="openCards" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}>${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)} ›`}</button>`)}`,
+      ${bar(backBtn('town'), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, '<button type="button" data-go="tactics">Táticas</button>', `<button type="button" data-go="combos">Combos ${club.knownCombos.length}/${COMBOS.length}</button>`, `<button type="button" class="primary" data-act="openCards" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}>${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)} ›`}</button>`)}`,
   };
 }
 
@@ -474,7 +479,7 @@ function rivalScreen(): Rendered {
   const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}"`, focus.includes(index))).join(''), true);
   return {
     top: inside(five),
-    bottom: `<div class="rivalhead"><b>${crest(rival.short, true)} ${esc(rival.name)}</b><span>Nível ${gradeOf(teamRating(rival))} · ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
+    bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>Nível ${gradeOf(teamRating(rival))} · <img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
       <div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">${rows}</div>
       ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
@@ -492,7 +497,7 @@ function tacticsScreen(): Rendered {
   const { tactics } = club;
   return {
     top: fullCanvas('tacticsBoard'),
-    bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, options }) => `<div class="tacrow"><span>${label}: ${options.find(([v]) => v === tactics[key])![2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === tactics[key]}">${name}</button>`).join('')}</div></div>`).join('')}</div>${bar(backBtn(tacticsBack))}`,
+    bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, fallback, options }) => `<div class="tacrow"><span>${label}: ${(options.find(([v]) => v === (tactics[key] ?? fallback)) ?? options[0]!)[2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === (tactics[key] ?? fallback)}">${name}</button>`).join('')}</div></div>`).join('')}</div>${bar(backBtn(tacticsBack))}`,
     after: () => drawTacticsBoard(element<HTMLCanvasElement>('tacticsBoard'), tactics),
   };
 }
@@ -612,19 +617,54 @@ function playoffBracket(): [BracketRound[], string] {
   return [fullBracket(rounds, format.roundNames.map(name => name.replace(' de final', '').replace('-finais', '')), format.places.length / 2), format.name];
 }
 
+/** A ficha de um jogador de outro clube: o que se vê de fora, sem salário nem treino. */
+function clubPlayerCard(team: Team, index: number): string {
+  const p = team.roster[index]!;
+  const { emblem, kits } = clubIdentity(team.name);
+  return `<div class="pcard">
+    <header><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(emblem)}"><span>${index < 5 ? SLOT_NAMES[index] : 'Suplente'}</span><b>${esc(p.name)}</b>${bodyStars(p)}</header>
+    <div class="pbody">
+      <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage({ ...lookOf(p, 'cream'), custom: kits[0] })}">
+      <div class="pshirt" aria-label="Camisola ${index + 4}">${index + 4}</div>
+      <div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>
+        <div class="kv"><span>Sem bola</span><b>${OFF_BALL_INFO[p.offBall].name}</b></div>
+        <div class="kv"><span>Com bola</span><b>${ON_BALL_INFO[p.onBall].name}</b></div>
+        <div class="kv"><span>Potencial</span>${chevrons(p.potential)}</div>
+      </div>
+    </div>
+    <div class="pfoot" style="grid-template-columns:1fr">
+      <div class="rows">
+        <div><span>Altura</span><span>${p.heightCm} cm</span></div>
+        <div><span>Peso</span><span>${p.weightKg} kg</span></div>
+        <div><span>Movimentos</span><span>${p.moves.map(m => MOVE_INFO[m].name).join(', ') || 'nenhum'}</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function federationScreen(): Rendered {
-  const table = leagueTable(club);
+  const own = federationDivision === club.division;
+  // Só a nossa divisão se joga jogo a jogo: nas outras, os clubes ordenam-se pelo nível.
+  const table: Standing[] = own
+    ? leagueTable(club)
+    : [...club.divisions[federationDivision]!].sort((a, b) => club.clubs[b]!.level - club.clubs[a]!.level).map(id => ({ club: id, played: 0, wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 }));
   const row = table.find(r => r.club === federationClub) ?? table[0]!;
   const position = table.indexOf(row);
   const info = club.clubs[federationClub]!;
   const team = federationClub === PLAYER_CLUB ? club.team : aiTeam(info);
+  const roster = team.roster;
+  const player = Math.min(federationPlayer, roster.length - 1);
   const recent = club.rounds.flat().filter(f => f.score && (f.home === federationClub || f.away === federationClub)).slice(-5);
   const form = recent.map(f => {
     const own = f.home === federationClub ? f.score![0] : f.score![1];
     const other = f.home === federationClub ? f.score![1] : f.score![0];
     return `<tr><td>${esc(club.clubs[f.home === federationClub ? f.away : f.home]!.name)}</td><td class="${own > other ? 'won' : 'lost'}" style="color:${own > other ? 'var(--good)' : 'var(--bad)'}">${own}-${other}</td></tr>`;
   }).join('');
-  const top = inside(`<div class="note"><header><b>${federationClub === PLAYER_CLUB ? ownCrest(18) : crest(team.short, true)} ${esc(team.name)}</b><span>Lugar ${position + 1}</span></header><div class="inner">
+  const top = federationTab === 'squad'
+    ? inside(federationClub === PLAYER_CLUB ? playerCard(player) : clubPlayerCard(team, player))
+    : inside(`<div class="note"><header><b><img class="emblem" alt="" style="width:18px;height:18px" src="${emblemImage(federationClub === PLAYER_CLUB ? club.emblem : clubIdentity(team.name).emblem)}"> ${esc(team.name)}</b><span>${own ? `Lugar ${position + 1}` : `${position + 1}.º pelo nível`}</span></header><div class="inner">
     <div class="compare" style="grid-template-columns:1fr 1fr 1fr 1fr"><span>${row.wins} V</span><span>${row.losses} D</span><span>${row.pointsFor} pts</span><span>Nível ${gradeOf(teamRating(team))}</span></div>
     <table class="mini-table"><tr><th>Últimos jogos</th><th></th></tr>${form}</table>
     <div>Melhor jogador: ${esc([...team.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!.name)}</div>
@@ -636,7 +676,9 @@ function federationScreen(): Rendered {
       const up = format ? format.places.includes(i) : i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
       const down = i >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0;
       const diff = r.pointsFor - r.pointsAgainst;
-      return `<button type="button" class="crow${up ? ' up' : down ? ' down' : ''}${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}"><span>${i + 1}</span><span class="name">${esc(club.clubs[r.club]!.name)}</span><span>${r.wins}</span><span>${r.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></button>`;
+      const crestImg = `<img class="emblem" alt="" style="width:14px;height:14px;margin-right:3px" src="${emblemImage(r.club === PLAYER_CLUB ? club.emblem : clubIdentity(club.clubs[r.club]!.name).emblem)}">`;
+      if (!own) return `<button type="button" class="crow${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}" style="grid-template-columns:22px 1fr auto"><span>${i + 1}</span><span class="name">${crestImg}${esc(club.clubs[r.club]!.name)}</span><span>Nível ${gradeOf(teamRating(r.club === PLAYER_CLUB ? club.team : aiTeam(club.clubs[r.club]!)))}</span></button>`;
+      return `<button type="button" class="crow${up ? ' up' : down ? ' down' : ''}${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}"><span>${i + 1}</span><span class="name">${crestImg}${esc(club.clubs[r.club]!.name)}</span><span>${r.wins}</span><span>${r.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></button>`;
     }).join('')}`;
   } else if (federationTab === 'calendar') {
     body = club.rounds.map((round, n) => {
@@ -672,15 +714,23 @@ function federationScreen(): Rendered {
     };
     const picker = `<div class="chalktabs">${(['federation', 'continental', 'world'] as CupName[]).map(cup => `<button type="button" data-cup-view="${cup}" aria-pressed="${cupView === cup}">${CUP_NAMES[cup].replace('Taça da ', '').replace('Taça ', '').replace(' de Clubes', '')}</button>`).join('')}</div>`;
     body = picker + `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${CUP_NAMES[cupView]}</span><span>${headline}</span></div>` + (state ? [...state.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${cupRoundName(cupView, n)}</span><span>${round.length} ${round.length === 1 ? 'jogo' : 'jogos'}</span></div>` + round.map(f => `<div class="crow round${f.home === PLAYER_CLUB || f.away === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('')).join('') : '') + ((state?.rounds.length ?? 0) === 0 ? `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${cupView === 'world' ? 'Só se joga quando houver campeão continental, na semana 28.' : `O sorteio da primeira ronda é na semana ${cupView === 'federation' ? 2 : 4}.`}</span></div>` : '') + `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${about[cupView]}</span></div>`;
+  } else if (federationTab === 'squad') {
+    // O plantel do clube escolhido: toca-se num jogador para ver a ficha em cima.
+    body = `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>` + roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-fed-player="${index}" aria-pressed="${player === index}">
+      ${slotBadge(index)}<span class="pnum">${federationClub === PLAYER_CLUB ? shirtOf(p) : index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+    </button>`).join('');
   } else {
-    body = [...DIVISIONS].map((d, n) => ({ d, n })).reverse().map(({ d, n }) => `<div class="crow round" style="grid-template-columns:1fr auto;font:400 18px/1 var(--ui);min-height:44px${n === club.division ? ';color:var(--gold)' : ''}"><span class="name">${d.name}</span><small>${n === club.division ? 'Estás aqui' : `${LEAGUE_SIZE} clubes`}</small></div>`).join('');
+    // Toca-se numa divisão para ver os clubes dela.
+    body = [...DIVISIONS].map((d, n) => ({ d, n })).reverse().map(({ d, n }) => `<button type="button" class="crow round" data-fed-division="${n}" aria-pressed="${federationDivision === n}" style="grid-template-columns:1fr auto;font:400 18px/1 var(--ui);min-height:44px${n === club.division ? ';color:var(--gold)' : ''}"><span class="name"><img class="emblem" alt="" style="width:16px;height:16px;margin-right:4px" src="${leagueIcon(n)}">${d.name}</span><small>${n === club.division ? 'Estás aqui' : `${LEAGUE_SIZE} clubes`}</small></button>`).join('');
   }
-  const tabs: [typeof federationTab, string][] = [['table', 'Classificação'], ['calendar', 'Calendário'], ['round', 'Jornada'], ...(playoffFormat(club) ? [['playoffs', 'Playoffs'] as [typeof federationTab, string]] : []), ['cup', 'Taça'], ['ladder', 'Divisões']];
+  const tabs: [typeof federationTab, string][] = own
+    ? [['table', 'Classificação'], ['squad', 'Plantel'], ['calendar', 'Calendário'], ['round', 'Jornada'], ...(playoffFormat(club) ? [['playoffs', 'Playoffs'] as [typeof federationTab, string]] : []), ['cup', 'Taça'], ['ladder', 'Divisões']]
+    : [['table', 'Clubes'], ['squad', 'Plantel'], ['cup', 'Taça'], ['ladder', 'Divisões']];
   const bracket = federationTab === 'cup' || federationTab === 'playoffs';
   return {
     top: bracket ? fullCanvas('bracket') : top,
     after: bracket ? () => drawBracket(element<HTMLCanvasElement>('bracket'), ...(federationTab === 'cup' ? cupBracket() : playoffBracket())) : undefined,
-    bottom: `<div class="chalk"><h2>${DIVISIONS[club.division]!.name}</h2><div class="chalktabs">${tabs.map(([id, label]) => `<button type="button" data-fed-tab="${id}" aria-pressed="${federationTab === id}">${label}</button>`).join('')}</div><div class="scroll">${body}</div></div>${bar(backBtn('town'))}`,
+    bottom: `<div class="chalk"><h2><img class="emblem" alt="" style="width:16px;height:16px;margin-right:4px" src="${leagueIcon(federationDivision)}">${DIVISIONS[federationDivision]!.name}</h2><div class="chalktabs">${tabs.map(([id, label]) => `<button type="button" data-fed-tab="${id}" aria-pressed="${federationTab === id}">${label}</button>`).join('')}</div><div class="scroll">${body}</div></div>${bar(backBtn('town'))}`,
   };
 }
 
@@ -724,7 +774,7 @@ function officeScreen(): Rendered {
   ];
   return {
     top: inside(details[officeItem]),
-    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market" style="grid-template-columns:1fr auto"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
+    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-squad="office" style="grid-template-columns:1fr auto"><span>Plantel</span><small>Titulares, banco e vendas</small></button><button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market" style="grid-template-columns:1fr auto"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
   };
 }
 
@@ -871,7 +921,7 @@ function onClick(event: Event): void {
     selectedTrophy = Number(data.trophy);
     render();
   } else if (data.tactic) {
-    applyTactics({ ...club.tactics, [data.tactic]: Number(data.tacticValue) });
+    applyTactics({ ...club.tactics, [data.tactic]: tacticValue(data.tactic, data.tacticValue!) });
   } else if (data.target !== undefined) {
     const index = Number(data.target);
     const focus = club.tactics.focus ?? [];
@@ -891,7 +941,19 @@ function onClick(event: Event): void {
     federationTab = data.fedTab as typeof federationTab;
     render();
   } else if (data.fedClub !== undefined) {
+    // Tocar num clube abre o plantel dele.
     federationClub = Number(data.fedClub);
+    federationPlayer = 0;
+    federationTab = 'squad';
+    render();
+  } else if (data.fedDivision !== undefined) {
+    federationDivision = Number(data.fedDivision);
+    federationClub = federationDivision === club.division ? PLAYER_CLUB : club.divisions[federationDivision]![0]!;
+    federationPlayer = 0;
+    federationTab = 'table';
+    render();
+  } else if (data.fedPlayer !== undefined) {
+    federationPlayer = Number(data.fedPlayer);
     render();
   } else if (data.cupView) {
     cupView = data.cupView as CupName;
@@ -991,7 +1053,11 @@ export function openMenu(next: Screen, squadBack: GoTo = 'town'): void {
   half = false;
   backFromSquad = squadBack;
   tacticsBack = 'town';
-  if (next === 'federation' && !club.divisions[club.division]!.includes(federationClub)) federationClub = PLAYER_CLUB;
+  if (next === 'federation') {
+    federationDivision = club.division;
+    federationPlayer = 0;
+    if (!club.divisions[club.division]!.includes(federationClub)) federationClub = PLAYER_CLUB;
+  }
   if (next === 'office') {
     officeItem = 'board';
     emblemBack = 'office';

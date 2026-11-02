@@ -171,6 +171,9 @@ body {
 
 #game.landscape #panel { flex: none; border-left: 3px solid var(--ink); }
 
+/* Na cidade não há painel: a cidade é o menu. */
+#game.city-home #panel { display: none; }
+
 button {
   font: 400 20px/1 var(--ui);
   color: var(--ink);
@@ -616,6 +619,30 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .town-bar .low { color: var(--bad); }
 
+/* O próximo jogo, por baixo da barra, com os dois emblemas. */
+.town-match { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); zoom: var(--hud-zoom, 1); display: grid; grid-template-columns: auto auto auto auto auto; align-items: center; column-gap: 6px; padding: 4px 8px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); font: 400 15px/1 var(--small); white-space: nowrap; pointer-events: none; }
+
+.town-match .emblem { width: 24px; height: 24px; }
+
+.town-match small { grid-column: 1 / -1; text-align: center; margin-top: 2px; font: 400 15px/1 var(--small); opacity: 0.8; }
+
+.town-bar button { pointer-events: auto; }
+
+.town-bar span { white-space: nowrap; }
+
+@media (max-width: 500px) { .town-bar { font-size: 15px; gap: 6px; padding: 5px 6px; } .town-bar #skipWeekBtn { font-size: 13px; padding: 0 5px; } }
+
+/* A secretária num canto do mapa, com a linha da semana por baixo. */
+.town-note { position: absolute; left: 8px; bottom: 8px; zoom: var(--hud-zoom, 1); max-width: 300px; display: grid; gap: 3px; padding: 4px 6px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); pointer-events: none; }
+
+.town-note .say { grid-template-columns: 32px 1fr; padding: 0; background: none; border: 0; }
+
+.town-note .say img { width: 32px; height: 32px; }
+
+.town-note .say b { display: inline; margin-right: 4px; }
+
+.town-note .citydetail { text-align: left; }
+
 .town-chip {
   position: absolute;
   zoom: var(--hud-zoom, 1);
@@ -930,6 +957,10 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .chips4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 
 .chips4.three { grid-template-columns: repeat(3, 1fr); }
+
+.town-bar .game { color: var(--gold); }
+
+.town-bar #skipWeekBtn { min-height: 26px; padding: 0 8px; font: 400 15px/1 var(--ui-sm); background: var(--gold); color: var(--ink); border: 2px solid var(--ink); box-shadow: 1px 1px 0 var(--ink); }
 
 .chip { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: center; min-height: 32px; padding: 2px 4px; font: 400 14px/1 var(--small); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: 1px 1px 0 var(--ink); }
 

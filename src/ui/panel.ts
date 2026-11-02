@@ -48,6 +48,7 @@ function periodTable(view: MatchView): string {
   return `<div class="qt" style="--periods:${periods}"><span></span>${head}<span class="tot">T</span>${row(0)}${row(1)}</div>`;
 }
 
+// As barras de energia andam em saltos de 5 %: assim o painel não muda, nem se reescreve, a cada segundo.
 function benchTab(view: MatchView): string {
   const { s } = view;
   const carrier = view.carrier();
@@ -57,7 +58,7 @@ function benchTab(view: MatchView): string {
       <img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">
       <span class="pos">${slotCode(b.slot)}</span>
       <span class="name">${escapeHtml(b.player.name)}</span>
-      <span class="bar"><i style="width:${Math.round(energy * 100)}%;background:${energyColor(energy)}"></i></span>
+      <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
     </button>`;
   }).join('');
@@ -149,7 +150,7 @@ export function playerCardLive(b: Body): string {
   const energy = 1 - b.fatigue;
   return `<span class="card-state">${b.slot >= 0 ? 'Em campo' : 'No banco'}</span>
     <span class="card-label">Energia</span>
-    <span class="bar"><i style="width:${Math.round(energy * 100)}%;background:${energyColor(energy)}"></i></span>
+    <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
     <div class="card-stats">${stats.map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>`;
 }
 
@@ -230,7 +231,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
       <span class="face-wrap"><img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">${mark ? `<i class="arrow ${mark}"></i>` : ''}</span>
       <span class="pos">${b.slot >= 0 ? slotCode(b.slot) : ''}</span>
       <span class="name">${escapeHtml(b.player.name)}</span>
-      <span class="bar"><i style="width:${Math.round(energy * 100)}%;background:${energyColor(energy)}"></i></span>
+      <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
       ${ATTRIBUTE_KEYS.map(key => `<b class="gr gr-${gradeOf(b.player.attributes[key])}">${gradeOf(b.player.attributes[key])}</b>`).join('')}
       ${stars(heightStars(b.player.heightCm), 'Altura')}

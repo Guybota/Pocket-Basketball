@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlayoffs, drawNextRound, nextGame, playoffExit, playoffWinner, seriesWinner, seriesWins } from './playoff.ts';
 import { FEDERATION_ROUNDS, createFederationCup, cupExit, cupWinner, drawCupRound, settleCupRound } from './cup.ts';
-import { LEAGUE_SIZE, MOVING_PLACES, SEASON_WEEKS, confidenceChange, moveDivisions, weekCup, roundRobin, seasonOutcome, standings, weekRound } from './league.ts';
+import { LEAGUE_SIZE, MOVING_PLACES, PRESEASON_WEEKS, SEASON_WEEKS, confidenceChange, moveDivisions, weekCup, roundRobin, seasonOutcome, standings, weekRound } from './league.ts';
 
 const ids = Array.from({ length: LEAGUE_SIZE }, (_, i) => i);
 
@@ -34,11 +34,14 @@ describe('calendário', () => {
   it('todas as jornadas cabem nas semanas, e as outras semanas são de taça', () => {
     const weeks = Array.from({ length: SEASON_WEEKS }, (_, i) => i + 1);
     const rounds = weeks.map(weekRound);
-    expect(rounds.filter(round => round === null)).toHaveLength(11);
+    expect(rounds.filter(round => round === null)).toHaveLength(11 + PRESEASON_WEEKS);
     expect(rounds.filter(round => round !== null)).toEqual(Array.from({ length: (LEAGUE_SIZE - 1) * 2 }, (_, i) => i));
-    for (const week of weeks) expect((weekRound(week) === null) !== (weekCup(week) === null), `semana ${week}`).toBe(true);
+    for (const week of weeks) {
+      if (week <= PRESEASON_WEEKS) expect(weekRound(week) === null && weekCup(week) === null, `semana ${week}`).toBe(true);
+      else expect((weekRound(week) === null) !== (weekCup(week) === null), `semana ${week}`).toBe(true);
+    }
     expect(weeks.filter(week => weekCup(week)?.cup === 'federation')).toHaveLength(6);
-    expect(weekCup(2)).toEqual({ cup: 'federation', round: 0 });
+    expect(weekCup(PRESEASON_WEEKS + 2)).toEqual({ cup: 'federation', round: 0 });
     expect(weekRound(0)).toBeNull();
     expect(weekRound(SEASON_WEEKS + 1)).toBeNull();
   });

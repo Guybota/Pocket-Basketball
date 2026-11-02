@@ -10,6 +10,8 @@ export interface LeagueClub {
   short: string;
   seed: number;
   level: number;
+  /** Os 12 jogadores do pool, pelos lugares do plantel. Os clubes de fora não têm. */
+  players?: number[];
 }
 
 export interface Fixture {
@@ -30,12 +32,13 @@ export interface Standing {
 export type SeasonOutcome = 'champion' | 'promoted' | 'stayed' | 'relegated';
 
 export const LEAGUE_SIZE = 10;
-// 18 jornadas, com as semanas das taças pelo meio: 6 da Taça da Federação, 4 da Continental e 1 do Mundial.
-export const SEASON_WEEKS = 29;
+// Duas semanas de pré-época e 18 jornadas, com as semanas das taças pelo meio: 6 da Taça da Federação, 4 da Continental e 1 do Mundial.
+export const PRESEASON_WEEKS = 2;
+export const SEASON_WEEKS = 31;
 export const MOVING_PLACES = 2;
 const CUP_WEEK_SET = new Set(Object.values(CUP_WEEKS).flat());
 /** As semanas com jornada, por ordem. */
-export const LEAGUE_WEEKS: readonly number[] = Array.from({ length: SEASON_WEEKS }, (_, i) => i + 1).filter(week => !CUP_WEEK_SET.has(week));
+export const LEAGUE_WEEKS: readonly number[] = Array.from({ length: SEASON_WEEKS }, (_, i) => i + 1).filter(week => week > PRESEASON_WEEKS && !CUP_WEEK_SET.has(week));
 
 /** A jornada de cada semana, ou null numa semana de taça. */
 export function weekRound(week: number): number | null {
