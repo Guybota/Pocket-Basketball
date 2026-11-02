@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
 import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
+import { BALANCE as B } from './balance.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
@@ -238,8 +239,8 @@ describe('início do jogo', () => {
 
 describe('reposições', () => {
   /** Corre um jogo e devolve cada reposição, tal como aconteceu. */
-  const inbounds = (matches: number, a = home, b = away): { passerOutside: boolean; receivers: number; receiverIsPasser: boolean; baseline: boolean }[] => {
-    const found: { passerOutside: boolean; receivers: number; receiverIsPasser: boolean; baseline: boolean }[] = [];
+  const inbounds = (matches: number, a = home, b = away): { passerOutside: boolean; settled: boolean; receivers: number; receiverIsPasser: boolean; baseline: boolean }[] => {
+    const found: { passerOutside: boolean; settled: boolean; receivers: number; receiverIsPasser: boolean; baseline: boolean }[] = [];
     for (let seed = 1; seed <= matches; seed++) {
       const s = createMatch(a, b, seed);
       let last: MatchState['inbound'] = null;
@@ -250,8 +251,9 @@ describe('reposições', () => {
           const f = s.flight;
           if (f?.kind === 'pass' && f.restart) {
             const { passer } = last;
-            const outside = passer.x < 0 || passer.x > COURT_LENGTH || Math.abs(passer.y) > COURT_HALF_WIDTH;
-            found.push({ passerOutside: outside, receivers: last.receivers.length, receiverIsPasser: f.target === passer, baseline: passer.x < 0 || passer.x > COURT_LENGTH });
+            // Bem fora da linha, e não em cima dela.
+            const outside = passer.x < -0.3 || passer.x > COURT_LENGTH + 0.3 || Math.abs(passer.y) > COURT_HALF_WIDTH + 0.3;
+            found.push({ passerOutside: outside, settled: last.settled >= Math.round(B.inboundSettleSeconds * 20), receivers: last.receivers.length, receiverIsPasser: f.target === passer, baseline: passer.x < 0 || passer.x > COURT_LENGTH });
           }
           last = null;
         }
@@ -260,11 +262,12 @@ describe('reposições', () => {
     return found;
   };
 
-  it('quem repõe fica fora de campo e passa a outro', () => {
+  it('quem repõe fica fora de campo, assenta os pés e passa a outro', () => {
     const all = inbounds(20);
     expect(all.length).toBeGreaterThan(300);
     expect(all.every(i => !i.receiverIsPasser)).toBe(true);
-    expect(all.filter(i => i.passerOutside).length / all.length).toBeGreaterThan(0.9);
+    expect(all.filter(i => i.passerOutside).length / all.length).toBeGreaterThan(0.97);
+    expect(all.filter(i => i.settled).length / all.length).toBeGreaterThan(0.97);
     expect(all.some(i => i.baseline)).toBe(true);
     expect(all.some(i => !i.baseline)).toBe(true);
   });

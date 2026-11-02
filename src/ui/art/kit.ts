@@ -2,7 +2,7 @@
 import { text } from './font.ts';
 import { INK } from './palette.ts';
 
-export type KitPattern = 'plain' | 'stripes' | 'band' | 'half';
+export type KitPattern = 'plain' | 'stripes' | 'band' | 'half' | 'sash' | 'hoops' | 'pin' | 'sides';
 
 export interface ClubKit {
   id: string;
@@ -21,7 +21,7 @@ export const DEFAULT_KITS: readonly ClubKit[] = [
   { id: 'cream', name: 'Claro', jersey: '#f4efe0', second: '#2b5fd9', pattern: 'band', trim: '#2b5fd9', shorts: '#2b5fd9' },
 ];
 export const PALETTE: readonly string[] = ['#2b5fd9', '#17737a', '#2f8f5b', '#f2c230', '#e8622a', '#cf3a2c', '#7246c4', '#1b2230', '#f4efe0', '#ffffff', '#7ec8e0', '#8b3a2c'];
-export const KIT_PATTERNS: readonly (readonly [KitPattern, string])[] = [['plain', 'Liso'], ['stripes', 'Riscas'], ['band', 'Faixa'], ['half', 'Metades']];
+export const KIT_PATTERNS: readonly (readonly [KitPattern, string])[] = [['plain', 'Liso'], ['stripes', 'Riscas'], ['pin', 'Finas'], ['hoops', 'Aros'], ['band', 'Faixa'], ['sash', 'Diagonal'], ['half', 'Metades'], ['sides', 'Laterais']];
 
 export function shadeOf(color: string): string {
   const value = parseInt(color.slice(1), 16);
@@ -39,9 +39,16 @@ export const kitKey = (kit: ClubKit): string => `${kit.jersey}${kit.second}${kit
 
 /** O desenho da camisola escolhe, píxel a píxel, entre a cor principal e a segunda. */
 export function usesSecond(kit: ClubKit, x: number, y: number): boolean {
-  if (kit.pattern === 'stripes') return x % 4 < 2;
-  if (kit.pattern === 'band') return y >= 22 && y <= 25;
-  return kit.pattern === 'half' && x >= 17;
+  switch (kit.pattern) {
+    case 'stripes': return x % 4 < 2;
+    case 'pin': return x % 4 === 0;
+    case 'hoops': return y % 6 < 3;
+    case 'band': return y >= 22 && y <= 25;
+    case 'sash': return Math.abs(x - y + 6) <= 1;
+    case 'half': return x >= 17;
+    case 'sides': return x < 13 || x > 21;
+    default: return false;
+  }
 }
 
 // Estas cores vão parar a atributos de HTML, por isso um clube guardado só as passa com este formato.
@@ -53,9 +60,10 @@ export function validKit(kit: ClubKit): boolean {
     && KIT_PATTERNS.some(([pattern]) => pattern === kit.pattern);
 }
 
-export type EmblemShape = 'shield' | 'circle' | 'diamond' | 'pennant';
-export type EmblemPattern = 'plain' | 'stripes' | 'half' | 'band';
-export type EmblemSymbol = 'ball' | 'star' | 'bolt' | 'crown' | 'hoop' | 'none';
+export type EmblemShape = 'shield' | 'circle' | 'diamond' | 'pennant' | 'hexagon' | 'badge' | 'oval' | 'round';
+export type EmblemPattern = 'plain' | 'stripes' | 'half' | 'band' | 'quarters' | 'chevron' | 'hoops' | 'rays' | 'checks' | 'ring' | 'dots';
+export type EmblemSymbol = 'ball' | 'star' | 'bolt' | 'crown' | 'hoop' | 'anchor' | 'tower' | 'tree' | 'wave' | 'sun' | 'moon' | 'mountain' | 'flame' | 'wing' | 'trident' | 'cross' | 'gem' | 'paw' | 'rocket' | 'heart' | 'none';
+export type EmblemBorder = 'ink' | 'light' | 'gold';
 
 export interface Emblem {
   shape: EmblemShape;
@@ -65,16 +73,41 @@ export interface Emblem {
   accent: string;
   symbol: EmblemSymbol;
   letters: string;
+  /** A cor do contorno. Sem valor, é a tinta, como nos clubes guardados antes de haver escolha. */
+  border?: EmblemBorder;
 }
 
-const EMBLEM_SHAPES: readonly EmblemShape[] = ['shield', 'circle', 'diamond', 'pennant'];
-const EMBLEM_PATTERNS: readonly EmblemPattern[] = ['plain', 'stripes', 'half', 'band'];
-const EMBLEM_SYMBOLS: Record<Exclude<EmblemSymbol, 'none'>, readonly string[]> = {
+/** As opções do emblema, com o nome que o editor mostra. */
+export const EMBLEM_SHAPE_LIST: readonly (readonly [EmblemShape, string])[] = [['shield', 'Escudo'], ['round', 'Escudo redondo'], ['circle', 'Círculo'], ['oval', 'Oval'], ['diamond', 'Losango'], ['hexagon', 'Hexágono'], ['badge', 'Placa'], ['pennant', 'Galhardete']];
+export const EMBLEM_PATTERN_LIST: readonly (readonly [EmblemPattern, string])[] = [['plain', 'Liso'], ['stripes', 'Riscas'], ['hoops', 'Aros'], ['half', 'Metades'], ['quarters', 'Quartos'], ['band', 'Faixa'], ['chevron', 'Chevron'], ['rays', 'Raios'], ['checks', 'Xadrez'], ['ring', 'Anel'], ['dots', 'Pintas']];
+export const EMBLEM_SYMBOL_LIST: readonly (readonly [EmblemSymbol, string])[] = [['ball', 'Bola'], ['hoop', 'Cesto'], ['star', 'Estrela'], ['bolt', 'Raio'], ['crown', 'Coroa'], ['anchor', 'Âncora'], ['tower', 'Torre'], ['tree', 'Pinheiro'], ['wave', 'Onda'], ['sun', 'Sol'], ['moon', 'Lua'], ['mountain', 'Serra'], ['flame', 'Chama'], ['wing', 'Asa'], ['trident', 'Tridente'], ['cross', 'Cruz'], ['gem', 'Pedra'], ['paw', 'Pata'], ['rocket', 'Foguetão'], ['heart', 'Coração'], ['none', 'Nenhum']];
+export const EMBLEM_BORDER_LIST: readonly (readonly [EmblemBorder, string])[] = [['ink', 'Tinta'], ['light', 'Claro'], ['gold', 'Dourado']];
+const BORDER_COLORS: Record<EmblemBorder, string> = { ink: INK, light: '#f8f0d8', gold: '#f2c230' };
+
+const EMBLEM_SHAPES: readonly EmblemShape[] = EMBLEM_SHAPE_LIST.map(([id]) => id);
+const EMBLEM_PATTERNS: readonly EmblemPattern[] = EMBLEM_PATTERN_LIST.map(([id]) => id);
+/** Os símbolos, 10 por 10, para o jogo e para as maquetas. */
+export const EMBLEM_SYMBOLS: Record<Exclude<EmblemSymbol, 'none'>, readonly string[]> = {
   ball: ['...####...', '..#.##.#..', '.#..##..#.', '#...##...#', '##########', '##########', '#...##...#', '.#..##..#.', '..#.##.#..', '...####...'],
   star: ['....##....', '....##....', '...####...', '##########', '.########.', '..######..', '..######..', '.###..###.', '.##....##.', '#........#'],
   bolt: ['.....###..', '....###...', '...###....', '..######..', '.######...', '....###...', '...###....', '..###.....', '..##......', '.#........'],
   crown: ['..........', '#...##...#', '##..##..##', '###.##.###', '##########', '##########', '##########', '##########', '..........', '##########'],
   hoop: ['##########', '#........#', '#..####..#', '#..#..#..#', '##########', '..######..', '..#.##.#..', '..#.##.#..', '...#..#...', '...#..#...'],
+  anchor: ['....##....', '...#..#...', '....##....', '....##....', '.#..##..#.', '##..##..##', '.#..##..#.', '..##..##..', '...####...', '....##....'],
+  tower: ['#.##.##.##', '##########', '.########.', '.########.', '.##.##.##.', '.########.', '.########.', '.###..###.', '.###..###.', '##########'],
+  tree: ['....##....', '...####...', '..######..', '.########.', '...####...', '..######..', '.########.', '##########', '....##....', '....##....'],
+  wave: ['..........', '..........', '.##...##..', '#..#.#..#.', '....#....#', '..........', '.##...##..', '#..#.#..#.', '....#....#', '..........'],
+  sun: ['....##....', '.#..##..#.', '..#....#..', '...####...', '#.######.#', '#.######.#', '...####...', '..#....#..', '.#..##..#.', '....##....'],
+  moon: ['...#####..', '..###.....', '.###......', '.##.......', '###.......', '###.......', '.##.......', '.###......', '..###.....', '...#####..'],
+  mountain: ['..........', '.....#....', '....###...', '...#####..', '.#.######.', '###.######', '##########', '##########', '..........', '..........'],
+  flame: ['....#.....', '....##....', '...###....', '..####....', '..#####...', '.#######..', '.##.####..', '.##..###..', '..##.##...', '...###....'],
+  wing: ['.......###', '.....#####', '...#######', '.#########', '########..', '.#####....', '..####....', '...###....', '....##....', '.....#....'],
+  trident: ['#...##...#', '#...##...#', '#...##...#', '##..##..##', '.########.', '..######..', '....##....', '....##....', '....##....', '....##....'],
+  cross: ['...####...', '...####...', '...####...', '##########', '##########', '##########', '...####...', '...####...', '...####...', '...####...'],
+  gem: ['..######..', '.#......#.', '#.#.##.#.#', '##########', '.#..##..#.', '.#..##..#.', '..#.##.#..', '..#.##.#..', '...#..#...', '....##....'],
+  paw: ['..#....#..', '.###..###.', '.###..###.', '#..#..#..#', '###.##.###', '###....###', '..######..', '.########.', '.########.', '..######..'],
+  rocket: ['....##....', '...####...', '...####...', '...####...', '..######..', '..######..', '.########.', '##.####.##', '...####...', '..#....#..'],
+  heart: ['..........', '.###..###.', '#####.####', '##########', '##########', '.########.', '..######..', '...####...', '....##....', '..........'],
 };
 
 /** Só letras e números que a letra do jogo sabe desenhar. */
@@ -90,19 +123,26 @@ export function validEmblem(emblem: Emblem): boolean {
     && EMBLEM_SHAPES.includes(emblem.shape) && EMBLEM_PATTERNS.includes(emblem.pattern)
     && (emblem.symbol === 'none' || emblem.symbol in EMBLEM_SYMBOLS)
     && [emblem.primary, emblem.secondary, emblem.accent].every(isColor)
-    && typeof emblem.letters === 'string' && emblemLetters(emblem.letters) === emblem.letters;
+    && typeof emblem.letters === 'string' && emblemLetters(emblem.letters) === emblem.letters
+    && (emblem.border === undefined || emblem.border in BORDER_COLORS);
 }
 
 const EMBLEM_SIZE = 32;
 const emblemCache = new Map<string, string>();
+const emblemCanvases = new Map<string, HTMLCanvasElement>();
 
 function inEmblem(shape: EmblemShape, x: number, y: number): boolean {
   const c = (EMBLEM_SIZE - 1) / 2;
   const dx = x - c;
   const dy = y - c;
   if (shape === 'circle') return dx * dx + dy * dy <= 15.5 * 15.5;
+  if (shape === 'oval') return (dx * dx) / (13 * 13) + (dy * dy) / (15.5 * 15.5) <= 1;
   if (shape === 'diamond') return Math.abs(dx) + Math.abs(dy) <= 16;
+  if (shape === 'hexagon') return Math.abs(dx) <= 13.5 && Math.abs(dy) + Math.abs(dx) * 0.58 <= 15.5;
+  if (shape === 'badge') return Math.abs(dx) <= 14 && Math.abs(dy) <= 14 && Math.abs(dx) + Math.abs(dy) <= 24;
   if (shape === 'pennant') return y < 31 && Math.abs(dx) <= 15 * (1 - Math.max(0, y - 18) / 13);
+  // O escudo redondo: direito em cima, e por baixo do meio uma meia elipse.
+  if (shape === 'round') return y >= 1 && Math.abs(dx) <= 14 && (y < 16 || (dx * dx) / (14 * 14) + ((y - 16) * (y - 16)) / (15 * 15) <= 1);
   // O escudo: direito em cima, a afunilar em bico.
   return y >= 1 && (y < 17 ? Math.abs(dx) <= 14 : Math.abs(dx) <= 14 - (y - 17));
 }
@@ -112,30 +152,56 @@ export function emblemImage(emblem: Emblem): string {
   const key = JSON.stringify(emblem);
   const cached = emblemCache.get(key);
   if (cached) return cached;
+  const url = emblemCanvas(emblem).toDataURL();
+  emblemCache.set(key, url);
+  return url;
+}
+
+/** O mesmo emblema como canvas, para quem o quer copiar coluna a coluna, como a bandeira. */
+export function emblemCanvas(emblem: Emblem): HTMLCanvasElement {
+  const key = JSON.stringify(emblem);
+  const cached = emblemCanvases.get(key);
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = EMBLEM_SIZE;
   canvas.height = EMBLEM_SIZE;
   const g = canvas.getContext('2d')!;
-  const fill = (x: number, y: number): string => {
-    if (emblem.pattern === 'stripes') return x % 8 < 4 ? emblem.primary : emblem.secondary;
-    if (emblem.pattern === 'half') return x >= EMBLEM_SIZE / 2 ? emblem.secondary : emblem.primary;
-    if (emblem.pattern === 'band') return Math.abs(x - y) <= 4 ? emblem.secondary : emblem.primary;
-    return emblem.primary;
+  const c = (EMBLEM_SIZE - 1) / 2;
+  const second = (x: number, y: number): boolean => {
+    const dx = x - c;
+    const dy = y - c;
+    switch (emblem.pattern) {
+      case 'stripes': return x % 8 < 4;
+      case 'hoops': return y % 8 < 4;
+      case 'half': return x >= EMBLEM_SIZE / 2;
+      case 'quarters': return (x >= EMBLEM_SIZE / 2) !== (y >= EMBLEM_SIZE / 2);
+      case 'band': return Math.abs(x - y) <= 4;
+      case 'chevron': return y - Math.abs(dx) >= 6 && y - Math.abs(dx) <= 11;
+      // Doze sectores a partir do centro, alternados. Só a interface usa atan2: a simulação nunca passa por aqui.
+      case 'rays': return Math.floor((Math.atan2(dy, dx) + Math.PI) / (Math.PI / 6)) % 2 === 0;
+      case 'checks': return ((x >> 3) + (y >> 3)) % 2 === 1;
+      case 'ring': return !inEmblem(emblem.shape, x - 5, y) || !inEmblem(emblem.shape, x + 5, y) || !inEmblem(emblem.shape, x, y - 5) || !inEmblem(emblem.shape, x, y + 5);
+      case 'dots': return x % 6 < 2 && y % 6 < 2;
+      default: return false;
+    }
   };
+  const fill = (x: number, y: number): string => (second(x, y) ? emblem.secondary : emblem.primary);
+  const border = BORDER_COLORS[emblem.border ?? 'ink'];
   for (let y = 0; y < EMBLEM_SIZE; y++) {
     for (let x = 0; x < EMBLEM_SIZE; x++) {
       if (!inEmblem(emblem.shape, x, y)) continue;
       const edge = !inEmblem(emblem.shape, x - 1, y) || !inEmblem(emblem.shape, x + 1, y) || !inEmblem(emblem.shape, x, y - 1) || !inEmblem(emblem.shape, x, y + 1);
-      g.fillStyle = edge ? INK : fill(x, y);
+      g.fillStyle = edge ? border : fill(x, y);
       g.fillRect(x, y, 1, 1);
     }
   }
   if (emblem.symbol !== 'none') {
     const rows = EMBLEM_SYMBOLS[emblem.symbol];
+    // O símbolo tem 10 píxeis: fica centrado em 32 a começar no 11. Com as letras por baixo, o conjunto vai de 6 a 24.
     const paint = (color: string, size: number, offset: number): void => {
       g.fillStyle = color;
       rows.forEach((row, y) => [...row].forEach((ch, x) => {
-        if (ch === '#') g.fillRect(10 + x + offset, 4 + y + offset, size, size);
+        if (ch === '#') g.fillRect(11 + x + offset, (emblem.letters ? 6 : 11) + y + offset, size, size);
       }));
     };
     paint(INK, 2, 0);
@@ -143,11 +209,11 @@ export function emblemImage(emblem: Emblem): string {
   }
   if (emblem.letters) {
     const left = Math.round((EMBLEM_SIZE - (emblem.letters.length * 4 - 1)) / 2);
+    const top = emblem.symbol === 'none' ? 13 : 18;
     g.fillStyle = INK;
-    g.fillRect(left - 1, 16, emblem.letters.length * 4 + 1, 7);
-    text(g, emblem.letters, left, 17, '#ffffff', 1);
+    g.fillRect(left - 1, top, emblem.letters.length * 4 + 1, 7);
+    text(g, emblem.letters, left, top + 1, '#ffffff', 1);
   }
-  const url = canvas.toDataURL();
-  emblemCache.set(key, url);
-  return url;
+  emblemCanvases.set(key, canvas);
+  return canvas;
 }

@@ -3,11 +3,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
-import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
+import { cancelSubstitution, createMatch, pushPower, queueSubstitution, reorderBench, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
-import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
+import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, type Team, NEUTRAL_TACTICS, validateTactics } from './types.ts';
 
 const home = generateTeam(1, 'Vilar BC', 55);
 const away = generateTeam(2, 'Ribeirinha BC', 55);
@@ -71,11 +71,35 @@ describe('decisões do treinador', () => {
     const onCourt = s.bodies.indexOf(s.court[0][0]!);
     const rival = s.bodies.findIndex(b => b.team === 1 && b.slot === -1);
     const benchIndex = s.bodies.findIndex(b => b.team === 0 && b.slot === -1);
-    expect(queueSubstitution(s, 0, 1, onCourt)).toBe(false);
+    // Quem já está no lugar não troca consigo mesmo; para outro lugar em campo, troca com quem lá está.
+    expect(queueSubstitution(s, 0, 0, onCourt)).toBe(false);
     expect(queueSubstitution(s, 0, 1, rival)).toBe(false);
     expect(queueSubstitution(s, 0, 7, benchIndex)).toBe(false);
     expect(queueSubstitution(s, 0, 1, 999)).toBe(false);
     expect(s.pendingSubs).toEqual([]);
+  });
+
+  it('dois em campo trocam de lugar na bola parada seguinte, e o banco troca de ordem logo', () => {
+    const s = start();
+    runUntil(s, () => s.phase === 'live');
+    const a = s.court[0][0]!;
+    const b = s.court[0][3]!;
+    expect(queueSubstitution(s, 0, 3, s.bodies.indexOf(a))).toBe(true);
+    runUntil(s, () => s.court[0][3] === a);
+    expect(s.court[0][0]).toBe(b);
+    expect(a.slot).toBe(3);
+    expect(b.slot).toBe(0);
+    const bench = s.bodies.filter(x => x.team === 0 && x.slot === -1);
+    const i = s.bodies.indexOf(bench[0]!);
+    const j = s.bodies.indexOf(bench[1]!);
+    expect(reorderBench(s, 0, i, j)).toBe(true);
+    expect(s.bodies[i]).toBe(bench[1]);
+    expect(s.bodies[j]).toBe(bench[0]);
+    expect(reorderBench(s, 0, i, s.bodies.indexOf(a))).toBe(false);
+    // A repetição refaz as duas trocas pelos comandos.
+    const again = replayMatch(home, away, s.seed, [true, false], s.commands, 1, s.tick + 1);
+    expect(again.bodies.map(x => x.player.name)).toEqual(s.bodies.map(x => x.player.name));
+    expect(again.court[0].map(x => x.player.name)).toEqual(s.court[0].map(x => x.player.name));
   });
 
   it('uma troca cancelada não acontece', () => {
@@ -231,7 +255,8 @@ describe('táticas', () => {
   });
 
   it('um alvo marca menos pontos, sem isso decidir o jogo', () => {
-    const N = 300;
+    // Com 300 jogos o ruído chegava aos 6%: são precisos mais para a diferença de vitórias dizer alguma coisa.
+    const N = 500;
     const best = (team: ReturnType<typeof generateTeam>): number[] =>
       [...team.roster.keys()].sort((x, y) => team.roster[y]!.attributes.shooting - team.roster[x]!.attributes.shooting).slice(0, 2);
     const run = (focus: boolean): { wins: number; targetPoints: number } => {
@@ -272,8 +297,11 @@ describe('táticas', () => {
     expect(replayMatch(home, away, 3, [true, false], s.commands).events).toEqual(s.events);
   });
 
-  it('um jogador cansado começa o jogo cansado', () => {
-    const tired = { ...home, roster: home.roster.map(p => ({ ...p, fatigue: 0.5 })) };
-    expect(createMatch(tired, away, 1).bodies[0]!.fatigue).toBe(0.5);
+  it('um jogador cansado começa o jogo cansado, e menos se tiver resistência', () => {
+    const tired = (stamina: number): Team => ({ ...home, roster: home.roster.map(p => ({ ...p, fatigue: 0.5, attributes: { ...p.attributes, stamina } })) });
+    expect(createMatch(tired(50), away, 1).bodies[0]!.fatigue).toBeCloseTo(0.5);
+    expect(createMatch(tired(90), away, 1).bodies[0]!.fatigue).toBeLessThan(0.4);
+    expect(createMatch(tired(20), away, 1).bodies[0]!.fatigue).toBeGreaterThan(0.6);
+    expect(createMatch({ ...home, roster: home.roster.map(p => ({ ...p, fatigue: 0 })) }, away, 1).bodies[0]!.fatigue).toBe(0);
   });
 });

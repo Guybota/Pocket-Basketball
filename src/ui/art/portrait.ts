@@ -48,6 +48,8 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
   const hair = hairColor(look);
   const hairLight = mix(hair, '#ffffff', 0.24);
   const kit = kitColors(look);
+  const outfit = look.custom ? null : look.kit;
+  const sleeves = outfit === 'suit' || outfit === 'blouse';
   const build = BUILDS[look.build];
   const trait = (shift: number, options: number): number => (look.face >>> shift) % options;
 
@@ -57,6 +59,11 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
   const rowY = (row: number): number => HEAD_Y + row;
   const face = halfAt(8);
   const longHair = look.style === 0 && trait(18, 4) === 0;
+  // Mais traços, cada um raro: óculos, um sinal, sobrancelhas grossas, o cabelo comprido apanhado.
+  const glasses = trait(20, 5) === 0;
+  const mole = trait(17, 8) === 1;
+  const thickBrows = trait(21, 2) === 1 && trait(5, 2) === 1;
+  const bun = longHair && trait(16, 2) === 1;
 
   // Afro: fica por trás da cabeça, por isso pinta-se primeiro.
   if (look.style === 2) {
@@ -89,6 +96,11 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
   }
   for (let y = JERSEY_Y + 2; y < SIZE; y++) {
     const half = jersey(y);
+    if (sleeves) {
+      rect(CX - half - 2, y, 2, 1, kit.jersey);
+      rect(CX + half, y, 2, 1, kit.shade);
+      continue;
+    }
     rect(CX - half - 2, y, 2, 1, skin);
     rect(CX + half, y, 2, 1, skinShade);
     put(CX - half, y, kit.trim);
@@ -106,6 +118,21 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
   put(CX - lowerNeck - 1, JERSEY_Y + 1, kit.trim);
   put(CX + lowerNeck, JERSEY_Y + 1, kit.trim);
   span(JERSEY_Y + 2, lowerNeck, kit.trim);
+  if (outfit === 'suit') {
+    // Camisa em V, lapelas e gravata.
+    for (let y = JERSEY_Y + 2; y < SIZE; y++) {
+      const half = Math.max(1, lowerNeck - (y - JERSEY_Y - 2));
+      span(y, half, kit.trim);
+      put(CX - half - 1, y, kit.shade);
+      put(CX + half, y, kit.shade);
+      if (y > JERSEY_Y + 2) rect(CX - 1, y, 2, 1, '#cf3a2c');
+    }
+  } else if (outfit === 'blouse') {
+    // Gola com bicos e um colar.
+    put(CX - lowerNeck - 1, JERSEY_Y + 3, kit.trim);
+    put(CX + lowerNeck, JERSEY_Y + 3, kit.trim);
+    rect(CX - 1, JERSEY_Y + 4, 2, 1, '#f2c230');
+  }
 
   // Cabeça, lisa.
   for (let row = 0; row < HEAD_ROWS; row++) span(rowY(row), halfAt(row), skin);
@@ -140,6 +167,11 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
         put(CX + edge, rowY(row), hair);
       }
     }
+    if (bun) {
+      span(rowY(-3), 2, hair);
+      span(rowY(-2), 3, hair);
+      put(CX, rowY(-3), hairLight);
+    }
   } else if (look.style === 1) {
     // Corte alto: volume no topo e lados rapados.
     span(rowY(-4), 3, hair);
@@ -170,6 +202,10 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
     const tilt = (browMood === 1 && i === 2 ? 1 : browMood === 2 && i === 0 ? 1 : 0) - (mood === 'happy' ? 1 : 0);
     put(CX - 6 + i, rowY(browRow + tilt), browColor);
     put(CX + 5 - i, rowY(browRow + tilt), browColor);
+    if (thickBrows) {
+      put(CX - 6 + i, rowY(browRow + tilt - 1), browColor);
+      put(CX + 5 - i, rowY(browRow + tilt - 1), browColor);
+    }
   }
 
   // Olhos: dois pontos escuros, como nas fichas de jogo antigas.
@@ -184,6 +220,21 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
       put(x === CX - 5 ? x + 1 : x, rowY(9), INK);
     }
   }
+
+  if (glasses) {
+    // Armação fina à volta dos olhos, com a ponte no meio.
+    const frame = mix(INK, '#7a5a2c', 0.4);
+    for (const x of [CX - 6, CX + 2]) {
+      rect(x, rowY(7), 4, 1, frame);
+      rect(x, rowY(10), 4, 1, frame);
+      put(x - 1, rowY(8), frame);
+      put(x - 1, rowY(9), frame);
+      put(x + 4, rowY(8), frame);
+      put(x + 4, rowY(9), frame);
+    }
+    rect(CX - 1, rowY(8), 2, 1, frame);
+  }
+  if (mole) put(CX + 3, rowY(12), skinShade);
 
   // Nariz: a única marca na cara.
   const nose = trait(8, 3);

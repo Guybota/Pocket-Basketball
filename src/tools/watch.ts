@@ -26,6 +26,6 @@ for (const team of [0, 1] as const) {
   const players = s.bodies.filter(b => b.team === team).sort((a, b) => b.line.points - a.line.points);
   for (const b of players) {
     const l = b.line;
-    console.log(`  ${b.player.position} ${b.player.name.padEnd(10)} ${String(l.points).padStart(2)} pts  ${l.rebounds} res  ${l.assists} ass  ${l.steals} rou  ${l.fouls} fal  ${Math.round(l.secondsPlayed)} s`);
+    console.log(`  ${b.slot >= 0 ? ['BAS', 'ESC', 'EXT', 'EXP', 'POS'][b.slot] : 'SUP'} ${b.player.name.padEnd(10)} ${String(l.points).padStart(2)} pts  ${l.rebounds} res  ${l.assists} ass  ${l.steals} rou  ${l.fouls} fal  ${Math.round(l.secondsPlayed)} s`);
   }
 }

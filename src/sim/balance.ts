@@ -3,13 +3,15 @@ export const BALANCE = {
   // Tempo, em segundos reais
   periodSeconds: 120,
   overtimeSeconds: 60,
-  periodBreakSeconds: 2,
+  periodBreakSeconds: 4,
   shotClockSeconds: 11,
   offensiveReboundShotClockSeconds: 7,
-  deadBallSeconds: 0.9,
-  // Reposição: quem repõe fica fora de campo e passa a quem vem receber.
-  inboundMaxWaitSeconds: 2,
-  inboundOutside: 0.45,
+  deadBallSeconds: 0.4,
+  // Reposição: quem repõe fica fora de campo, assenta os pés e passa a quem vem receber.
+  // Quem repõe vai buscar a bola onde ela ficou e leva-a até à linha; só se espera por ele até aqui.
+  inboundMaxWaitSeconds: 8,
+  inboundSettleSeconds: 0.35,
+  inboundOutside: 0.7,
   inboundTwoReceiversChance: 0.35,
   // Início do jogo: as equipas entram a andar e a bola sobe entre dois saltadores.
   introMaxSeconds: 5,
@@ -25,9 +27,14 @@ export const BALANCE = {
   reboundCrashPreference: 1.5,
   reboundGuardReluctance: 1.5,
   reboundSafetyU: 12,
-  // Quem ganha o ressalto, se for grande, procura o base em vez de subir sozinho.
+  // Quem ganha o ressalto, se for grande, passa quase sempre ao base em vez de subir sozinho; a técnica dá-lhe licença para ficar com ela.
   outletU: 14,
   outletBoost: 4,
+  outletPassChance: 0.95,
+  outletSkilledFrom: 65,
+  outletSkillSlope: 0.02,
+  // Ninguém sai das linhas com a bola em jogo: quem fica fora desliza para dentro a este ritmo, por passo.
+  lineSlide: 0.4,
   // Sem pressão, a defesa espera o ataque aqui, em vez de o seguir até ao outro lado.
   defensePickUpU: 10.5,
   freeThrowSeconds: 1,
@@ -46,6 +53,9 @@ export const BALANCE = {
   reboundBlockedRiseMin: 0.3,
   reboundBlockedRiseMax: 0.8,
   reboundBlockedTravel: 1.5,
+  // A bola cai e fica no chão até quem a ganhou chegar ao pé dela.
+  reboundCatchDistance: 0.8,
+  reboundMaxWaitSeconds: 1.5,
 
   // Movimento
   baseSpeed: 4.3,
@@ -55,8 +65,8 @@ export const BALANCE = {
   cutMaxSeconds: 2.4,
 
   // Decisões do portador da bola
-  decisionMinSeconds: 0.35,
-  decisionMaxSeconds: 0.74,
+  decisionMinSeconds: 0.3,
+  decisionMaxSeconds: 0.64,
   shootingRangeU: 10,
   forcedShotSeconds: 1,
   holdWeight: 0.32,
@@ -100,6 +110,10 @@ export const BALANCE = {
   shotLineMargin: 0.35,
   shotLineRushSeconds: 2,
   blockedTravel: 0.12,
+  // Afundanço: de perto e com impulsão, leva-se a bola até ao aro.
+  dunkMaxDistance: 1.7,
+  dunkMinJumping: 45,
+  dunkArc: 0.3,
 
   // Pressão do defensor
   pressureRange: 2.5,
@@ -139,16 +153,18 @@ export const BALANCE = {
   // Ressalto
   reboundDefenseBonus: 2.5,
 
-  // Cansaço, por segundo
-  fatigueGain: 0.0085,
+  // Cansaço, por segundo. A energia com que se começa vem da condição física e da resistência: com a mesma condição,
+  // quem tem mais resistência começa mais fresco.
+  conditionStaminaFactor: 1,
+  fatigueGain: 0.0045,
   fatigueStaminaFactor: 2.5,
   fatigueDefenseLoss: 0.4,
   benchRecovery: 0.009,
   benchStrengthFactor: 1,
   periodBreakRecovery: 0.12,
   subOutFatigue: 0.85,
-  maxStintSeconds: 60,
-  stintStaggerSeconds: 7,
+  maxStintSeconds: 200,
+  stintStaggerSeconds: 10,
   subInFatigue: 0.4,
 
   // Corpo: referência de 195 cm, 95 kg e índice de massa corporal 25
@@ -241,7 +257,7 @@ export const BALANCE = {
   // Descontos de tempo
   timeoutsPerHalf: 2,
   timeoutsInOvertime: 1,
-  timeoutSeconds: 3,
+  timeoutSeconds: 4,
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,

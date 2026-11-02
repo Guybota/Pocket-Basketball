@@ -782,7 +782,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -799,7 +799,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

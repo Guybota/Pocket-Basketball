@@ -26,9 +26,9 @@ export type OffBallStyle = (typeof OFF_BALL_STYLES)[number];
 export const ON_BALL_STYLES = ['balanced', 'playmaker', 'scorer', 'slasher', 'shooter', 'postUp'] as const;
 export type OnBallStyle = (typeof ON_BALL_STYLES)[number];
 
+/** Sem posição fixa, como no original: o lugar na lista da equipa é que define o papel em campo. A posição só existe ao gerar o jogador. */
 export interface Player {
   name: string;
-  position: Position;
   attributes: Attributes;
   heightCm: number;
   weightKg: number;
@@ -37,8 +37,10 @@ export interface Player {
   onBall: OnBallStyle;
   /** De 0 a 100: quanto mais alto, mais o jogador aproveita o treino. */
   potential: number;
-  /** De 0 a 1: o cansaço com que chega ao jogo. */
+  /** De 0 a 1: a condição física com que chega ao jogo, somada pelo treino e pelos jogos e recuperada de semana para semana. */
   fatigue: number;
+  /** Semanas até recuperar de uma lesão. Sem lesão, não existe. */
+  injuryWeeks?: number;
 }
 
 /** Cada tática vai de -1 a 1. Pressão: recuada a campo inteiro. Espaçamento: interior a exterior. Ritmo: lento a rápido. */
@@ -87,7 +89,6 @@ export function validateTeam(team: Team): void {
   if (team.roster.length > 15) throw new Error(`${team.name}: máximo de 15 jogadores`);
   if (team.tactics) validateTactics(team.tactics, team.name);
   for (const player of team.roster) {
-    if (!POSITIONS.includes(player.position)) throw new Error(`${player.name}: posição inválida`);
     if (!Number.isFinite(player.heightCm) || player.heightCm < 150 || player.heightCm > 240) throw new Error(`${player.name}: altura inválida`);
     if (!Number.isFinite(player.weightKg) || player.weightKg < 40 || player.weightKg > 180) throw new Error(`${player.name}: peso inválido`);
     if (!Array.isArray(player.moves) || player.moves.some(move => !MOVES.includes(move))) throw new Error(`${player.name}: movimento inválido`);
@@ -95,6 +96,7 @@ export function validateTeam(team: Team): void {
     if (!ON_BALL_STYLES.includes(player.onBall)) throw new Error(`${player.name}: comportamento com bola inválido`);
     if (!Number.isFinite(player.potential) || player.potential < 0 || player.potential > 100) throw new Error(`${player.name}: potencial inválido`);
     if (!Number.isFinite(player.fatigue) || player.fatigue < 0 || player.fatigue > 1) throw new Error(`${player.name}: cansaço inválido`);
+    if (player.injuryWeeks !== undefined && (!Number.isInteger(player.injuryWeeks) || player.injuryWeeks < 0)) throw new Error(`${player.name}: lesão inválida`);
     for (const key of ATTRIBUTE_KEYS) {
       const value = player.attributes[key];
       if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error(`${player.name}: ${key} inválido`);

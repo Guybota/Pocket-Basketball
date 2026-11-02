@@ -78,7 +78,7 @@ function makePlayer(rng: Rng, names: string[], position: Position, level: number
   const moves: MoveId[] = next(rng) < MOVE_CHANCE ? [options[Math.floor(next(rng) * options.length)]!] : [];
   const pick = <T>(list: readonly T[]): T => list[Math.floor(next(rng) * list.length)]!;
   const potential = Math.round(Math.max(10, Math.min(100, 60 + noise(rng, 40))));
-  return { name, position, attributes, heightCm, weightKg, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
+  return { name, attributes, heightCm, weightKg, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
 }
 
 /** Plantel de 12: cinco titulares, cinco suplentes por posição e dois extra, ligeiramente mais fracos. */

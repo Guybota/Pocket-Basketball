@@ -32,10 +32,19 @@
 
 * { box-sizing: border-box; }
 
+/* É um jogo: nada se seleciona nem se arrasta, a não ser o que se escreve. Num tablet, segurar o dedo não abre o menu do sistema. */
+img, canvas, button { -webkit-user-drag: none; user-select: none; -webkit-touch-callout: none; }
+
+#tip { position: fixed; z-index: 60; pointer-events: none; max-width: 240px; padding: 4px 8px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); }
+
+input, textarea { user-select: text; -webkit-user-select: text; }
+
 html, body { height: 100%; }
 
 body {
   margin: 0;
+  user-select: none;
+  -webkit-user-select: none;
   background-color: var(--paint-dk);
   background-image: conic-gradient(var(--paint-dkr) 25%, transparent 0 50%, var(--paint-dkr) 0 75%, transparent 0);
   background-size: 64px 64px;
@@ -206,6 +215,90 @@ button:disabled { opacity: 0.45; cursor: default; }
 .subs { display: flex; flex-direction: column; gap: 3px; }
 
 .subs-title { font: 400 30px/1 var(--display); text-align: center; color: var(--ball); padding-bottom: 3px; }
+
+.subs-hint { padding: 5px 6px; background: var(--paper-2); border: 2px solid var(--ink); font: 400 15px/1.25 var(--ui-sm); }
+
+.subs-hint b { color: var(--ball); font-weight: 400; }
+
+/* A prancheta: os bonecos no seu lugar, com o nome numa etiqueta. */
+.board { position: relative; width: 100%; aspect-ratio: 200 / 110; background: #17564f center / 100% 100% no-repeat; border: 2px solid var(--ink); overflow: hidden; }
+
+.board.away { background-color: #3f3f49; }
+
+.bpl { position: absolute; display: flex; flex-direction: column; align-items: center; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; transform: translate(-50%, -82%); }
+
+.bpl:active, .bpl:hover { transform: translate(-50%, -82%); box-shadow: none; background: transparent; }
+
+.bpl img { display: block; width: 48px; image-rendering: pixelated; }
+
+.bpl .tag { margin-top: -5px; padding: 1px 4px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: 400 15px/1 var(--ui-sm); white-space: nowrap; }
+
+.bpl .tag.good { background: var(--good); color: #fff; }
+
+.bpl .tag.mid { background: var(--gold); }
+
+.bpl .tag.low { background: var(--bad); color: #fff; }
+
+.bpl.picked .tag { outline: 2px solid var(--ball); }
+
+.board.away .bpl.picked .tag { background: var(--away); color: #fff; outline-color: #fff; }
+
+.rivalhead { display: grid; gap: 2px; padding: 4px 6px; border-bottom: 2px solid var(--ink); font: 400 15px/1.15 var(--ui-sm); }
+
+.rivalhead b { font: 400 19px/1 var(--ui); display: flex; align-items: center; gap: 6px; }
+
+.rivalhead .quote { color: var(--muted); }
+
+/* As linhas das trocas: cara, posição, nome, energia e os números do jogo, alinhados com o cabeçalho. */
+.srow {
+  display: grid;
+  grid-template-columns: 20px 28px minmax(0, 1fr) 30px 20px repeat(7, 14px) 28px;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 24px;
+  line-height: 1;
+  padding: 1px 2px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  text-align: left;
+}
+
+.srow:hover { background: var(--paper-2); }
+
+.srow:active { transform: none; box-shadow: none; }
+
+.srow.has-ball { background: rgba(242, 194, 48, 0.42); box-shadow: inset 3px 0 0 var(--ball); }
+
+.srow .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.srow .num { font: 400 15px/1 var(--ui-sm); text-align: right; }
+
+.srow .num.warn { color: var(--bad); }
+
+.srow.bench { background: rgba(203, 185, 142, 0.22); }
+
+.srow .gr { font-size: 13px; line-height: 13px; }
+
+.srow.head img { display: block; width: 14px; height: 14px; image-rendering: pixelated; }
+
+/* As setas das trocas marcadas, no canto da cara: verde a entrar, vermelha a sair, losango a trocar de lugar. */
+.face-wrap { position: relative; display: block; width: 20px; height: 20px; }
+
+.arrow { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; }
+
+.arrow.in { background: var(--good); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+.arrow.out { background: var(--bad); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+
+.arrow.swap { background: #2b7fb8; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+
+.srow.head { min-height: 20px; margin-top: 3px; padding: 2px 2px; font: 400 15px/1.1 var(--ui-sm); background: var(--team); color: var(--team-ink); }
+
+.srow.head .name { font: inherit; }
+
+.srow.head.plain { background: var(--paper-3); color: var(--ink); }
 
 .pending-list { display: grid; gap: 3px; padding: 5px 6px; background: var(--paper-2); border: 2px solid var(--ink); }
 
@@ -570,6 +663,17 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .gr-S { background: #d9a400; } .gr-A { background: var(--bad); } .gr-B { background: var(--ball); } .gr-C { background: var(--good); } .gr-D { background: #2b7fb8; } .gr-E { background: #7a7a7a; }
 .kv { display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 3px; margin-top: 2px; padding: 1px 4px; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 17px; }
 .kv b { font-weight: 400; color: var(--ball); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
+.body-stars { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+
+.stars { display: inline-flex; gap: 1px; }
+
+.stars i { width: 9px; height: 9px; background: var(--ink-2); clip-path: polygon(50% 0, 62% 35%, 98% 35%, 69% 57%, 80% 92%, 50% 70%, 20% 92%, 31% 57%, 2% 35%, 38% 35%); }
+
+.stars i.on { background: var(--gold); }
+
+.pcard header .body-stars { font: inherit; }
+
 .chevrons { display: flex; gap: 1px; justify-content: flex-end; }
 .chevrons i { width: 6px; height: 10px; background: var(--ink-2); clip-path: polygon(0 0, 60% 0, 100% 50%, 60% 100%, 0 100%, 40% 50%); }
 .chevrons i.on { background: var(--gold); }
@@ -579,6 +683,9 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .rows div { display: flex; justify-content: space-between; padding: 1px 4px; background: var(--paper-3); }
 .edot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--ink); background: var(--good); flex: none; }
 .edot.mid { background: var(--gold); } .edot.low { background: var(--bad); }
+
+/* Lesionado: uma cruz em vez da bola. */
+.edot.hurt { background: var(--bad); border: 0; border-radius: 0; clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%); }
 .history { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 2px solid var(--ink); height: 20px; }
 .history i { display: block; border-right: 1px solid var(--ink); background: var(--paper); }
 .history i:last-child { border: 0; }
@@ -598,7 +705,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .prow.swapfrom { background: var(--ball); color: #fff; }
 .prow .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ppos { display: block; font: 400 15px/16px var(--small); text-align: center; color: #fff; border: 1px solid var(--ink); }
-.ppos-BAS, .ppos-ESC { background: #2b7fb8; } .ppos-EXT { background: var(--good); } .ppos-EXP { background: #7246c4; } .ppos-POS { background: var(--bad); }
+.ppos-BAS, .ppos-ESC { background: #2b7fb8; } .ppos-EXT { background: var(--good); } .ppos-EXP { background: #7246c4; } .ppos-POS { background: var(--bad); } .ppos-SUP { background: var(--muted); }
 .pnum { font: 400 15px/16px var(--small); text-align: center; background: var(--ink-2); color: var(--paper); }
 .starters { flex: none; background: var(--home); color: var(--home-ink); padding: 1px 6px; font: 400 15px/1 var(--small); display: flex; justify-content: space-between; }
 .starters.plain { background: var(--paper-3); color: var(--ink); }
@@ -677,6 +784,33 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .mbar.go small { color: #ffe0c8; }
 .matchhead { flex: none; display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; background: var(--ink); color: var(--paper); font: 400 15px/1 var(--small); }
 .matchhead b { font-weight: 400; color: var(--gold); }
+
+.forecast { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; padding: 3px 8px; background: var(--gold); color: var(--ink); font: 400 15px/1 var(--small); }
+
+.forecast > span:last-child { text-align: right; }
+
+.forecast b { font: 400 22px/1 var(--ui); }
+
+/* A aba da liga: os outros jogos e a classificação ao vivo. E os números de cada jogador nas estatísticas. */
+.lgame { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+
+.lgame b { font: 400 19px/1 var(--ui); }
+
+.lgame span:last-child { text-align: right; }
+
+.lrow { display: grid; grid-template-columns: 20px minmax(0, 1fr) 26px 26px 26px 36px; gap: 3px; padding: 2px 6px; font: 400 15px/1.1 var(--ui-sm); text-align: right; }
+
+.lrow .name { text-align: left; }
+
+.lrow.mine { background: rgba(242, 194, 48, 0.35); }
+
+.lrow.head { color: var(--muted); }
+
+.pstat { display: grid; grid-template-columns: minmax(0, 1fr) repeat(6, 24px) 36px; gap: 2px; padding: 1px 4px; font: 400 15px/1.1 var(--ui-sm); text-align: right; }
+
+.pstat .name { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pstat.head { margin-top: 4px; background: var(--paper-3); }
 .banner { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); padding: 2px 10px; white-space: nowrap; background: var(--ink); border: 2px solid var(--gold); color: var(--gold); font: 400 24px/1 var(--display); }
 
 /* Táticas e equipamento */
@@ -709,6 +843,31 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .prow.trained .name { color: var(--good); }
 .prow.trained[aria-pressed="true"] .name { color: var(--ink); }
 .gains { padding: 4px 6px; display: grid; gap: 3px; align-content: start; }
+/* O resultado do treino: sete barras que sobem até à nota seguinte, com o ícone a trepar. */
+.bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 6px 4px; background: var(--paper-2); border: 2px solid var(--ink); }
+
+.bar7 { display: grid; grid-template-rows: 16px 96px 16px; justify-items: center; gap: 3px; }
+
+.bar7 .gr { width: 100%; }
+
+.bar7 .track { position: relative; width: 12px; height: 96px; background: #cfc7ae; border: 2px solid var(--ink); }
+
+.bar7 .fill { position: absolute; left: 0; right: 0; bottom: 0; height: var(--from); background: var(--c); transition: height 1.1s ease-out .3s; }
+
+.bar7 .track img { position: absolute; left: -6px; bottom: calc(var(--from) - 8px); width: 16px; height: 16px; image-rendering: pixelated; transition: bottom 1.1s ease-out .3s; }
+
+.bar7.go .fill { height: var(--to); }
+
+.bar7.go .track img { bottom: calc(var(--to) - 8px); }
+
+.bar7:not(.changed) .track img { opacity: .55; }
+
+.gainlines { display: grid; gap: 4px; padding: 6px; background: var(--ink); color: var(--paper); font: 400 18px/1.2 var(--ui); }
+
+.gainlines b { font-weight: 400; }
+
+@media (prefers-reduced-motion: reduce) { .bar7 .fill, .bar7 .track img { transition: none; } }
+
 .gainrow { display: grid; grid-template-columns: 18px 1fr 18px 8px 18px 44px; gap: 4px; align-items: center; padding: 2px 4px; background: var(--paper-2); font: 400 17px/1 var(--ui); }
 .gainrow img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 .gainrow i { font-style: normal; text-align: center; color: var(--muted); }
@@ -764,6 +923,41 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .vsbox .emblem { display: block; }
 .editor { padding: 5px 6px; display: flex; flex-direction: column; gap: 6px; font: 400 15px/1 var(--small); }
 .editor > div { display: grid; gap: 3px; }
+
+.editor small { color: var(--muted); }
+
+/* Os editores: a peça ou a cor que a paleta pinta, os desenhos em miniatura, a grelha de emblemas por páginas. */
+.chips4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+
+.chips4.three { grid-template-columns: repeat(3, 1fr); }
+
+.chip { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: center; min-height: 32px; padding: 2px 4px; font: 400 14px/1 var(--small); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: 1px 1px 0 var(--ink); }
+
+.chip i { display: block; width: 18px; height: 18px; border: 1px solid var(--ink); }
+
+.chip[aria-pressed="true"] { background: var(--gold); }
+
+.patterns { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+
+.patterns button { flex: none; width: 56px; display: grid; justify-items: center; gap: 1px; padding: 3px 2px; font: 400 13px/1 var(--small); min-height: 0; box-shadow: 1px 1px 0 var(--ink); }
+
+.patterns img { width: 36px; height: 80px; image-rendering: pixelated; display: block; }
+
+.patterns button[aria-pressed="true"] { background: var(--gold); }
+
+.pager { display: grid; grid-template-columns: 24px 1fr 24px; gap: 3px; align-items: center; }
+
+.pager > button { min-height: 72px; padding: 0; font-size: 24px; }
+
+.designs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+
+.designs button, .symbols button { padding: 2px; min-height: 0; aspect-ratio: 1; box-shadow: 1px 1px 0 var(--ink); }
+
+.designs img, .symbols img { width: 100%; image-rendering: pixelated; display: block; }
+
+.designs button[aria-pressed="true"], .symbols button[aria-pressed="true"] { background: var(--gold); }
+
+.symbols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .editor input { width: 90px; min-height: 36px; padding: 2px 6px; font: 400 24px/1 var(--ui); letter-spacing: .1em; color: var(--ink); background: #fff; border: 2px solid var(--ink); text-transform: uppercase; }
 .editor input:focus-visible { outline: 3px solid var(--gold); }
 .choices { flex: none; display: flex; flex-wrap: wrap; gap: 3px; }

@@ -61,6 +61,37 @@ describe('ressaltos', () => {
     for (const r of caught) expect(Math.abs(r.endX - r.toX)).toBeLessThan(1);
   });
 
+  it('quem ganha o ressalto só fica com a bola quando chega ao pé dela, e quem afunda chega ao aro', () => {
+    let rebounds = 0;
+    let close = 0;
+    let dunks = 0;
+    let atRim = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = createMatch(home, away, seed);
+      let seen = 0;
+      while (s.phase !== 'end') {
+        step(s);
+        for (; seen < s.events.length; seen++) {
+          const e = s.events[seen]!;
+          if (e.type !== 'rebound' && e.type !== 'made') continue;
+          const b = s.bodies.find(body => body.team === e.team && body.player.name === e.player)!;
+          if (e.type === 'rebound') {
+            rebounds++;
+            if (Math.hypot(b.x - s.ball.x, b.y - s.ball.y) <= 0.9) close++;
+          } else if (s.events.slice(0, seen).reverse().find(x => x.type === 'shot')?.dunk) {
+            dunks++;
+            const hoopX = (e.team === 0) !== e.period >= 3 ? 26.425 : 1.575;
+            if (Math.hypot(b.x - hoopX, b.y) <= 0.9) atRim++;
+          }
+        }
+      }
+    }
+    expect(rebounds).toBeGreaterThan(400);
+    expect(close / rebounds).toBeGreaterThan(0.95);
+    expect(dunks).toBeGreaterThan(100);
+    expect(atRim / dunks).toBeGreaterThan(0.9);
+  });
+
   it('a bola nunca sai para fora do campo depois de um desarme', () => {
     for (const r of rebounds(40).filter(r => r.blocked)) {
       expect(r.toX).toBeGreaterThanOrEqual(0);

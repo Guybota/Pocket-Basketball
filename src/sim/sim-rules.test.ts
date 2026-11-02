@@ -169,11 +169,18 @@ describe('coerência de um jogo', () => {
   it('a cada passo, os jogadores estão perto do campo e a bola tem um só dono', () => {
     const s = createMatch(home, away, 77);
     const problems: string[] = [];
+    let graceUntil = -1;
     while (s.phase !== 'end') {
       step(s);
+      // Quem repõe fica até um metro fora da linha. Ao intervalo saem todos para o balneário. Com a bola em jogo, ninguém está fora das linhas.
+      const leaving = s.phase === 'break' && s.period === 2;
+      // Quem acabou de repor ainda está a deslizar para dentro durante uns passos.
+      if (s.flight?.kind === 'pass' && s.flight.restart) graceUntil = s.tick + 6;
+      const playing = s.tick >= graceUntil && (s.phase === 'live' || s.phase === 'pass' || s.phase === 'shot' || s.phase === 'rebound');
       for (const team of s.court) {
         for (const b of team) {
-          if (b.x < -0.5 || b.x > 28.5 || Math.abs(b.y) > 8.5) problems.push(`${s.tick}: ${b.player.name} fora do campo`);
+          if (!leaving && (b.x < -1 || b.x > 29 || Math.abs(b.y) > 8.5)) problems.push(`${s.tick}: ${b.player.name} fora do campo`);
+          if (playing && (b.x < -0.2 || b.x > 28.2 || Math.abs(b.y) > 7.7)) problems.push(`${s.tick}: ${b.player.name} fora das linhas com a bola em jogo`);
         }
       }
       const expectedHolder = s.phase === 'live' ? s.holder?.team === s.offense : s.holder === null;

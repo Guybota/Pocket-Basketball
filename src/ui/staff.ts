@@ -8,14 +8,15 @@ import { escapeHtml } from './panel.ts';
 
 export type StaffId = 'secretary' | 'assistant' | 'president';
 
-/** Os traços do retrato, bit a bit: forma da cara, sobrancelhas, olhos, nariz, barba, boca e cabelo comprido. */
-const face = (shape: number, brow: number, eyes: number, nose: number, beard: number, mouth: number, longHair: boolean): number =>
-  shape | (brow << 4) | (eyes << 6) | (nose << 8) | (beard << 10) | (mouth << 12) | ((longHair ? 0 : 1) << 18);
+/** Os traços do retrato, bit a bit: forma da cara, sobrancelhas, olhos, nariz, barba, boca, cabelo comprido, carrapito, óculos e sobrancelhas grossas. */
+const face = (shape: number, brow: number, eyes: number, nose: number, beard: number, mouth: number, longHair: boolean, extras: { bun?: boolean; glasses?: boolean; thickBrows?: boolean } = {}): number =>
+  shape | (brow << 4) | (eyes << 6) | (nose << 8) | (beard << 10) | (mouth << 12) | ((extras.bun ? 1 : 0) << 16) | ((longHair ? 0 : 1) << 18) | ((extras.glasses ? 0 : 1) << 20) | ((extras.thickBrows ? 1 : 0) << 21) | (1 << 5);
 
 export const STAFF: Record<StaffId, { name: string; look: Look }> = {
-  secretary: { name: 'Secretária', look: { kit: 'cream', skin: 1, hair: 3, style: 0, legs: 7, torso: 7, build: 'slim', face: face(3, 0, 2, 1, 0, 2, true) } },
-  assistant: { name: 'Adjunto', look: { kit: 'coach', skin: 2, hair: 0, style: 1, legs: 8, torso: 8, build: 'athletic', face: face(2, 0, 0, 0, 1, 0, false) } },
-  president: { name: 'Presidente', look: { kit: 'coach', skin: 0, hair: 4, style: 3, legs: 7, torso: 8, build: 'heavy', face: face(0, 1, 1, 2, 3, 1, false) } },
+  // Caras fixas: a secretária de carrapito, o adjunto de sobrancelhas grossas e bigode, o presidente careca, de óculos e barba cheia.
+  secretary: { name: 'Secretária', look: { kit: 'blouse', skin: 1, hair: 3, style: 0, legs: 7, torso: 7, build: 'slim', face: face(3, 0, 2, 1, 0, 2, true, { bun: true }) } },
+  assistant: { name: 'Adjunto', look: { kit: 'coach', skin: 2, hair: 0, style: 1, legs: 8, torso: 8, build: 'athletic', face: face(2, 0, 0, 0, 1, 0, false, { thickBrows: true }) } },
+  president: { name: 'Presidente', look: { kit: 'suit', skin: 0, hair: 4, style: 3, legs: 7, torso: 8, build: 'heavy', face: face(0, 1, 1, 2, 3, 1, false, { glasses: true }) } },
 };
 
 /** Um balão com o retrato de quem fala. */

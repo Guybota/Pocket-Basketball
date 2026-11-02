@@ -10,8 +10,15 @@ const HAIRS = ['#2a2230', '#5a3a22', '#a8642a', '#e0b94f', '#1b2230', '#7a3a2a']
 export const KITS = {
   blue: { jersey: '#2b5fd9', shade: '#1d43a3', trim: '#ffffff', shorts: '#f4f4f4' },
   cream: { jersey: '#f4efe0', shade: '#cfc7ae', trim: '#cf3a2c', shorts: '#cf3a2c' },
-  coach: { jersey: '#3a4252', shade: '#2a3040', trim: '#f4efe0', shorts: '#2c3345' },
+  // O treinador: fato de treino com fecho claro e calças escuras, para não se confundir com a equipa.
+  coach: { jersey: '#2f7f8c', shade: '#235f69', trim: '#f4efe0', shorts: '#1b2230' },
+  // Roupa de rua do público que não veste a cor do clube.
+  fan: { jersey: '#e2d3a8', shade: '#bfae84', trim: '#e2d3a8', shorts: '#2c3345' },
+  fan2: { jersey: '#5a6b8c', shade: '#44526d', trim: '#5a6b8c', shorts: '#2c3345' },
   referee: { jersey: '#f4f4f4', shade: '#c9c9c9', trim: '#1b2230', shorts: '#1b2230' },
+  // Roupa de rua: o fato do presidente e do treinador, a blusa da secretária. Tapa os braços, e o fato tem calças.
+  suit: { jersey: '#2c3345', shade: '#1b2230', trim: '#f4efe0', shorts: '#2c3345' },
+  blouse: { jersey: '#7246c4', shade: '#56349a', trim: '#f4efe0', shorts: '#1b2230' },
 } as const;
 export type KitName = keyof typeof KITS;
 
@@ -23,6 +30,8 @@ interface PoseShape {
   g: Offset;
   jump?: number;
   ball?: Offset;
+  /** Um objeto na mão direita: a garrafa de água do descanso, ou a prancheta do treinador. */
+  prop?: 'bottle' | 'board';
 }
 
 const POSES = {
@@ -51,6 +60,12 @@ const POSES = {
   fists: (L: number): PoseShape => ({ a: [-5, -7], b: [5, -7], f: [-2, L], g: [2, L], jump: 2 }),
   handsHead: (L: number): PoseShape => ({ a: [-2, -9], b: [2, -9], f: [-2, L], g: [2, L] }),
   slump: (L: number): PoseShape => ({ a: [-1, 8], b: [1, 8], f: [-2, L], g: [2, L] }),
+  // O treinador: a pensar com a mão no queixo, e a apontar para o campo.
+  think: (L: number): PoseShape => ({ a: [-2, 5], b: [3, -4], f: [-2, L], g: [2, L] }),
+  point: (L: number): PoseShape => ({ a: [-1, 5], b: [8, 0], f: [-2, L], g: [2, L] }),
+  // No descanso: a beber água, e o treinador de prancheta na mão a explicar.
+  drink: (L: number): PoseShape => ({ a: [-2, 5], b: [3, -4], f: [-2, L], g: [2, L], prop: 'bottle' }),
+  board: (L: number): PoseShape => ({ a: [-3, 2], b: [5, -3], f: [-2, L], g: [2, L], prop: 'board' }),
 };
 export type PoseName = keyof typeof POSES;
 
@@ -75,6 +90,8 @@ export interface Look {
   build: Build;
   /** Escolhe os traços do retrato: forma da cara, sobrancelhas, barba. */
   face: number;
+  /** Público: calças e sapatos escuros em vez de calções e ténis. */
+  street?: boolean;
 }
 
 /** A aparência vem do nome: o mesmo jogador tem sempre a mesma cara. */
@@ -140,19 +157,24 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const kit = look.custom ? { ...kitColors(look), jersey: JERSEY_MARK, shade: SHADE_MARK } : KITS[look.kit];
   const [skin, skinShade] = SKINS[look.skin]!;
   const hair = HAIRS[look.hair]!;
+  // De fato ou de fato de treino, as mangas tapam os braços até às mãos e as calças tapam as pernas. O público veste calças.
+  const suit = look.kit === 'suit';
+  const sleeves = suit || look.kit === 'coach';
+  const trousers = sleeves || look.street === true;
+  const trouserColor = look.street ? '#2c3345' : kit.shorts;
   const hipY = ANCHOR_Y - L - (shape.jump ?? 0);
   const hx = ANCHOR_X;
   const hipLeft = hx - (body.hips >> 1);
   const leg = ([dx, dy]: Offset, x0: number, shaded: boolean): void => {
     const x1 = hx + dx - 1;
     const y1 = hipY + dy - 2;
-    limb(x0, hipY, x1, y1, body.leg, k => (k < 0.5 ? kit.shorts : shaded ? skinShade : skin));
-    rect(x1 - 1, y1 + 2, body.leg + 2, 2, '#f4f4f4');
-    put(x1 - 1, y1 + 3, kit.jersey);
+    limb(x0, hipY, x1, y1, body.leg, k => (trousers ? trouserColor : k < 0.5 ? kit.shorts : shaded ? skinShade : skin));
+    rect(x1 - 1, y1 + 2, body.leg + 2, 2, look.street ? '#5a4632' : '#f4f4f4');
+    if (!look.street) put(x1 - 1, y1 + 3, kit.jersey);
   };
   leg(shape.f, hipLeft + 1, true);
   leg(shape.g, hipLeft + body.hips - body.leg - 1, false);
-  rect(hipLeft, hipY - 1, body.hips, 4, kit.shorts);
+  rect(hipLeft, hipY - 1, body.hips, 4, trouserColor);
   rect(hipLeft, hipY + 2, 2, 1, kit.trim);
   rect(hipLeft + body.hips - 2, hipY + 2, 2, 1, kit.trim);
   const top = hipY - T;
@@ -165,12 +187,10 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     // A camisola às riscas é o que faz reconhecer o árbitro no meio dos jogadores.
     if (look.kit === 'referee') for (let c = left; c < left + width; c += 2) put(c, top + row, INK);
   }
-  if (back) {
-    rect(hx - 1, top + 1, 2, 3, kit.trim);
-  } else {
-    rect(hx - 1, top, 2, 1, skin);
-    rect(hx - 1, top + 2, 2, 2, kit.trim);
-  }
+  if (back) rect(hx - 1, top + 1, 2, 3, kit.trim);
+  else rect(hx - 1, top, 2, 1, skin);
+  // O fecho do fato de treino.
+  if (look.kit === 'coach') for (let row = 1; row < T; row++) put(hx, top + row, kit.trim);
   // A cabeça tem o topo e o queixo arredondados: linhas de 6, 8, 8, ... 8 e 6 píxeis.
   const headX = hx - 4;
   const headY = top - 7;
@@ -209,8 +229,21 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const overlap = body.arm > 1 ? 1 : 0;
   const leftArm = shoulderLeft - body.arm + overlap;
   const rightArm = shoulderRight + 1 - overlap;
-  limb(leftArm, top + 1, leftArm + shape.a[0], top + 1 + shape.a[1], body.arm, () => skinShade);
-  limb(rightArm, top + 1, rightArm + shape.b[0], top + 1 + shape.b[1], body.arm, () => skin);
+  limb(leftArm, top + 1, leftArm + shape.a[0], top + 1 + shape.a[1], body.arm, k => (sleeves && k < 0.7 ? kit.shade : skinShade));
+  limb(rightArm, top + 1, rightArm + shape.b[0], top + 1 + shape.b[1], body.arm, k => (sleeves && k < 0.7 ? kit.jersey : skin));
+  if (shape.prop === 'bottle') {
+    const bx = rightArm + shape.b[0] + 1;
+    const by = top + 1 + shape.b[1] - 3;
+    rect(bx, by, 2, 5, '#7ec8e0');
+    put(bx, by - 1, '#2b5fd9');
+  } else if (shape.prop === 'board') {
+    const bx = rightArm + shape.b[0];
+    const by = top + 1 + shape.b[1] - 6;
+    rect(bx, by, 6, 8, '#f4efe0');
+    rect(bx + 1, by + 2, 4, 1, INK);
+    rect(bx + 1, by + 4, 3, 1, INK);
+    rect(bx + 2, by - 1, 2, 1, INK);
+  }
   // A camisola tapa os ombros: o braço só aparece a partir da cava.
   rect(shoulderLeft - 1, top, body.shoulder + 2, 1, kit.jersey);
   rect(shoulderLeft, top + 1, body.shoulder, 1, kit.jersey);
@@ -252,7 +285,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
 }
 
 export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean): void {
-  const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}`;
+  const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}`;
   let sprite = cache.get(key);
   if (!sprite) {
     sprite = buildSprite(pose, look, back, withBall);
@@ -292,6 +325,24 @@ export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look
 const faceCache = new Map<string, string>();
 
 /** Retrato do jogador para o painel, recortado do próprio boneco. */
+const spriteCache = new Map<string, string>();
+
+/** Um boneco inteiro, parado, como imagem: para as pranchetas em HTML, onde não há canvas por boneco. */
+export function spriteImage(look: Look, pose: PoseName = 'idle'): string {
+  const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}`;
+  let url = spriteCache.get(key);
+  if (!url) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 24;
+    canvas.height = spriteHeight(look) + 4;
+    const g = canvas.getContext('2d')!;
+    drawSprite(g, pose, look, 12, canvas.height - 2, false, false, false);
+    url = canvas.toDataURL();
+    spriteCache.set(key, url);
+  }
+  return url;
+}
+
 export function faceImage(look: Look): string {
   const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}`;
   let url = faceCache.get(key);

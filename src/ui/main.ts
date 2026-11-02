@@ -1,5 +1,5 @@
 import { matchHash } from '../sim/hash.ts';
-import { cancelSubstitution, queueSubstitution, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body } from '../sim/match.ts';
+import { cancelSubstitution, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
@@ -11,12 +11,12 @@ import { lookOf } from './art/sprites.ts';
 import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { tacticsControls } from './club-screens.ts';
-import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubTeam, currentFixture, currentGame, finishMatch, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
+import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, showTopNote, type GameKind } from './menus.ts';
 import { AIRPORT_NOTE, TOWER_NOTE, cityPanel, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
-import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type PanelTab } from './panel.ts';
+import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
 import { portraitImage } from './art/portrait.ts';
 
@@ -76,6 +76,8 @@ let found: CardId[] = [];
 let dropUntil = 0;
 let speed = 1;
 let paused = false;
+let pauseRequested = false;
+const ballSettled = (s: MatchState): boolean => s.holder !== null || s.phase === 'dead' || s.phase === 'timeout' || s.phase === 'break' || s.phase === 'end' || s.ball.z <= 0.2;
 let started = false;
 let tab: PanelTab = 'bench';
 let accumulator = 0;
@@ -89,7 +91,9 @@ let hudText = '';
 let pointerDown = false;
 let cardBody: Body | null = null;
 let subsOpen = false;
-let subOut: number | null = null;
+// Os outros jogos da jornada, simulados ao começar o nosso, para a aba da liga.
+let liveLeague: LiveLeague | null = null;
+let subPick: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
 // A apresentação antes do jogo, a cena do fim, e a repetição do lance decisivo.
@@ -97,6 +101,11 @@ let introTimer = 0;
 let endAt = 0;
 let resultHtml = '';
 let replay: MatchView | undefined;
+// O jogo de demonstração do ecrã de título, quando ninguém toca durante uns segundos.
+let demo: MatchView | undefined;
+let demoTimer = 0;
+let demoAccumulator = 0;
+const DEMO_AFTER_MS = 8000;
 let replayUntil = 0;
 let replayAccumulator = 0;
 const REPLAY_SPEED = 0.5;
@@ -147,6 +156,7 @@ function setCanvasSize(width: number, height: number, cssWidth: number, cssHeigh
     canvas.width = width;
     canvas.height = height;
     view?.resize();
+    demo?.resize();
   }
   canvas.style.width = `${cssWidth}px`;
   canvas.style.height = `${cssHeight}px`;
@@ -212,6 +222,10 @@ function setTopSize(width: number, height: number, zoom: number): void {
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: typeof stage): void {
   stage = next;
+  if (next !== 'title') {
+    clearTimeout(demoTimer);
+    demo = undefined;
+  }
   if (next === 'town' || next === 'title') audio.music('town');
   else if (next === 'match') audio.music('arena');
   // Uma cortina curta entre ecrãs, em vez de uma troca seca.
@@ -272,6 +286,7 @@ function applyClubColors(): void {
 function makeView(kind: GameKind, rivalId: number): void {
   const current = club!;
   const seed = weekSeed(current);
+  liveLeague = kind === 'official' ? { club: current, others: liveOtherGames(current) } : null;
   dropRng = makeRng(seed ^ 0x3c1a77);
   found = [];
   drop.hidden = true;
@@ -287,12 +302,12 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current));
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100);
   accumulator = 0;
   finished = false;
   cardBody = null;
   subsOpen = false;
-  subOut = null;
+  subPick = null;
   tacticsOpen = false;
   timeoutHandled = false;
   audio.setVenue(kind === 'practice' ? 0 : current.division);
@@ -337,18 +352,23 @@ const ballLogo = (): string => {
   return c.toDataURL();
 };
 
-/** Sem clube, ou depois de um despedimento, começa-se um novo. Toda a gente começa pela última divisão. */
+/** O ecrã de título: continuar o clube guardado ou criar um novo, que começa sempre pela última divisão. */
 function showNewClub(): void {
   closeMenus();
   setStage('title');
   panel.innerHTML = `<div class="start">
     <h1><img src="${ballLogo()}" alt=""><span>Pocket<br>Basketball</span></h1>
     ${saveUnreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
-    <button type="button" class="primary" id="newClubBtn">Criar clube</button>
-    ${club && !club.fired ? '<button type="button" class="quiet" id="newClubBack">Voltar ao meu clube</button>' : ''}
-    <p class="hint">Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.</p>
+    ${club ? `<button type="button" class="primary" id="continueBtn">Continuar · ${escapeHtml(club.team.short)}</button>` : ''}
+    <button type="button" class="${club ? 'quiet' : 'primary'}" id="newClubBtn">Criar clube</button>
+    <p class="hint">${club ? `Época ${club.season}, semana ${club.week}.` : `Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.`}</p>
   </div>`;
-  document.getElementById('newClubBack')?.addEventListener('click', showClub);
+  document.getElementById('continueBtn')?.addEventListener('click', () => {
+    audio.unlock();
+    showClub();
+  });
+  clearTimeout(demoTimer);
+  demoTimer = window.setTimeout(startDemo, DEMO_AFTER_MS);
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
     // Os troféus são do treinador, por isso acompanham-no para o clube novo.
@@ -395,6 +415,28 @@ function showClub(): void {
   element('squadBtn').addEventListener('click', () => openMenu('squad'));
 }
 
+/** Sem ninguém a tocar, o título mostra um jogo entre dois clubes da divisão de cima, como uma máquina de arcada. */
+function startDemo(): void {
+  if (stage !== 'title') return;
+  const source = club ?? townExtras;
+  const top = source.divisions[DIVISIONS.length - 1]!;
+  const seed = Math.floor(Date.now() / 1000) & 0x7fffffff;
+  const home = source.clubs[top[seed % top.length]!]!;
+  const away = source.clubs[top[(seed + 1) % top.length]!]!;
+  const quiet = { announce: () => {}, event: () => {}, sound: () => {} };
+  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, undefined, undefined, clubColor(home));
+  demo.snapCamera();
+  demoAccumulator = 0;
+}
+
+/** A cor do pavilhão: quem joga em casa pinta o campo e enche a bancada. */
+function venueColor(kind: GameKind, rivalId: number): string {
+  const current = club!;
+  if (kind === 'official' && visitorOf(current) === 0) return clubColor(current.clubs[rivalId]!);
+  const kit = activeKit(current);
+  return [kit.jersey, kit.second, kit.trim].find(color => !isLight(color)) ?? '#2b5fd9';
+}
+
 /** O clube em grande, por cima dos ecrãs que têm o texto todo em baixo. */
 const clubBadge = (current: ClubState): string => `<div class="clubbadge"><img class="emblem" alt="" src="${emblemImage(current.emblem)}"><b>${escapeHtml(current.team.name)}</b></div>`;
 
@@ -403,7 +445,7 @@ function showSeasonReport(): void {
   closeMenus();
   setStage('menu');
   const festive = current.seasonReport!.outcome === 'champion' || current.seasonReport!.cups.length > 0;
-  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${clubBadge(current)}${festive ? '<canvas id="confetti" class="confetti" width="180" height="120"></canvas>' : ''}`);
+  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current));
   audio.music(festive ? 'win' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
   const report = current.seasonReport!;
@@ -445,13 +487,14 @@ function matchControls(): string {
   return `<div class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="bench" aria-selected="${tab === 'bench'}">Banco</button>
       <button type="button" role="tab" data-tab="stats" aria-selected="${tab === 'stats'}">Stats</button>
+      <button type="button" role="tab" data-tab="league" aria-selected="${tab === 'league'}">Liga</button>
       <button type="button" role="tab" data-tab="feed" aria-selected="${tab === 'feed'}">Relato</button>
       <button type="button" role="tab" data-tab="cards" aria-selected="${tab === 'cards'}">Cartas</button>
     </div>
     <div id="tabContent" class="content"></div>
     <div class="controls">
       <div class="speeds" role="group" aria-label="Velocidade">${speedButtons}</div>
-      <button type="button" id="pauseBtn" aria-pressed="${paused}">${paused ? 'Continuar' : 'Pausa'}</button>
+      <button type="button" id="pauseBtn" aria-pressed="${paused || pauseRequested}">${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}</button>
       <button type="button" id="muteBtn" aria-pressed="${audio.muted}">${audio.muted ? 'Sem som' : 'Som'}</button>
       <div class="coach">
         <button type="button" id="timeoutBtn">Desconto</button>
@@ -477,7 +520,15 @@ function bindControls(): void {
     });
   });
   element('pauseBtn').addEventListener('click', () => {
-    paused = !paused;
+    // A pausa espera que a bola esteja nas mãos de alguém, ou no chão: nunca fica suspensa no ar.
+    if (paused || pauseRequested) {
+      paused = false;
+      pauseRequested = false;
+    } else if (ballSettled(view!.s)) {
+      paused = true;
+    } else {
+      pauseRequested = true;
+    }
     showMatch();
   });
   element('muteBtn').addEventListener('click', () => {
@@ -491,12 +542,14 @@ function refreshContent(): void {
   // Não mexer no painel durante um toque, senão o botão desaparece antes de o clique acabar.
   if (!content || pointerDown) return;
   updateCoachButtons();
+  // O separador das cartas tem uma animação de entrada: só se redesenha quando muda, senão pisca a cada passo.
+  content.dataset.shown = '';
   if (tacticsOpen) {
     content.innerHTML = `${tacticsControls(view!.s.tactics[0])}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
     return;
   }
   if (subsOpen) {
-    content.innerHTML = subsPanel(view!, subOut, view!.s.timeoutTeam === 0);
+    content.innerHTML = subsPanel(view!, subPick, view!.s.timeoutTeam === 0);
     return;
   }
   if (cardBody) {
@@ -510,7 +563,10 @@ function refreshContent(): void {
     return;
   }
   const focusedPlayer = document.activeElement instanceof HTMLElement && content.contains(document.activeElement) ? document.activeElement.dataset.player : undefined;
-  content.innerHTML = panelContent(view!, tab, found);
+  const html = panelContent(view!, tab, found, liveLeague);
+  if (tab === 'cards' && content.dataset.shown === html) return;
+  content.dataset.shown = tab === 'cards' ? html : '';
+  content.innerHTML = html;
   if (focusedPlayer) content.querySelector<HTMLElement>(`[data-player="${focusedPlayer}"]`)?.focus();
 }
 
@@ -542,7 +598,7 @@ function updateCoachButtons(): void {
 
 function closeSubs(): void {
   subsOpen = false;
-  subOut = null;
+  subPick = null;
   if (halfSubsOpen) {
     halfSubsOpen = false;
     openHalf(gameKind, rivalOf);
@@ -555,7 +611,7 @@ function closeSubs(): void {
 
 panel.addEventListener('click', event => {
   if (menusOpen()) return;
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-sub-out], [data-sub-in], [data-sub-cancel], [data-rotation], [data-subs-close], [data-tactic], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
   if (!target || (target as HTMLButtonElement).disabled) return;
   pointerDown = false;
   if (target.dataset.tactic !== undefined) {
@@ -581,25 +637,32 @@ panel.addEventListener('click', event => {
   if (target.id === 'subsBtn') {
     tacticsOpen = false;
     subsOpen = !subsOpen;
-    subOut = null;
+    subPick = null;
     cardBody = null;
     refreshContent();
     if (!subsOpen) showMatch();
     return;
   }
-  if (target.dataset.subOut !== undefined) {
-    subOut = Number(target.dataset.subOut);
-    refreshContent();
-    return;
-  }
-  if (target.dataset.subIn !== undefined) {
-    if (subOut !== null) queueSubstitution(s, 0, subOut, Number(target.dataset.subIn));
-    subOut = null;
-    refreshContent();
-    return;
-  }
-  if (target.dataset.subCancel !== undefined) {
-    cancelSubstitution(s, 0, Number(target.dataset.subCancel));
+  if (target.dataset.pick !== undefined) {
+    const index = Number(target.dataset.pick);
+    const body = s.bodies[index]!;
+    // Tocar em quem já tem troca marcada desmarca-a. Senão, o primeiro toque escolhe e o segundo troca os dois:
+    // campo com banco é uma substituição, campo com campo troca de lugar, banco com banco troca a ordem de entrada.
+    const pending = s.pendingSubs.find(sub => sub.team === 0 && (sub.incoming === body || s.court[0][sub.slot] === body));
+    if (pending) {
+      cancelSubstitution(s, 0, pending.slot);
+      subPick = null;
+    } else if (subPick === null) {
+      subPick = index;
+    } else if (subPick === index) {
+      subPick = null;
+    } else {
+      const other = s.bodies[subPick]!;
+      if (body.slot >= 0) queueSubstitution(s, 0, body.slot, subPick);
+      else if (other.slot >= 0) queueSubstitution(s, 0, other.slot, index);
+      else reorderBench(s, 0, subPick, index);
+      subPick = null;
+    }
     refreshContent();
     return;
   }
@@ -641,6 +704,8 @@ function startGame(kind: GameKind, rivalId: number): void {
   applyClubColors();
   setStage('match');
   makeView(kind, rivalId);
+  // O prognóstico aparece na entrada das equipas, e não antes: com a confiança alta, a bancada já vem a festejar.
+  if (kind === 'official') view!.showForecast(forecast(club!, rivalTeam(club!, rivalId), visitorOf(club!) === 1), club!.confidence >= 60);
   showIntro();
 }
 
@@ -674,7 +739,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100);
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;
@@ -736,7 +801,7 @@ function showHalfSubs(): void {
   closeMenus();
   halfSubsOpen = true;
   subsOpen = true;
-  subOut = null;
+  subPick = null;
   cardBody = null;
   tacticsOpen = false;
   panel.innerHTML = '<div id="tabContent" class="content"></div>';
@@ -763,7 +828,7 @@ function updateHud(): void {
   const period = s.period <= 4 ? `P${s.period}` : 'PR';
   const shotClock = s.phase === 'live' || s.phase === 'pass' ? Math.max(0, Math.ceil(s.shotClock / TICKS_PER_SECOND)) : null;
   const carrierName = carrier ? carrier.player.name : '';
-  const carrierPos = carrier ? carrier.player.position : '';
+  const carrierPos = carrier ? slotCode(carrier.slot) : '';
   const next = [s.score[0], s.score[1], period, clockText(s.clock), shotClock, carrierName, carrier?.team, s.teams[0].short, s.teams[1].short].join('|');
   if (next === hudText) return;
   hudText = next;
@@ -793,6 +858,12 @@ function frame(now: number): void {
       current.stepSim();
       accumulator -= 1;
       steps++;
+      if (pauseRequested && ballSettled(current.s)) {
+        pauseRequested = false;
+        paused = true;
+        showMatch();
+        break;
+      }
     }
     if (!halfShown && firstHalfOver(current.s)) {
       if (gameKind === 'practice') showResult();
@@ -809,13 +880,13 @@ function frame(now: number): void {
       if (banner.textContent !== message || banner.hidden) announce(message);
     }
   }
-  // No nosso desconto, o jogo espera pelo jogador e abre logo as trocas.
-  if (current?.s.phase === 'timeout' && current.s.timeoutTeam === 0) {
+  // No nosso desconto, a equipa junta-se ao banco e depois o jogo espera pelo jogador, com as trocas abertas.
+  if (current?.s.phase === 'timeout' && current.s.timeoutTeam === 0 && current.s.timer <= TICKS_PER_SECOND) {
     if (!timeoutHandled) {
       timeoutHandled = true;
       paused = true;
       subsOpen = true;
-      subOut = null;
+      subPick = null;
       cardBody = null;
       showMatch();
     }
@@ -835,6 +906,14 @@ function frame(now: number): void {
     }
     if (replay.s.tick >= replayUntil || replay.s.phase === 'end') endReplay();
     else replay.render(Math.min(1, replayAccumulator), elapsed * REPLAY_SPEED);
+  } else if (demo) {
+    demoAccumulator += elapsed * TICKS_PER_SECOND;
+    while (demoAccumulator >= 1 && demo.s.phase !== 'end') {
+      demo.stepSim();
+      demoAccumulator -= 1;
+    }
+    if (demo.s.phase === 'end') startDemo();
+    else demo.render(Math.min(1, demoAccumulator), elapsed);
   } else if (stage === 'town' || stage === 'title') {
     // A cidade passeia sempre uma equipa, mesmo antes de haver clube.
     const walkers = club ?? townExtras;
@@ -844,7 +923,7 @@ function frame(now: number): void {
     drawTown(context, canvas.width, canvas.height, walkers.division, looks, townClock ?? now, {
       jersey: kit.jersey,
       trim: kit.trim,
-      poster: club && game ? `${game.fixture.home === PLAYER_CLUB ? 'DOMINGO' : 'FORA'} ${opponentOf(club).short}` : '',
+      poster: club && game ? (game.fixture.home === PLAYER_CLUB ? `${club.team.short} VS ${opponentOf(club).short}` : `${opponentOf(club).short} VS ${club.team.short}`) : '',
       festive: club !== null && club.week <= 2 && (club.history.at(-1)?.outcome === 'champion' || (club.history.at(-1)?.cups.length ?? 0) > 0),
     }, weatherFor(club?.week ?? 1));
   } else if (stage === 'menu') {
@@ -884,7 +963,8 @@ initMenus({
 addEventListener('resize', fit);
 fit();
 club = testSeed !== null ? newClub(testSeed, testDivision) : loadClub();
-if (club) showClub();
+// Com semente na morada, a verificação automática entra logo na cidade; o título vê-se no fluxo sem clube.
+if (club && testSeed !== null) showClub();
 else showNewClub();
 requestAnimationFrame(now => {
   lastFrame = now;
@@ -964,11 +1044,14 @@ Object.assign(window, {
       announced: [...announced],
       canvas: { width: canvas.width, height: canvas.height },
       replay: replay ? { tick: replay.s.tick, until: replayUntil, phase: replay.s.phase } : null,
+      demo: demo ? demo.s.tick : null,
+      ball: view ? { ...view.s.ball } : null,
     }),
     setSpeedRaw: (value: number) => {
       speed = value;
     },
     /** Pausa o jogo no momento pedido, para a verificação poder fotografá-lo. */
+    tuneCamera: (t: { cy?: number; cz?: number; lookY?: number; focal?: number }) => view?.tuneCamera(t),
     pauseAt: (eventType: string, extraTicks: number, maxDistance = Infinity, move?: string) => {
       paused = true;
       const current = view!;
@@ -1003,3 +1086,32 @@ Object.assign(window, {
     renderStats: () => ({ meanMs: renderCount ? renderMs / renderCount : 0, frames: renderCount }),
   },
 });
+
+// Num tablet, segurar o dedo numa imagem abria o menu do sistema. Aqui segura-se para ler o que é.
+const tip = document.createElement('div');
+tip.id = 'tip';
+tip.hidden = true;
+document.body.append(tip);
+let tipTimer = 0;
+const hideTip = (): void => {
+  clearTimeout(tipTimer);
+  tip.hidden = true;
+};
+document.addEventListener('contextmenu', event => {
+  if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
+});
+document.addEventListener('pointerdown', event => {
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[title], img[alt], [aria-label]');
+  hideTip();
+  if (!target) return;
+  const label = target.getAttribute('title') || target.getAttribute('aria-label') || (target as HTMLImageElement).alt;
+  if (!label) return;
+  tipTimer = window.setTimeout(() => {
+    tip.textContent = label;
+    tip.hidden = false;
+    const box = target.getBoundingClientRect();
+    tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, box.left + box.width / 2 - tip.offsetWidth / 2))}px`;
+    tip.style.top = `${Math.max(4, box.top - tip.offsetHeight - 6)}px`;
+  }, 450);
+});
+for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);

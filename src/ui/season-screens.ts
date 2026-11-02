@@ -22,7 +22,9 @@ export function staffNote(club: ClubState): string {
   const position = leaguePosition(club);
   const played = club.rounds.some(round => round.some(f => f.score));
   const tired = club.team.roster.slice(0, 5).find(player => player.fatigue >= 0.35);
+  const hurt = club.team.roster.slice(0, 5).find(player => player.injuryWeeks);
   if (club.confidence < 15) return 'A direção anda a fazer contas à tua indemnização. Convinha ganhar.';
+  if (hurt) return `O ${hurt.name} está lesionado, ${hurt.injuryWeeks} ${hurt.injuryWeeks === 1 ? 'semana' : 'semanas'} de fora. Joga quem vem a seguir no plantel.`;
   if (tired) return `O ${tired.name} chegou ao treino de rastos. Talvez o banco lhe faça bem.`;
   if (club.trainedThisWeek.length === 0 && totalCards(club) >= 3) return 'Há cartas por usar. Os jogadores não melhoram com boas intenções.';
   if (currentGame(club)?.playoff) return 'Playoffs. Agora é jogo a jogo, e quem perder vai de férias.';

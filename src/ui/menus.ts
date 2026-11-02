@@ -9,17 +9,20 @@ import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, MAX_CARDS_PER_PLAYER, previewGains, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, MAX_FOCUS, gradeOf, type Attributes, type Player, type Team } from '../sim/types.ts';
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
-import { KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
+import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
+import { attributeIcon, iconFrom } from './art/icons.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
+import { drawFlagScene } from './art/flag.ts';
+import { drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, KITS, drawSprite, lookOf, type Look, type PoseName } from './art/sprites.ts';
 import { CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, escapeHtml as esc, panelContent } from './panel.ts';
-import { drawShelf, trophyList } from './trophies.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
 import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
@@ -73,6 +76,10 @@ let marketPick = 0;
 // Vender pede dois toques: o segundo confirma.
 let selling = false;
 let kitEditing = 'home';
+// A peça do equipamento e a cor do emblema que a paleta pinta, e a página da grelha de desenhos.
+let kitPart: 'jersey' | 'second' | 'shorts' | 'trim' = 'jersey';
+let emblemPart: 'primary' | 'secondary' | 'accent' = 'primary';
+let emblemPage = 0;
 let gameKind: GameKind = 'official';
 let half = false;
 
@@ -93,36 +100,6 @@ const SHORT_NAMES: Record<CardId, string> = {
 };
 
 /* ---------- Ícones, desenhados aqui para serem nossos ---------- */
-function iconFrom(rows: readonly string[], color: string, back: string | null, size = 16): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const g = canvas.getContext('2d')!;
-  if (back) {
-    g.fillStyle = back;
-    g.fillRect(0, 0, size, size);
-  }
-  const offX = Math.floor((size - rows[0]!.length) / 2);
-  const offY = Math.floor((size - rows.length) / 2);
-  rows.forEach((row, y) => {
-    [...row].forEach((ch, x) => {
-      if (ch === '.') return;
-      g.fillStyle = ch === '#' ? color : ch === 'o' ? '#e8622a' : INK;
-      g.fillRect(offX + x, offY + y, 1, 1);
-    });
-  });
-  return canvas.toDataURL();
-}
-
-const ATTRIBUTE_ICONS: Record<keyof Attributes, string> = {
-  shooting: iconFrom(['..oo.###', '.oooo#.#', '.oooo###', '..oo..#.', '.....#..', '...##...', '.##.....'], '#ffffff', '#7246c4'),
-  speed: iconFrom(['#..#....', '##.##...', '.##.##..', '..##.##.', '.##.##..', '##.##...', '#..#....'], '#ffffff', '#2f9b6a'),
-  stamina: iconFrom(['...##...', '.######.', '.#....#.', '.#.##.#.', '.#.##.#.', '.#.##.#.', '.#.##.#.', '.######.'], '#ffffff', '#d9772b'),
-  technique: iconFrom(['..####..', '.#.##.#.', '#..##..#', '########', '#..##..#', '.#.##.#.', '..####..'], '#ffffff', '#3a4252'),
-  strength: iconFrom(['##....##', '##....##', '########', '########', '##....##', '##....##'], '#1b2230', '#f2c230'),
-  jumping: iconFrom(['...##...', '..####..', '.######.', '...##...', '...##...', '...##...', '########'], '#ffffff', '#2b8fd0'),
-  willpower: iconFrom(['.##..##.', '########', '########', '.######.', '..####..', '...##...'], '#cf3a2c', '#f4e0d8'),
-};
 const ICON_WHISTLE = iconFrom(['..........', '.xxxxxx.xx', 'x######x#x', 'x##xx##xxx', 'x##xx##x..', 'x######x..', '.xxxxxx...'], '#f2c230', null, 12);
 const ICON_BALL = iconFrom(['..oxoo..', '.ooxooo.', 'xoxooxox', 'ooxxxxoo', 'xoxooxox', '.ooxooo.', '..oxoo..'], '#e8622a', null, 12);
 const ICON_SQUAD = iconFrom(['.xx...xx.', 'x##x.x##x', 'x##x.x##x', '.xx...xx.', 'x##x.x##x', 'x##x.x##x', 'x##x.x##x'], '#2b5fd9', null, 14);
@@ -136,7 +113,11 @@ const grade = (value: number): string => {
   const letter = gradeOf(value);
   return `<b class="gr gr-${letter}">${letter}</b>`;
 };
-const dot = (p: Player): string => `<i class="edot${p.fatigue >= 0.35 ? ' low' : p.fatigue >= 0.15 ? ' mid' : ''}" title="Energia ${Math.round((1 - p.fatigue) * 100)}%"></i>`;
+/** A condição física de semana para semana, como no original: verde, amarelo, vermelho, ou a cruz de lesionado. */
+const conditionLabel = (p: Player): string => (p.injuryWeeks ? `Lesionado · ${p.injuryWeeks} sem.` : p.fatigue >= 0.35 ? 'Condição: exausto' : p.fatigue >= 0.15 ? 'Condição: cansado' : 'Condição: boa');
+const dot = (p: Player): string => `<i class="edot${p.injuryWeeks ? ' hurt' : p.fatigue >= 0.35 ? ' low' : p.fatigue >= 0.15 ? ' mid' : ''}" title="${conditionLabel(p)}"></i>`;
+/** A etiqueta do lugar na lista: os cinco papéis em campo, e os suplentes. */
+const slotBadge = (index: number): string => `<span class="ppos ppos-${slotCode(index)}">${slotCode(index)}</span>`;
 const crest = (short: string, away = false, big = false): string => `<span class="mcrest${away ? ' away' : ''}${big ? ' big' : ''}">${esc(short)}</span>`;
 const bar = (...buttons: string[]): string => `<div class="actions">${buttons.join('')}</div>`;
 const backBtn = (to: GoTo): string => `<button type="button" class="back" data-go="${to}">‹ Voltar</button>`;
@@ -151,12 +132,12 @@ function playerCard(index: number, extra?: string): string {
   const recent = club.recentTraining[p.name] ?? [];
   const history = [0, 1, 2, 3].map(n => `<i${recent[n] ? ` style="background:${CATEGORY_INFO[recent[n]!].color}"` : ''}></i>`).join('');
   return `<div class="pcard">
-    <header>${ownCrest()}<span>${p.position}</span><b>${esc(p.name)}</b><span>${p.heightCm} cm · ${p.weightKg} kg</span></header>
+    <header>${ownCrest()}<span>${index < 5 ? SLOT_NAMES[index] : 'Suplente'}</span><b>${esc(p.name)}</b>${bodyStars(p)}</header>
     <div class="pbody">
       <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookFor(p))}">
       <div class="pshirt" aria-label="Camisola ${shirtOf(p)}">${shirtOf(p)}</div>
       <div>
-        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${ATTRIBUTE_ICONS[key]}">`).join('')}</div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
         <div class="grades">${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>
         <div class="kv"><span>Sem bola</span><b>${OFF_BALL_INFO[p.offBall].name}</b></div>
         <div class="kv"><span>Com bola</span><b>${ON_BALL_INFO[p.onBall].name}</b></div>
@@ -165,7 +146,7 @@ function playerCard(index: number, extra?: string): string {
     </div>
     ${extra ?? ''}${`<div class="pfoot${extra ? ' spare' : ''}">
       <div class="rows">
-        <div>${dot(p)}<span>Energia ${Math.round((1 - p.fatigue) * 100)}%</span></div>
+        <div>${dot(p)}<span>${conditionLabel(p)}</span></div>
         <div><span>Na equipa</span><span>${yearsAtClub(club, p.name)} ép.</span></div>
         <div><span>Jogos</span><span>${stats.games}</span></div>
         <div><span>Salário</span><span>${club.salaries[p.name] ?? salaryFor(p)} mil</span></div>
@@ -180,11 +161,11 @@ function playerCard(index: number, extra?: string): string {
   </div>`;
 }
 
-const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${ATTRIBUTE_ICONS[key]}">`).join('');
+const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('');
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
   const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
-      <span class="ppos ppos-${p.position}">${p.position}</span><span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span>${dot(p)}${renderEnd(p, index)}
+      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
   return club.team.roster.map(row).join('');
 }
@@ -207,7 +188,7 @@ function squadScreen(): Rendered {
     top: inside(playerCard(selected)),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">
-        <div class="starters"><span>Titulares</span><span>${swapping === null ? '' : 'Toca em quem entra para o lugar dele'}</span></div>
+        <div class="starters"><span>Titulares</span><span>${swapping === null ? 'O lugar na lista é o papel em campo' : 'Toca em quem entra para o lugar dele'}</span></div>
         ${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')).replace('<button type="button" class="prow bench', '<div class="starters plain"><span>Banco</span></div><button type="button" class="prow bench')}
       </div>
       ${bar(backBtn(backFromSquad), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, backFromSquad === 'town' ? `<button type="button" data-act="sell" aria-pressed="${selling}" ${club.team.roster.length <= 10 ? 'disabled' : ''}>${selling ? `Vender por ${transferFee(club.team.roster[selected]!)}?` : 'Vender'}</button>` : '<button type="button" data-go="tactics">Táticas</button>')}`,
@@ -229,18 +210,20 @@ const leftOf = (id: CardId): number => (club.cards[id] ?? 0) - picked.filter(c =
 function trainScreen(): Rendered {
   const player = club.team.roster[selected]!;
   const done = club.trainedThisWeek.includes(player.name);
+  const hurt = (player.injuryWeeks ?? 0) > 0;
   return {
     top: inside(playerCard(selected)),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
-      ${bar(backBtn('town'), `<button type="button" data-go="combos">Combos ${club.knownCombos.length}/${COMBOS.length}</button>`, `<button type="button" class="primary" data-act="openCards" ${done || totalCards(club) === 0 ? 'disabled' : ''}>${done ? 'Já treinou' : `Treinar ${esc(player.name)} ›`}</button>`)}`,
+      ${bar(backBtn('town'), `<button type="button" data-go="combos">Combos ${club.knownCombos.length}/${COMBOS.length}</button>`, `<button type="button" class="primary" data-act="openCards" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}>${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)} ›`}</button>`)}`,
   };
 }
 
 /** As cartas deste jogador. O treino acontece logo aqui, só para ele. */
 function trainCardsScreen(): Rendered {
   const preview = previewGains(club.team.roster[selected]!, picked, club.knownCombos);
-  const gains = ATTRIBUTE_KEYS.filter(key => preview[key]).map(key => `<b>${preview[key]! > 0 ? '+' : ''}${preview[key]!.toFixed(1).replace('.', ',')}</b> ${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}`).join(' · ');
+  // Nunca se diz quanto: só que sobe, e se é pouco ou muito.
+  const gains = ATTRIBUTE_KEYS.filter(key => preview[key]).map(key => `${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]} <b>${(preview[key]! > 0 ? '+' : '-').repeat(gainSize(preview[key]!))}</b>`).join(' · ');
   const frameFor = (category: CardCategory): string => `<div class="frame"><span>${CATEGORY_INFO[category].name}</span>${CARD_IDS.filter(id => CARDS[id].category === category).map(id => {
     const left = leftOf(id);
     const chosen = picked.includes(id);
@@ -272,10 +255,23 @@ function reportScreen(): Rendered {
   const { before, result, cards, isNew, index } = lastTraining!;
   const combo = result.combo;
   const place = [-110, 0, 110];
-  const rows = ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
-    const gain = result.gains[key]!;
-    return `<div class="gainrow${gain < 0 ? ' down' : ''}"><img alt="" src="${ATTRIBUTE_ICONS[key]}"><span>${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}</span>${grade(before.attributes[key])}<i>›</i>${grade(result.player.attributes[key])}<b>${gain > 0 ? '+' : ''}${gain.toFixed(1).replace('.', ',')}</b></div>`;
+  // Como no original: cada atributo é uma barra que sobe até à nota seguinte, e as frases dizem só se subiu pouco ou muito.
+  const bars = ATTRIBUTE_KEYS.map(key => {
+    const from = before.attributes[key];
+    const to = result.player.attributes[key];
+    const [floor, ceiling] = gradeBand(to);
+    const start = from < floor ? 0 : from >= ceiling ? 100 : ((from - floor) / (ceiling - floor)) * 100;
+    const end = ((to - floor) / (ceiling - floor)) * 100;
+    const next = ceiling >= 100 ? 'S' : gradeOf(ceiling);
+    return `<div class="bar7${result.gains[key] ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}"><b class="gr gr-${next}">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
   }).join('');
+  const rows = `<div class="bars">${bars}</div><div class="gainlines">${ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
+    const gain = result.gains[key]!;
+    const [article, name] = ATTRIBUTE_PHRASES[key];
+    const how = gain < 0 ? 'desceu' : 'subiu';
+    const much = gainSize(gain) === 1 ? ' ligeiramente' : gainSize(gain) === 3 ? ' bastante' : '';
+    return `<div>${article} <b style="color:${ATTRIBUTE_COLORS[key]}">${name}</b> ${how}${much}.</div>`;
+  }).join('')}</div>`;
   const learned = [
     result.newMove ? `Aprendeu ${MOVE_INFO[result.newMove].name}` : '',
     result.moveBlocked ? 'Já sabe 2 movimentos: não aprendeu mais nenhum' : '',
@@ -296,8 +292,21 @@ function reportScreen(): Rendered {
         </button>`
       : inside(playerCard(index)),
     bottom: `<div class="after${combo ? ' delayed' : ''}"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>${combo ? esc(combo.name) : 'Sem combo'}</b></div><div class="scroll gains">${rows}${learned}</div></div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}`,
+    // As barras sobem depois de o ecrã aparecer, senão não havia nada a subir.
+    after: () => requestAnimationFrame(() => document.querySelectorAll('.bar7').forEach(el => el.classList.add('go'))),
   };
 }
+
+/** Pouco, normal ou bastante: o tamanho de uma subida, sem nunca dizer o número. */
+const gainSize = (gain: number): number => (Math.abs(gain) < 0.8 ? 1 : Math.abs(gain) < 2 ? 2 : 3);
+/** O chão e o teto da nota em que um valor está. */
+const gradeBand = (value: number): [number, number] => {
+  const floors = [0, 17, 34, 50, 67, 84, 100];
+  const i = floors.findIndex((floor, n) => value >= floor && value < (floors[n + 1] ?? 101));
+  return [floors[i]!, floors[i + 1] ?? 100];
+};
+const ATTRIBUTE_COLORS: Record<keyof Attributes, string> = { shooting: '#7246c4', speed: '#2f9b6a', stamina: '#d9772b', technique: '#3a4252', strength: '#b8860b', jumping: '#2b8fd0', willpower: '#cf3a2c' };
+const ATTRIBUTE_PHRASES: Record<keyof Attributes, [string, string]> = { shooting: ['O', 'lançamento'], speed: ['A', 'velocidade'], stamina: ['A', 'resistência'], technique: ['A', 'técnica'], strength: ['O', 'físico'], jumping: ['O', 'salto'], willpower: ['A', 'vontade'] };
 
 const offers = (): number[] => [
   ...club.divisions.flatMap((ids, d) => {
@@ -360,12 +369,12 @@ function preScreen(): Rendered {
 function marketCard(entry: MarketEntry): string {
   const p = entry.player;
   return `<div class="pcard">
-    <header>${entry.clubId === null ? '<span>Livre</span>' : crest(club.clubs[entry.clubId]!.short, true)}<span>${p.position}</span><b>${esc(p.name)}</b><span>${p.heightCm} cm · ${p.weightKg} kg</span></header>
+    <header>${entry.clubId === null ? '<span>Livre</span>' : crest(club.clubs[entry.clubId]!.short, true)}<b>${esc(p.name)}</b>${bodyStars(p)}</header>
     <div class="pbody">
       <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookOf(p, entry.clubId === null ? 'coach' : 'cream'))}">
       <div class="pshirt" aria-label="Sem número">?</div>
       <div>
-        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${ATTRIBUTE_ICONS[key]}">`).join('')}</div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
         <div class="grades">${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>
         <div class="kv"><span>Sem bola</span><b>${OFF_BALL_INFO[p.offBall].name}</b></div>
         <div class="kv"><span>Com bola</span><b>${ON_BALL_INFO[p.onBall].name}</b></div>
@@ -385,9 +394,9 @@ function marketScreen(): Rendered {
   const list = marketList(club);
   const pick = list[Math.min(marketPick, list.length - 1)] ?? null;
   const rows = list.map((entry, i) => `<button type="button" class="prow${entry.clubId === null ? '' : ' bench'}" data-market="${i}" aria-pressed="${i === marketPick}">
-      <span class="ppos ppos-${entry.player.position}">${entry.player.position}</span><span class="pnum">${entry.clubId === null ? 'L' : esc(club.clubs[entry.clubId]!.short.slice(0, 1))}</span><span class="name">${esc(entry.player.name)}</span><i class="edot${entry.salary + entry.fee > surplus(club) ? ' low' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(entry.player.attributes[key])).join('')}
+      <span></span><span class="pnum">${entry.clubId === null ? 'L' : esc(club.clubs[entry.clubId]!.short.slice(0, 1))}</span><span class="name">${esc(entry.player.name)}</span><i class="edot${entry.salary + entry.fee > surplus(club) ? ' low' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(entry.player.attributes[key])).join('')}
     </button>`).join('');
-  const offers = club.offers.map(o => `<button type="button" class="prow" data-cancel-offer="${esc(o.player.name)}"><span class="ppos ppos-${o.player.position}">${o.player.position}</span><span class="pnum">${o.weeksLeft}s</span><span class="name">${esc(o.player.name)}</span><i class="edot mid"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${o.fee} mil · cancelar</span></button>`).join('');
+  const offers = club.offers.map(o => `<button type="button" class="prow" data-cancel-offer="${esc(o.player.name)}"><span></span><span class="pnum">${o.weeksLeft}s</span><span class="name">${esc(o.player.name)}</span><i class="edot mid"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${o.fee} mil · cancelar</span></button>`).join('');
   const canOffer = pick !== null && pick.salary + pick.fee <= surplus(club) && club.team.roster.length + club.offers.length < 15 && (pick.clubId === null || transferWindowOpen(club));
   return {
     top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
@@ -406,7 +415,7 @@ function renewalsScreen(): Rendered {
     const p = club.team.roster.find(player => player.name === r.name)!;
     const kept = keep.has(r.name);
     return `<button type="button" class="prow${club.team.roster.indexOf(p) >= 5 ? ' bench' : ''}" data-renew="${esc(r.name)}" aria-pressed="${kept}">
-      <span class="ppos ppos-${p.position}">${p.position}</span><span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span><i class="edot${kept ? '' : ' low'}"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${r.current} › <b>${r.asked}</b> mil${kept ? '' : ' · sai'}</span>
+      ${slotBadge(club.team.roster.indexOf(p))}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span><i class="edot${kept ? '' : ' low'}"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${r.current} › <b>${r.asked}</b> mil${kept ? '' : ' · sai'}</span>
     </button>`;
   }).join('');
   return {
@@ -429,7 +438,7 @@ function createScreen(): Rendered {
   return {
     top: inside(`<div class="note"><header><b id="createName">${esc(club.team.name)}</b><span>${DIVISIONS[club.division]!.name}</span></header><div class="inner kitstage">
       <div id="createCrest">${ownCrest(96)}</div>
-      ${flatKit(kit)}
+      <img alt="" src="${kitImage(kit)}" style="width:54px;height:120px;image-rendering:pixelated">
     </div></div>`),
     bottom: `<div class="editor" style="flex:1;min-height:0">
         <div><label for="clubName">Nome do clube</label><input id="clubName" maxlength="${CLUB_NAME_MAX}" autocomplete="off" spellcheck="false" style="width:100%;text-transform:none;letter-spacing:0" value="${esc(club.team.name)}"></div>
@@ -459,16 +468,14 @@ function rivalScreen(): Rendered {
   const best = [...rival.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!;
   const tallest = [...rival.roster].sort((a, b) => b.heightCm - a.heightCm)[0]!;
   const rows = rival.roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-target="${index}" aria-pressed="${focus.includes(index)}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}>
-      <span class="ppos ppos-${p.position}">${p.position}</span><span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+      ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
     </button>`).join('');
+  // Os cinco do adversário na prancheta, como a ficha de equipa do original. Toca-se num boneco para o marcar.
+  const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}"`, focus.includes(index))).join(''), true);
   return {
-    top: inside(`<div class="note"><header><b>${crest(rival.short, true)} ${esc(rival.name)}</b><span>Nível ${gradeOf(teamRating(rival))}</span></header><div class="inner">
-      <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>${wins} V</span><span>${played.length - wins} D</span><span>${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)}</span></div>
-      <div class="kv"><span>Lança mais</span><b>${esc(best.name)}</b></div>
-      <div class="kv"><span>Mais alto</span><b>${esc(tallest.name)}, ${tallest.heightCm} cm</b></div>
-      <div class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos. As táticas do adversário não se veem, porque ele também as muda a meio do jogo.</div>
-    </div></div>`),
-    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
+    top: inside(five),
+    bottom: `<div class="rivalhead"><b>${crest(rival.short, true)} ${esc(rival.name)}</b><span>Nível ${gradeOf(teamRating(rival))} · ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
+      <div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">${rows}</div>
       ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
   };
@@ -503,9 +510,12 @@ function kitClash(kit: ClubKit): boolean {
 function kitScreen(): Rendered {
   const rival = currentRival();
   return {
-    top: `${fullCanvas('scene')}`,
+    top: fullCanvas('wardrobe'),
     bottom: `${kitClash(activeKit(club)) ? `<div class="mwarn">Muito parecido com o equipamento de ${esc(rival.name)}. Em campo, é difícil distinguir as equipas.</div>` : ''}<div class="kits">${club.kits.map(k => `<button type="button" class="kit" data-kit="${k.id}" aria-pressed="${k.id === club.kitChoice}"><canvas data-kit-preview="${k.id}" width="34" height="46"></canvas><span>${esc(k.name)}</span></button>`).join('')}</div>${bar(backBtn('pre'), '<button type="button" data-act="editKit">Editar equipamento</button>')}`,
-    after: paintKitPreviews,
+    after: () => {
+      paintKitPreviews();
+      paintWardrobe();
+    },
   };
 }
 
@@ -520,53 +530,52 @@ function paintKitPreviews(): void {
 const swatches = (attr: string, current: string): string => `<div class="swatches">${PALETTE.map(color => `<button type="button" class="swatch" style="background:${color}" ${attr}="${color}" aria-label="Cor ${color}" aria-pressed="${current === color}"></button>`).join('')}</div>`;
 const choices = (attr: string, list: readonly (readonly [string, string])[], current: string): string => `<div class="choices">${list.map(([id, label]) => `<button type="button" ${attr}="${id}" aria-pressed="${current === id}">${label}</button>`).join('')}</div>`;
 
-const KIT_FABRIC: Record<KitPattern, (kit: ClubKit) => string> = {
-  plain: kit => kit.jersey,
-  stripes: kit => `repeating-linear-gradient(90deg, ${kit.jersey} 0 9px, ${kit.second} 9px 18px)`,
-  band: kit => `linear-gradient(${kit.jersey} 0 42%, ${kit.second} 42% 64%, ${kit.jersey} 64%)`,
-  half: kit => `linear-gradient(90deg, ${kit.jersey} 50%, ${kit.second} 50%)`,
-};
+/** O roupeiro: o equipamento escolhido em destaque, com os nossos vestidos e o adversário da semana ao lado. */
+function paintWardrobe(): void {
+  const canvas = document.getElementById('wardrobe') as HTMLCanvasElement | null;
+  if (canvas) drawWardrobe(canvas, club.kits, screen === 'kitEdit' ? kitEditing : club.kitChoice, club.team.roster, currentRival());
+}
 
-/** O equipamento estendido, em grande: nos bonecos, o desenho da camisola mal se vê. */
-const flatKit = (kit: ClubKit): string => `<div class="kitflat"><div class="pshirt" style="background:${KIT_FABRIC[kit.pattern](kit)}">${ownCrest(20)}</div><div class="kitshorts" style="background:${kit.shorts};border-top-color:${kit.trim}"></div></div>`;
+const chip = (attr: string, id: string, label: string, color: string, on: boolean): string => `<button type="button" class="chip" ${attr}="${id}" aria-pressed="${on}"><i style="background:${color}"></i>${label}</button>`;
 
-/** O editor de equipamentos: os bonecos de frente e de costas mudam logo. */
+/** O editor de equipamentos, como no original: o roupeiro em cima; em baixo a peça, uma só paleta e os desenhos em miniatura. */
 function kitEditScreen(): Rendered {
   const kit = kitById(kitEditing);
+  const parts: readonly (readonly [typeof kitPart, string])[] = [['jersey', 'Camisola'], ['second', 'Segunda'], ['shorts', 'Calções'], ['trim', 'Pormenores']];
   return {
-    top: inside(`<div class="note"><header><b>Equipamento ${esc(kit.name.toLowerCase())}</b><span>${esc(club.team.name)}</span></header><div class="inner kitstage">
-      <canvas data-kit-preview="${kit.id}" width="34" height="46" class="big"></canvas>
-      <canvas data-kit-preview="${kit.id}" data-back="1" width="34" height="46" class="big"></canvas>
-      <div class="kitside">${flatKit(kit)}<span>${kitClash(kit) ? 'Parecido com o adversário desta semana' : 'Boa diferença para o adversário'}</span></div>
-    </div></div>`),
+    top: fullCanvas('wardrobe'),
     bottom: `${choices('data-kit-edit', club.kits.map(k => [k.id, esc(k.name)] as const), kitEditing)}
       <div class="scroll editor">
-        <div><span>Desenho da camisola</span>${choices('data-kit-pattern', KIT_PATTERNS, kit.pattern)}</div>
-        <div><span>Cor principal</span>${swatches('data-kit-jersey', kit.jersey)}</div>
-        <div><span>Segunda cor</span>${swatches('data-kit-second', kit.second)}</div>
-        <div><span>Calções</span>${swatches('data-kit-shorts', kit.shorts)}</div>
-        <div><span>Pormenores</span>${swatches('data-kit-trim', kit.trim)}</div>
+        <div><span>Peça e cor</span><div class="chips4">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
+        <div><span>Desenho da camisola</span><div class="patterns">${KIT_PATTERNS.map(([id, label]) => `<button type="button" data-kit-pattern="${id}" aria-pressed="${kit.pattern === id}"><img alt="" src="${kitImage({ ...kit, pattern: id })}"><span>${label}</span></button>`).join('')}</div></div>
+        <div class="hint">${kitClash(kit) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
       </div>
       ${bar(`<button type="button" class="back" data-go="${kitEditBack}">‹ Voltar</button>`)}`,
-    after: paintKitPreviews,
+    after: paintWardrobe,
   };
 }
 
 /** O editor de emblema, com o resultado à escala e como fica ao lado do nome. */
+/** Todos os desenhos possíveis, fundo a fundo: cada página mostra doze. */
+const EMBLEM_DESIGNS: readonly (readonly [Emblem['shape'], Emblem['pattern']])[] = EMBLEM_PATTERN_LIST.flatMap(([pattern]) => EMBLEM_SHAPE_LIST.map(([shape]) => [shape, pattern] as const));
+const DESIGNS_PER_PAGE = 12;
+
+/** O editor de emblema, como no original: a bandeira a ondear em cima, e em baixo a grelha de desenhos, os símbolos e as cores. */
 function emblemScreen(): Rendered {
   const { emblem } = club;
+  const pages = Math.ceil(EMBLEM_DESIGNS.length / DESIGNS_PER_PAGE);
+  emblemPage = Math.max(0, Math.min(pages - 1, emblemPage));
+  const designs = EMBLEM_DESIGNS.slice(emblemPage * DESIGNS_PER_PAGE, (emblemPage + 1) * DESIGNS_PER_PAGE)
+    .map(([shape, pattern]) => `<button type="button" data-em-design="${shape}:${pattern}" aria-pressed="${emblem.shape === shape && emblem.pattern === pattern}"><img alt="${EMBLEM_SHAPE_LIST.find(([id]) => id === shape)![1]}, ${EMBLEM_PATTERN_LIST.find(([id]) => id === pattern)![1]}" src="${emblemImage({ ...emblem, shape, pattern })}"></button>`).join('');
+  const symbols = EMBLEM_SYMBOL_LIST.map(([id, label]) => `<button type="button" data-em-symbol="${id}" aria-pressed="${emblem.symbol === id}" title="${label}"><img alt="${label}" src="${emblemImage({ ...emblem, shape: 'circle', pattern: 'plain', symbol: id, letters: '' })}"></button>`).join('');
+  const parts: readonly (readonly [typeof emblemPart, string])[] = [['primary', 'Fundo'], ['secondary', 'Segunda'], ['accent', 'Símbolo']];
   return {
-    top: inside(`<div class="note"><header><b>Emblema do clube</b><span>${esc(club.team.name)}</span></header><div class="inner emblemstage">
-      <div id="emblemBig">${ownCrest(160)}</div>
-      <div class="kitside"><span>Em tamanho pequeno</span><div id="emblemSmall">${ownCrest(32)}</div><span id="emblemName">${esc(emblem.letters)}</span></div>
-    </div></div>`),
+    top: fullCanvas('flag'),
     bottom: `<div class="scroll editor">
-        <div><span>Forma</span>${choices('data-em-shape', [['shield', 'Escudo'], ['circle', 'Círculo'], ['diamond', 'Losango'], ['pennant', 'Galhardete']], emblem.shape)}</div>
-        <div><span>Fundo</span>${choices('data-em-pattern', [['plain', 'Liso'], ['stripes', 'Riscas'], ['half', 'Metades'], ['band', 'Faixa']], emblem.pattern)}</div>
-        <div><span>Símbolo</span>${choices('data-em-symbol', [['ball', 'Bola'], ['star', 'Estrela'], ['bolt', 'Raio'], ['crown', 'Coroa'], ['hoop', 'Cesto'], ['none', 'Nenhum']], emblem.symbol)}</div>
-        <div><span>Cor principal</span>${swatches('data-em-primary', emblem.primary)}</div>
-        <div><span>Segunda cor</span>${swatches('data-em-secondary', emblem.secondary)}</div>
-        <div><span>Cor do símbolo</span>${swatches('data-em-accent', emblem.accent)}</div>
+        <div><span>Desenho <small>${emblemPage + 1} de ${pages}</small></span><div class="pager"><button type="button" data-em-page="-1" aria-label="Página anterior">‹</button><div class="designs">${designs}</div><button type="button" data-em-page="1" aria-label="Página seguinte">›</button></div></div>
+        <div><span>Símbolo</span><div class="symbols">${symbols}</div></div>
+        <div><span>Cores</span><div class="chips4 three">${parts.map(([id, label]) => chip('data-em-part', id, label, emblem[id], emblemPart === id)).join('')}</div>${swatches('data-em-color', emblem[emblemPart])}</div>
+        <div><span>Contorno</span>${choices('data-em-border', EMBLEM_BORDER_LIST, emblem.border ?? 'ink')}</div>
         <div><label for="emblemLetters">Letras, até três</label><input id="emblemLetters" maxlength="3" autocomplete="off" value="${esc(emblem.letters)}"></div>
       </div>
       ${bar(`<button type="button" class="back" data-go="${emblemBack}">‹ Voltar</button>`)}`,
@@ -838,26 +847,26 @@ function onClick(event: Event): void {
     render();
   } else if (data.kitPattern) {
     editKit({ pattern: data.kitPattern as KitPattern });
-  } else if (data.kitJersey) {
-    editKit({ jersey: data.kitJersey });
-  } else if (data.kitSecond) {
-    editKit({ second: data.kitSecond });
-  } else if (data.kitShorts) {
-    editKit({ shorts: data.kitShorts });
-  } else if (data.kitTrim) {
-    editKit({ trim: data.kitTrim });
-  } else if (data.emShape) {
-    editEmblem({ shape: data.emShape as Emblem['shape'] });
-  } else if (data.emPattern) {
-    editEmblem({ pattern: data.emPattern as Emblem['pattern'] });
+  } else if (data.kitPart) {
+    kitPart = data.kitPart as typeof kitPart;
+    render();
+  } else if (data.kitColor) {
+    editKit({ [kitPart]: data.kitColor });
+  } else if (data.emDesign) {
+    const [shape, pattern] = data.emDesign.split(':') as [Emblem['shape'], Emblem['pattern']];
+    editEmblem({ shape, pattern });
+  } else if (data.emPage) {
+    emblemPage += Number(data.emPage);
+    render();
   } else if (data.emSymbol) {
     editEmblem({ symbol: data.emSymbol as Emblem['symbol'] });
-  } else if (data.emPrimary) {
-    editEmblem({ primary: data.emPrimary });
-  } else if (data.emSecondary) {
-    editEmblem({ secondary: data.emSecondary });
-  } else if (data.emAccent) {
-    editEmblem({ accent: data.emAccent });
+  } else if (data.emBorder) {
+    editEmblem({ border: data.emBorder as Emblem['border'] });
+  } else if (data.emPart) {
+    emblemPart = data.emPart as typeof emblemPart;
+    render();
+  } else if (data.emColor) {
+    editEmblem({ [emblemPart]: data.emColor });
   } else if (data.trophy !== undefined) {
     selectedTrophy = Number(data.trophy);
     render();
@@ -956,9 +965,11 @@ function onInput(event: Event): void {
   if (input.id !== 'emblemLetters') return;
   input.value = emblemLetters(input.value);
   commit({ ...club, emblem: { ...club.emblem, letters: input.value } });
-  element('emblemBig').innerHTML = ownCrest(160);
-  element('emblemSmall').innerHTML = ownCrest(32);
-  element('emblemName').textContent = input.value;
+  // A bandeira redesenha-se sozinha a cada imagem; as miniaturas da grelha é que precisam das letras novas.
+  document.querySelectorAll<HTMLImageElement>('.designs img').forEach(img => {
+    const [shape, pattern] = (img.parentElement as HTMLElement).dataset.emDesign!.split(':') as [Emblem['shape'], Emblem['pattern']];
+    img.src = emblemImage({ ...club.emblem, shape, pattern });
+  });
 }
 
 export function initMenus(menuHost: MenuHost): void {
@@ -1079,11 +1090,23 @@ function drawTrainingFx(canvas: HTMLCanvasElement, now: number): void {
   });
 }
 
-/** Confetti por cima do emblema, no fim de uma época com título. */
+/** No fim de uma época com título: os cinco a festejar, o do meio com o troféu no ar, e confetti por cima. */
 function drawConfetti(canvas: HTMLCanvasElement, now: number): void {
   const g = canvas.getContext('2d')!;
   const kit = activeKit(club);
   g.clearRect(0, 0, canvas.width, canvas.height);
+  const record = club.seasonReport;
+  if (record) {
+    const big = (record.outcome === 'champion' && record.division === DIVISIONS.length - 1) || record.cups.includes('world');
+    const bob = (n: number): number => (reducedMotion ? 0 : Math.floor(now / 220 + n) % 2);
+    club.team.roster.slice(0, 5).forEach((p, n) => {
+      const lift = n === 2 ? 0 : bob(n);
+      drawSprite(g, lift ? 'cheer1' : 'cheer0', { ...lookOf(p, 'blue'), custom: kit }, 18 + n * 20, canvas.height - 4 - lift * 2, n > 2, false, false);
+    });
+    // A base do troféu fica nas mãos levantadas do jogador do meio.
+    drawTrophy(g, 58, canvas.height - 30 - bob(2) * 2, big ? 'bigCup' : 'cup', true);
+  }
+  if (reducedMotion) return;
   const colors = [kit.jersey, kit.trim, '#f2c230', '#f4efe0'];
   for (let n = 0; n < 40; n++) {
     const x = ((n * 53) % canvas.width + Math.sin(now / 700 + n) * 8 + canvas.width) % canvas.width;
@@ -1099,7 +1122,9 @@ export function menuFrame(now: number): void {
   if (fx) drawTrainingFx(fx, now);
   else fxStarted = 0;
   const confetti = document.getElementById('confetti') as HTMLCanvasElement | null;
-  if (confetti && !reducedMotion) drawConfetti(confetti, now);
+  if (confetti) drawConfetti(confetti, now);
+  const flag = document.getElementById('flag') as HTMLCanvasElement | null;
+  if (flag) drawFlagScene(flag, club.emblem, reducedMotion ? 0 : now);
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
   if (!canvas) return;
   const view = host.match();

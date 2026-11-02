@@ -65,9 +65,17 @@ export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]
     rect('#a06a2c', 8, y, W - 16, 3);
     rect('rgba(242,194,48,.08)', 8, y - 90, W - 16, 90);
   }
-  trophies.forEach((t, n) => {
-    const x = Math.round((W / 5) * (n % 5 + 0.5));
-    const y = rowY[n < 5 ? 0 : 1]!;
+  trophies.forEach((t, n) => drawTrophy(g, Math.round((W / 5) * (n % 5 + 0.5)), rowY[n < 5 ? 0 : 1]!, t.kind, t.won));
+}
+
+/** Um troféu, com a base em (x, y). O que falta fica em sombra. */
+export function drawTrophy(g: CanvasRenderingContext2D, x: number, y: number, kind: Trophy['kind'], won: boolean): void {
+  const rect = (c: string, x: number, y: number, w: number, h: number): void => {
+    g.fillStyle = c;
+    g.fillRect(Math.round(x), Math.round(y), w, h);
+  };
+  {
+    const t = { kind, won };
     const main = !t.won ? '#1b140d' : t.kind === 'cup' ? '#c9ccd4' : t.kind === 'plate' ? '#c98a4a' : '#f2c230';
     const dark = !t.won ? '#1b140d' : t.kind === 'cup' ? '#8f93a0' : t.kind === 'plate' ? '#8f5e2c' : '#c99a14';
     const light = !t.won ? '#1b140d' : '#ffffff';
@@ -98,5 +106,5 @@ export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]
       rect(main, x - 6, y - 17, 12, 12);
       if (t.won) rect(light, x - 3, y - 14, 3, 3);
     }
-  });
+  }
 }

@@ -32,6 +32,8 @@ interface LooseBall {
   total: number;
   /** Só estes disputam a bola. Os outros seguem o seu papel. */
   chasers: Body[];
+  /** Decidido quando a bola cai; só a apanha quando chega ao pé dela. */
+  winner: Body | null;
 }
 
 /** Quem repõe a bola, de onde, e quem vem receber. */
@@ -41,6 +43,9 @@ interface Inbound {
   y: number;
   receivers: { body: Body; x: number; y: number }[];
   waited: number;
+  settled: number;
+  /** Quem repõe já apanhou a bola do chão e leva-a na mão. */
+  hasBall: boolean;
 }
 
 interface JumpBall {
@@ -172,6 +177,7 @@ interface ShotFlight {
   made: boolean;
   fouledBy: Body | null;
   blockedBy: Body | null;
+  dunk: boolean;
 }
 
 /** Decisões do treinador. Ficam registadas: semente, equipas e comandos reproduzem o jogo exatamente. */
@@ -179,6 +185,7 @@ export type Command =
   | { kind: 'timeout'; tick: number; team: TeamIndex }
   | { kind: 'substitution'; tick: number; team: TeamIndex; slot: number; incoming: number }
   | { kind: 'cancelSubstitution'; tick: number; team: TeamIndex; slot: number }
+  | { kind: 'reorder'; tick: number; team: TeamIndex; a: number; b: number }
   | { kind: 'autoRotation'; tick: number; team: TeamIndex; on: boolean }
   | { kind: 'tactics'; tick: number; team: TeamIndex; tactics: Tactics };
 
@@ -354,7 +361,7 @@ function setupInbound(s: MatchState, kind: 'baseline' | 'side'): void {
     const second = team.find(b => b.slot !== 0 && b !== passer);
     if (second) receivers.push({ body: second, ...far });
   }
-  s.inbound = { passer, x, y, receivers, waited: 0 };
+  s.inbound = { passer, x, y, receivers, waited: 0, settled: 0, hasBall: false };
 }
 
 /** Passa a quem estiver mais solto. */
@@ -420,9 +427,20 @@ function grantTimeout(s: MatchState, team: TeamIndex): void {
   rotate(s, 1);
 }
 
+/** Dois jogadores em campo trocam de lugar, e com ele de papel. */
+function swapSlots(s: MatchState, team: TeamIndex, a: number, b: number): void {
+  const x = s.court[team][a]!;
+  const y = s.court[team][b]!;
+  s.court[team][a] = y;
+  s.court[team][b] = x;
+  x.slot = b;
+  y.slot = a;
+}
+
 function applyPendingSubs(s: MatchState): void {
   for (const sub of s.pendingSubs) {
     if (sub.incoming.slot === -1) swapIn(s, sub.team, sub.slot, sub.incoming);
+    else if (sub.incoming.slot !== sub.slot) swapSlots(s, sub.team, sub.slot, sub.incoming.slot);
   }
   s.pendingSubs = [];
 }
@@ -472,9 +490,8 @@ function rotate(s: MatchState, team: TeamIndex): void {
     if (!fouledOut && !needsRest) continue;
     const candidates = bench.filter(b => b.line.fouls < B.foulOutAt && (fouledOut || b.fatigue <= B.subInFatigue + (b.player.offBall === 'sixthMan' ? B.sixthManSubIn : 0)));
     if (candidates.length === 0) continue;
-    const position = current.player.position;
-    const samePosition = candidates.filter(b => b.player.position === position);
-    const incoming = (samePosition.length > 0 ? samePosition : candidates)[0]!;
+    // Entra o primeiro do banco que está fresco: a ordem do plantel é a ordem de entrada.
+    const incoming = candidates[0]!;
     swapIn(s, team, slot, incoming);
     bench.splice(bench.indexOf(incoming), 1, current);
   }
@@ -520,7 +537,7 @@ const bestJumper = (s: MatchState, team: TeamIndex): Body =>
 
 const jumpReach = (b: Body): number => b.player.attributes.jumping + (b.player.heightCm - B.referenceHeight) * B.jumpPerCm;
 
-/** As equipas vão para o círculo: a entrar do banco, no início do jogo, ou já lá, no prolongamento. */
+/** As equipas vão para o círculo: a entrar do banco, no início do jogo, ou de onde estavam na pausa, no prolongamento. */
 function placeForJump(s: MatchState, walkIn: boolean): void {
   const a = bestJumper(s, 0);
   const b = bestJumper(s, 1);
@@ -537,9 +554,6 @@ function placeForJump(s: MatchState, walkIn: boolean): void {
       if (walkIn) {
         body.x = COURT_LENGTH / 2 - dir * (3 + body.slot * 1.4);
         body.y = -COURT_HALF_WIDTH - 0.6;
-      } else {
-        body.x = x;
-        body.y = y;
       }
     }
   }
@@ -590,28 +604,31 @@ function beginPeriod(s: MatchState): void {
   if (s.period === 1 || s.period > 4) {
     placeForJump(s, s.period === 1);
     emit(s, 'period', s.offense);
-    if (s.period === 1) {
-      s.phase = 'intro';
-      s.timer = seconds(B.introMaxSeconds);
-    } else {
-      startJump(s);
-    }
+    s.phase = 'intro';
+    s.timer = seconds(B.introMaxSeconds);
     return;
   }
   // Posse alternada entre períodos: perde-a quem ganhou a bola ao alto, e repõe-se do meio-campo.
   newPossession(s, s.period % 2 === 1 ? s.firstOffense : other(s.firstOffense));
-  placeForPeriod(s);
+  // Depois do balneário, a equipa já está em campo quando a imagem volta. Nas outras pausas, vem a andar do banco.
+  if (s.period === 3) placeForPeriod(s);
   emit(s, 'period', s.offense);
-  s.ball.x = COURT_LENGTH / 2;
-  s.ball.y = COURT_HALF_WIDTH;
-  s.ball.z = B.ballRestHeight;
   s.flight = null;
   s.holder = null;
   s.phase = 'dead';
   s.timer = seconds(B.deadBallSeconds);
+  if (s.period === 3) {
+    s.ball.x = COURT_LENGTH / 2;
+    s.ball.y = COURT_HALF_WIDTH;
+    s.ball.z = B.ballRestHeight;
+  }
+  // Nos outros períodos a bola fica onde o anterior acabou: quem repõe vai buscá-la e leva-a à linha.
   setupInbound(s, 'side');
-  s.inbound!.passer.x = s.inbound!.x;
-  s.inbound!.passer.y = s.inbound!.y;
+  if (s.period === 3) {
+    s.inbound!.passer.x = s.inbound!.x;
+    s.inbound!.passer.y = s.inbound!.y;
+    s.inbound!.hasBall = true;
+  }
 }
 
 function endPeriod(s: MatchState): void {
@@ -623,6 +640,7 @@ function endPeriod(s: MatchState): void {
   applyPendingSubs(s);
   if (s.period >= 4 && s.score[0] !== s.score[1]) {
     s.phase = 'end';
+    s.ball.z = B.ballRestHeight;
     emit(s, 'end', s.score[0] > s.score[1] ? 0 : 1);
     return;
   }
@@ -668,7 +686,8 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
   const line = s.lines[shooter.team];
   if (odds.points === 3) line.threeAttempts++;
   else line.twoAttempts++;
-  emit(s, 'shot', shooter.team, { player: shooter.player.name, points: odds.points, distance: odds.distance, ...(unstoppable ? { dunk: true } : {}) });
+  const dunk = unstoppable || (odds.distance <= B.dunkMaxDistance && offenseAttrs.jumping >= B.dunkMinJumping);
+  emit(s, 'shot', shooter.team, { player: shooter.player.name, points: odds.points, distance: odds.distance, ...(dunk ? { dunk: true } : {}) });
 
   let blockedBy: Body | null = null;
   if (!unstoppable && pressure >= B.blockPressureMin && odds.distance <= B.blockMaxDistance) {
@@ -694,6 +713,7 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
     made,
     fouledBy,
     blockedBy,
+    dunk,
   };
   s.holder = null;
   s.phase = 'shot';
@@ -782,12 +802,12 @@ function startRebound(s: MatchState, blocked = false): void {
     ...pick(s.court[s.offense].filter(b => reboundRole(b) !== 'back'), B.reboundChasersOffense),
     ...pick(s.court[other(s.offense)], B.reboundChasersDefense),
   ];
-  s.loose = { fromX, fromY, fromZ, toX, toY, rise, total, chasers };
+  s.loose = { fromX, fromY, fromZ, toX, toY, rise, total, chasers, winner: null };
 }
 
-function resolveRebound(s: MatchState): void {
+/** Quando a bola cai, decide-se quem a ganha. Só fica com ela quando chega ao pé dela. */
+function pickRebounder(s: MatchState): Body {
   const { toX, toY, chasers: candidates } = s.loose!;
-  s.loose = null;
   const weights = candidates.map(b => {
     const a = b.player.attributes;
     const dist = distance(b.x, b.y, toX, toY);
@@ -797,7 +817,12 @@ function resolveRebound(s: MatchState): void {
     const eager = b.team === s.offense && b.player.offBall === 'crasher' ? 1 + B.crasherReboundBonus : 1;
     return skill * closeness * eager * (b.team === s.offense ? 1 : B.reboundDefenseBonus);
   });
-  const rebounder = candidates[weightedIndex(s.rng, weights)]!;
+  return candidates[weightedIndex(s.rng, weights)]!;
+}
+
+function resolveRebound(s: MatchState): void {
+  const rebounder = s.loose!.winner!;
+  s.loose = null;
   const offensive = rebounder.team === s.offense;
   rebounder.line.rebounds++;
   if (offensive) {
@@ -961,6 +986,15 @@ function decide(s: MatchState): void {
   const cube = (value: number): number => value * value * value;
   const style = B.onBall[h.player.onBall];
   const onTheLine = Math.abs(threeLineGap(u, h.y)) < B.shotLineMargin && shotSeconds > B.shotLineRushSeconds;
+  // Quem é grande e ganhou a bola longe do cesto passa-a a quem a conduz, em vez de subir a driblar.
+  // Só um poste com técnica a sério fica com ela de vez em quando.
+  if (h.slot >= 3 && u > B.outletU && !s.driving) {
+    const guard = teammates.find(b => b.slot === 0 || b.player.offBall === 'leaker') ?? teammates.find(b => b.slot === 1);
+    if (guard && chance(s.rng, B.outletPassChance - Math.max(0, a.technique - B.outletSkilledFrom) * B.outletSkillSlope)) {
+      pass(s, h, guard);
+      return;
+    }
+  }
   const weights = [
     (onTheLine ? 0 : 1) * cube(shootValue) * B.shootWeight * urgency * (odds.points === 3 ? style.three * (1 + B.tacticThree * tactics.spacing) : style.shoot) * (1 + B.tacticPaceShoot * tactics.pace),
     B.holdWeight * style.hold * (1 - B.tacticPaceHold * tactics.pace),
@@ -1081,6 +1115,11 @@ function updateTargets(s: MatchState): void {
         b.targetY = v * 0.5;
       }
     }
+    // Quem afunda corre com a bola até ao aro, em vez de a atirar de onde está.
+    if (flight?.kind === 'shot' && flight.dunk && !flight.blockedBy && b === flight.shooter) {
+      b.targetX = fromU(s, offense, 1.9);
+      b.targetY = 0;
+    }
     // Quem faz bloqueios coloca-se no caminho do defensor do colega com a bola.
     if (b.player.offBall === 'screener' && s.holder && s.holder !== b && s.phase === 'live') {
       const hoopX = fromU(s, offense, 1.575);
@@ -1090,9 +1129,9 @@ function updateTargets(s: MatchState): void {
     }
   }
   if (s.phase === 'dead' && s.inbound) {
-    const { passer, x, y, receivers } = s.inbound;
-    passer.targetX = x;
-    passer.targetY = y;
+    const { passer, x, y, receivers, hasBall } = s.inbound;
+    passer.targetX = hasBall ? x : s.ball.x;
+    passer.targetY = hasBall ? y : s.ball.y;
     for (const r of receivers) {
       r.body.targetX = r.x;
       r.body.targetY = r.y;
@@ -1246,11 +1285,16 @@ export function resolveContacts(s: MatchState): void {
     // A maior parte do tempo ninguém se toca, e assim simular uma época continua rápido.
     if (!touching) break;
   }
-  // Um empurrão pode pôr alguém um pouco fora de campo, de onde volta a andar. Quem repõe também lá está.
+  // Ninguém sai das linhas com o jogo a correr: um empurrão encosta à linha e fica aí. Só quem repõe está fora,
+  // e no início do jogo entra-se de fora a andar.
+  // Quem acabou de repor desliza para dentro em vez de saltar.
   for (let i = 0; i < 10; i++) {
     const b = bodyAt(i);
-    b.x = Math.max(-1, Math.min(COURT_LENGTH + 1, b.x));
-    b.y = Math.max(-COURT_HALF_WIDTH - 1, Math.min(COURT_HALF_WIDTH + 1, b.y));
+    const outside = s.phase === 'intro' || (s.inbound !== null && s.inbound.passer === b) || (s.flight?.kind === 'pass' && s.flight.restart && s.flight.passer === b);
+    const margin = outside ? 1 : -0.15;
+    const slide = (value: number, low: number, high: number): number => (value < low ? Math.min(low, value + B.lineSlide) : value > high ? Math.max(high, value - B.lineSlide) : value);
+    b.x = slide(b.x, -margin, COURT_LENGTH + margin);
+    b.y = slide(b.y, -COURT_HALF_WIDTH - margin, COURT_HALF_WIDTH + margin);
   }
 }
 
@@ -1270,7 +1314,11 @@ function updateFatigue(s: MatchState): void {
 
 function placeShotBall(s: MatchState, f: ShotFlight, t: number): void {
   const hoopX = fromU(s, f.shooter.team, 1.575);
-  const dist = distance(f.fromX, f.fromY, hoopX, 0) || 1;
+  // Quem afunda leva a bola consigo até ao aro.
+  const carried = f.dunk && !f.blockedBy;
+  const fromX = carried ? f.shooter.x : f.fromX;
+  const fromY = carried ? f.shooter.y : f.fromY;
+  const dist = distance(fromX, fromY, hoopX, 0) || 1;
   if (f.blockedBy) {
     // Desarmada, a bola quase não sai da mão do lançador.
     s.ball.x = f.fromX + (hoopX - f.fromX) * B.blockedTravel * t;
@@ -1279,11 +1327,11 @@ function placeShotBall(s: MatchState, f: ShotFlight, t: number): void {
   } else {
     // O cesto vai ao centro do aro; o falhanço bate no ferro, à frente ou atrás.
     const miss = f.made ? 0 : B.rimMissOffset * (f.total % 2 === 0 ? 1 : -1);
-    const aimX = hoopX + ((f.fromX - hoopX) / dist) * miss;
-    const aimY = (f.fromY / dist) * miss;
-    const arc = B.shotArcBase + dist * B.shotArcPerMeter;
-    s.ball.x = f.fromX + (aimX - f.fromX) * t;
-    s.ball.y = f.fromY + (aimY - f.fromY) * t;
+    const aimX = hoopX + ((fromX - hoopX) / dist) * miss;
+    const aimY = (fromY / dist) * miss;
+    const arc = carried ? B.dunkArc : B.shotArcBase + dist * B.shotArcPerMeter;
+    s.ball.x = fromX + (aimX - fromX) * t;
+    s.ball.y = fromY + (aimY - fromY) * t;
     s.ball.z = 2.2 + (B.rimHeight - 2.2) * t + arc * t * (1 - t);
   }
 }
@@ -1309,25 +1357,31 @@ function updateBall(s: MatchState): void {
     // A bola sobe entre os dois saltadores e começa a cair quando eles chegam lá acima.
     const t = 1 - s.timer / s.jump.total;
     s.ball.z = 1.7 + (B.rimHeight - 1.7) * t + 8 * t * (1 - t);
-  } else if (s.inbound && distance(s.inbound.passer.x, s.inbound.passer.y, s.ball.x, s.ball.y) < 1.5) {
-    // Quem vai repor apanha a bola do chão e fica com ela nas mãos.
-    s.ball.x = s.inbound.passer.x;
-    s.ball.y = s.inbound.passer.y;
-    s.ball.z = 1;
   } else if (s.inbound) {
-    s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
+    // A bola cai e fica onde está; quem vai repor vai buscá-la, e só depois a leva na mão.
     const { passer } = s.inbound;
-    const dist = distance(passer.x, passer.y, s.ball.x, s.ball.y) || 1;
-    // A bola vem ter à mão de quem repõe, sem ficar parada longe dele.
-    s.ball.x += ((passer.x - s.ball.x) / dist) * Math.min(dist, B.passSpeed * DT);
-    s.ball.y += ((passer.y - s.ball.y) / dist) * Math.min(dist, B.passSpeed * DT);
+    if (!s.inbound.hasBall && s.ball.z <= B.ballRestHeight + 0.01 && distance(passer.x, passer.y, s.ball.x, s.ball.y) < 1.2) s.inbound.hasBall = true;
+    if (s.inbound.hasBall) {
+      s.ball.x = passer.x;
+      s.ball.y = passer.y;
+      s.ball.z = 1;
+    } else {
+      s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
+    }
   } else if (s.loose) {
     // Uma parábola entre o aro e as mãos de quem a apanha: quanto mais `rise`, mais sobe antes de cair.
     const { fromX, fromY, fromZ, toX, toY, rise, total } = s.loose;
-    const t = 1 - s.timer / total;
-    s.ball.x = fromX + (toX - fromX) * t;
-    s.ball.y = fromY + (toY - fromY) * t;
-    s.ball.z = fromZ + (B.reboundCatchHeight - fromZ) * t + 4 * rise * t * (1 - t);
+    if (s.timer <= 0) {
+      // Já caiu: fica no chão à espera de quem a vai apanhar.
+      s.ball.x = toX;
+      s.ball.y = toY;
+      s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
+    } else {
+      const t = 1 - s.timer / total;
+      s.ball.x = fromX + (toX - fromX) * t;
+      s.ball.y = fromY + (toY - fromY) * t;
+      s.ball.z = fromZ + (B.reboundCatchHeight - fromZ) * t + 4 * rise * t * (1 - t);
+    }
   } else if (s.freeThrow) {
     const shooter = s.freeThrow.shooter;
     const flightTicks = seconds(B.freeThrowFlightSeconds);
@@ -1396,8 +1450,9 @@ export function requestTimeout(s: MatchState, team: TeamIndex): boolean {
 export function queueSubstitution(s: MatchState, team: TeamIndex, slot: number, incomingIndex: number): boolean {
   const incoming = s.bodies[incomingIndex];
   if (s.phase === 'end' || !Number.isInteger(slot) || slot < 0 || slot > 4) return false;
-  if (!incoming || incoming.team !== team || incoming.slot !== -1 || incoming.line.fouls >= B.foulOutAt) return false;
-  s.pendingSubs = s.pendingSubs.filter(sub => !(sub.team === team && (sub.slot === slot || sub.incoming === incoming)));
+  // Quem entra pode vir do banco ou de outro lugar em campo: nesse caso os dois trocam de lugar.
+  if (!incoming || incoming.team !== team || incoming.slot === slot || (incoming.slot === -1 && incoming.line.fouls >= B.foulOutAt)) return false;
+  s.pendingSubs = s.pendingSubs.filter(sub => !(sub.team === team && (sub.slot === slot || sub.incoming === incoming || sub.slot === incoming.slot || s.court[team][sub.slot] === incoming)));
   s.pendingSubs.push({ team, slot, incoming });
   s.autoRotation[team] = false;
   s.commands.push({ kind: 'substitution', tick: s.tick, team, slot, incoming: incomingIndex });
@@ -1408,6 +1463,17 @@ export function queueSubstitution(s: MatchState, team: TeamIndex, slot: number, 
 export function cancelSubstitution(s: MatchState, team: TeamIndex, slot: number): void {
   s.pendingSubs = s.pendingSubs.filter(sub => !(sub.team === team && sub.slot === slot));
   s.commands.push({ kind: 'cancelSubstitution', tick: s.tick, team, slot });
+}
+
+/** Dois do banco trocam de ordem: a ordem do banco é a ordem de entrada na rotação automática. */
+export function reorderBench(s: MatchState, team: TeamIndex, a: number, b: number): boolean {
+  const x = s.bodies[a];
+  const y = s.bodies[b];
+  if (!x || !y || x === y || x.team !== team || y.team !== team || x.slot !== -1 || y.slot !== -1) return false;
+  s.bodies[a] = y;
+  s.bodies[b] = x;
+  s.commands.push({ kind: 'reorder', tick: s.tick, team, a, b });
+  return true;
 }
 
 export function setAutoRotation(s: MatchState, team: TeamIndex, on: boolean): void {
@@ -1427,17 +1493,31 @@ function applyCommand(s: MatchState, c: Command): void {
   else if (c.kind === 'timeout') requestTimeout(s, c.team);
   else if (c.kind === 'substitution') queueSubstitution(s, c.team, c.slot, c.incoming);
   else if (c.kind === 'cancelSubstitution') cancelSubstitution(s, c.team, c.slot);
+  else if (c.kind === 'reorder') reorderBench(s, c.team, c.a, c.b);
   else setAutoRotation(s, c.team, c.on);
 }
 
 /** Durante o desconto, cada equipa junta-se à frente do seu banco. */
+/** Nas paragens, cada equipa junta-se à frente do seu banco. Ao intervalo, sai para o balneário pelo canto do seu lado. */
 function updateHuddle(s: MatchState): void {
+  const lockerRoom = s.phase === 'break' && s.period === 2;
   for (const team of [0, 1] as const) {
     s.court[team].forEach((b, i) => {
-      b.targetX = (team === 0 ? 8 : 20) + (i - 2) * 0.9;
-      b.targetY = -5.6 + (i % 2) * 0.9;
+      if (lockerRoom) {
+        // Pelo túnel do centro, em fila.
+        b.targetX = (team === 0 ? 13.6 : 14.4) + (i % 2) * 0.2;
+        b.targetY = -COURT_HALF_WIDTH - 3.8 - i * 0.5;
+      } else {
+        b.targetX = (team === 0 ? 8 : 23.5) + (i - 2) * 0.9;
+        b.targetY = -5.6 + (i % 2) * 0.9;
+      }
     });
   }
+}
+
+/** Com o jogo parado, a bola cai e fica no chão: nunca fica suspensa no ar. */
+function settleBall(s: MatchState): void {
+  s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
 }
 
 /** Avança a simulação um passo (1/20 de segundo). */
@@ -1445,12 +1525,16 @@ export function step(s: MatchState): void {
   if (s.phase === 'end') return;
   s.tick++;
   if (s.phase === 'break') {
+    updateHuddle(s);
+    movePlayers(s);
+    settleBall(s);
     if (--s.timer <= 0) beginPeriod(s);
     return;
   }
   if (s.phase === 'timeout') {
     updateHuddle(s);
     movePlayers(s);
+    settleBall(s);
     if (--s.timer <= 0) {
       // Volta tudo ao lugar com o relógio parado, e o jogo recomeça com reposição.
       s.timeoutTeam = null;
@@ -1498,10 +1582,11 @@ export function step(s: MatchState): void {
   switch (s.phase) {
     case 'dead':
       if (--s.timer <= 0 && s.inbound) {
-        // Espera-se que quem repõe chegue ao seu lugar, mas não para sempre.
+        // Quem repõe chega ao seu lugar e assenta os pés antes de passar, mas não se espera para sempre.
         const { passer, x, y } = s.inbound;
         s.inbound.waited++;
-        if (distance(passer.x, passer.y, x, y) < 0.5 || s.inbound.waited >= seconds(B.inboundMaxWaitSeconds)) throwInbound(s);
+        if (s.inbound.hasBall && distance(passer.x, passer.y, x, y) < 0.3) s.inbound.settled++;
+        if (s.inbound.settled >= seconds(B.inboundSettleSeconds) || s.inbound.waited >= seconds(B.inboundMaxWaitSeconds)) throwInbound(s);
       }
       break;
     case 'live':
@@ -1524,9 +1609,13 @@ export function step(s: MatchState): void {
       if (++f.ticks >= f.total) resolveShot(s, f);
       break;
     }
-    case 'rebound':
-      if (--s.timer <= 0) resolveRebound(s);
+    case 'rebound': {
+      const loose = s.loose!;
+      if (loose.winner === null && --s.timer <= 0) loose.winner = pickRebounder(s);
+      // A bola fica no chão até quem a ganhou chegar ao pé dela; se ninguém chega, dá-se por apanhada.
+      if (loose.winner && (distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) <= B.reboundCatchDistance || --s.timer <= -seconds(B.reboundMaxWaitSeconds))) resolveRebound(s);
       break;
+    }
   }
   // Uma bola no ar quando o tempo acaba ainda conta: é assim que nasce o lançamento sobre o apito.
   const phase = s.phase as Phase;
@@ -1561,7 +1650,7 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
         stepX: 0,
         stepY: 0,
         bmi: player.weightKg / ((player.heightCm / 100) * (player.heightCm / 100)),
-        fatigue: player.fatigue,
+        fatigue: clamp01(player.fatigue * (1 + B.conditionStaminaFactor * (0.5 - player.attributes.stamina / 100))),
         line: { points: 0, assists: 0, rebounds: 0, steals: 0, blocks: 0, fouls: 0, secondsPlayed: 0 },
       };
       bodies.push(body);

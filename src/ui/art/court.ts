@@ -3,23 +3,49 @@ import { INK } from './sprites.ts';
 
 type Rgb = readonly [number, number, number];
 
-const WALL_NEAR_X = -2.4;
-const WALL_FAR_X = 30.4;
-const WALL_Y = -9.2;
-const NEAR_Y = 16;
+// Há espaço à volta do campo antes das bancadas, como num pavilhão a sério.
+const WALL_NEAR_X = -4;
+const WALL_FAR_X = 32;
+const WALL_Y = -11;
+const NEAR_Y = 17;
+/** Para onde a câmara olha em repouso: um pouco para lá do meio do campo. */
+export const LOOK_Y = -1.1;
+/** Quantas filas de público cabem na bancada deste pavilhão. */
+export const fanRows = (theme: CourtTheme): number => (theme.crowd ? Math.min(5, Math.floor((theme.crowd.to - theme.crowd.from - CROWD_WALL) / FAN_ROW_STEP)) : 0);
+/** A altura de uma fila de público na bancada, acima do muro. */
+export const fanHeight = (theme: CourtTheme, row: number): number => (theme.crowd ? theme.crowd.from : 1) + CROWD_WALL + 0.3 + row * FAN_ROW_STEP;
+/** Onde assentam os pés de um adepto da bancada lateral: a bancada recua ao subir. */
+export const sideFanSpot = (theme: CourtTheme, row: number): { y: number; z: number } => {
+  const z = fanHeight(theme, row);
+  return { y: WALL_Y - theme.slope * z, z };
+};
+/** O mesmo, nas bancadas dos topos. */
+export const endFanSpot = (theme: CourtTheme, far: boolean, row: number): { x: number; z: number } => {
+  const z = fanHeight(theme, row);
+  return { x: far ? WALL_FAR_X + theme.slope * z : WALL_NEAR_X - theme.slope * z, z };
+};
 const FLOOR_SCALE = 32;
 const WALL_SCALE = 20;
 const SIDE_WALL_SPAN = WALL_FAR_X - WALL_NEAR_X;
 const END_WALL_SPAN = NEAR_Y - WALL_Y;
 const WALL_U_SPAN = SIDE_WALL_SPAN + END_WALL_SPAN;
 const WALL_Z_SPAN = 16;
-const BASE_FOCAL = 318;
+// A câmara escolhida: baixa e longe, com a lente aberta, para se verem os dois lados do campo.
+const BASE_FOCAL = 290;
 const BASE_W = 360;
 const BASE_H = 216;
 const BOARD_HEIGHT = 1;
 const BOARD_WIDTH = 6.4;
-const CROWD_CELL_W = 0.42;
-const CROWD_CELL_H = 0.46;
+// A textura da bancada tem só as cadeiras, atrás de um muro baixo. O público são bonecos desenhados por cima.
+const CROWD_CELL_W = 0.75;
+const CROWD_CELL_H = 0.8;
+const CROWD_WALL = 0.5;
+/** As filas de público, uma por cada passo destes a subir a bancada. */
+export const FAN_ROW_STEP = 1.3;
+export const FAN_SPACING = 1.25;
+export const STAND = { nearX: WALL_NEAR_X, farX: WALL_FAR_X, y: WALL_Y } as const;
+/** O túnel para os balneários, no centro da bancada lateral dos pavilhões. */
+export const TUNNEL = { x0: 12.6, x1: 15.4, height: 2.6 } as const;
 export const CROWD_FRAMES = 3;
 
 // Marcas inventadas para a publicidade. Sem acentos, porque a fonte 3x5 não os tem.
@@ -43,6 +69,10 @@ export interface CourtTheme {
   apron(noise: number): Rgb;
   /** Tudo o que não é público nem publicidade. */
   wall(u: number, z: number): Rgb;
+  /** Quanto a bancada recua por cada metro que sobe. Zero é uma parede a pique. */
+  slope: number;
+  /** Ao ar livre: em vez de paredes há uma rede fina, o exterior por trás e um pano de fundo ao longe; `wall` é esse fundo. */
+  open?: boolean;
   seams: boolean;
   pole: string;
   board: string;
@@ -78,11 +108,19 @@ export const THEMES: readonly CourtTheme[] = [
       return [b, b + 8, b + 18];
     },
     wall: (u, z) => {
-      if (z > 3.4) return [156, 206, 226];
-      const fence = frac((u + z) * 3) < 0.12 || frac((u - z) * 3) < 0.12;
-      if (fence) return [176, 186, 190];
-      return Math.sin(u * 0.9) * 0.7 + 2.3 > z ? [62, 134, 92] : [156, 206, 226];
+      // O pano de fundo, ao longe: prédios baixos e árvores do bairro, e o céu por cima.
+      const block = Math.floor(u / 5.5);
+      const height = 2.3 + hash(block, 11) * 3.6;
+      if (hash(block, 5) < 0.55 && z < height) {
+        const tones: Rgb[] = [[196, 150, 112], [176, 168, 150], [150, 120, 104]];
+        const tone = tones[block % tones.length]!;
+        const window = frac(u / 5.5) > 0.15 && frac(u / 5.5) < 0.85 && frac((u * 1.4) % 1) < 0.35 && frac(z * 1.1) > 0.35 && frac(z * 1.1) < 0.75;
+        return window ? [228, 220, 170] : z > height - 0.2 ? shade(tone, 0.7) : tone;
+      }
+      return Math.sin(u * 0.9) * 0.7 + 3.3 > z ? [62, 134, 92] : [156, 206, 226];
     },
+    open: true,
+    slope: 0,
     seams: false,
     pole: '#59626e',
     board: '#e4e6e0',
@@ -110,6 +148,7 @@ export const THEMES: readonly CourtTheme[] = [
       if (z > 3 && z < 4.6 && frac(u * 0.6) < 0.7) return [186, 226, 240];
       return [236, 226, 196];
     },
+    slope: 0.5,
     seams: true,
     pole: '#7f8a94',
     board: '#f4f4ee',
@@ -134,6 +173,7 @@ export const THEMES: readonly CourtTheme[] = [
     line: () => [252, 246, 228],
     apron: () => [20, 88, 98],
     wall: () => [70, 50, 52],
+    slope: 0.7,
     seams: true,
     pole: '#3a4557',
     board: '#f4f4ee',
@@ -158,6 +198,7 @@ export const THEMES: readonly CourtTheme[] = [
     line: () => [250, 240, 214],
     apron: () => [14, 26, 62],
     wall: () => [14, 18, 36],
+    slope: 0.8,
     seams: true,
     pole: '#14182a',
     board: '#e6ecf4',
@@ -212,14 +253,16 @@ function lightAt(theme: CourtTheme, x: number, y: number): number {
 
 function crowdColor(theme: CourtTheme, u: number, z: number, frame: number): Rgb | null {
   const crowd = theme.crowd;
-  if (!crowd || z < crowd.from || z >= crowd.to) return null;
-  const rowValue = (z - crowd.from) / CROWD_CELL_H;
+  if (!crowd || z < crowd.from + CROWD_WALL || z >= crowd.to) return null;
+  const rowValue = (z - crowd.from - CROWD_WALL) / CROWD_CELL_H;
   const row = Math.floor(rowValue);
   const columnValue = u / CROWD_CELL_W + (row % 2 ? 0.5 : 0);
   const column = Math.floor(columnValue);
   const h = hash(column, row);
   const fade = crowd.dim * Math.max(0.55, 1 - row * 0.012);
   const seat = shade(crowd.seats[row % crowd.seats.length]!, fade);
+  // shortcut: as pessoas e as bandeiras são bonecos desenhados por cima da textura; esta só tem as cadeiras.
+  if (h >= 0) return seat;
   if (h > crowd.density) return seat;
   const pick = hash(row * 3 + 1, column * 7 + 2);
   // Quem se levanta muda com a imagem: poucos em repouso, quase todos num festejo.
@@ -251,7 +294,19 @@ export interface CourtTextures {
   wallH: number;
 }
 
-const textureCache = new Map<number, CourtTextures>();
+const textureCache = new Map<string, CourtTextures>();
+
+/** As cores do clube da casa: o garrafão, o círculo, a orla do campo e metade da bancada. */
+function dressed(theme: CourtTheme, accent: string): CourtTheme {
+  const rgb: Rgb = [parseInt(accent.slice(1, 3), 16), parseInt(accent.slice(3, 5), 16), parseInt(accent.slice(5, 7), 16)];
+  return {
+    ...theme,
+    paint: shade(rgb, 0.85),
+    center: shade(rgb, 0.85),
+    apron: theme.crowd ? () => shade(rgb, 0.5) : theme.apron,
+    crowd: theme.crowd && { ...theme.crowd, shirts: [rgb, rgb, rgb, ...theme.crowd.shirts] },
+  };
+}
 
 function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: number): Uint32Array {
   const wall = new Uint32Array(wallW * wallH);
@@ -260,11 +315,19 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
     for (let i = 0; i < wallW; i++) {
       const u = (i + 0.5) / WALL_SCALE;
       let color: Rgb;
-      if (theme.boards.length > 0 && z < BOARD_HEIGHT) {
+      const x = u + WALL_NEAR_X;
+      const tunnelFrame = theme.slope > 0 && u < SIDE_WALL_SPAN && x > TUNNEL.x0 - 0.2 && x < TUNNEL.x1 + 0.2 && z < TUNNEL.height + 0.2;
+      if (tunnelFrame) {
+        // A boca do túnel: escura por dentro, com uma moldura clara.
+        color = x > TUNNEL.x0 && x < TUNNEL.x1 && z < TUNNEL.height ? [22, 24, 32] : [150, 152, 150];
+      } else if (theme.boards.length > 0 && z < BOARD_HEIGHT) {
         const k = Math.floor(u / BOARD_WIDTH);
         // Vistas de lado, as placas do topo do campo ocupam muito ecrã, por isso ficam mais discretas.
         const base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.6);
         color = z > BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
+      } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL) {
+        // O muro baixo entre as placas e a primeira fila.
+        color = z > theme.crowd.from + CROWD_WALL - 0.08 ? [120, 120, 118] : [156, 156, 150];
       } else {
         color = crowdColor(theme, u, z, frame) ?? theme.wall(u, z);
       }
@@ -307,11 +370,12 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
 export const CLOSED_GYM = THEMES.length;
 const VENUES: readonly CourtTheme[] = [...THEMES, { ...THEMES[1]!, name: 'Pavilhão Fechado', crowd: null }];
 
-/** As texturas calculam-se uma vez por divisão. Desenhar um frame é só consultá-las. */
-export function courtTextures(division: number): CourtTextures {
-  const cached = textureCache.get(division);
+/** As texturas calculam-se uma vez por divisão e cor da casa. Desenhar um frame é só consultá-las. */
+export function courtTextures(division: number, accent?: string): CourtTextures {
+  const key = `${division}|${accent ?? ''}`;
+  const cached = textureCache.get(key);
   if (cached) return cached;
-  const theme = VENUES[division]!;
+  const theme = accent ? dressed(VENUES[division]!, accent) : VENUES[division]!;
   const floorW = Math.ceil((WALL_FAR_X - WALL_NEAR_X) * FLOOR_SCALE);
   const floorH = Math.ceil((NEAR_Y - WALL_Y) * FLOOR_SCALE);
   const floor = new Uint32Array(floorW * floorH);
@@ -339,12 +403,13 @@ export function courtTextures(division: number): CourtTextures {
   const wallH = WALL_Z_SPAN * WALL_SCALE;
   const walls = Array.from({ length: CROWD_FRAMES }, (_, frame) => buildWall(theme, frame, wallW, wallH));
   const textures = { theme, floor, floorW, floorH, walls, wallW, wallH };
-  textureCache.set(division, textures);
+  textureCache.set(key, textures);
   return textures;
 }
 
 export class Camera {
   lookX = 14;
+  lookY = LOOK_Y;
   width = BASE_W;
   height = BASE_H;
   private cx = 0;
@@ -360,20 +425,30 @@ export class Camera {
   }
 
   /** O enquadramento é igual em qualquer ecrã: mudam só os píxeis disponíveis. */
+  /** A posição da câmara: onde está (y, z), para onde olha em repouso e a lente. Afinável, para se experimentarem enquadramentos. */
+  tuning = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL };
+
   setViewport(width: number, height: number): void {
     this.width = width;
     this.height = height;
-    this.focal = BASE_FOCAL * Math.min(width / BASE_W, height / BASE_H);
+    this.focal = this.tuning.focal * Math.min(width / BASE_W, height / BASE_H);
   }
 
-  /** Câmara na lateral: acompanha a bola e roda um pouco para o cesto, como numa transmissão. */
-  aim(lookX: number): void {
+  tune(t: Partial<Camera['tuning']>): void {
+    this.tuning = { ...this.tuning, ...t };
+    this.setViewport(this.width, this.height);
+    this.aim(this.lookX, this.lookY);
+  }
+
+  /** Câmara na lateral: acompanha a bola e roda um pouco para o cesto, como numa transmissão. Inclina-se quando a bola desce. */
+  aim(lookX: number, lookY = this.tuning.lookY): void {
     this.lookX = lookX;
+    this.lookY = lookY;
     this.cx = 14 + (lookX - 14) * 0.163;
-    this.cy = 9.6;
-    this.cz = 12.5;
+    this.cy = this.tuning.cy;
+    this.cz = this.tuning.cz;
     const dx = lookX - this.cx;
-    const dy = -1.9 - this.cy;
+    const dy = lookY - this.cy;
     const dz = -this.cz;
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
     this.fwd = [dx / length, dy / length, dz / length];
@@ -382,6 +457,101 @@ export class Camera {
     const [fx, fy, fz] = this.fwd;
     const [rx, ry, rz] = this.right;
     this.up = [ry * fz - rz * fy, rz * fx - rx * fz, rx * fy - ry * fx];
+  }
+
+  /** O campo de rua, ao ar livre: ver as cores e as distâncias do exterior, mais abaixo. A rede vai para a sua própria camada,
+   * se a derem, para quem está do lado de fora poder ficar atrás dela. */
+  drawOpenScene(pixels: Uint32Array, t: CourtTextures, fence?: Uint32Array): void {
+  const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
+  const wall = t.walls[0]!;
+  const backY = WALL_Y - BACKDROP;
+  const backNearX = WALL_NEAR_X - BACKDROP;
+  const backFarX = WALL_FAR_X + BACKDROP;
+  for (let sy = 0; sy < height; sy++) {
+    const vy = height / 2 - sy - 0.5;
+    const row = sy * width;
+    const rz = fwd[2] * focal + up[2] * vy;
+    const baseX = fwd[0] * focal + up[0] * vy + right[0] * (0.5 - width / 2);
+    const baseY = fwd[1] * focal + up[1] * vy + right[1] * (0.5 - width / 2);
+    const floorT = rz < 0 ? -cz / rz : Infinity;
+    for (let sx = 0; sx < width; sx++) {
+      const dirX = baseX + right[0] * sx;
+      const dirY = baseY + right[1] * sx;
+      const hitX = cx + dirX * floorT;
+      const hitY = cy + dirY * floorT;
+      if (rz < 0 && hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
+        const u = ((hitX - WALL_NEAR_X) * FLOOR_SCALE) | 0;
+        const v = Math.min(t.floorH - 1, ((hitY - WALL_Y) * FLOOR_SCALE) | 0);
+        pixels[row + sx] = t.floor[v * t.floorW + u]!;
+        continue;
+      }
+      // O pano de fundo: três planos verticais, a BACKDROP metros da rede.
+      let back = Infinity;
+      let along = 0;
+      if (dirY < 0) {
+        const tb = (backY - cy) / dirY;
+        if (cz + rz * tb >= 0) {
+          back = tb;
+          along = cx + dirX * tb - backNearX;
+        }
+      }
+      if (dirX < 0) {
+        const tb = (backNearX - cx) / dirX;
+        if (tb < back && cz + rz * tb >= 0) {
+          back = tb;
+          along = SIDE_WALL_SPAN + (cy + dirY * tb - backY);
+        }
+      } else if (dirX > 0) {
+        const tb = (backFarX - cx) / dirX;
+        if (tb < back && cz + rz * tb >= 0) {
+          back = tb;
+          along = SIDE_WALL_SPAN + (cy + dirY * tb - backY);
+        }
+      }
+      let color = SKY;
+      let mesh = 0;
+      if (rz < 0 && floorT < back) {
+        color = groundOutside(hitX, hitY);
+      } else if (back < Infinity) {
+        const z = cz + rz * back;
+        const wu = Math.max(0, Math.min(t.wallW - 1, (along * WALL_SCALE) | 0));
+        const wv = Math.max(0, Math.min(t.wallH - 1, (z * WALL_SCALE) | 0));
+        color = wall[wv * t.wallW + wu]!;
+      }
+      // A rede, por cima: só a malha, os postes e o varão de cima; no centro, o portão.
+      const fenceAt = (tf: number, a: number, side: boolean): void => {
+        const zf = cz + rz * tf;
+        if (zf <= 0 || zf >= FENCE_HEIGHT || tf > floorT) return;
+        if (side && a > TUNNEL.x0 && a < TUNNEL.x1) {
+          if (a < TUNNEL.x0 + 0.15 || a > TUNNEL.x1 - 0.15 || zf > FENCE_HEIGHT - 0.12) mesh = POST;
+          return;
+        }
+        if (frac(a / 4) < 0.03 || zf > FENCE_HEIGHT - 0.08) mesh = POST;
+        else if (focal / tf < 7) mesh = VEIL;
+        else if (frac((a + zf) * 3) < 0.1 || frac((a - zf) * 3) < 0.1) mesh = FENCE;
+      };
+      if (dirY < 0) {
+        const tf = (WALL_Y - cy) / dirY;
+        const a = cx + dirX * tf;
+        if (a >= WALL_NEAR_X && a <= WALL_FAR_X) fenceAt(tf, a, true);
+      }
+      if (dirX < 0) {
+        const tf = (WALL_NEAR_X - cx) / dirX;
+        const a = cy + dirY * tf;
+        if (a >= WALL_Y) fenceAt(tf, a, false);
+      } else if (dirX > 0) {
+        const tf = (WALL_FAR_X - cx) / dirX;
+        const a = cy + dirY * tf;
+        if (a >= WALL_Y) fenceAt(tf, a, false);
+      }
+      if (fence) {
+        fence[row + sx] = mesh;
+        pixels[row + sx] = color;
+      } else {
+        pixels[row + sx] = mesh || color;
+      }
+    }
+  }
   }
 
   project(x: number, y: number, z = 0): [number, number] {
@@ -397,9 +567,18 @@ export class Camera {
   }
 
   /** Desenha o chão e as paredes, píxel a píxel, como o Modo 7 das consolas antigas. */
-  drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number): void {
+  drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number, fence?: Uint32Array): void {
+    if (t.theme.open) {
+      this.drawOpenScene(pixels, t, fence);
+      return;
+    }
     const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
     const wall = t.walls[crowdFrame]!;
+    const { slope } = t.theme;
+    // As bancadas são planos inclinados que partem do chão e recuam ao subir. O raio só conta onde os corta acima do chão.
+    const sideOffset = cy - WALL_Y + slope * cz;
+    const nearOffset = cx - WALL_NEAR_X + slope * cz;
+    const farOffset = WALL_FAR_X + slope * cz - cx;
     for (let sy = 0; sy < height; sy++) {
       const vy = height / 2 - sy - 0.5;
       const row = sy * width;
@@ -419,18 +598,57 @@ export class Camera {
           pixels[row + sx] = t.floor[v * t.floorW + u]!;
           continue;
         }
-        const tEnd = dirX < 0 ? (WALL_NEAR_X - cx) / dirX : (WALL_FAR_X - cx) / dirX;
-        const tSide = dirY < 0 ? (WALL_Y - cy) / dirY : Infinity;
-        const hit = Math.min(tEnd, tSide);
-        // Cada parede tem a sua faixa na textura: o texto da publicidade só fica na lateral.
-        const along = hit === tSide ? cx + dirX * hit - WALL_NEAR_X : cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN;
-        const z = cz + rz * hit;
+        let hit = Infinity;
+        let onSide = false;
+        const dSide = dirY + slope * rz;
+        if (dSide < 0) {
+          const tSide = -sideOffset / dSide;
+          if (cz + rz * tSide >= 0) {
+            hit = tSide;
+            onSide = true;
+          }
+        }
+        const dNear = dirX + slope * rz;
+        if (dNear < 0) {
+          const tNear = -nearOffset / dNear;
+          if (tNear < hit && cz + rz * tNear >= 0) {
+            hit = tNear;
+            onSide = false;
+          }
+        }
+        const dFar = dirX - slope * rz;
+        if (dFar > 0) {
+          const tFar = farOffset / dFar;
+          if (tFar < hit && cz + rz * tFar >= 0) {
+            hit = tFar;
+            onSide = false;
+          }
+        }
+        // Cada bancada tem a sua faixa na textura: o texto da publicidade só fica na lateral. Acima de tudo, o teto.
+        const along = hit === Infinity ? 0 : onSide ? cx + dirX * hit - WALL_NEAR_X : cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN;
+        const z = hit === Infinity ? WALL_Z_SPAN : cz + rz * hit;
         const wu = Math.max(0, Math.min(t.wallW - 1, (along * WALL_SCALE) | 0));
         const wv = Math.max(0, Math.min(t.wallH - 1, (z * WALL_SCALE) | 0));
         pixels[row + sx] = wall[wv * t.wallW + wu]!;
       }
     }
   }
+}
+
+/** O campo de rua, ao ar livre: o chão continua para lá da rede, com passeio e relva; a rede é só a malha, por cima do que está atrás;
+ * ao longe, um pano de fundo vertical com prédios e árvores, e o céu por cima de tudo. Cada plano é cortado pelo raio onde calha. */
+const BACKDROP = 14;
+const FENCE_HEIGHT = 2.2;
+const SKY = packRgb([156, 206, 226]);
+const FENCE = packRgb([176, 186, 190]);
+const POST = packRgb([110, 116, 124]);
+// Vista de longe ou de raspão, a malha ficava um borrão de riscas: aí passa a ser só um véu cinzento.
+const VEIL = (96 << 24) | (190 << 16) | (186 << 8) | 176;
+function groundOutside(x: number, y: number): number {
+  const outside = Math.max(WALL_Y - y, WALL_NEAR_X - x, x - WALL_FAR_X);
+  const n = hash(Math.floor(x * 1.5), Math.floor(y * 1.5));
+  if (outside < 1.6) return packRgb([146 + n * 10, 146 + n * 10, 142 + n * 8]);
+  return packRgb([92 + n * 18, 146 + n * 16, 74 + n * 10]);
 }
 
 export function fillPolygon(g: CanvasRenderingContext2D, points: readonly (readonly [number, number])[], color: string): void {

@@ -9,7 +9,7 @@ import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } fr
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
-  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number } };
+  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null };
   setSpeedRaw(value: number): void;
   townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
@@ -26,6 +26,7 @@ interface Pocket {
   setConfidence(value: number): void;
   timeOtherGames(): number;
   pauseAt(eventType: string, extraTicks: number, maxDistance?: number, move?: string): { phase: string; found: boolean };
+  tuneCamera(t: { cy?: number; cz?: number; lookY?: number; focal?: number }): void;
   resetRenderStats(): void;
   renderStats(): { meanMs: number; frames: number };
 }
@@ -59,6 +60,11 @@ const playToEnd = async (p: Page): Promise<void> => {
   await p.evaluate(() => window.__pocket.setSpeedRaw(40));
   await p.click('#secondHalfBtn', { timeout: 90_000 });
   await p.waitForFunction(() => window.__pocket.state().finished, undefined, { timeout: 90_000 });
+};
+/** Recarregar a página volta ao título; o clube guardado continua a partir dele. */
+const reloadClub = async (p: Page): Promise<void> => {
+  await p.reload();
+  await p.click('#continueBtn');
 };
 /** Cria o clube e passa pelo ecrã de criação, com nome à escolha. */
 const createClub = async (p: Page, name = ''): Promise<void> => {
@@ -151,12 +157,16 @@ try {
   });
   await coach.goto(url);
   await coach.waitForSelector('#newClubBtn');
-  await coach.screenshot({ path: `${OUT}/clube-novo.png` });
+  await coach.screenshot({ path: `${OUT}/titulo.png` });
+  // Sem ninguém a tocar, o título mostra um jogo de demonstração.
+  await coach.waitForFunction(() => (window.__pocket.state().demo ?? 0) > 20, undefined, { timeout: 20_000 });
+  await coach.screenshot({ path: `${OUT}/demonstracao.png` });
   await coach.click('#newClubBtn');
+  check('O jogo de demonstração pára ao sair do título', await coach.evaluate(() => window.__pocket.state().demo === null));
   await coach.waitForSelector('#startClubBtn');
   await coach.locator('#clubName').fill('Dragões do Minho');
   await coach.click('[data-go="emblem"]');
-  await coach.click('[data-em-shape="pennant"]');
+  await coach.click('[data-em-design="pennant:plain"]');
   await coach.click('.back');
   await coach.screenshot({ path: `${OUT}/criar-clube.png` });
   await coach.click('#startClubBtn');
@@ -228,7 +238,7 @@ try {
   await coach.screenshot({ path: `${OUT}/treino-combos.png` });
   await coach.click('.back');
   await coach.click('.back');
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#startBtn');
   check('O treino fica guardado ao recarregar a página', await coach.evaluate(() => window.__pocket.club()!.trainedThisWeek.length === 1 && window.__pocket.club()!.knownCombos.includes('brokenAnkles')));
   await coach.click('#trainBtn');
@@ -240,7 +250,7 @@ try {
   await coach.click('#officeBtn');
   await coach.screenshot({ path: `${OUT}/escritorio.png` });
   await coach.click('[data-go="emblem"]');
-  await coach.click('[data-em-shape="circle"]');
+  await coach.click('[data-em-design="circle:plain"]');
   await coach.click('[data-em-symbol="star"]');
   await coach.locator('#emblemLetters').fill('xy7');
   check('As letras do emblema ficam em maiúsculas', (await coach.locator('#emblemLetters').inputValue()) === 'XY7');
@@ -248,7 +258,8 @@ try {
   await coach.click('.back');
   await coach.click('[data-act="editKit"]');
   await coach.click('[data-kit-pattern="stripes"]');
-  await coach.locator('[data-kit-second="#f2c230"]').click();
+  await coach.click('[data-kit-part="second"]');
+  await coach.locator('[data-kit-color="#f2c230"]').click();
   await coach.screenshot({ path: `${OUT}/equipamento-editor.png` });
   await coach.click('.back');
   // Tocar no edifício abre o mesmo que a etiqueta.
@@ -273,7 +284,7 @@ try {
   await coach.screenshot({ path: `${OUT}/trofeus.png` });
   await coach.click('.back');
   await coach.click('.back');
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#startBtn');
   check('O emblema e o equipamento ficam guardados', await coach.evaluate(() => {
     const c = window.__pocket.club()!;
@@ -289,7 +300,7 @@ try {
   await coach.click('[data-target="0"]');
   await coach.click('[data-target="3"]');
   await coach.screenshot({ path: `${OUT}/adversario.png` });
-  check('Marcam-se até dois alvos, e o terceiro fica desligado', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2) && await coach.locator('[data-target="1"]').isDisabled());
+  check('Marcam-se até dois alvos, e o terceiro fica desligado', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2) && await coach.locator('.prow[data-target="1"]').isDisabled());
   await coach.click('.back');
   await coach.click('[data-go="kit"]');
   await coach.screenshot({ path: `${OUT}/equipamento.png` });
@@ -320,8 +331,8 @@ try {
   await coach.click('.back');
   await coach.click('[data-act="halfSubs"]');
   await coach.waitForSelector('.subs');
-  await coach.click('[data-sub-out="1"]');
-  await coach.click('[data-sub-in]:not([disabled])');
+  await coach.click('.srow[data-pick="1"]');
+  await coach.click('.srow.bench[data-pick]:not([disabled])');
   await coach.screenshot({ path: `${OUT}/intervalo-trocas.png` });
   await coach.click('[data-subs-close]');
   await coach.click('[data-go="tactics"]');
@@ -338,7 +349,7 @@ try {
   check('Com decisões e táticas o jogo reproduz-se igual', await coach.evaluate(() => window.__pocket.replayMatchesCurrent()));
   await coach.click('#againBtn');
   await coach.waitForSelector('#startBtn');
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#startBtn');
   check('A semana 2 é a pré-eliminatória da taça', ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-eliminatória'));
   await coach.screenshot({ path: `${OUT}/semana-taca.png` });
@@ -360,7 +371,7 @@ try {
   await coach.click('[data-player="6"]');
   await coach.screenshot({ path: `${OUT}/plantel-trocado.png` });
   await coach.click('.back');
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#startBtn');
   const rosterAfter = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
   check('A troca no plantel fica guardada', rosterAfter[0] === rosterBefore[6] && rosterAfter[6] === rosterBefore[0], `${rosterBefore[0]} <> ${rosterBefore[6]}`);
@@ -406,7 +417,7 @@ try {
   await coach.evaluate(() => window.__pocket.fastForward(17));
   await coach.waitForSelector('#seasonContinue');
   await coach.screenshot({ path: `${OUT}/fim-epoca.png` });
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#seasonContinue');
   check('O balanço da época continua lá depois de recarregar', true);
   await coach.click('#seasonContinue');
@@ -431,7 +442,7 @@ try {
   await coach.evaluate(() => window.__pocket.fire());
   await coach.waitForSelector('#firedNewClub');
   await coach.screenshot({ path: `${OUT}/despedido.png` });
-  await coach.reload();
+  await reloadClub(coach);
   await coach.waitForSelector('#firedNewClub');
   check('O despedimento fica guardado', true);
   await coach.click('#firedNewClub');
@@ -536,8 +547,8 @@ try {
   await moments.waitForSelector('.subs-title', { timeout: 30_000 });
   await moments.screenshot({ path: `${OUT}/desconto.png` });
   const before = await moments.evaluate(() => window.__pocket.onCourtNames());
-  await moments.click('[data-sub-out="2"]');
-  await moments.click('[data-sub-in]:not([disabled])');
+  await moments.click('.srow[data-pick="2"]');
+  await moments.click('.srow.bench[data-pick]:not([disabled])');
   await moments.waitForTimeout(100);
   const after = await moments.evaluate(() => window.__pocket.onCourtNames());
   check('O desconto abre as trocas e a troca entra logo', before[2] !== after[2], `${before[2]} > ${after[2]}`);
@@ -546,9 +557,9 @@ try {
   check('O jogo continua depois do desconto', true);
   await moments.click('#subsBtn');
   await moments.waitForSelector('.subs');
-  await moments.click('[data-sub-out="0"]');
-  await moments.click('[data-sub-in]:not([disabled])');
-  await moments.waitForSelector('.pending');
+  await moments.click('.srow[data-pick="0"]');
+  await moments.click('.srow.bench[data-pick]:not([disabled])');
+  await moments.waitForSelector('.arrow.in');
   await moments.screenshot({ path: `${OUT}/substituir.png` });
   await moments.click('[data-subs-close]');
   await playToEnd(moments);
