@@ -37,9 +37,11 @@ export const BALANCE = {
   lineSlide: 0.4,
   // Sem pressão, a defesa espera o ataque aqui, em vez de o seguir até ao outro lado.
   defensePickUpU: 10.5,
-  freeThrowSeconds: 1,
-  freeThrowSetupSeconds: 1,
+  // Lances livres: o árbitro vai buscar a bola ao aro e entrega-a ao lançador entre cada lance.
+  freeThrowSeconds: 3,
+  freeThrowSetupSeconds: 2,
   freeThrowFlightSeconds: 0.6,
+  refereeWalkSpeed: 3,
   rimHeight: 3.05,
   reboundSeconds: 0.4,
   // A bola demora mais a cair quanto mais alto ressalta.

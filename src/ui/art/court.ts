@@ -95,16 +95,17 @@ export const THEMES: readonly CourtTheme[] = [
     name: 'Campo do Bairro',
     note: 'Alcatrão rachado e tinta gasta',
     swatch: '#566676',
+    // Alcatrão com manchas largas e pouco contraste: linhas finas, como rachas, tremiam ao longe e pareciam uma malha a arrastar.
     floor: (x, y, n) => {
-      const b = 70 + n * 14;
-      const crack = Math.abs(Math.sin(x * 1.3 + Math.sin(y * 2.1) * 1.4) * 3 + y * 0.3) < 0.05;
-      return crack ? [40, 48, 58] : [b, b + 12, b + 24];
+      const patch = hash(Math.floor(x * 0.6), Math.floor(y * 0.6)) * 8;
+      const b = 70 + patch + n * 4;
+      return [b, b + 12, b + 24];
     },
     paint: [150, 72, 48],
     center: [120, 72, 58],
     line: n => (n > 0.2 ? [226, 222, 200] : [130, 140, 150]),
     apron: n => {
-      const b = 60 + n * 10;
+      const b = 62 + n * 4;
       return [b, b + 8, b + 18];
     },
     wall: (u, z) => {
@@ -289,12 +290,64 @@ export interface CourtTextures {
   floor: Uint32Array;
   floorW: number;
   floorH: number;
+  /** O chão a metade e a um quarto da resolução, para as filas longe da câmara: sem isto, cada píxel saltava texels e via-se moiré a arrastar. */
+  floorLevels: { data: Uint32Array; w: number; h: number; scale: number }[];
   walls: Uint32Array[];
   wallW: number;
   wallH: number;
 }
 
 const textureCache = new Map<string, CourtTextures>();
+
+/** Uma textura a metade: cada texel é a média de quatro. */
+function halve(level: { data: Uint32Array; w: number; h: number; scale: number }): { data: Uint32Array; w: number; h: number; scale: number } {
+  const w = level.w >> 1;
+  const h = level.h >> 1;
+  const data = new Uint32Array(w * h);
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+        const p = level.data[(j * 2 + dy) * level.w + i * 2 + dx]!;
+        r += p & 255;
+        g += (p >> 8) & 255;
+        b += (p >> 16) & 255;
+      }
+      data[j * w + i] = packRgb([r / 4, g / 4, b / 4]);
+    }
+  }
+  return { data, w, h, scale: level.scale / 2 };
+}
+
+/** Um píxel do chão: ao longe cada linha do ecrã cobre muitos texels na vertical, por isso faz-se a média de `k` ao longo desse troço.
+ * Com um só texel por linha saíam traços horizontais que saltavam com a câmara. */
+function floorSample(level: { data: Uint32Array; w: number; h: number; scale: number }, x: number, y: number, stepX: number, stepY: number, k: number): number {
+  // Na horizontal mistura-se entre dois texels vizinhos: sem isso, cada coluna saltava de texel em texel e a textura tremia com a câmara.
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (let i = 0; i < k; i++) {
+    const f = (i + 0.5) / k;
+    const uf = Math.min(level.w - 1.001, Math.max(0, (x + stepX * f - WALL_NEAR_X) * level.scale - 0.5));
+    const u0 = uf | 0;
+    const fx = uf - u0;
+    const v = Math.min(level.h - 1, Math.max(0, ((y + stepY * f - WALL_Y) * level.scale) | 0));
+    const p0 = level.data[v * level.w + u0]!;
+    const p1 = level.data[v * level.w + u0 + 1]!;
+    r += (p0 & 255) * (1 - fx) + (p1 & 255) * fx;
+    g += ((p0 >> 8) & 255) * (1 - fx) + ((p1 >> 8) & 255) * fx;
+    b += ((p0 >> 16) & 255) * (1 - fx) + ((p1 >> 16) & 255) * fx;
+  }
+  return packRgb([r / k, g / k, b / k]);
+}
+
+/** O nível do chão para uma fila: quantos texels cabem num píxel a esta distância. Um píxel vale `floorT` metros. */
+const floorLevelFor = (t: CourtTextures, floorT: number): { data: Uint32Array; w: number; h: number; scale: number } => {
+  const texels = floorT * FLOOR_SCALE;
+  return t.floorLevels[texels >= 3 ? 2 : texels >= 1.5 ? 1 : 0]!;
+};
 
 /** As cores do clube da casa: o garrafão, o círculo, a orla do campo e metade da bancada. */
 function dressed(theme: CourtTheme, accent: string): CourtTheme {
@@ -402,7 +455,9 @@ export function courtTextures(division: number, accent?: string): CourtTextures 
   const wallW = Math.ceil(WALL_U_SPAN * WALL_SCALE);
   const wallH = WALL_Z_SPAN * WALL_SCALE;
   const walls = Array.from({ length: CROWD_FRAMES }, (_, frame) => buildWall(theme, frame, wallW, wallH));
-  const textures = { theme, floor, floorW, floorH, walls, wallW, wallH };
+  const floorLevels: CourtTextures['floorLevels'] = [{ data: floor, w: floorW, h: floorH, scale: FLOOR_SCALE }];
+  for (let level = 1; level <= 2; level++) floorLevels.push(halve(floorLevels[level - 1]!));
+  const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH };
   textureCache.set(key, textures);
   return textures;
 }
@@ -474,15 +529,24 @@ export class Camera {
     const baseX = fwd[0] * focal + up[0] * vy + right[0] * (0.5 - width / 2);
     const baseY = fwd[1] * focal + up[1] * vy + right[1] * (0.5 - width / 2);
     const floorT = rz < 0 ? -cz / rz : Infinity;
+    const level = floorLevelFor(t, floorT);
+    // O troço de chão que esta linha cobre na vertical, medido ao meio: quantos texels, tantas amostras (até 4).
+    const rzN = fwd[2] * focal + up[2] * (vy - 1);
+    const floorTN = rzN < 0 ? -cz / rzN : Infinity;
+    const midX = baseX + right[0] * (width / 2);
+    const midY = baseY + right[1] * (width / 2);
+    const stepX = floorTN < Infinity && floorT < Infinity ? (cx + (midX - up[0]) * floorTN) - (cx + midX * floorT) : 0;
+    const stepY = floorTN < Infinity && floorT < Infinity ? (cy + (midY - up[1]) * floorTN) - (cy + midY * floorT) : 0;
+    const samples = Math.min(6, Math.max(1, Math.round(Math.sqrt(stepX * stepX + stepY * stepY) * level.scale)));
     for (let sx = 0; sx < width; sx++) {
       const dirX = baseX + right[0] * sx;
       const dirY = baseY + right[1] * sx;
       const hitX = cx + dirX * floorT;
       const hitY = cy + dirY * floorT;
       if (rz < 0 && hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
-        const u = ((hitX - WALL_NEAR_X) * FLOOR_SCALE) | 0;
-        const v = Math.min(t.floorH - 1, ((hitY - WALL_Y) * FLOOR_SCALE) | 0);
-        pixels[row + sx] = t.floor[v * t.floorW + u]!;
+        pixels[row + sx] = floorSample(level, hitX, hitY, stepX, stepY, samples);
+        // A camada da rede também se limpa aqui: senão ficavam os píxeis da frame anterior a arrastar sobre o campo quando a câmara rodava.
+        if (fence) fence[row + sx] = 0;
         continue;
       }
       // O pano de fundo: três planos verticais, a BACKDROP metros da rede.
@@ -526,9 +590,21 @@ export class Camera {
           if (a < TUNNEL.x0 + 0.15 || a > TUNNEL.x1 - 0.15 || zf > FENCE_HEIGHT - 0.12) mesh = POST;
           return;
         }
-        if (frac(a / 4) < 0.03 || zf > FENCE_HEIGHT - 0.08) mesh = POST;
-        else if (focal / tf < 7) mesh = VEIL;
-        else if (frac((a + zf) * 3) < 0.1 || frac((a - zf) * 3) < 0.1) mesh = FENCE;
+        if (frac(a / 4) < 0.03 || zf > FENCE_HEIGHT - 0.08) {
+          mesh = POST;
+          return;
+        }
+        // A malha em píxeis inteiros, ancorada ao mundo, com o período a crescer com a proximidade: sem moiré a arrastar.
+        // A malha é fixa ao mundo, em células de 40 cm: ancorada ao ecrã deslizava sobre a grade quando a câmara rodava.
+        // Onde a célula fica com menos de 4 píxeis, só um véu: linhas tão finas fazem moiré que também parece arrastar.
+        const ppm = focal / tf;
+        const cellPx = FENCE_CELL * ppm;
+        if (cellPx < 4) {
+          mesh = VEIL;
+          return;
+        }
+        const lineW = Math.max(1.2, cellPx * 0.16) / cellPx;
+        if (frac((a + zf) / FENCE_CELL) < lineW || frac((a - zf) / FENCE_CELL) < lineW) mesh = FENCE;
       };
       if (dirY < 0) {
         const tf = (WALL_Y - cy) / dirY;
@@ -587,15 +663,22 @@ export class Camera {
       const baseX = fwd[0] * focal + up[0] * vy + right[0] * (0.5 - width / 2);
       const baseY = fwd[1] * focal + up[1] * vy + right[1] * (0.5 - width / 2);
       const floorT = rz < 0 ? -cz / rz : Infinity;
+      const level = floorLevelFor(t, floorT);
+      // O troço de chão que esta linha cobre na vertical, medido ao meio: quantos texels, tantas amostras (até 4).
+      const rzN = fwd[2] * focal + up[2] * (vy - 1);
+      const floorTN = rzN < 0 ? -cz / rzN : Infinity;
+      const midX = baseX + right[0] * (width / 2);
+      const midY = baseY + right[1] * (width / 2);
+      const stepX = floorTN < Infinity && floorT < Infinity ? (cx + (midX - up[0]) * floorTN) - (cx + midX * floorT) : 0;
+      const stepY = floorTN < Infinity && floorT < Infinity ? (cy + (midY - up[1]) * floorTN) - (cy + midY * floorT) : 0;
+      const samples = Math.min(6, Math.max(1, Math.round(Math.sqrt(stepX * stepX + stepY * stepY) * level.scale)));
       for (let sx = 0; sx < width; sx++) {
         const dirX = baseX + right[0] * sx;
         const dirY = baseY + right[1] * sx;
         const hitX = cx + dirX * floorT;
         const hitY = cy + dirY * floorT;
         if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
-          const u = ((hitX - WALL_NEAR_X) * FLOOR_SCALE) | 0;
-          const v = Math.min(t.floorH - 1, ((hitY - WALL_Y) * FLOOR_SCALE) | 0);
-          pixels[row + sx] = t.floor[v * t.floorW + u]!;
+          pixels[row + sx] = floorSample(level, hitX, hitY, stepX, stepY, samples);
           continue;
         }
         let hit = Infinity;
@@ -640,15 +723,20 @@ export class Camera {
 const BACKDROP = 14;
 const FENCE_HEIGHT = 2.2;
 const SKY = packRgb([156, 206, 226]);
-const FENCE = packRgb([176, 186, 190]);
+const FENCE = packRgb([104, 112, 120]);
 const POST = packRgb([110, 116, 124]);
-// Vista de longe ou de raspão, a malha ficava um borrão de riscas: aí passa a ser só um véu cinzento.
-const VEIL = (96 << 24) | (190 << 16) | (186 << 8) | 176;
+const FENCE_CELL = 0.4;
+// Um cinzento meio transparente, para a grade vista de longe.
+const VEIL = (120 << 24) | (120 << 16) | (112 << 8) | 104;
+// O passeio e a relva de fora são lisos: com ruído por célula, de raspão, viam-se riscas a arrastar com a câmara.
+const PAVEMENT = packRgb([150, 150, 146]);
+const GRASS = packRgb([100, 154, 80]);
+const GRASS_DARK = packRgb([92, 144, 74]);
 function groundOutside(x: number, y: number): number {
   const outside = Math.max(WALL_Y - y, WALL_NEAR_X - x, x - WALL_FAR_X);
-  const n = hash(Math.floor(x * 1.5), Math.floor(y * 1.5));
-  if (outside < 1.6) return packRgb([146 + n * 10, 146 + n * 10, 142 + n * 8]);
-  return packRgb([92 + n * 18, 146 + n * 16, 74 + n * 10]);
+  if (outside < 1.6) return PAVEMENT;
+  // Faixas largas de relva cortada, que não tremem.
+  return Math.floor((x + y) / 4) % 2 === 0 ? GRASS : GRASS_DARK;
 }
 
 export function fillPolygon(g: CanvasRenderingContext2D, points: readonly (readonly [number, number])[], color: string): void {

@@ -1385,10 +1385,24 @@ function updateBall(s: MatchState): void {
   } else if (s.freeThrow) {
     const shooter = s.freeThrow.shooter;
     const flightTicks = seconds(B.freeThrowFlightSeconds);
-    const t = s.timer < flightTicks ? 1 - s.timer / flightTicks : 0;
-    s.ball.x = shooter.x + (fromU(s, shooter.team, 1.575) - shooter.x) * t;
-    s.ball.y = shooter.y * (1 - t);
-    s.ball.z = 2 + 1.05 * t + (B.shotArcBase + 4 * B.shotArcPerMeter) * t * (1 - t);
+    if (s.timer < flightTicks) {
+      const t = 1 - s.timer / flightTicks;
+      s.ball.x = shooter.x + (fromU(s, shooter.team, 1.575) - shooter.x) * t;
+      s.ball.y = shooter.y * (1 - t);
+      s.ball.z = 2 + 1.05 * t + (B.shotArcBase + 4 * B.shotArcPerMeter) * t * (1 - t);
+    } else if (distance(shooter.x, shooter.y, s.ball.x, s.ball.y) > 0.4) {
+      // Entre lances, a bola cai do aro e o árbitro leva-a ao lançador a andar.
+      s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
+      if (s.ball.z <= B.ballRestHeight + 0.01) {
+        const dist = distance(shooter.x, shooter.y, s.ball.x, s.ball.y);
+        s.ball.x += ((shooter.x - s.ball.x) / dist) * Math.min(dist, B.refereeWalkSpeed * DT);
+        s.ball.y += ((shooter.y - s.ball.y) / dist) * Math.min(dist, B.refereeWalkSpeed * DT);
+      }
+    } else {
+      s.ball.x = shooter.x;
+      s.ball.y = shooter.y;
+      s.ball.z = 2;
+    }
   } else {
     s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
   }

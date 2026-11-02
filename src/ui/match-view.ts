@@ -441,6 +441,10 @@ export class MatchView {
     if (s.phase === 'jump') {
       // Sai para o lado, para se ver o salto.
       targetX = 16.2;
+    } else if (s.phase === 'freeThrow' && s.ball.z < 1.9 && s.freeThrow && Math.hypot(s.ball.x - s.freeThrow.shooter.x, s.ball.y - s.freeThrow.shooter.y) > 0.4) {
+      // Entre lances livres, é o árbitro que leva a bola ao lançador.
+      targetX = s.ball.x;
+      targetY = s.ball.y + 0.3;
     } else if (s.phase !== 'intro' && s.phase !== 'timeout' && s.phase !== 'break') {
       const secondHalf = s.period >= 3;
       const attack = (s.offense === 0) !== secondHalf ? 1 : -1;

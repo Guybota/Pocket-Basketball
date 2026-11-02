@@ -227,7 +227,8 @@ function setStage(next: typeof stage): void {
     demo = undefined;
   }
   if (next === 'town' || next === 'title') audio.music('town');
-  else if (next === 'match') audio.music('arena');
+  // Durante o jogo não há música: ouve-se o pavilhão.
+  else if (next === 'match') audio.music('none');
   // Uma cortina curta entre ecrãs, em vez de uma troca seca.
   game.classList.remove('stage-in');
   void game.offsetWidth;
