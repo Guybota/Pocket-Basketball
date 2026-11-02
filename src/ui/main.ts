@@ -27,6 +27,8 @@ const MAX_STEPS_PER_FRAME = 40;
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
+// Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
+const MATCH_MIN_RATIO = 1.35;
 const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
@@ -185,17 +187,24 @@ function fit(): void {
   const landscape = innerWidth / innerHeight >= LANDSCAPE_MIN_RATIO;
   game.classList.toggle('landscape', landscape);
   if (landscape) {
-    const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.floor((innerHeight * 2) / 720) / 2);
+    // O painel cresce com a janela, em meios: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
+    const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 2) / 1200) / 2, Math.floor((innerHeight * 2) / 540) / 2));
     // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
     const panelWidth = stage === 'town' ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
+    const stageHeight = stage === 'match' ? Math.min(innerHeight, stageWidth / MATCH_MIN_RATIO) : innerHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
     const scale = stage === 'town' || stage === 'title'
       ? Math.max(1, Math.floor((innerHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
-      : Math.ceil((innerHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
+      : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = Math.ceil(stageWidth / scale);
-    const height = Math.ceil(innerHeight / scale);
+    const height = Math.ceil(stageHeight / scale);
     setCanvasSize(width, height, width * scale, height * scale);
+    // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
+    const bar = Math.max(0, (innerHeight - height * scale) / 2);
+    canvas.style.marginTop = `${bar}px`;
+    hud.style.top = `${bar}px`;
+    hud.style.bottom = `${bar}px`;
     game.style.zoom = '';
     game.style.height = '';
     screen_.style.width = `${stageWidth}px`;
@@ -214,6 +223,9 @@ function fit(): void {
     // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
     const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? MENU_STAGE_HEIGHT : MATCH_STAGE_HEIGHT;
     setCanvasSize(360, stageHeight, 360, stageHeight);
+    canvas.style.marginTop = '';
+    hud.style.top = '';
+    hud.style.bottom = '';
     game.style.zoom = String(finalScale);
     game.style.height = `${gameHeight}px`;
     screen_.style.width = '360px';
@@ -332,7 +344,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)));
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem);
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -446,7 +458,7 @@ function startDemo(): void {
   const away = source.clubs[top[(seed + 1) % top.length]!]!;
   const quiet = { announce: () => {}, event: () => {}, sound: () => {} };
   const homeKit = clubIdentity(home.name).kits[0];
-  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, homeKit, undefined, clubColor(home), 0.7, kitAgainst(away.name, homeKit));
+  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, homeKit, undefined, clubColor(home), 0.7, kitAgainst(away.name, homeKit), clubIdentity(home.name).emblem);
   demo.snapCamera();
   demoAccumulator = 0;
 }
@@ -756,7 +768,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)));
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem);
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;

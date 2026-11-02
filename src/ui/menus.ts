@@ -676,7 +676,7 @@ function federationScreen(): Rendered {
       const up = format ? format.places.includes(i) : i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
       const down = i >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0;
       const diff = r.pointsFor - r.pointsAgainst;
-      const crestImg = `<img class="emblem" alt="" style="width:14px;height:14px;margin-right:3px" src="${emblemImage(r.club === PLAYER_CLUB ? club.emblem : clubIdentity(club.clubs[r.club]!.name).emblem)}">`;
+      const crestImg = `<img class="emblem" alt="" style="width:18px;height:18px;margin-right:4px" src="${emblemImage(r.club === PLAYER_CLUB ? club.emblem : clubIdentity(club.clubs[r.club]!.name).emblem)}">`;
       if (!own) return `<button type="button" class="crow${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}" style="grid-template-columns:22px 1fr auto"><span>${i + 1}</span><span class="name">${crestImg}${esc(club.clubs[r.club]!.name)}</span><span>Nível ${gradeOf(teamRating(r.club === PLAYER_CLUB ? club.team : aiTeam(club.clubs[r.club]!)))}</span></button>`;
       return `<button type="button" class="crow${up ? ' up' : down ? ' down' : ''}${r.club === PLAYER_CLUB ? ' mine' : ''}" data-fed-club="${r.club}" aria-pressed="${federationClub === r.club}"><span>${i + 1}</span><span class="name">${crestImg}${esc(club.clubs[r.club]!.name)}</span><span>${r.wins}</span><span>${r.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></button>`;
     }).join('')}`;
@@ -730,7 +730,7 @@ function federationScreen(): Rendered {
   return {
     top: bracket ? fullCanvas('bracket') : top,
     after: bracket ? () => drawBracket(element<HTMLCanvasElement>('bracket'), ...(federationTab === 'cup' ? cupBracket() : playoffBracket())) : undefined,
-    bottom: `<div class="chalk"><h2><img class="emblem" alt="" style="width:16px;height:16px;margin-right:4px" src="${leagueIcon(federationDivision)}">${DIVISIONS[federationDivision]!.name}</h2><div class="chalktabs">${tabs.map(([id, label]) => `<button type="button" data-fed-tab="${id}" aria-pressed="${federationTab === id}">${label}</button>`).join('')}</div><div class="scroll">${body}</div></div>${bar(backBtn('town'))}`,
+    bottom: `<div class="chalk"><h2><img class="emblem" alt="" style="width:20px;height:20px;margin-right:4px" src="${leagueIcon(federationDivision)}">${DIVISIONS[federationDivision]!.name}</h2><div class="chalktabs">${tabs.map(([id, label]) => `<button type="button" data-fed-tab="${id}" aria-pressed="${federationTab === id}">${label}</button>`).join('')}</div><div class="scroll">${body}</div></div>${bar(backBtn('town'))}`,
   };
 }
 

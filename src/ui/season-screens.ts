@@ -118,7 +118,7 @@ function tableRows(club: ClubState, table: readonly Standing[], division: number
     const down = position >= LEAGUE_SIZE - MOVING_PLACES && division > 0;
     const zone = up ? ' up' : down ? ' down' : '';
     const diff = row.pointsFor - row.pointsAgainst;
-    return `<div class="table-row${zone}${row.club === PLAYER_CLUB ? ' mine' : ''}"><span>${position + 1}</span><span class="name"><img class="emblem" alt="" style="width:14px;height:14px;margin-right:3px" src="${emblemImage(row.club === PLAYER_CLUB ? club.emblem : clubIdentity(clubName(club, row.club)).emblem)}">${escapeHtml(clubName(club, row.club))}</span><span>${row.wins}</span><span>${row.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></div>`;
+    return `<div class="table-row${zone}${row.club === PLAYER_CLUB ? ' mine' : ''}"><span>${position + 1}</span><span class="name"><img class="emblem" alt="" style="width:18px;height:18px;margin-right:4px" src="${emblemImage(row.club === PLAYER_CLUB ? club.emblem : clubIdentity(clubName(club, row.club)).emblem)}">${escapeHtml(clubName(club, row.club))}</span><span>${row.wins}</span><span>${row.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></div>`;
   }).join('');
   return `<div class="table-row head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>${rows}`;
 }

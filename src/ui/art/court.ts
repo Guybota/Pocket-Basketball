@@ -1,4 +1,5 @@
 import { HOOP_U, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS } from '../../sim/court.ts';
+import { emblemCanvas, type Emblem } from './kit.ts';
 import { INK } from './sprites.ts';
 
 type Rgb = readonly [number, number, number];
@@ -394,6 +395,9 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
     const ink = packRgb(theme.boardText);
     const boardsOnSide = Math.floor(SIDE_WALL_SPAN / BOARD_WIDTH);
     for (let k = 0; k < boardsOnSide; k++) {
+      // A placa que fica na boca do túnel não leva texto, senão as letras ficavam por cima dele.
+      const x0 = WALL_NEAR_X + k * BOARD_WIDTH;
+      if (theme.slope > 0 && x0 + BOARD_WIDTH > TUNNEL.x0 - 0.2 && x0 < TUNNEL.x1 + 0.2) continue;
       const label = SPONSORS[k % SPONSORS.length]!;
       const start = k * BOARD_WIDTH * WALL_SCALE;
       const width = label.length * 4 * scale - scale;
@@ -423,12 +427,19 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
 export const CLOSED_GYM = THEMES.length;
 const VENUES: readonly CourtTheme[] = [...THEMES, { ...THEMES[1]!, name: 'Pavilhão Fechado', crowd: null }];
 
-/** As texturas calculam-se uma vez por divisão e cor da casa. Desenhar um frame é só consultá-las. */
-export function courtTextures(division: number, accent?: string): CourtTextures {
-  const key = `${division}|${accent ?? ''}`;
+// O emblema da equipa da casa, com 3 m de lado, deitado no círculo central.
+const CREST_METRES = 3;
+
+/** As texturas calculam-se uma vez por divisão, cor da casa e emblema. Desenhar um frame é só consultá-las. */
+export function courtTextures(division: number, accent?: string, emblem?: Emblem): CourtTextures {
+  const key = `${division}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}`;
   const cached = textureCache.get(key);
   if (cached) return cached;
   const theme = accent ? dressed(VENUES[division]!, accent) : VENUES[division]!;
+  // Sem letras: no chão só se vê a forma e o símbolo.
+  const crest = emblem ? emblemCanvas({ ...emblem, letters: '' }) : null;
+  const crestSize = crest?.width ?? 0;
+  const crestData = crest ? crest.getContext('2d')!.getImageData(0, 0, crestSize, crestSize).data : null;
   const floorW = Math.ceil((WALL_FAR_X - WALL_NEAR_X) * FLOOR_SCALE);
   const floorH = Math.ceil((NEAR_Y - WALL_Y) * FLOOR_SCALE);
   const floor = new Uint32Array(floorW * floorH);
@@ -442,7 +453,18 @@ export function courtTextures(division: number, accent?: string): CourtTextures 
       if (isLine(x, y)) color = theme.line(hash(Math.floor(x * 3), Math.floor(y * 3)));
       else if (x < 0 || Math.abs(y) > 7.5) color = theme.apron(noise);
       else if (x < 5.8 && Math.abs(y) < 2.45) color = theme.paint;
-      else if ((14 - x) * (14 - x) + y * y < 1.8 * 1.8) color = isCenterSeam(wx, y) ? theme.line(1) : theme.center;
+      else if ((14 - x) * (14 - x) + y * y < 1.8 * 1.8) {
+        color = isCenterSeam(wx, y) ? theme.line(1) : theme.center;
+        // A câmara está do lado do y positivo: o topo do emblema fica para o lado de lá do campo (y negativo).
+        if (crestData) {
+          const ex = Math.floor(((wx - 14 + CREST_METRES / 2) / CREST_METRES) * crestSize);
+          const ey = Math.floor(((y + CREST_METRES / 2) / CREST_METRES) * crestSize);
+          if (ex >= 0 && ey >= 0 && ex < crestSize && ey < crestSize) {
+            const k = (ey * crestSize + ex) * 4;
+            if (crestData[k + 3]! > 128) color = [crestData[k]!, crestData[k + 1]!, crestData[k + 2]!];
+          }
+        }
+      }
       else {
         const row = Math.floor(y / 0.55);
         const plank = hash(row, Math.floor((wx + hash(row, 3) * 4) / 3.1)) - 0.5;
