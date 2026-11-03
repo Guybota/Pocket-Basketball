@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { matchHash } from '../sim/hash.ts';
 import { cancelSubstitution, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
@@ -1153,3 +1154,13 @@ document.addEventListener('pointerdown', event => {
   }, 450);
 });
 for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);
+
+// Modo offline: só no jogo publicado, porque no `npm run dev` a cache atrapalhava.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(() => navigator.serviceWorker.ready).then(async () => {
+    // O que a página já carregou antes do service worker existir também tem de ficar guardado.
+    const cache = await caches.open('pocket-basketball');
+    const urls = [location.href.split('?')[0]!, ...performance.getEntriesByType('resource').map(entry => entry.name)];
+    await Promise.all(urls.map(url => fetch(url, { mode: 'no-cors' }).then(response => cache.put(url, response)).catch(() => {})));
+  }).catch(() => {});
+}
