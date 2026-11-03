@@ -88,18 +88,18 @@ export interface TownDress {
   festive: boolean;
 }
 
-/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve em certas semanas do inverno. Não chove. */
-export type Weather = { tint: string | null; snow: boolean; night: boolean };
+/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve em certas semanas do inverno. Não chove. Em dezembro, luzes de Natal nas casas e no pavilhão. */
+export type Weather = { tint: string | null; snow: boolean; night: boolean; lights: boolean };
 export function weatherFor(week: number): Weather {
   // 29 semanas, de setembro a março: a luz muda com os meses, e o tempo com a semana.
   const month = Math.floor((week - 1) / 4);
-  if (month <= 0) return { tint: null, snow: false, night: false };
-  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, night: false };
-  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, night: false };
-  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, night: true };
-  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, night: false };
-  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, night: false };
-  return { tint: 'rgba(255,230,160,0.1)', snow: false, night: false };
+  if (month <= 0) return { tint: null, snow: false, night: false, lights: false };
+  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, night: false, lights: false };
+  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, night: false, lights: false };
+  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, night: true, lights: true };
+  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, night: false, lights: false };
+  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, night: false, lights: false };
+  return { tint: 'rgba(255,230,160,0.1)', snow: false, night: false, lights: false };
 }
 
 function buildTown(width: number, height: number, division: number, dress: TownDress): Town {
@@ -541,6 +541,27 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       g.fillRect(x - 3, y - 6, 2, 2);
       g.fillRect(x + 2, y - 6, 2, 2);
     }
+  }
+  if (weather.lights) {
+    // Luzes de Natal: fios de lâmpadas coloridas ao longo dos beirais das casas e do pavilhão, a piscar à vez.
+    const colors = ['#ff4d3a', '#3bd05a', '#ffd23b', '#3b8bff'];
+    const string = (i0: number, j0: number, i1: number, j1: number, k: number, count: number, phase: number): void => {
+      for (let n = 0; n <= count; n++) {
+        const t = n / count;
+        const [x, y] = project(grid, i0 + (i1 - i0) * t, j0 + (j1 - j0) * t, k).map(Math.round) as Point;
+        const lit = Math.floor(now / 450 + n + phase) % 4 !== 0;
+        g.fillStyle = lit ? colors[(n + phase) % 4]! : '#4a4a5a';
+        g.fillRect(x, y, 2, 2);
+      }
+    };
+    TOWN_HOUSES.forEach(([hi, hj], n) => {
+      const a = HOUSE_SIZE + 0.2;
+      string(hi + a - 0.1, hj - 0.1, hi + a - 0.1, hj + a - 0.1, 1, 6, n);
+      string(hi - 0.1, hj + a - 0.1, hi + a - 0.1, hj + a - 0.1, 1, 6, n + 2);
+    });
+    const h = arenaHeight(division);
+    string(PAVILION.i + PAVILION.a, PAVILION.j, PAVILION.i + PAVILION.a, PAVILION.j + PAVILION.b, h, 24, 1);
+    string(PAVILION.i, PAVILION.j + PAVILION.b, PAVILION.i + PAVILION.a, PAVILION.j + PAVILION.b, h, 24, 3);
   }
   if (weather.snow) {
     g.fillStyle = 'rgba(255,255,255,0.9)';
