@@ -636,6 +636,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 /* A secretária num canto do mapa, com a linha da semana por baixo. */
 .town-note { position: absolute; left: 8px; bottom: 8px; zoom: var(--hud-zoom, 1); max-width: 300px; display: grid; gap: 3px; padding: 4px 6px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); pointer-events: none; }
 
+/* Ao alto, a nota estica com a cidade, de margem a margem; deitado, fica no canto. */
+#game:not(.landscape) .town-note { right: 8px; max-width: none; }
 .town-note .say { grid-template-columns: 32px 1fr; padding: 0; background: none; border: 0; }
 
 .town-note .say img { width: 32px; height: 32px; }

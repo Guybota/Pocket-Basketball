@@ -236,6 +236,7 @@ function fit(): void {
     hud.style.bottom = `${bar}px`;
     game.style.zoom = '';
     game.style.height = '';
+    game.style.width = '';
     screen_.style.width = `${stageWidth}px`;
     screen_.style.height = `${viewHeight}px`;
     panel.style.zoom = String(ui);
@@ -255,13 +256,16 @@ function fit(): void {
     // No título, a cidade fica com o que o logótipo e os botões não usam.
     const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
     const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
-    setCanvasSize(360, stageHeight, 360, stageHeight);
+    // A cidade estica até às bordas: a escala fica inteira, mas o mapa ganha a largura que sobrava dos lados.
+    const gameWidth = stage === 'town' ? Math.max(360, Math.floor(innerWidth / finalScale)) : 360;
+    setCanvasSize(gameWidth, stageHeight, gameWidth, stageHeight);
     canvas.style.marginTop = '';
     hud.style.top = '';
     hud.style.bottom = '';
     game.style.zoom = String(finalScale);
     game.style.height = `${gameHeight}px`;
-    screen_.style.width = '360px';
+    game.style.width = gameWidth === 360 ? '' : `${gameWidth}px`;
+    screen_.style.width = `${gameWidth}px`;
     screen_.style.height = `${stageHeight}px`;
     panel.style.zoom = '';
     panel.style.width = '';
