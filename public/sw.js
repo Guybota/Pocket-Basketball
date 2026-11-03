@@ -12,7 +12,8 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     try {
-      const response = await fetch(request);
+      // A página pergunta sempre ao servidor se mudou; sem isto, o browser podia usar uma cópia com até 10 minutos.
+      const response = await (request.mode === 'navigate' ? fetch(request.url, { cache: 'no-cache' }) : fetch(request));
       if (response.ok || response.type === 'opaque') await cache.put(request, response.clone());
       return response;
     } catch {
