@@ -2,6 +2,8 @@ import type { Body, MatchState, TeamLine } from '../sim/match.ts';
 import type { CardId } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/types.ts';
 import { BUILD_NAMES } from './art/body.ts';
+import { clubIdentity } from './art/identity.ts';
+import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { attributeIcon } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
@@ -34,8 +36,9 @@ export function energyColor(energy: number): string {
   return 'var(--bad)';
 }
 
-export const crest = (s: MatchState, team: 0 | 1): string =>
-  `<span class="crest team-${team}">${escapeHtml(s.teams[team].short)}</span>`;
+/** O emblema de uma equipa do jogo: o do nosso clube, se a vista o souber, ou o fixo do clube. */
+export const crest = (view: MatchView, team: 0 | 1, size = 24): string =>
+  `<img class="emblem" alt="Emblema do ${escapeHtml(view.s.teams[team].name)}" style="width:${size}px;height:${size}px" src="${emblemImage((team === 0 ? view.ownEmblem : undefined) ?? clubIdentity(view.s.teams[team].name).emblem)}">`;
 
 function periodTable(view: MatchView): string {
   const { s, periodScores } = view;
@@ -71,7 +74,8 @@ function benchTab(view: MatchView): string {
 
 const shooting = (made: number, attempts: number): string => `${made}/${attempts}`;
 
-function statsTab(s: MatchState): string {
+function statsTab(view: MatchView): string {
+  const { s } = view;
   const rows: [string, (line: TeamLine) => string | number, (line: TeamLine) => number][] = [
     ['2 pontos', l => shooting(l.twoMade, l.twoAttempts), l => l.twoMade * 2],
     ['3 pontos', l => shooting(l.threeMade, l.threeAttempts), l => l.threeMade * 3],
@@ -95,7 +99,7 @@ function statsTab(s: MatchState): string {
     .filter(b => b.team === team && b.line.secondsPlayed > 0)
     .map(b => `<div class="pstat"><span class="name">${escapeHtml(b.player.name)}</span><span>${b.line.points}</span><span>${b.line.rebounds}</span><span>${b.line.assists}</span><span>${b.line.steals}</span><span>${b.line.blocks}</span><span>${b.line.fouls}</span><span>${minutesText(b.line.secondsPlayed)}</span></div>`)
     .join('')}`;
-  return `<div class="cmp head"><span>${crest(s, 0)}</span><span></span><span>${crest(s, 1)}</span></div>${body}${playerRows(0)}${playerRows(1)}`;
+  return `<div class="cmp head"><span>${crest(view, 0)}</span><span></span><span>${crest(view, 1)}</span></div>${body}${playerRows(0)}${playerRows(1)}`;
 }
 
 const minutesText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
@@ -255,7 +259,7 @@ export function panelContent(view: MatchView, tab: PanelTab, found: readonly Car
   switch (tab) {
     case 'league': return leagueTab(view, live);
     case 'bench': return benchTab(view);
-    case 'stats': return statsTab(view.s);
+    case 'stats': return statsTab(view);
     case 'feed': return feedLines(view.s, 30);
     case 'cards': return foundCards(found);
   }
@@ -264,7 +268,7 @@ export function panelContent(view: MatchView, tab: PanelTab, found: readonly Car
 /** Antes da bola ao alto: os cinco de cada equipa entram em campo, um a um. */
 export function introScreen(view: MatchView, label: string): string {
   const { s } = view;
-  const column = (team: 0 | 1): string => `<div class="intro-team team-${team}"><div class="intro-name">${crest(s, team)}<span>${escapeHtml(s.teams[team].name)}</span></div>${s.court[team]
+  const column = (team: 0 | 1): string => `<div class="intro-team team-${team}"><div class="intro-name">${crest(view, team)}<span>${escapeHtml(s.teams[team].name)}</span></div>${s.court[team]
     .map((b, i) => `<div class="intro-row" style="--d:${i * 140}ms"><img alt="" src="${faceImage(view.lookFor(b))}"><b>${escapeHtml(b.player.name)}</b><span>${slotCode(b.slot)}</span></div>`)
     .join('')}</div>`;
   return `<div class="intro"><div class="intro-head">${escapeHtml(label)}</div><div class="intro-teams">${column(0)}${column(1)}</div></div>
@@ -298,13 +302,13 @@ export function resultScreen(view: MatchView, cards: readonly CardId[], league: 
     .sort((a, b) => b.line.points + b.line.rebounds + b.line.assists - (a.line.points + a.line.rebounds + a.line.assists))[0]!;
   const l = top.line;
   return `<div class="result">
-    <div class="final-score">${crest(s, 0)}<b>${s.score[0]}</b><span>-</span><b>${s.score[1]}</b>${crest(s, 1)}</div>
+    <div class="final-score">${crest(view, 0, 32)}<b>${s.score[0]}</b><span>-</span><b>${s.score[1]}</b>${crest(view, 1, 32)}</div>
     <div class="winner">Ganha ${escapeHtml(s.teams[winner].name)}</div>
     ${league}
     <div class="section-head plain"><span>Cartas ganhas</span><span>${cards.length}</span></div>
     ${foundCards(cards)}
     ${periodTable(view)}
     <div class="mvp"><img class="face team-${winner}" alt="" src="${faceImage(view.lookFor(top))}"><span>Melhor em campo: ${escapeHtml(top.player.name)}<br>${l.points} pts, ${l.rebounds} res, ${l.assists} ass</span></div>
-    ${statsTab(s)}
+    ${statsTab(view)}
   </div>`;
 }

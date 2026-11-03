@@ -12,6 +12,8 @@ export interface LeagueClub {
   level: number;
   /** Os 12 jogadores do pool, pelos lugares do plantel. Os clubes de fora não têm. */
   players?: number[];
+  /** As últimas épocas, da mais recente para trás: em que divisão ficou e em que lugar. */
+  past?: { division: number; position: number }[];
 }
 
 export interface Fixture {

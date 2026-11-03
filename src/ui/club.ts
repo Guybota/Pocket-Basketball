@@ -127,7 +127,8 @@ export interface ClubState {
   /** Um jogo-treino por semana, antes do jogo oficial ou numa semana livre. */
   practicedThisWeek: boolean;
   /** As categorias dos últimos treinos de cada jogador, a mais recente primeiro. */
-  recentTraining: Record<string, CardCategory[]>;
+  /** As últimas semanas de cada jogador (época × 100 + semana): positiva se treinou, negativa se esteve lesionado. Em saves antigos há nomes de categorias, que nunca coincidem. */
+  recentTraining: Record<string, (number | CardCategory)[]>;
   /** O número da camisola não muda quando o jogador troca de lugar no plantel. */
   shirts: Record<string, number>;
   emblem: Emblem;
@@ -362,6 +363,23 @@ export const totalCards = (club: ClubState): number => CARD_IDS.reduce((sum, car
 export const leagueIds = (club: ClubState): number[] => club.divisions[club.division]!;
 
 export const leagueTable = (club: ClubState): Standing[] => standings(leagueIds(club), club.rounds);
+
+/** As três últimas épocas de um clube, para a ficha da federação. O lugar é null quando o nosso clube ainda não existia. */
+export function clubSeasons(club: ClubState, id: number): { label: string; division: number; position: number | null }[] {
+  const division = club.divisions.findIndex(ids => ids.includes(id));
+  const now = division === club.division
+    ? leagueTable(club).findIndex(row => row.club === id)
+    : [...club.divisions[division]!].sort((a, b) => club.clubs[b]!.level - club.clubs[a]!.level).indexOf(id);
+  const info = club.clubs[id]!;
+  const earlier = (n: number): { division: number; position: number | null } => {
+    const known = info.past?.[n];
+    if (known) return known;
+    if (id === PLAYER_CLUB) return { division, position: null };
+    // shortcut: antes da carreira não houve jogos, por isso o passado dos outros clubes é inventado pela semente; deixa de contar à medida que as épocas se jogam.
+    return { division, position: (info.seed >>> (n * 5 + 3)) % LEAGUE_SIZE };
+  };
+  return [{ label: 'Esta época', division, position: now }, { label: 'Época passada', ...earlier(0) }, { label: 'Há 2 épocas', ...earlier(1) }];
+}
 
 export const leaguePosition = (club: ClubState): number => leagueTable(club).findIndex(row => row.club === PLAYER_CLUB);
 
@@ -645,7 +663,7 @@ export function trainOne(club: ClubState, index: number, cards: readonly CardId[
       team: { ...club.team, roster: club.team.roster.map((p, i) => (i === index ? result.player : p)) },
       knownCombos: isNewCombo ? [...club.knownCombos, result.combo!.id] : club.knownCombos,
       trainedThisWeek: [...club.trainedThisWeek, player.name],
-      recentTraining: { ...club.recentTraining, [player.name]: [...cards.map(card => CARDS[card].category), ...(club.recentTraining[player.name] ?? [])].slice(0, RECENT_TRAINING) },
+      recentTraining: { ...club.recentTraining, [player.name]: [club.season * 100 + club.week, ...(club.recentTraining[player.name] ?? [])].slice(0, RECENT_TRAINING) },
     },
   };
 }
@@ -675,7 +693,11 @@ function closeWeek(club: ClubState, played: (index: number) => number): ClubStat
   });
   // Os alvos são do adversário desta semana, por isso não passam para a seguinte.
   const settled = settleOffers({ ...settlePendingCup(club), team: { ...club.team, roster } }).club;
-  const closed: ClubState = { ...settled, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [], practicedThisWeek: false };
+  const recentTraining = { ...settled.recentTraining };
+  for (const player of club.team.roster) {
+    if ((player.injuryWeeks ?? 0) > 0) recentTraining[player.name] = [-(club.season * 100 + club.week), ...(recentTraining[player.name] ?? [])].slice(0, RECENT_TRAINING);
+  }
+  const closed: ClubState = { ...settled, recentTraining, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [], practicedThisWeek: false };
   return closed.week > SEASON_WEEKS ? afterRegularSeason(closed) : drawCups(closed);
 }
 
@@ -765,7 +787,9 @@ function endSeason(club: ClubState): ClubState {
   const clubs = club.clubs.map((c, id) => {
     const d = divisions.findIndex(ids => ids.includes(id));
     const level = d < 0 ? c.level + between(rng, -B.clubLevelDrift, B.clubLevelDrift) : c.level + (DIVISIONS[d]!.level - c.level) * B.clubLevelPull + between(rng, -B.clubLevelDrift, B.clubLevelDrift);
-    return { ...c, level: Math.round(level * 10) / 10 };
+    const was = club.divisions.findIndex(ids => ids.includes(id));
+    const past = was < 0 ? c.past : [{ division: was, position: orders[was]!.indexOf(id) }, ...(c.past ?? [])].slice(0, 2);
+    return { ...c, level: Math.round(level * 10) / 10, ...(past ? { past } : {}) };
   });
   const federationExit = cupExit(club.cups.federation, PLAYER_CLUB, FEDERATION_ROUNDS.length) ?? 0;
   const continentalExit = cupStatus(club, 'continental').exit;
@@ -1143,6 +1167,7 @@ export function parseClub(text: string | null): ClubState | null {
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
     if (parsed.divisions.some(ids => !Array.isArray(ids) || ids.length !== LEAGUE_SIZE || ids.some(id => !parsed.clubs[id]))) return null;
     if (parsed.clubs.some((c: LeagueClub) => c.players !== undefined && (!Array.isArray(c.players) || c.players.length !== ROSTER_SLOTS.length || c.players.some(i => !Number.isInteger(i) || i < 0 || i >= PLAYER_POOL.length)))) return null;
+    if (parsed.clubs.some((c: LeagueClub) => c.past !== undefined && (!Array.isArray(c.past) || c.past.some(e => !DIVISIONS[e.division] || !Number.isInteger(e.position))))) return null;
     if (!leagueIds(parsed).includes(PLAYER_CLUB) || !Array.isArray(parsed.rounds) || !validRounds(parsed) || !validCups(parsed)) return null;
     if (typeof parsed.stats !== 'object' || parsed.stats === null || !Array.isArray(parsed.history)) return null;
     return parsed;

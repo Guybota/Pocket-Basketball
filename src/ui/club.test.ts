@@ -10,7 +10,7 @@ import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { clubSeasons, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -204,7 +204,7 @@ describe('clube', () => {
     expect(isNewCombo).toBe(false);
     expect(after.cards.shooting).toBe((c.cards.shooting ?? 0) - 1);
     expect(after.team.roster[0]!.attributes.shooting).toBeGreaterThan(c.team.roster[0]!.attributes.shooting);
-    expect(after.recentTraining[c.team.roster[0]!.name]).toEqual(['technique', 'technique']);
+    expect(after.recentTraining[c.team.roster[0]!.name]).toEqual([c.season * 100 + c.week]);
     const withCombo = trainOne({ ...c, cards: { ...c.cards, nap: 1, massage: 1 } }, 1, ['nap', 'massage']);
     expect(withCombo.isNewCombo).toBe(true);
     expect(withCombo.club.knownCombos).toContain('lazyWeekend');
@@ -422,6 +422,23 @@ describe('época', () => {
     const all = a.clubs.flatMap(c => c.players ?? []);
     expect(new Set(all).size).toBe(all.length);
     for (const c of a.clubs) if (c.players) expect(new Set(c.players.map(i => PLAYER_POOL[i]!.name)).size).toBe(c.players.length);
+  });
+
+  it('uma semana lesionado fica marcada no registo do jogador', () => {
+    const c = newClub(23);
+    const name = c.team.roster[0]!.name;
+    const hurt = { ...c, team: { ...c.team, roster: c.team.roster.map((p, i) => (i === 0 ? { ...p, injuryWeeks: 2 } : p)) } };
+    expect(skipWeek(hurt).recentTraining[name]).toEqual([-(c.season * 100 + c.week)]);
+  });
+
+  it('a ficha de um clube mostra três épocas, e o fim da época fica lá escrito', () => {
+    const c = newClub(23);
+    expect(clubSeasons(c, PLAYER_CLUB).map(e => e.position === null)).toEqual([false, true, true]);
+    expect(clubSeasons(c, 11).every(e => e.position !== null && e.position >= 0 && e.position < LEAGUE_SIZE)).toBe(true);
+    const after = season(c);
+    expect(after.clubs[11]!.past).toHaveLength(1);
+    expect(clubSeasons(after, PLAYER_CLUB)[1]!.position).not.toBeNull();
+    expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
 
   it('os resultados dos outros jogos repetem-se com o mesmo clube', () => {

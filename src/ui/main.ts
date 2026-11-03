@@ -28,7 +28,7 @@ const MAX_STEPS_PER_FRAME = 40;
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
 // Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
-const MATCH_MIN_RATIO = 1.35;
+const MATCH_MIN_RATIO = 1.2;
 const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
@@ -344,7 +344,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem);
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem);
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -768,7 +768,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem);
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;

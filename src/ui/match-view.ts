@@ -113,6 +113,8 @@ export class MatchView {
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
   private forecast: { ours: number; confident: boolean } | null = null;
+  /** O emblema do nosso clube, para os painéis. Os outros têm o emblema fixo. */
+  readonly ownEmblem?: Emblem;
   private coachUpsetUntil: [number, number] = [0, 0];
   // Onde cada treinador está: segue o alvo a andar, e nunca salta de sítio.
   private readonly coachPos: (Point | null)[] = [null, null];
@@ -143,7 +145,8 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem) {
+    this.ownEmblem = ownEmblem;
     this.g = g;
     this.callbacks = callbacks;
     this.s = state ?? createMatch(home, away, seed, controlled, visitor);
