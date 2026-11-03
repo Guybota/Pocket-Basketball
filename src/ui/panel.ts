@@ -24,9 +24,8 @@ export interface LiveLeague {
 }
 
 /** Altura e peso de 1 a 3 estrelas, pelos terços dos jogadores gerados: até 192 cm e 87 kg é uma estrela, a partir de 203 cm e 105 kg são três. */
-export const heightStars = (cm: number): number => (cm < 193 ? 1 : cm < 203 ? 2 : 3);
 const stars = (count: number, label: string): string => `<span class="stars" title="${label}" aria-label="${label} ${count} de 3">${[1, 2, 3].map(n => `<i class="${n <= count ? 'on' : ''}"></i>`).join('')}</span>`;
-export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${stars(heightStars(p.heightCm), 'Altura')}</span>`;
+export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${stars(p.height, 'Altura')}</span>`;
 
 export function energyColor(energy: number): string {
   if (energy > 0.55) return 'var(--good)';
@@ -236,7 +235,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
       ${ATTRIBUTE_KEYS.map(key => `<b class="gr gr-${gradeOf(b.player.attributes[key])}">${gradeOf(b.player.attributes[key])}</b>`).join('')}
-      ${stars(heightStars(b.player.heightCm), 'Altura')}
+      ${stars(b.player.height, 'Altura')}
     </button>`;
   };
   const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><span>Energia</span><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;

@@ -251,6 +251,25 @@ describe('clube', () => {
     for (const player of c.team.roster) expect(player.fatigue).toBeLessThan(0.5);
   });
 
+  it('lê um clube guardado na versão 12, com a altura em centímetros', () => {
+    const c = club();
+    // Um save da versão 12: os jogadores ainda tinham heightCm em vez do nível de altura.
+    const old = JSON.parse(JSON.stringify({ ...c, version: 12 }), (key, value) => {
+      if (value && typeof value === 'object' && 'attributes' in value && 'height' in value) {
+        const { height, ...rest } = value;
+        return { ...rest, heightCm: 170 + height * 15 };
+      }
+      return value;
+    });
+    expect(JSON.stringify(old)).not.toContain('"height":');
+    const migrated = parseClub(JSON.stringify(old))!;
+    expect(migrated).not.toBeNull();
+    expect(migrated.version).toBe(13);
+    expect(migrated.team.name).toBe(c.team.name);
+    expect(migrated.team.roster.map(p => p.name)).toEqual(c.team.roster.map(p => p.name));
+    for (const player of migrated.team.roster) expect([1, 2, 3]).toContain(player.height);
+  });
+
   it('guarda e lê um clube sem perder nada', () => {
     const { club: c } = trainOne(club(), 0, ['shooting']);
     expect(parseClub(JSON.stringify(c))).toEqual(c);
@@ -414,7 +433,7 @@ describe('época', () => {
     expect(a.clubs[1]!.players).not.toEqual(b.clubs[1]!.players);
     const first = aiTeam(a.clubs[1]!).roster[0]!;
     const body = PLAYER_POOL[a.clubs[1]!.players![0]!]!;
-    expect([first.name, first.heightCm]).toEqual([body.name, body.heightCm]);
+    expect([first.name, first.height]).toEqual([body.name, body.height]);
     // Nenhum jogador do pool está em dois clubes, e nenhum plantel repete um apelido.
     const all = a.clubs.flatMap(c => c.players ?? []);
     expect(new Set(all).size).toBe(all.length);
@@ -825,7 +844,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(12);
+    expect(migrated.version).toBe(13);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -842,7 +861,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(12);
+    expect(migrated.version).toBe(13);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

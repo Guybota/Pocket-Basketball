@@ -1,3 +1,6 @@
+export const HEIGHT_LEVELS = [1, 2, 3] as const;
+export type HeightLevel = (typeof HEIGHT_LEVELS)[number];
+
 /** Valores internos de 0 a 100. A nota de S a E é só a sua leitura. */
 export interface Attributes {
   shooting: number;
@@ -30,7 +33,8 @@ export type OnBallStyle = (typeof ON_BALL_STYLES)[number];
 export interface Player {
   name: string;
   attributes: Attributes;
-  heightCm: number;
+  /** A altura em três níveis, como as estrelas: 1 baixo, 2 médio, 3 alto. Dois jogadores do mesmo nível são do mesmo tamanho. */
+  height: HeightLevel;
   moves: MoveId[];
   offBall: OffBallStyle;
   onBall: OnBallStyle;
@@ -101,7 +105,7 @@ export function validateTeam(team: Team): void {
   if (team.roster.length > 15) throw new Error(`${team.name}: máximo de 15 jogadores`);
   if (team.tactics) validateTactics(team.tactics, team.name);
   for (const player of team.roster) {
-    if (!Number.isFinite(player.heightCm) || player.heightCm < 150 || player.heightCm > 240) throw new Error(`${player.name}: altura inválida`);
+    if (!HEIGHT_LEVELS.includes(player.height)) throw new Error(`${player.name}: altura inválida`);
     if (!Array.isArray(player.moves) || player.moves.some(move => !MOVES.includes(move))) throw new Error(`${player.name}: movimento inválido`);
     if (!OFF_BALL_STYLES.includes(player.offBall)) throw new Error(`${player.name}: comportamento sem bola inválido`);
     if (!ON_BALL_STYLES.includes(player.onBall)) throw new Error(`${player.name}: comportamento com bola inválido`);

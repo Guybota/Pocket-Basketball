@@ -50,7 +50,7 @@ for (const key of ATTRIBUTE_KEYS) {
 
 const sample = Math.min(matches, 600);
 console.log(`\nCorpo de toda a equipa (${sample} jogos cada)`);
-console.log(`  10 cm mais altos        ${percent(bodyWinRate(10, sample))}`);
+console.log(`  um nível mais altos     ${percent(bodyWinRate(1, sample))}`);
 console.log(`\nToda a equipa com um movimento (${sample} jogos cada)`);
 for (const move of MOVES) console.log(`  ${move.padEnd(12)} ${percent(movesWinRate([move], sample))}`);
 console.log(`\nDois titulares com um comportamento sem bola (${sample} jogos cada)`);

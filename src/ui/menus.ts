@@ -477,7 +477,7 @@ function rivalScreen(): Rendered {
   const played = [...club.rounds.flat(), ...Object.values(club.cups).flatMap(cup => cup.rounds.flat())].filter(f => f.score && (f.home === id || f.away === id));
   const wins = played.filter(f => (f.home === id ? f.score![0] > f.score![1] : f.score![1] > f.score![0])).length;
   const best = [...rival.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!;
-  const tallest = [...rival.roster].sort((a, b) => b.heightCm - a.heightCm)[0]!;
+  const tallest = [...rival.roster].sort((a, b) => b.height - a.height)[0]!;
   const lines = seasonLines(club, id, rival);
   const perGame = (total: number, games: number): string => (games ? (total / games).toFixed(1).replace('.', ',') : '-');
   const statCells = (l: SeasonLine): string => `<span class="num">${l.games}</span><span class="num">${perGame(l.points, l.games)}</span><span class="num">${perGame(l.rebounds, l.games)}</span><span class="num">${perGame(l.assists, l.games)}</span>`;
@@ -650,7 +650,7 @@ function clubPlayerCard(team: Team, index: number): string {
     </div>
     <div class="pfoot" style="grid-template-columns:1fr">
       <div class="rows">
-        <div><span>Altura</span><span>${p.heightCm} cm</span></div>
+        <div><span>Altura</span><span>${bodyStars(p)}</span></div>
         <div><span>Movimentos</span><span>${p.moves.map(m => MOVE_INFO[m].name).join(', ') || 'nenhum'}</span></div>
       </div>
     </div>

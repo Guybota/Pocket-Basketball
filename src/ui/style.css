@@ -1071,7 +1071,6 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .statcols .num { text-align: right; font: 400 15px/1 var(--small); }
 .rivalview button { color: var(--ink); background: var(--paper-2); }
 .rivalview button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-button.update-ready { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 1000; width: auto; padding: 6px 16px; font-size: 16px; }
 
 /* As opções de ataque: dois botões com o jogador escolhido por baixo, e a lista do plantel para escolher. */
 .tacrow .optbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -1087,3 +1086,5 @@ button.update-ready { position: fixed; top: 8px; left: 50%; transform: translate
 .optpick.head img { width: 16px; height: 16px; }
 .optpick img { width: 24px; height: 24px; image-rendering: pixelated; }
 .optpick.bench { opacity: 0.8; }
+
+button.update-ready { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 1000; width: auto; padding: 6px 16px; font-size: 16px; }

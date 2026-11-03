@@ -8,7 +8,7 @@ import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMa
 import { BALANCE as B } from './balance.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
-import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
+import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics, heightCmOf } from './teamgen.ts';
 import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
 
 const home = generateTeam(1, 'Vilar BC', 55);
@@ -34,8 +34,8 @@ describe('colisões e encontrões', () => {
     });
     const a = s.court[0][0]!;
     const b = s.court[1][0]!;
-    a.player = { ...a.player, attributes: { ...a.player.attributes, strength: strongerFirst }, heightCm: 195 };
-    b.player = { ...b.player, attributes: { ...b.player.attributes, strength: strongerSecond }, heightCm: 195 };
+    a.player = { ...a.player, attributes: { ...a.player.attributes, strength: strongerFirst }, height: 2 };
+    b.player = { ...b.player, attributes: { ...b.player.attributes, strength: strongerSecond }, height: 2 };
     a.radius = 0.41;
     b.radius = 0.41;
     a.fatigue = 0;
@@ -66,9 +66,9 @@ describe('colisões e encontrões', () => {
   it('o físico e a altura contam para empurrar, e o cansaço tira força', () => {
     const { a } = pair(60, 60);
     const base = pushPower(a);
-    a.player = { ...a.player, heightCm: 210 };
+    a.player = { ...a.player, height: 3 };
     expect(pushPower(a)).toBeGreaterThan(base);
-    a.player = { ...a.player, heightCm: 195 };
+    a.player = { ...a.player, height: 2 };
     a.fatigue = 1;
     expect(pushPower(a)).toBeLessThan(base);
   });
@@ -238,7 +238,7 @@ describe('início do jogo', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const strong = withBonus(generateTeam(seed, 'A', 55), ['jumping'], 25);
       const s = createMatch(strong, generateTeam(seed + 500, 'B', 55), seed);
-      const reach = (b: Body): number => b.player.attributes.jumping + (b.player.heightCm - 195) * 0.6;
+      const reach = (b: Body): number => b.player.attributes.jumping + (heightCmOf(b.player) - 195) * 0.6;
       expect(reach(s.jump!.a)).toBe(Math.max(...s.court[0].map(reach)));
       while (!s.events.some(e => e.type === 'jumpBall')) step(s);
       if (s.events.find(e => e.type === 'jumpBall')!.team === 0) wins++;

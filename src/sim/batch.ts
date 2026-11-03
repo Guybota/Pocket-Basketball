@@ -116,8 +116,8 @@ export function attributeWinRate(key: keyof Attributes, bonus: number, matches: 
 }
 
 /** Duas equipas iguais, com o corpo de todos os jogadores de uma delas mudado. */
-export function bodyWinRate(heightCm: number, matches: number, level = 55, seedBase = 1): number {
-  return winRate(i => [withBody(mirror(i, level), heightCm), mirror(i, level)], matches, seedBase);
+export function bodyWinRate(levels: number, matches: number, level = 55, seedBase = 1): number {
+  return winRate(i => [withBody(mirror(i, level), levels), mirror(i, level)], matches, seedBase);
 }
 
 /** Duas equipas iguais em tudo, mas só uma tem movimentos especiais. */

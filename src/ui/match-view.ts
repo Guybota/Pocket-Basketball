@@ -1,3 +1,4 @@
+import { levelOfHeight } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
@@ -171,11 +172,11 @@ export class MatchView {
     const crowdKit = this.crowdTeam === 0 ? 'blue' : 'cream';
     const looks: Look[] = [];
     for (let i = 0; i < 12; i++) {
-      const fan: Player = { name: `Adepto ${i * 7919}`, attributes: { shooting: 50, speed: 50, stamina: 50, technique: 50, strength: 40 + ((i * 37) % 40), jumping: 50, willpower: 50 }, heightCm: 168 + ((i * 53) % 24), moves: [], offBall: 'balanced', onBall: 'balanced', potential: 50, fatigue: 0 };
+      const fan: Player = { name: `Adepto ${i * 7919}`, attributes: { shooting: 50, speed: 50, stamina: 50, technique: 50, strength: 40 + ((i * 37) % 40), jumping: 50, willpower: 50 }, height: levelOfHeight(168 + ((i * 53) % 24)), moves: [], offBall: 'balanced', onBall: 'balanced', potential: 50, fatigue: 0 };
       // Metade veste a camisola do clube; os outros, roupa de rua. Ninguém usa fita na cabeça, que é coisa de jogador.
       const look: Look = i % 2 === 1 ? lookOf(fan, i % 4 === 1 ? 'fan' : 'fan2') : { ...lookOf(fan, crowdKit), custom: this.crowdTeam === 0 ? homeKit : awayKit };
       // Nas bancadas há de tudo: magros, fortes e gordos.
-      look.build = buildOf(fan.heightCm, 66 + ((i * 29) % 30), fan.attributes.strength);
+      look.build = buildOf(168 + ((i * 53) % 24), 66 + ((i * 29) % 30), fan.attributes.strength);
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
@@ -259,7 +260,7 @@ export class MatchView {
     const secondHalf = this.s.period >= 3;
     const attacksRight = (this.s.offense === 0) !== secondHalf;
     const lookY = this.camera.tuning.lookY;
-    return [Math.max(5.4, Math.min(22.6, ball.x + (attacksRight ? 3 : -3))), lookY + Math.max(0, ball.y - 2)];
+    return [Math.max(5.4, Math.min(22.6, ball.x + (attacksRight ? 3 : -3))), lookY];
   }
 
   private findBody(e: MatchEvent): Body | undefined {
@@ -468,8 +469,13 @@ export class MatchView {
     if (s.phase === 'jump') {
       // Sai para o lado, para se ver o salto.
       targetX = 16.2;
+    } else if (s.phase === 'freeThrow' && s.freeThrow && (s.freeThrow.returning || s.timer <= B.freeThrowSeconds * 20)) {
+      // Nos lances livres fica debaixo do cesto, um pouco ao lado, para apanhar a bola e a passar ao lançador.
+      const hoop = this.attackedHoop(s.freeThrow.shooter.team);
+      targetX = hoop > 14 ? 28 - B.freeThrowRefereeU : B.freeThrowRefereeU;
+      targetY = B.freeThrowRefereeV;
     } else if (s.phase === 'freeThrow' && s.ball.z < 1.9 && s.freeThrow && Math.hypot(s.ball.x - s.freeThrow.shooter.x, s.ball.y - s.freeThrow.shooter.y) > 0.4) {
-      // Entre lances livres, é o árbitro que leva a bola ao lançador.
+      // Antes do primeiro lance, é o árbitro que vai buscar a bola e a leva ao lançador.
       targetX = s.ball.x;
       targetY = s.ball.y + 0.3;
     } else if (s.phase !== 'intro' && s.phase !== 'timeout' && s.phase !== 'break') {
@@ -702,15 +708,15 @@ export class MatchView {
       if (moving) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
-    // Perto de quem marca, defende a deslizar de lado; longe, corre.
-    const man = b.team !== s.offense && s.phase === 'live' ? s.court[s.offense][b.slot] : undefined;
+    // Só quem defende o jogador com a bola fica em posição de defesa, a deslizar de lado; os outros andam e correm normalmente.
+    const man = b.team !== s.offense && s.phase === 'live' && s.holder && this.nearestOpponent(s.holder) === b ? s.holder : undefined;
     const guarding = man !== undefined && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
     if (moving && guarding) return { pose: frame % 4 < 2 ? 'slide0' : 'slide1', withBall: false };
     if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
     if (s.screen?.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
-    return { pose: b.team === s.offense ? 'idle' : 'defend', withBall: false };
+    return { pose: guarding ? 'defend' : 'idle', withBall: false };
   }
 
   /** Quem está no banco, a mesa de oficiais e os treinadores. */

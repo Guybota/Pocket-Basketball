@@ -1,5 +1,6 @@
+import { BALANCE as B } from './balance.ts';
 import { between, makeRng, next, shuffled, type Rng } from './rng.ts';
-import { ATTRIBUTE_KEYS, POSITIONS, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Player, type Position, type Tactics, type Team } from './types.ts';
+import { ATTRIBUTE_KEYS, POSITIONS, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type HeightLevel, type Player, type Position, type Tactics, type Team } from './types.ts';
 
 // Os apelidos do pool de jogadores. Repetem-se entre clubes, nunca dentro do mesmo plantel.
 const SURNAMES = [
@@ -79,7 +80,7 @@ function noise(rng: Rng, spread: number): number {
 export interface PoolPlayer {
   name: string;
   position: Position;
-  heightCm: number;
+  height: HeightLevel;
 }
 
 /** Os 12 lugares de um plantel: cinco titulares, cinco suplentes por posição e dois extra. */
@@ -89,8 +90,8 @@ const POOL_CLUBS = 42;
 
 function makeBody(rng: Rng, name: string, position: Position): PoolPlayer {
   const body = BODIES[position];
-  const heightCm = Math.round(body.height + noise(rng, 11));
-  return { name, position, heightCm };
+  const cm = Math.round(body.height + noise(rng, 11));
+  return { name, position, height: levelOfHeight(cm) };
 }
 
 /** O pool de jogadores, igual em todas as carreiras: nome, posição e corpo fixos, como no original. */
@@ -132,7 +133,7 @@ function makePlayerFrom(rng: Rng, body: PoolPlayer, level: number, spread: numbe
   const moves: MoveId[] = next(rng) < MOVE_CHANCE ? [options[Math.floor(next(rng) * options.length)]!] : [];
   const pick = <T>(list: readonly T[]): T => list[Math.floor(next(rng) * list.length)]!;
   const potential = Math.round(Math.max(10, Math.min(100, 60 + noise(rng, 40))));
-  return { name: body.name, attributes, heightCm: body.heightCm, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
+  return { name: body.name, attributes, height: body.height, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
 }
 
 /** Um jogador fora do pool, para os testes, os clubes de fora e o mercado. */
@@ -190,8 +191,8 @@ export function generateLeagueTeam(seed: number, name: string, level: number, cl
   return generateTeam(seed, name, level + between(rng, -clubSpread, clubSpread));
 }
 
-export function withBody(team: Team, heightCm: number): Team {
-  return { ...team, roster: team.roster.map(player => ({ ...player, heightCm: player.heightCm + heightCm })) };
+export function withBody(team: Team, levels: number): Team {
+  return { ...team, roster: team.roster.map(player => ({ ...player, height: Math.max(1, Math.min(3, player.height + levels)) as HeightLevel })) };
 }
 
 export function withMoves(team: Team, moves: readonly MoveId[]): Team {
@@ -216,3 +217,11 @@ export function withBonus(team: Team, keys: readonly (keyof Attributes)[], bonus
     }),
   };
 }
+
+/** O nível de altura de uns centímetros sorteados: o mesmo corte das estrelas. */
+export function levelOfHeight(cm: number): HeightLevel {
+  return cm < B.heightLevelFrom[0]! ? 1 : cm < B.heightLevelFrom[1]! ? 2 : 3;
+}
+
+/** Os centímetros com que a altura de um jogador entra nos cálculos e no desenho. */
+export const heightCmOf = (player: { height: HeightLevel }): number => B.heightByLevel[player.height - 1]!;

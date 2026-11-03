@@ -93,18 +93,17 @@ describe('critérios da Fase 0', () => {
     let postes = 0;
     for (let seed = 0; seed < 100; seed++) {
       const roster = generateTeam(seed, 'A', 55).roster;
-      bases += roster[0]!.heightCm;
-      postes += roster[4]!.heightCm;
+      bases += roster[0]!.height;
+      postes += roster[4]!.height;
       for (const player of roster) {
-        expect(player.heightCm).toBeGreaterThanOrEqual(165);
-        expect(player.heightCm).toBeLessThanOrEqual(225);
+        expect([1, 2, 3]).toContain(player.height);
       }
     }
-    expect(postes).toBeGreaterThan(bases + 100 * 20);
+    expect(postes).toBeGreaterThan(bases + 100 * 1.5);
   });
 
   it('a altura ajuda sem decidir tudo', () => {
-    const rate = bodyWinRate(10, 500);
+    const rate = bodyWinRate(1, 500);
     expect(rate).toBeGreaterThan(0.53);
     expect(rate).toBeLessThan(0.75);
   });
@@ -114,7 +113,7 @@ describe('critérios da Fase 0', () => {
     let base = 0;
     for (let i = 0; i < 100; i++) {
       const team = generateTeam(i, 'A', 55);
-      const s = simulateMatch(withBody(team, 12), team, i + 1);
+      const s = simulateMatch(withBody(team, 1), team, i + 1);
       tall += s.lines[0].offensiveRebounds + s.lines[0].defensiveRebounds;
       base += s.lines[1].offensiveRebounds + s.lines[1].defensiveRebounds;
     }

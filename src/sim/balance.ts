@@ -77,7 +77,8 @@ export const BALANCE = {
   stanceSpeed: 0.88,
   stanceChaseRange: 1,
   // A partir desta altura é um grande: joga de costas, ou abre para o arco se lançar bem.
-  bigHeightCm: 203,
+  // O nível de altura a partir do qual é um grande.
+  bigHeight: 3,
   popShooting: 60,
   playsInside: [0.3, 0.6, 0.1],
   playsMixed: [0.5, 0.25, 0.25],
@@ -87,6 +88,12 @@ export const BALANCE = {
   freeThrowSeconds: 3,
   freeThrowSetupSeconds: 2,
   freeThrowFlightSeconds: 0.6,
+  // Entre lances livres: a bola cai do aro, rola até ao árbitro debaixo do cesto, e ele passa-a ao lançador.
+  freeThrowRefereeU: 0.6,
+  freeThrowRefereeV: 1.3,
+  freeThrowFallSeconds: 0.35,
+  freeThrowRollSeconds: 0.3,
+  freeThrowPassSeconds: 0.45,
   refereeWalkSpeed: 3,
   rimHeight: 3.05,
   reboundSeconds: 0.4,
@@ -217,6 +224,9 @@ export const BALANCE = {
 
   // Corpo: referência de 195 cm, 95 kg e índice de massa corporal 25
   referenceHeight: 195,
+  // Os centímetros com que cada nível de altura entra nos cálculos, e os limites com que se sorteiam.
+  heightByLevel: [184, 198, 212],
+  heightLevelFrom: [193, 203],
   reboundPerCm: 0.012,
   blockPerCm: 0.003,
   finishPerCm: 0.0015,
@@ -229,6 +239,9 @@ export const BALANCE = {
   // Caminho livre: nenhum defensor a esta distância da linha até ao cesto. Vai-se direito a ele, e lança-se ao chegar.
   openLaneWidth: 1.5,
   openLaneMaxAhead: 1,
+  // Sozinho perto do cesto, lança-se logo: nenhuma prioridade de opção vale mais do que isso.
+  openShotDistance: 2.8,
+  openShotPressure: 0.2,
   openLaneFinish: 1.6,
   openLaneCheckSeconds: 0.15,
   // Quem é mais alto é mais lento: 20 cm valem 0,3 m/s.
