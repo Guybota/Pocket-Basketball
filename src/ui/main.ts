@@ -66,6 +66,8 @@ const testDivision = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisa
 let club: ClubState | null = null;
 // A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si.
 let stage: 'town' | 'title' | 'menu' | 'match' = 'title';
+// Na horizontal, o resultado do jogo abre numa janela ao centro, com o campo a ocupar o ecrã todo por trás.
+let resultOpen = false;
 let townClock: number | null = null;
 let topSize: readonly [number, number] = [MENU_STAGE_WIDTH, MENU_STAGE_HEIGHT];
 let gameKind: GameKind = 'official';
@@ -190,11 +192,14 @@ function fit(): void {
   const dpr = devicePixelRatio || 1;
   const landscape = innerWidth / innerHeight >= LANDSCAPE_MIN_RATIO;
   game.classList.toggle('landscape', landscape);
+  // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
+  game.classList.toggle('result-open', resultOpen && stage === 'match');
+  const centred = landscape && resultOpen && stage === 'match';
   if (landscape) {
     // O painel cresce com a janela, em meios: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
     const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 2) / 1200) / 2, Math.floor((innerHeight * 2) / 540) / 2));
     // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
-    const panelWidth = stage === 'town' ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
+    const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     const stageHeight = stage === 'match' ? Math.min(innerHeight, stageWidth / MATCH_MIN_RATIO) : innerHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
@@ -214,8 +219,9 @@ function fit(): void {
     screen_.style.width = `${stageWidth}px`;
     screen_.style.height = `${innerHeight}px`;
     panel.style.zoom = String(ui);
-    panel.style.width = `${LANDSCAPE_PANEL_WIDTH}px`;
-    panel.style.height = `${innerHeight / ui}px`;
+    panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : LANDSCAPE_PANEL_WIDTH}px`;
+    panel.style.height = centred ? '' : `${innerHeight / ui}px`;
+    panel.style.maxHeight = centred ? `${(innerHeight * 0.94) / ui}px` : '';
     screen_.style.setProperty('--hud-zoom', String(ui));
     const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, innerHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
     setTopSize(Math.floor(stageWidth / topZoom), Math.floor(innerHeight / topZoom), topZoom);
@@ -237,6 +243,7 @@ function fit(): void {
     panel.style.zoom = '';
     panel.style.width = '';
     panel.style.height = '';
+    panel.style.maxHeight = '';
     screen_.style.setProperty('--hud-zoom', '1');
     setTopSize(MENU_STAGE_WIDTH, stageHeight, 1);
   }
@@ -255,6 +262,7 @@ function setTopSize(width: number, height: number, zoom: number): void {
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: typeof stage): void {
   stage = next;
+  resultOpen = false;
   if (next !== 'match' && next !== 'menu') clearIdle();
   if (next !== 'title') {
     clearTimeout(demoTimer);
@@ -843,6 +851,8 @@ function startReplay(): void {
   replayAccumulator = 0;
   announce('Repetição');
   bannerUntil = Infinity;
+  resultOpen = false;
+  fit();
   panel.innerHTML = `<div class="result"><div class="winner">O lance decisivo</div><p class="hint">Em câmara lenta, três segundos antes do cesto que decidiu o jogo.</p></div>
     <div class="end-actions"><button type="button" id="replayBack">Voltar ao resultado</button></div>`;
   element('replayBack').addEventListener('click', endReplay);
@@ -855,6 +865,8 @@ function endReplay(): void {
 }
 
 function showResultPanel(): void {
+  resultOpen = true;
+  fit();
   panel.innerHTML = `${resultHtml}
     <div class="end-actions two"><button type="button" id="replayBtn">Rever o lance</button><button type="button" class="primary" id="againBtn">Continuar</button></div>`;
   element('againBtn').addEventListener('click', showClub);

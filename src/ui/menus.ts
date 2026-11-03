@@ -23,7 +23,7 @@ import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, SLOT_NAMES, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
 import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
@@ -179,7 +179,7 @@ const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.fi
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
   const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
-      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span>${dot(p)}${renderEnd(p, index)}
+      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(club.tactics.options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
   return club.team.roster.map(row).join('');
 }
@@ -482,7 +482,7 @@ function rivalScreen(): Rendered {
   const perGame = (total: number, games: number): string => (games ? (total / games).toFixed(1).replace('.', ',') : '-');
   const statCells = (l: SeasonLine): string => `<span class="num">${l.games}</span><span class="num">${perGame(l.points, l.games)}</span><span class="num">${perGame(l.rebounds, l.games)}</span><span class="num">${perGame(l.assists, l.games)}</span>`;
   const rows = rival.roster.map((p, index) => `<button type="button" class="prow${rivalStats ? ' statcols' : ''}${index >= 5 ? ' bench' : ''}" data-target="${index}" aria-pressed="${focus.includes(index)}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}>
-      ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+      ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}${optionMark(rival.tactics?.options, p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
     </button>`).join('');
   // Os cinco do adversário na prancheta, como a ficha de equipa do original. Toca-se num boneco para o marcar.
   const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}"`, focus.includes(index))).join(''), true);
@@ -698,7 +698,7 @@ function federationScreen(): Rendered {
   }).join('');
   const sheet = clubSheet(federationClub, team);
   const squadRowsHtml = `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>` + roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-fed-player="${index}">
-      ${slotBadge(index)}<span class="pnum">${federationClub === PLAYER_CLUB ? shirtOf(p) : index + 4}</span><span class="name">${esc(p.name)}</span><i class="edot"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+      ${slotBadge(index)}<span class="pnum">${federationClub === PLAYER_CLUB ? shirtOf(p) : index + 4}</span><span class="name">${esc(p.name)}${optionMark(federationClub === PLAYER_CLUB ? club.tactics.options : team.tactics?.options, p.name)}</span><i class="edot"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
     </button>`).join('');
   const top = federationPlayer >= 0
     ? inside(federationClub === PLAYER_CLUB ? playerCard(player) : clubPlayerCard(team, player))

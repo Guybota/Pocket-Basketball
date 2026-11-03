@@ -11,6 +11,11 @@ export const DT = 1 / TICKS_PER_SECOND;
 
 export const seconds = (s: number): number => Math.round(s * TICKS_PER_SECOND);
 
+// Os bancos, à frente da mesa: onde cada equipa começa a sentar-se, o espaço entre lugares e a linha dos bancos.
+export const BENCH_START_X: readonly [number, number] = [4.4, 20.3];
+export const BENCH_SPACING = 0.95;
+export const BENCH_Y = -9.6;
+
 export function distance(x0: number, y0: number, x1: number, y1: number): number {
   const dx = x1 - x0;
   const dy = y1 - y0;

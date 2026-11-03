@@ -2,6 +2,7 @@ import { levelOfHeight } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
+import { BENCH_SPACING, BENCH_START_X, BENCH_Y, seconds } from '../sim/court.ts';
 import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
@@ -23,14 +24,13 @@ const HOOP_LEFT = 1.575;
 const HOOP_RIGHT = 26.425;
 const RUN_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
 const DRIBBLE_RUN_FRAMES: readonly PoseName[] = ['dribRun0', 'dribRun1', 'dribRun2', 'dribRun3'];
+const HOLD_RUN_FRAMES: readonly PoseName[] = ['holdRun0', 'holdRun1', 'holdRun2', 'holdRun3'];
 // A letra do jogo só tem maiúsculas sem acentos.
 const MOVE_LABELS: Record<MoveId, string> = { crossover: 'CROSSOVER', stepBack: 'STEP-BACK', alleyOop: 'ALLEY-OOP', powerDunk: 'AFUNDANCO', pickpocket: 'MAO RAPIDA' };
 const STEP_BACK_TICKS = 5;
 // Uma substituição demora isto a andar entre o banco e a linha.
-const SUB_WALK_TICKS = 24;
 const RUN_BANNERS = [8, 12, 16];
 // Os bancos ficam afastados da linha, com espaço para o treinador andar à frente deles.
-const BENCH_Y = -9.6;
 const COACH_Y = -8.6;
 // A que distância o defensor salta para contestar o lançamento, e a que distância do seu homem fica em posição de defesa.
 const CONTEST_RANGE = 1.8;
@@ -47,6 +47,10 @@ const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
 const TIP_HEIGHT = 16;
+// Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
+// fica a 50 px dos pés (pernas 7, tronco 7, braço 14, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
+// à altura do aro, quando ele lhe toca.
+const BALL_PX_PER_METRE = 50 / 3.05;
 const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
@@ -102,7 +106,9 @@ export class MatchView {
   // Quem recua num step-back muda de sítio num só passo da simulação; aqui desliza até lá.
   private readonly slides = new Map<Body, { x: number; y: number; start: number; ticks?: number }>();
   // Quem sai do jogo vai a andar sentar-se no banco; quem entra vem de lá a andar.
-  private readonly exits: { body: Body; from: Point; to: Point; start: number }[] = [];
+  private readonly exits: { body: Body; from: Point; to: Point; start: number; ticks: number }[] = [];
+  private readonly routines = new Map<Body, { dribbles: number; tempo: number; pause: number; spin: boolean }>();
+  private lastFreeThrowPose: PoseName | null = null;
   private readonly floaters: Floater[] = [];
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
@@ -427,12 +433,13 @@ export class MatchView {
           this.refereeSignal('FORA');
           break;
         case 'substitution': {
-          // Quem entra vem do banco a andar, e quem sai vai lá sentar-se, em vez de trocarem de sítio num instante.
+          // Quem entra já sai do seu lugar no banco, na simulação; quem sai vai a correr sentar-se, no tempo que a simulação lhe dá.
           const outgoing = s.bodies.find(b => b.team === e.team && b.player.name === e.other);
           if (body && outgoing) {
             const seat = this.seatOf(outgoing);
-            this.slides.set(body, { x: seat.x, y: seat.y, start: s.tick, ticks: SUB_WALK_TICKS });
-            this.exits.push({ body: outgoing, from: { ...this.previous.get(outgoing)! }, to: seat, start: s.tick });
+            // Do lugar sentado até à beira do banco, onde a simulação o põe, à velocidade de quem corre.
+            this.slides.set(body, { x: body.x, y: BENCH_Y, start: s.tick, ticks: Math.max(1, seconds((body.y - BENCH_Y) / B.baseSpeed)) });
+            this.exits.push({ body: outgoing, from: { ...this.previous.get(outgoing)! }, to: seat, start: s.tick, ticks: e.ticks ?? 1 });
           }
           // Várias trocas na mesma paragem só dão um toque de buzzer.
           if (this.lastHornTick !== s.tick) {
@@ -449,7 +456,7 @@ export class MatchView {
   /** O lugar de um jogador no banco, por ordem do plantel. */
   private seatOf(b: Body): Point {
     const benchers = this.s.bodies.filter(x => x.team === b.team && x.slot === -1);
-    return { x: (b.team === 0 ? 4.4 : 20.3) + Math.max(0, benchers.indexOf(b)) * 0.95, y: BENCH_Y };
+    return { x: BENCH_START_X[b.team] + Math.max(0, benchers.indexOf(b)) * BENCH_SPACING, y: BENCH_Y };
   }
 
   /** O árbitro para e levanta os braços, com o que marcou escrito por cima. */
@@ -607,7 +614,8 @@ export class MatchView {
     this.ballPrevious = { ...this.ball };
     step(s);
     const target = s.ball;
-    if (s.flight || s.loose) {
+    // A bola segue a simulação à risca quando voa por um caminho certo: lançamentos, passes, ressaltos, lances livres e bola ao alto.
+    if (s.flight || s.loose || s.phase === 'freeThrow' || s.phase === 'jump') {
       this.ball = { ...target };
     } else {
       // Quando a bola muda de sítio de repente, como no ressalto, desliza em vez de saltar.
@@ -617,6 +625,11 @@ export class MatchView {
     }
     this.updateMotion();
     this.updateReferee();
+    // Os dribles da rotina do lance livre também se ouvem.
+    const shooter = s.phase === 'freeThrow' ? this.ballInHands() : null;
+    const routinePose = shooter ? this.freeThrowPose(shooter) : null;
+    if (routinePose === 'drib0' && this.lastFreeThrowPose !== 'drib0') this.callbacks.sound('bounce');
+    this.lastFreeThrowPose = routinePose;
     if (s.holder && s.tick >= this.nextDribbleTick) {
       this.nextDribbleTick = s.tick + 8;
       this.callbacks.sound('bounce');
@@ -684,7 +697,7 @@ export class MatchView {
     if (tip && (tip.a === b || tip.b === b)) {
       const risesAt = tip.start + tip.total * TIP_RISE;
       if (s.tick < risesAt) return { pose: 'defend', withBall: false };
-      if (s.tick < risesAt + tip.total * (1 - TIP_RISE) * 2) return { pose: 'block', withBall: false };
+      if (s.tick < risesAt + tip.total * (1 - TIP_RISE) * 2) return { pose: 'tip', withBall: false };
     }
     if (b.fallenUntil > s.tick) {
       // Tropeça, fica no chão, e os últimos instantes são a levantar-se.
@@ -696,9 +709,12 @@ export class MatchView {
     if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
     if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
     if (s.phase === 'freeThrow') {
-      const shooting = s.freeThrow?.shooter === b && s.timer < 12;
+      if (this.ballInHands() === b) return { pose: this.freeThrowPose(b), withBall: true };
+      const shooting = s.freeThrow?.shooter === b && s.timer < seconds(B.freeThrowFlightSeconds);
       return { pose: shooting ? 'shoot' : 'idle', withBall: false };
     }
+    // Quem vai repor leva a bola nas mãos até à linha.
+    if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[frame % 4]! : 'hold', withBall: true };
     if (s.flight?.kind === 'pass' && s.flight.passer === b) return { pose: 'pass', withBall: false };
     // De costas no poste: agachado a proteger a bola, a recuar aos poucos; e o defensor encostado a fazer força.
     if (s.posting === b) return { pose: moving ? (frame % 4 < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
@@ -717,6 +733,50 @@ export class MatchView {
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
     return { pose: guarding ? 'defend' : 'idle', withBall: false };
+  }
+
+  /** Quem tem a bola nas mãos: o portador, quem vai repor, ou o lançador do lance livre, antes de lançar. */
+  private ballInHands(): Body | null {
+    const { s } = this;
+    if (s.holder) return s.holder;
+    if (s.phase === 'dead' && s.inbound?.hasBall) return s.inbound.passer;
+    const free = s.freeThrow;
+    if (s.phase !== 'freeThrow' || !free || free.returning || s.timer < seconds(B.freeThrowFlightSeconds)) return null;
+    return Math.hypot(s.ball.x - free.shooter.x, s.ball.y - free.shooter.y) < 0.4 ? free.shooter : null;
+  }
+
+  /** Cada jogador tem a sua rotina no lance livre: quantos dribles, a que ritmo, quanto tempo para, e se roda a bola. */
+  private freeThrowPose(b: Body): PoseName {
+    let routine = this.routines.get(b);
+    if (!routine) {
+      let h = 7;
+      for (const c of b.player.name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+      routine = { dribbles: h % 4, tempo: 4 + ((h >>> 3) % 3), pause: 2 + ((h >>> 6) % 5), spin: (h >>> 9) % 3 === 0 };
+      this.routines.set(b, routine);
+    }
+    // Conta-se para trás a partir do lançamento: subir, fletir, a pausa, os dribles, e antes disso segura a bola.
+    let left = this.s.timer - seconds(B.freeThrowFlightSeconds);
+    if (left < 3) return 'gather';
+    left -= 3;
+    if (left < 3) return 'ftDip';
+    left -= 3;
+    if (left < routine.pause) return routine.spin && left % 2 === 1 ? 'holdSpin' : 'hold';
+    left -= routine.pause;
+    if (left < routine.dribbles * routine.tempo) return left % routine.tempo < routine.tempo / 2 ? 'drib0' : 'drib1';
+    return 'hold';
+  }
+
+  /** Onde se desenha a bola no ar. Os bonecos têm sempre o mesmo tamanho em píxeis, seja qual for o ecrã ou a distância:
+   * longe do aro, a altura da bola conta-se em píxeis de boneco, para chegar às mãos deles; junto ao aro, conta a câmara,
+   * para a bola entrar no cesto. */
+  private ballScreen(x: number, y: number, z: number): [number, number] {
+    const [gx, gy] = this.camera.project(x, y);
+    const [wx, wy] = this.camera.project(x, y, z);
+    const hoopX = x < 14 ? HOOP_LEFT : HOOP_RIGHT;
+    const dz = z - B.rimHeight;
+    const d = Math.sqrt((x - hoopX) * (x - hoopX) + y * y + dz * dz);
+    const w = Math.max(0, Math.min(1, (d - 0.5) / 1.5));
+    return [wx + (gx - wx) * w, wy + (gy - z * BALL_PX_PER_METRE - wy) * w];
   }
 
   /** Quem está no banco, a mesa de oficiais e os treinadores. */
@@ -780,7 +840,7 @@ export class MatchView {
     const { g, s, camera } = this;
     for (let i = this.exits.length - 1; i >= 0; i--) {
       const e = this.exits[i]!;
-      const t = (s.tick + alpha - e.start) / SUB_WALK_TICKS;
+      const t = (s.tick + alpha - e.start) / e.ticks;
       if (t >= 1) {
         this.exits.splice(i, 1);
         continue;
@@ -884,14 +944,15 @@ export class MatchView {
         },
       });
     }
-    const holderOverride = s.holder ? this.overrides.get(s.holder) : undefined;
-    const holderDrawsBall = s.holder !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
+    const inHands = this.ballInHands();
+    const holderOverride = inHands ? this.overrides.get(inHands) : undefined;
+    const holderDrawsBall = inHands !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
     if (!holderDrawsBall) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
       const z = this.ballPrevious.z + (this.ball.z - this.ballPrevious.z) * alpha;
       const [gx, gy] = camera.project(x, y);
-      const [bx, by] = camera.project(x, y, z);
+      const [bx, by] = this.ballScreen(x, y, z);
       if (s.flight?.kind === 'shot') {
         this.trail.push([bx, by]);
         if (this.trail.length > TRAIL_LENGTH) this.trail.shift();

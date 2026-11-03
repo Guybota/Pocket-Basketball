@@ -164,6 +164,26 @@ describe('coerência de um jogo', () => {
     expect(lastEvent.team).toBe(s.score[0] > s.score[1] ? 0 : 1);
   });
 
+  it('a bola nunca sai disparada: fica sempre perto do campo e abaixo dos 9 m', () => {
+    // Uma bola perdida que ficava guardada depois da reposição punha a bola a voar no lance livre seguinte.
+    const problems: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const a = generateTeam(i, 'A', 30 + (i % 5) * 12);
+      const b = generateTeam(i + 900, 'B', 30 + (i % 3) * 15);
+      const home = i % 3 === 0 ? withTactics(a, { pressure: 1, spacing: 1, pace: 1, defense: 'zone' }) : a;
+      const s = createMatch(home, b, i + 7);
+      while (s.phase !== 'end') {
+        step(s);
+        const { x, y, z } = s.ball;
+        if (!(x > -4 && x < 32 && Math.abs(y) < 12 && z < 9)) {
+          problems.push(`jogo ${i}, passo ${s.tick}, fase ${s.phase}: bola em ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`);
+          break;
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it('a cada passo, os jogadores estão perto do campo e a bola tem um só dono', () => {
     const s = createMatch(home, away, 77);
     const problems: string[] = [];
