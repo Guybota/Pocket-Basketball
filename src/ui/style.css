@@ -265,9 +265,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* As linhas das trocas: cara, posição, nome, energia e os números do jogo, alinhados com o cabeçalho. */
 .srow {
   display: grid;
-  grid-template-columns: 20px 28px minmax(0, 1fr) 30px 20px repeat(7, 14px) 28px;
+  grid-template-columns: 20px 24px minmax(0, 1fr) 30px 18px repeat(7, 14px) 26px;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   width: 100%;
   min-height: 24px;
   line-height: 1;
@@ -295,6 +295,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .srow .gr { font-size: 13px; line-height: 13px; }
 
 .srow.head img { display: block; width: 14px; height: 14px; image-rendering: pixelated; }
+/* O ícone da energia fica ao meio da coluna da barra. */
+.srow.head img.energy { justify-self: center; }
 
 /* As setas das trocas marcadas, no canto da cara: verde a entrar, vermelha a sair, losango a trocar de lugar. */
 .face-wrap { position: relative; display: block; width: 20px; height: 20px; }
@@ -804,7 +806,20 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .ladder div { display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; background: var(--paper-2); border: 1px solid var(--line); }
 
 /* Menus de barras, como no ecrã antes do jogo */
-.menu { flex: 1; min-height: 0; display: grid; align-content: center; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); overflow-y: auto; }
+/* O caderno de combos: a barra do que já se descobriu e o último combo, com as cartas. */
+.comboprogress { height: 10px; border: 2px solid var(--ink); background: var(--paper-2); }
+.comboprogress i { display: block; height: 100%; background: var(--gold); }
+.lastcombo { display: grid; justify-items: center; gap: 4px; padding-top: 4px; }
+.lastcombo span { font: 400 14px/1 var(--small); color: var(--muted); }
+.lastcombo b { font: 400 22px/1 var(--display); color: var(--ball); font-weight: 400; }
+.lastcombo div { display: flex; gap: 8px; }
+.lastcombo img { width: 64px; height: 64px; image-rendering: pixelated; }
+/* Uma lista curta não deixa meio painel vazio: as linhas crescem até 40 px quando há espaço, e ficam mais fáceis de tocar. */
+.scroll.growrows { display: flex; flex-direction: column; }
+.scroll.growrows > .prow, .scroll.growrows > .crow { flex: 1 1 auto; max-height: 40px; }
+.scroll.growrows > .starters { flex: none; }
+/* Os botões crescem até 62 px quando o painel tem espaço, em vez de ficarem num monte ao meio com faixas vazias à volta. */
+.menu { flex: 1; min-height: 0; display: grid; grid-auto-rows: minmax(46px, 62px); align-content: center; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); overflow-y: auto; }
 .mbar { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; min-height: 46px; padding: 3px 10px 3px 6px; text-align: left; background: var(--paper); border-radius: 6px; box-shadow: 2px 3px 0 var(--ink); }
 .mbar img { display: block; width: 28px; height: 28px; image-rendering: pixelated; }
 .mbar small { font: 400 15px/1 var(--small); color: var(--muted); }
@@ -846,6 +861,19 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .tacrow > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .tacrow button { min-height: 32px; padding: 1px; font: 400 18px/1 var(--ui); }
 .stack { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding: 6px; }
+/* O ecrã do equipamento do jogo: as duas equipas, cada uma com a sua fila de camisolas; o nome fica sempre por baixo do boneco. */
+.kitpick { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.kithead { display: flex; align-items: center; gap: 6px; font: 400 16px/1 var(--ui); padding: 2px 2px 0; }
+.kithead .emblem { width: 18px; height: 18px; image-rendering: pixelated; }
+.kithead b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kitgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.kitgrid.two { grid-template-columns: repeat(2, 1fr); }
+.kitbtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px 4px; min-height: 0; }
+.kitbtn canvas { display: block; width: 60px; height: 108px; image-rendering: pixelated; }
+.kitbtn[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
+@media (max-height: 520px) { .kitbtn canvas { width: 40px; height: 72px; } }
+.kitpick.compact .kitbtn canvas { width: 40px; height: 72px; }
+.kitbtn span { font: 400 13px/1 var(--ui-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .kits { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; overflow-y: auto; }
 .kit { display: grid; grid-template-columns: 68px 1fr; gap: 6px; align-items: center; text-align: left; min-height: 66px; padding: 4px; }
 .kit canvas { display: block; width: 68px; height: 92px; image-rendering: pixelated; }
@@ -1003,6 +1031,13 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .swatches { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
 .swatch { min-height: 30px; padding: 0; box-shadow: none; border: 2px solid var(--ink); }
 .swatch[aria-pressed="true"] { outline: 3px solid var(--ball); outline-offset: 1px; position: relative; }
+/* Criar clube: o emblema e a camisola lado a lado, e três jogadores já equipados por baixo. */
+.note .createstage { align-items: center; justify-content: center; gap: 12px; }
+.createtop { display: flex; align-items: center; justify-content: center; gap: 22px; }
+.createkit { width: 72px; height: 160px; image-rendering: pixelated; }
+.createplayers { display: flex; justify-content: center; gap: 6px; }
+.createplayers img { width: 68px; height: 92px; image-rendering: pixelated; }
+@media (max-height: 700px) { .createkit { width: 54px; height: 120px; } .createplayers img { width: 51px; height: 69px; } }
 .note .kitstage, .note .emblemstage { flex-direction: row; align-items: center; justify-content: center; gap: 10px; }
 .kitstage canvas.big { display: block; image-rendering: pixelated; }
 .kitflat { display: grid; justify-items: center; gap: 2px; filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)); }
@@ -1011,7 +1046,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .note .kitstage { gap: 4px; }
 .kitstage canvas.big { width: 68px; height: 92px; }
 .kitside { display: grid; justify-items: center; gap: 6px; max-width: 110px; text-align: center; }
-.menu.tight { gap: 4px; padding: 5px 8px; }
+.menu.tight { gap: 4px; padding: 5px 8px; grid-auto-rows: minmax(38px, 50px); }
 .menu.tight .mbar { min-height: 38px; }
 
 /* A vitrina de troféus */

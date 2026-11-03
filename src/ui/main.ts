@@ -13,10 +13,11 @@ import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } 
 import { GameAudio } from './audio.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
 import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
-import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, showTopNote, type GameKind } from './menus.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
 import { clubIdentity, kitAgainst } from './art/identity.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
+import { keepAwake } from './awake.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, careerTopStats, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
@@ -30,7 +31,7 @@ const MAX_STEPS_PER_FRAME = 40;
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
 // Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
-const MATCH_MIN_RATIO = 1.2;
+const MATCH_MIN_RATIO = 1.1;
 const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
@@ -40,6 +41,10 @@ const LANDSCAPE_TOWN_HEIGHT = 360;
 // Os menus têm uma ficha ou uma cena por cima, e essas precisam de mais altura do que o campo.
 const MENU_STAGE_WIDTH = 360;
 const MENU_STAGE_HEIGHT = 270;
+// Quanto o painel do ecrã aberto precisa, na vertical, quando ele pede a parte de cima mais alta (0 é o normal).
+let menuPanel = 0;
+// O que o painel do título precisa, na vertical: o logótipo, os botões e a frase.
+const TITLE_PANEL_HEIGHT = 300;
 const MATCH_STAGE_HEIGHT = 216;
 const SAVE_KEY = 'pocket-basketball-clube';
 const DROP_TICKS = 50;
@@ -196,8 +201,8 @@ function fit(): void {
   game.classList.toggle('result-open', resultOpen && stage === 'match');
   const centred = landscape && resultOpen && stage === 'match';
   if (landscape) {
-    // O painel cresce com a janela, em meios: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
-    const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 2) / 1200) / 2, Math.floor((innerHeight * 2) / 540) / 2));
+    // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
+    const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 1000) / 4, Math.floor((innerHeight * 4) / 540) / 4));
     // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
     const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
@@ -231,7 +236,10 @@ function fit(): void {
     const finalScale = Math.min(scale, Math.max(available, 0.5));
     const gameHeight = Math.max(640, innerHeight / finalScale);
     // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
-    const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? MENU_STAGE_HEIGHT : MATCH_STAGE_HEIGHT;
+    const menuHeight = menuPanel > 0 ? Math.max(MENU_STAGE_HEIGHT, Math.floor(gameHeight - menuPanel)) : MENU_STAGE_HEIGHT;
+    // No título, a cidade fica com o que o logótipo e os botões não usam.
+    const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
+    const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
     setCanvasSize(360, stageHeight, 360, stageHeight);
     canvas.style.marginTop = '';
     hud.style.top = '';
@@ -262,6 +270,8 @@ function setTopSize(width: number, height: number, zoom: number): void {
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: typeof stage): void {
   stage = next;
+  // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
+  keepAwake(next === 'match');
   resultOpen = false;
   if (next !== 'match' && next !== 'menu') clearIdle();
   if (next !== 'title') {
@@ -410,7 +420,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, kitAgainst(rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem);
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem);
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -535,7 +545,7 @@ function showSeasonReport(): void {
   closeMenus();
   setStage('menu');
   const festive = current.seasonReport!.outcome === 'champion' || current.seasonReport!.cups.length > 0;
-  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current));
+  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current)}${seasonTopStats(current.seasonReport!)}`);
   audio.music(festive ? 'win' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
   const report = current.seasonReport!;
@@ -567,7 +577,7 @@ function showFarewell(report: SeasonRecord): void {
 function showFired(): void {
   closeMenus();
   setStage('menu');
-  showTopNote('Despedido', `${Math.round(club!.confidence)}%`, `${clubBadge(club!)}<div class="quote">Os troféus ganhos vão contigo para o próximo clube.</div>`);
+  showTopNote('Despedido', `${Math.round(club!.confidence)}%`, `${clubBadge(club!)}${careerTopStats(club!)}<div class="quote">Os troféus ganhos vão contigo para o próximo clube.</div>`);
   panel.innerHTML = firedHtml(club!);
   element('firedNewClub').addEventListener('click', showNewClub);
 }
@@ -844,7 +854,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, kitAgainst(s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem);
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;
@@ -1066,6 +1076,11 @@ initMenus({
     saveClub();
   },
   topSize: () => topSize,
+  tallTop: panelNeed => {
+    if (menuPanel === panelNeed) return;
+    menuPanel = panelNeed;
+    fit();
+  },
   match: () => view,
   showMenus: () => setStage('menu'),
   toTown: showClub,

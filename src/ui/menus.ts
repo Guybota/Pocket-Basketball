@@ -9,15 +9,15 @@ import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, MAX_CARDS_PER_PLAYER, previewGains, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, MAX_FOCUS, MAX_OPTIONS, NEUTRAL_TACTICS, gradeOf, type Attributes, type Player, type Tactics, type Team } from '../sim/types.ts';
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
-import { clubIdentity } from './art/identity.ts';
-import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
+import { clubIdentity, kitAgainst } from './art/identity.ts';
+import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemCanvas, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
 import { attributeIcon, iconFrom } from './art/icons.ts';
 import { leagueIcon } from './art/leagues.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { drawFlagScene } from './art/flag.ts';
-import { drawWardrobe, kitImage } from './art/wardrobe.ts';
-import { INK, KITS, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
+import { drawMatchPoster, kitImage } from './art/wardrobe.ts';
+import { INK, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
 import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
@@ -39,6 +39,8 @@ export interface MenuHost {
   setClub(club: ClubState): void;
   /** O tamanho do ecrã de cima, em píxeis de arte. */
   topSize(): readonly [number, number];
+  /** Na vertical, um ecrã pode pedir a parte de cima mais alta: diz quanto o painel precisa, e o resto vai para o desenho (0 é o normal). */
+  tallTop(panel: number): void;
   /** O jogo a decorrer, se estivermos no intervalo. */
   match(): MatchView | undefined;
   showMenus(): void;
@@ -251,6 +253,13 @@ function trainCardsScreen(): Rendered {
   };
 }
 
+/** O último combo descoberto, com as cartas desenhadas, para o caderno não abrir vazio. */
+function lastCombo(): string {
+  const combo = COMBOS.find(c => c.id === club.knownCombos[club.knownCombos.length - 1]);
+  if (!combo) return '<p class="hint">Ainda nenhum. Junta três cartas no treino para descobrires o primeiro.</p>';
+  return `<div class="lastcombo"><span>O último descoberto</span><b>${esc(combo.name)}</b><div>${combo.cards.map(id => `<img alt="${esc(CARDS[id].name)}" src="${cardImage(id, CARDS[id].category)}">`).join('')}</div></div>`;
+}
+
 function combosScreen(): Rendered {
   const rows = COMBOS.map(combo => {
     const known = club.knownCombos.includes(combo.id);
@@ -259,6 +268,8 @@ function combosScreen(): Rendered {
   return {
     top: inside(`<div class="note"><header><b>Caderno de combos</b><span>${club.knownCombos.length} de ${COMBOS.length}</span></header><div class="inner">
       <div class="quote">Cada combo descoberto fica aqui escrito. Os outros ficam por descobrir.</div>
+      <div class="comboprogress"><i style="width:${Math.round((club.knownCombos.length / COMBOS.length) * 100)}%"></i></div>
+      ${lastCombo()}
     </div></div>`),
     bottom: `<div class="scroll"><table class="mini-table"><tr><th>Combo</th><th>Cartas</th></tr>${rows}</table></div>${bar(backBtn('train'))}`,
   };
@@ -350,7 +361,7 @@ function offersScreen(): Rendered {
     </div></div>`),
     bottom: `<div class="chalk"><h2>Propostas de jogo</h2>
       <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}">Jogo-treino</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}" ${friendlyAllowed() ? '' : 'disabled'}>Particular</button></div>
-      <div class="scroll">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(offerLabel(id)[0])}</span><img alt="" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"><small>${esc(offerLabel(id)[1])}</small></button>`).join('')}</div>
+      <div class="scroll growrows">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(offerLabel(id)[0])}</span><img alt="" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"><small>${esc(offerLabel(id)[1])}</small></button>`).join('')}</div>
     </div>${bar(backBtn('town'), `<button type="button" class="primary" data-pre="${offerKind}">Aceitar</button>`)}`,
   };
 }
@@ -412,7 +423,7 @@ function marketScreen(): Rendered {
   return {
     top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
     bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}</div>
-      <div class="scroll">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows}</div>
+      <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows}</div>
       ${bar(backBtn('office'), `<button type="button" class="primary" data-act="offer" ${canOffer ? '' : 'disabled'}>${pick === null ? 'Nada' : pick.clubId === null ? 'Contratar' : 'Propor'}</button>`)}`,
   };
 }
@@ -447,13 +458,13 @@ function renewalsScreen(): Rendered {
 function createScreen(): Rendered {
   const kit = activeKit(club);
   return {
-    top: inside(`<div class="note"><header><b id="createName">${esc(club.team.name)}</b><span>${DIVISIONS[club.division]!.name}</span></header><div class="inner kitstage">
-      <div id="createCrest">${ownCrest(96)}</div>
-      <img alt="" src="${kitImage(kit)}" style="width:54px;height:120px;image-rendering:pixelated">
+    top: inside(`<div class="note"><header><b id="createName">${esc(club.team.name)}</b><span>${DIVISIONS[club.division]!.name}</span></header><div class="inner createstage">
+      <div class="createtop"><div id="createCrest">${ownCrest(96)}</div><img alt="" class="createkit" src="${kitImage(kit)}"></div>
+      <div class="createplayers">${club.team.roster.slice(0, 3).map(p => `<img alt="" src="${spriteImage(lookFor(p))}">`).join('')}</div>
     </div></div>`),
     bottom: `<div class="editor" style="flex:1;min-height:0">
         <div><label for="clubName">Nome do clube</label><input id="clubName" maxlength="${CLUB_NAME_MAX}" autocomplete="off" spellcheck="false" style="width:100%;text-transform:none;letter-spacing:0" value="${esc(club.team.name)}"></div>
-        <div class="menu tight" style="padding:0;background:none">
+        <div class="menu tight" style="padding:0;background:none;flex:none">
           <button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button>
           <button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button>
         </div>
@@ -517,23 +528,52 @@ function optionsRow(): string {
 }
 
 /** Parecido demais com o equipamento creme do adversário? */
-function kitClash(kit: ClubKit): boolean {
-  const near = (a: string, b: string): boolean => {
-    const x = parseInt(a.slice(1), 16);
-    const y = parseInt(b.slice(1), 16);
-    return Math.abs(((x >> 16) & 255) - ((y >> 16) & 255)) + Math.abs(((x >> 8) & 255) - ((y >> 8) & 255)) + Math.abs((x & 255) - (y & 255)) < 90;
-  };
-  return near(kit.jersey, KITS.cream.jersey);
+/** As duas camisolas são tão parecidas que em campo não se distinguem as equipas. */
+function kitClash(kit: ClubKit, other: ClubKit): boolean {
+  const x = parseInt(kit.jersey.slice(1), 16);
+  const y = parseInt(other.jersey.slice(1), 16);
+  return Math.abs(((x >> 16) & 255) - ((y >> 16) & 255)) + Math.abs(((x >> 8) & 255) - ((y >> 8) & 255)) + Math.abs((x & 255) - (y & 255)) < 90;
 }
 
+// O equipamento do adversário escolhido à mão, só para o jogo desta semana contra esse clube; sem escolha, veste o que contrasta.
+let rivalKitPick: { week: number; name: string; index: number } | null = null;
+
+/** O equipamento que o adversário veste no jogo: o escolhido no ecrã do equipamento, ou o que contrasta com o nosso. */
+export function rivalKitFor(current: ClubState, name: string, ours: ClubKit): ClubKit {
+  const pick = rivalKitPick;
+  if (pick && pick.week === current.week && pick.name === name) return clubIdentity(name).kits[pick.index] ?? kitAgainst(name, ours);
+  return kitAgainst(name, ours);
+}
+
+/** O equipamento do jogo: o cartaz com as duas equipas em cima, e em baixo escolhe-se o nosso e o do adversário. */
 function kitScreen(): Rendered {
   const rival = currentRival();
+  const ours = activeKit(club);
+  const theirs = rivalKitFor(club, rival.name, ours);
+  const rivalKits = clubIdentity(rival.name).kits;
+  const button = (attr: string, value: string, pressed: boolean, preview: string, name: string): string =>
+    `<button type="button" class="kitbtn" ${attr}="${value}" aria-pressed="${pressed}"><canvas ${preview} width="20" height="36"></canvas><span>${esc(name)}</span></button>`;
+  const rivalNames = ['Principal', 'Alternativo'];
   return {
-    top: fullCanvas('wardrobe'),
-    bottom: `${kitClash(activeKit(club)) ? `<div class="mwarn">Muito parecido com o equipamento de ${esc(rival.name)}. Em campo, é difícil distinguir as equipas.</div>` : ''}<div class="kits">${club.kits.map(k => `<button type="button" class="kit" data-kit="${k.id}" aria-pressed="${k.id === club.kitChoice}"><canvas data-kit-preview="${k.id}" width="34" height="46"></canvas><span>${esc(k.name)}</span></button>`).join('')}</div>${bar(backBtn('pre'), '<button type="button" data-act="editKit">Editar equipamento</button>')}`,
+    top: fullCanvas('poster'),
+    bottom: `<div class="kitpick">
+      <div class="kithead"><img class="emblem" alt="" src="${emblemImage(club.emblem)}"><b>${esc(club.team.name)}</b></div>
+      <div class="kitgrid">${club.kits.map(k => button('data-kit', k.id, k.id === club.kitChoice, `data-kit-preview="${k.id}"`, k.name)).join('')}</div>
+      <div class="kithead"><img class="emblem" alt="" src="${emblemImage(clubIdentity(rival.name).emblem)}"><b>${esc(rival.name)}</b></div>
+      <div class="kitgrid two">${rivalKits.map((k, i) => button('data-rival-kit', String(i), k.jersey === theirs.jersey && k.second === theirs.second && k.pattern === theirs.pattern, `data-rival-preview="${i}"`, rivalNames[i] ?? k.name)).join('')}</div>
+      ${kitClash(ours, theirs) ? `<div class="mwarn">As duas camisolas são muito parecidas: em campo, vai ser difícil distinguir as equipas.</div>` : ''}
+    </div>${bar(backBtn('pre'), '<button type="button" data-act="editKit">Editar equipamento</button>')}`,
     after: () => {
+      // Num ecrã baixo, os bonecos dos botões ficam mais pequenos, para as duas filas caberem sem deslizar.
+      const pick = host.panel.querySelector<HTMLElement>('.kitpick');
+      if (pick && pick.scrollHeight > pick.clientHeight + 1) pick.classList.add('compact');
       paintKitPreviews();
-      paintWardrobe();
+      const canvas = document.getElementById('poster') as HTMLCanvasElement | null;
+      if (canvas) {
+        drawMatchPoster(canvas, gameKind === 'official' ? officialLabel(club).split(' de ')[0]!.split(' · ')[0]! : gameKind === 'practice' ? 'Jogo-treino' : 'Particular',
+          { kit: ours, emblem: emblemCanvas(club.emblem), roster: club.team.roster },
+          { kit: theirs, emblem: emblemCanvas(clubIdentity(rival.name).emblem), roster: rival.roster });
+      }
     },
   };
 }
@@ -542,7 +582,17 @@ function paintKitPreviews(): void {
   document.querySelectorAll<HTMLCanvasElement>('[data-kit-preview]').forEach(canvas => {
     const g = canvas.getContext('2d')!;
     g.clearRect(0, 0, canvas.width, canvas.height);
-    drawSprite(g, 'idle', { ...lookOf(club.team.roster[selected]!, 'blue'), custom: kitById(canvas.dataset.kitPreview!) }, 17, 43, false, canvas.dataset.back === '1', false);
+    // Os botões pequenos do ecrã do equipamento só mostram o boneco, sem margem: 20 por 36.
+    const small = canvas.width === 20;
+    drawSprite(g, 'idle', { ...lookOf(club.team.roster[selected]!, 'blue'), custom: kitById(canvas.dataset.kitPreview!) }, small ? 10 : 17, small ? 35 : 43, false, canvas.dataset.back === '1', false);
+  });
+  const rival = screen === 'kit' ? currentRival() : null;
+  document.querySelectorAll<HTMLCanvasElement>('[data-rival-preview]').forEach(canvas => {
+    if (!rival) return;
+    const g = canvas.getContext('2d')!;
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    const kit = clubIdentity(rival.name).kits[Number(canvas.dataset.rivalPreview)]!;
+    drawSprite(g, 'idle', { ...lookOf(rival.roster[0]!, 'cream'), custom: kit }, 10, 35, true, false, false);
   });
 }
 
@@ -551,8 +601,13 @@ const choices = (attr: string, list: readonly (readonly [string, string])[], cur
 
 /** O roupeiro: o equipamento escolhido em destaque, com os nossos vestidos e o adversário da semana ao lado. */
 function paintWardrobe(): void {
-  const canvas = document.getElementById('wardrobe') as HTMLCanvasElement | null;
-  if (canvas) drawWardrobe(canvas, club.kits, screen === 'kitEdit' ? kitEditing : club.kitChoice, club.team.roster, currentRival());
+  // No editor, o cartaz mostra o equipamento a editar ao lado do que o adversário da semana veste contra ele.
+  const canvas = document.getElementById('poster') as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const rival = currentRival();
+  const kit = kitById(kitEditing);
+  drawMatchPoster(canvas, kit.name, { kit, emblem: emblemCanvas(club.emblem), roster: club.team.roster },
+    { kit: rivalKitFor(club, rival.name, kit), emblem: emblemCanvas(clubIdentity(rival.name).emblem), roster: rival.roster });
 }
 
 const chip = (attr: string, id: string, label: string, color: string, on: boolean): string => `<button type="button" class="chip" ${attr}="${id}" aria-pressed="${on}"><i style="background:${color}"></i>${label}</button>`;
@@ -562,12 +617,12 @@ function kitEditScreen(): Rendered {
   const kit = kitById(kitEditing);
   const parts: readonly (readonly [typeof kitPart, string])[] = [['jersey', 'Camisola'], ['second', 'Segunda'], ['shorts', 'Calções'], ['trim', 'Pormenores']];
   return {
-    top: fullCanvas('wardrobe'),
+    top: fullCanvas('poster'),
     bottom: `${choices('data-kit-edit', club.kits.map(k => [k.id, esc(k.name)] as const), kitEditing)}
       <div class="scroll editor">
         <div><span>Peça e cor</span><div class="chips4">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
         <div><span>Desenho da camisola</span><div class="patterns">${KIT_PATTERNS.map(([id, label]) => `<button type="button" data-kit-pattern="${id}" aria-pressed="${kit.pattern === id}"><img alt="" src="${kitImage({ ...kit, pattern: id })}"><span>${label}</span></button>`).join('')}</div></div>
-        <div class="hint">${kitClash(kit) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
+        <div class="hint">${kitClash(kit, rivalKitFor(club, currentRival().name, kit)) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
       </div>
       ${bar(`<button type="button" class="back" data-go="${kitEditBack}">‹ Voltar</button>`)}`,
     after: paintWardrobe,
@@ -843,6 +898,7 @@ const pattern = (): string => {
 function render(): void {
   const { top: top_, panel } = host;
   const scroll = panel.querySelector('.scroll')?.scrollTop ?? 0;
+  host.tallTop(screen === 'kit' ? 450 : screen === 'kitEdit' ? 360 : screen === 'create' ? 290 : screen === 'pre' ? 470 : 0);
   const { top, bottom, after } = SCREENS[screen]();
   top_.innerHTML = top;
   top_.style.backgroundImage = `url(${pattern()})`;
@@ -980,6 +1036,9 @@ function onClick(event: Event): void {
     applyTactics({ ...club.tactics, focus: [] });
   } else if (data.kit) {
     commit({ ...club, kitChoice: data.kit });
+    render();
+  } else if (data.rivalKit !== undefined) {
+    rivalKitPick = { week: club.week, name: currentRival().name, index: Number(data.rivalKit) };
     render();
   } else if (data.offerKind) {
     offerKind = data.offerKind as typeof offerKind;

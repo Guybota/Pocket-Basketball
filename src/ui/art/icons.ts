@@ -41,6 +41,17 @@ const ATTRIBUTE_PIXELS: Record<keyof Attributes, readonly [readonly string[], st
 };
 const iconCache = new Map<string, string>();
 
+// A energia no jogo: uma pilha, verde, para o cabeçalho das trocas, que não tem largura para a palavra.
+const ENERGY_PIXELS = ['..##..', '######', '#....#', '#.##.#', '#.##.#', '#....#', '######'];
+export function energyIcon(): string {
+  let url = iconCache.get('energy');
+  if (!url) {
+    url = iconFrom(ENERGY_PIXELS, '#ffffff', '#2f7d4a');
+    iconCache.set('energy', url);
+  }
+  return url;
+}
+
 /** O ícone de um atributo, desenhado na primeira vez que é pedido: assim os testes sem browser podem importar quem o usa. */
 export function attributeIcon(key: keyof Attributes): string {
   let url = iconCache.get(key);
