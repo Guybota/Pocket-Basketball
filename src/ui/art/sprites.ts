@@ -1,7 +1,7 @@
 import { heightCmOf } from '../../sim/teamgen.ts';
 import type { Player } from '../../sim/types.ts';
 import { pixelsForHeight } from './body.ts';
-import { kitKey, shadeOf, usesSecond, type ClubKit } from './kit.ts';
+import { kitKey, shadeOf, usesSecondOnBody, type ClubKit } from './kit.ts';
 import { INK } from './palette.ts';
 
 export { INK };
@@ -310,7 +310,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
       const near = (x > 0 && grid[i - 1]) || (x < SPRITE_W - 1 && grid[i + 1]) || (y > 0 && grid[i - SPRITE_W]) || (y < SPRITE_H - 1 && grid[i + SPRITE_W]);
       let color = grid[i] ?? (near ? INK : null);
       if (look.custom && (color === JERSEY_MARK || color === SHADE_MARK)) {
-        const base = usesSecond(look.custom, x, y) ? look.custom.second : look.custom.jersey;
+        const base = usesSecondOnBody(look.custom, x, y, x - shoulderLeft, y - top, body.shoulder, T) ? look.custom.second : look.custom.jersey;
         color = color === JERSEY_MARK ? base : shadeOf(base);
       }
       if (color) {

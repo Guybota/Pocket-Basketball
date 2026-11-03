@@ -79,13 +79,18 @@ function paintLocker(g: CanvasRenderingContext2D, W: number, H: number, kit: Clu
   const jersey = (at: number, fixed: number, face: 'j' | 'i', n: number): void => {
     const rect = face === 'j' ? (u: number, w: number, k: number, h: number, c: string) => onJ(at + u, fixed, w, k, h, c) : (u: number, w: number, k: number, h: number, c: string) => onI(fixed, at + u, w, k, h, c);
     rect(0.15, 2.1, 0.5, 3.7, face === 'j' ? '#1e2b34' : '#17222a');
-    rect(0.6, 1.2, 2, 1.9, kit.jersey);
-    rect(0.3, 0.3, 3.4, 0.5, kit.jersey);
-    rect(1.8, 0.3, 3.4, 0.5, kit.jersey);
-    if (kit.pattern === 'band') rect(0.6, 1.2, 2.8, 0.4, kit.second);
-    if (kit.pattern === 'stripes') for (let u = 0.6; u < 1.7; u += 0.5) rect(u, 0.2, 2, 1.9, kit.second);
-    if (kit.pattern === 'half') rect(1.2, 0.6, 2, 1.9, kit.second);
-    rect(1.05, 0.3, 3.65, 0.25, kit.trim);
+    // Camisola de basquetebol: sem mangas, com duas alças finas e a gola em V entre elas.
+    rect(0.6, 1.2, 2, 1.7, kit.jersey);
+    rect(0.6, 0.3, 3.7, 0.4, kit.jersey);
+    rect(1.5, 0.3, 3.7, 0.4, kit.jersey);
+    if (kit.pattern === 'band') rect(0.6, 1.2, 2.7, 0.35, kit.second);
+    if (kit.pattern === 'stripes') for (let u = 0.6; u < 1.7; u += 0.5) rect(u, 0.2, 2, 1.7, kit.second);
+    if (kit.pattern === 'pin') for (let u = 0.75; u < 1.7; u += 0.4) rect(u, 0.06, 2, 1.7, kit.second);
+    if (kit.pattern === 'hoops') for (let k = 2.2; k < 3.6; k += 0.6) rect(0.6, 1.2, k, 0.25, kit.second);
+    if (kit.pattern === 'half') rect(1.2, 0.6, 2, 1.7, kit.second);
+    if (kit.pattern === 'sides') { rect(0.6, 0.18, 2, 1.7, kit.second); rect(1.62, 0.18, 2, 1.7, kit.second); }
+    if (kit.pattern === 'sash') for (let n = 0; n < 6; n++) rect(0.6 + n * 0.18, 0.3, 3.4 - n * 0.27, 0.3, kit.second);
+    rect(0.9, 0.6, 3.55, 0.15, kit.trim);
     rect(0.15, 2.1, 4.25, 0.1, '#6e7b80');
     rect(0.3, 0.9 + (n % 2) * 0.6, 4.35, 0.45, n % 3 === 0 ? '#f4f4f4' : n % 3 === 1 ? '#e8622a' : '#3a4252');
   };

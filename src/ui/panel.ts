@@ -4,7 +4,7 @@ import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/ty
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
-import { attributeIcon, optionStar } from './art/icons.ts';
+import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
 import { SPOTS } from '../sim/court.ts';
 import { foundCards } from './club-screens.ts';
@@ -244,7 +244,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
       ${stars(b.player.height, 'Altura')}
     </button>`;
   };
-  const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><span>Energia</span><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
+  const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><img class="energy" alt="Energia" title="Energia" src="${energyIcon()}"><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
   const onCourt = s.court[team].map(row).join('');
   const bench = s.bodies.filter(b => b.team === team && b.slot === -1).map(row).join('');
   const onBoard = board(s.court[team].map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));

@@ -51,6 +51,17 @@ export function usesSecond(kit: ClubKit, x: number, y: number): boolean {
   }
 }
 
+/** O mesmo desenho no tronco de um boneco, que é pequeno e muda de sítio com a altura: a faixa, a diagonal e as laterais
+ * contam-se a partir do ombro esquerdo (col, row), em width colunas e rows linhas; os outros desenhos já se veem como estão. */
+export function usesSecondOnBody(kit: ClubKit, x: number, y: number, col: number, row: number, width: number, rows: number): boolean {
+  switch (kit.pattern) {
+    case 'band': return row === (rows >> 1) - 1 || row === rows >> 1;
+    case 'sash': return Math.abs(col - (row * (width - 1)) / Math.max(1, rows - 1)) < 1;
+    case 'sides': return col <= 0 || col >= width - 1;
+    default: return usesSecond(kit, x, y);
+  }
+}
+
 // Estas cores vão parar a atributos de HTML, por isso um clube guardado só as passa com este formato.
 const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 

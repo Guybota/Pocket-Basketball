@@ -1,28 +1,8 @@
 import type { Sound } from './match-view.ts';
 
-export type MusicTheme = 'none' | 'town' | 'arena' | 'win' | 'loss' | 'farewell';
+import { scheduleSection, songShape, type MusicTheme } from './music.ts';
 
-/** Uma nota: o semitom MIDI (0 é pausa) e a duração em colcheias. */
-type Note = readonly [number, number];
-interface Tune {
-  bpm: number;
-  wave: OscillatorType;
-  loop: boolean;
-  volume: number;
-  melody: readonly Note[];
-  bass?: readonly Note[];
-  drums?: boolean;
-}
-
-// Temas curtos, como no original: um para a cidade, um para o pavilhão, e três momentos.
-const TUNES: Record<Exclude<MusicTheme, 'none'>, Tune> = {
-  town: { bpm: 96, wave: 'triangle', loop: true, volume: 0.035, melody: [[72, 1], [76, 1], [79, 1], [83, 1], [84, 1], [83, 1], [79, 1], [76, 1], [69, 1], [72, 1], [76, 1], [79, 1], [81, 1], [79, 1], [76, 1], [72, 1], [71, 1], [74, 1], [77, 1], [79, 1], [81, 1], [79, 1], [77, 1], [74, 1], [72, 2], [76, 2], [79, 2], [84, 2]], bass: [[48, 4], [45, 4], [43, 4], [48, 4]] },
-  arena: { bpm: 128, wave: 'square', loop: true, volume: 0.03, melody: [[64, 1], [64, 1], [67, 1], [69, 1], [0, 1], [69, 1], [67, 1], [64, 1], [62, 1], [62, 1], [64, 1], [67, 1], [0, 1], [67, 1], [64, 1], [62, 1]], bass: [[40, 2], [40, 2], [43, 2], [43, 2], [38, 2], [38, 2], [40, 2], [40, 2]], drums: true },
-  win: { bpm: 140, wave: 'square', loop: false, volume: 0.04, melody: [[72, 1], [76, 1], [79, 1], [84, 2], [79, 1], [84, 4]], bass: [[48, 2], [52, 2], [55, 2], [60, 4]] },
-  loss: { bpm: 80, wave: 'triangle', loop: false, volume: 0.04, melody: [[64, 2], [63, 2], [62, 2], [61, 4]], bass: [[45, 4], [44, 6]] },
-  farewell: { bpm: 72, wave: 'triangle', loop: true, volume: 0.03, melody: [[69, 2], [72, 1], [76, 1], [81, 4], [79, 2], [76, 1], [74, 1], [79, 4], [77, 2], [74, 1], [72, 1], [77, 4], [76, 2], [72, 1], [68, 1], [76, 4]], bass: [[45, 8], [43, 8], [41, 8], [40, 8]] },
-};
-const pitch = (midi: number): number => 440 * Math.pow(2, (midi - 69) / 12);
+export type { MusicTheme };
 
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar.
 // Não há som contínuo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos.
@@ -66,7 +46,7 @@ export class GameAudio {
     this.musicGain = this.context.createGain();
     this.musicGain.gain.value = this.muted ? 0 : 1;
     this.musicGain.connect(this.context.destination);
-    this.playTune(TUNES[theme]);
+    this.playSection(theme, 0, this.context.currentTime + 0.05, 0);
   }
 
   private stopMusic(): void {
@@ -82,50 +62,18 @@ export class GameAudio {
     }
   }
 
-  /** Agenda uma volta do tema e marca a seguinte para quando esta acabar. */
-  private playTune(tune: Tune): void {
+  /** Agenda uma secção do tema e marca a seguinte para pouco antes de esta acabar, sem buracos entre elas. */
+  private playSection(theme: Exclude<MusicTheme, 'none'>, index: number, start: number, pass: number): void {
     const ctx = this.context!;
-    const out = this.musicGain!;
-    const beat = 60 / tune.bpm / 2;
-    const start = ctx.currentTime + 0.05;
-    const voice = (notes: readonly Note[], wave: OscillatorType, volume: number, octave = 0): number => {
-      let at = 0;
-      for (const [midi, length] of notes) {
-        const seconds = length * beat;
-        if (midi > 0) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = wave;
-          osc.frequency.value = pitch(midi + octave);
-          gain.gain.setValueAtTime(volume, start + at);
-          gain.gain.exponentialRampToValueAtTime(0.0001, start + at + seconds * 0.9);
-          osc.connect(gain).connect(out);
-          osc.start(start + at);
-          osc.stop(start + at + seconds);
-        }
-        at += seconds;
-      }
-      return at;
-    };
-    const length = voice(tune.melody, tune.wave, tune.volume);
-    if (tune.bass) voice(tune.bass, 'triangle', tune.volume * 1.3);
-    if (tune.drums) {
-      for (let t = 0; t < length; t += beat * 2) {
-        const source = ctx.createBufferSource();
-        source.buffer = this.noiseBuffer;
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = 1800;
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(tune.volume * 0.8, start + t);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + t + 0.05);
-        source.connect(filter).connect(gain).connect(out);
-        source.start(start + t, Math.random() * 0.8);
-        source.stop(start + t + 0.06);
-      }
-    }
-    if (tune.loop) this.musicTimer = window.setTimeout(() => this.playTune(tune), length * 1000);
-    else this.musicTimer = window.setTimeout(() => { this.theme = 'none'; }, length * 1000);
+    // Com o separador em segundo plano, o temporizador pode chegar tarde: aí recomeça-se agora, em vez de no passado.
+    start = Math.max(start, ctx.currentTime + 0.02);
+    const length = scheduleSection(ctx, this.musicGain!, this.noiseBuffer!, theme, index, start, pass);
+    const shape = songShape(theme);
+    const end = start + length;
+    const wait = Math.max(0, (end - ctx.currentTime - 0.3) * 1000);
+    if (index + 1 < shape.parts) this.musicTimer = window.setTimeout(() => this.playSection(theme, index + 1, end, pass), wait);
+    else if (shape.loop) this.musicTimer = window.setTimeout(() => this.playSection(theme, shape.loopFrom, end, pass + 1), wait);
+    else this.musicTimer = window.setTimeout(() => { this.theme = 'none'; }, wait + 300);
   }
 
   /** Calar ou destapar tudo, incluindo a música a tocar. */

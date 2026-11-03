@@ -168,12 +168,22 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('federation', record.federationExit).toLowerCase()}`}</span></div>
       ${record.continentalExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.continental}</span><span>${record.continentalExit >= CUP_ROUNDS.continental.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('continental', record.continentalExit).toLowerCase()}`}</span></div>`}
       ${record.worldExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.world}</span><span>${record.worldExit >= CUP_ROUNDS.world.length ? 'Campeões do mundo!' : 'Perdida a final'}</span></div>`}
-      ${record.topScorer ? `<div class="mvp"><span>Melhor marcador: ${escapeHtml(record.topScorer)}, ${record.topScorerPoints} pontos</span></div>` : ''}
       <div class="section-head plain"><span>Prémio da época</span><span>${record.cards.length} cartas</span></div>
       ${foundCards(record.cards)}
       ${confidenceBar(club.confidence)}
     </div>
     <div class="end-actions"><button type="button" class="primary" id="seasonContinue">${club.fired ? 'Continuar' : `Começar a época ${club.season}`}</button></div>`;
+}
+
+/** Os números da época em quadrados, para o cartão de cima do balanço: o lugar, as vitórias, as derrotas, as cartas e o melhor marcador. */
+export function seasonTopStats(record: SeasonRecord): string {
+  return `<div class="card-stats office-stats">${[['Lugar', record.position + 1], ['Vitórias', record.wins], ['Derrotas', record.losses], ['Cartas', record.cards.length]].map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>
+    ${record.topScorer ? `<div class="mvp"><span>Melhor marcador: ${escapeHtml(record.topScorer)}, ${record.topScorerPoints} pontos</span></div>` : ''}`;
+}
+
+/** Os números da carreira no clube, para o cartão de cima do despedimento. */
+export function careerTopStats(club: ClubState): string {
+  return `<div class="card-stats office-stats">${[['Épocas', club.season], ['Vitórias', club.wins], ['Derrotas', club.losses], ['Títulos', club.history.filter(r => r.outcome === 'champion').length]].map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>`;
 }
 
 /** Abaixo de 3% de confiança, acaba a carreira neste clube. */
@@ -182,7 +192,6 @@ export function firedHtml(club: ClubState): string {
     <div class="club-week"><b>Despedido</b></div>
     ${say('president', ...presidentFired())}
     ${confidenceBar(club.confidence)}
-    <div class="card-stats office-stats">${[['Épocas', club.season], ['Vitórias', club.wins], ['Derrotas', club.losses], ['Títulos', club.history.filter(r => r.outcome === 'champion').length]].map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')}</div>
     <p class="hint">O ${escapeHtml(club.team.name)} despediu-te na semana ${club.week} da época ${club.season}.</p>
     <button type="button" class="primary" id="firedNewClub">Treinar outro clube</button>
   </div>`;
