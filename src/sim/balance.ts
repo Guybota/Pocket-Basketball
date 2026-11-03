@@ -180,6 +180,16 @@ export const BALANCE = {
   blockedTravel: 0.12,
   // Afundanço: de perto e com impulsão, leva-se a bola até ao aro.
   dunkMaxDistance: 1.7,
+  // Os 3 segundos, como na NBA, mas sem apito: com a bola controlada no meio-campo atacante, quem está na área há este tempo
+  // sai dela (atacante sem bola) ou cola-se a um atacante a um braço (defensor); quem tem a bola lança ou passa.
+  laneLeaveSeconds: 2,
+  laneDecideSeconds: 2.4,
+  // Depois de sair, fica fora este tempo antes de voltar a entrar; e sai até esta distância para lá da linha.
+  laneOutSeconds: 1.2,
+  laneExitMargin: 0.35,
+  // A um braço: perto disto, um defensor na área está a marcar alguém e pode ficar.
+  armLength: 1,
+  laneGuardGap: 0.7,
   // Quem afunda arranca para o aro: corre a esta fração a mais da sua velocidade, para lá chegar no tempo do lance.
   dunkBurst: 1.5,
   dunkMinJumping: 45,

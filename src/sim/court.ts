@@ -54,6 +54,12 @@ export const FREE_THROW_SPOTS: readonly (readonly [number, number])[] = [
 export const ARC_SPOTS: readonly (readonly [number, number])[] = [[1.3, 6.5], [5, 6.2], [7.8, 3.2]];
 /** Pontos de quem joga de costas para o cesto. */
 export const LOW_POST_SPOTS: readonly (readonly [number, number])[] = [[2.6, 1.9], [2.2, 1.4], [3.2, 2.2]];
+// A área restritiva da FIBA: 4,9 m de largura, da linha de fundo até à linha de lance livre, a 5,8 m.
+export const LANE_U = 5.8;
+export const LANE_HALF_V = 2.45;
+export const inLane = (u: number, v: number): boolean => u <= LANE_U && Math.abs(v) <= LANE_HALF_V;
+/** Onde o poste espera a bola sem a ter: à beira da área, por fora, e só entra quando a bola lhe chega. */
+export const POST_WAIT_SPOTS: readonly (readonly [number, number])[] = [[2.6, 2.85], [1.6, 2.85], [3.6, 2.85]];
 /** Onde cada um ataca o ressalto, por lugar no ataque, para não irem todos para o mesmo sítio. */
 /** A zona 2-3: dois à frente, três atrás, de cada lado do garrafão. */
 export const ZONE_SPOTS: readonly (readonly [number, number])[] = [[6.6, -3.2], [6.6, 3.2], [2.6, -3.6], [2.6, 0], [2.6, 3.6]];

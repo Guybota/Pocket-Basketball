@@ -6,6 +6,10 @@ import {
   COURT_LENGTH,
   CUT_SPOTS,
   ZONE_SPOTS,
+  POST_WAIT_SPOTS,
+  LANE_U,
+  LANE_HALF_V,
+  inLane,
   DT,
   FREE_THROW_SPOTS,
   LOW_POST_SPOTS,
@@ -98,6 +102,9 @@ export interface Body {
   fallProne: boolean;
   /** Até quando um bloqueio não o volta a apanhar. */
   screenCooldownUntil: number;
+  /** Os 3 segundos: há quantos passos seguidos está na área, e até quando fica fora depois de sair. */
+  laneTicks: number;
+  laneOutUntil: number;
   /** Depois de perder um encontrão, corre mais devagar até aqui. */
   slowedUntil: number;
   nextBumpTick: number;
@@ -1110,6 +1117,18 @@ function decide(s: MatchState): void {
     }
     return;
   }
+  // Com a bola na área há quase 3 segundos, já não se segura: lança-se ou passa-se para quem tiver o melhor lance.
+  if (h.laneTicks >= seconds(B.laneDecideSeconds)) {
+    const own = shotOdds(s, h, pressure);
+    const mates = s.court[h.team].filter(b => b !== h).map(b => {
+      const o = shotOdds(s, b, pressureOn(s, b));
+      return { b, value: o.chance * o.points };
+    });
+    const best = mates.sort((x, y) => y.value - x.value)[0]!;
+    if (best.value > own.chance * own.points) pass(s, h, best.b);
+    else shoot(s, h);
+    return;
+  }
   if (chance(s.rng, B.looseBallBase * (1.5 - a.technique / 100))) {
     loseBallOut(s, h);
     return;
@@ -1243,7 +1262,7 @@ function attackSpot(b: Body): readonly [number, number] {
     return [u, v * side];
   };
   if (b.player.offBall === 'spotUp') return mirrored(ARC_SPOTS);
-  if (b.player.offBall === 'lowPost') return mirrored(LOW_POST_SPOTS);
+  if (b.player.offBall === 'lowPost') return mirrored(POST_WAIT_SPOTS);
   if (b.player.offBall === 'cutter' || b.player.offBall === 'dynamo') return mirrored(CUT_SPOTS);
   return SPOTS[b.slot]![b.spot]!;
 }
@@ -1488,6 +1507,72 @@ function updateTargets(s: MatchState): void {
   if (f?.kind === 'pass' && f.lob) {
     f.target.targetX = fromU(s, offense, 1.9);
     f.target.targetY = 0;
+  }
+  applyLaneLimits(s);
+}
+
+/** A bola está controlada no meio-campo atacante: só aí contam os 3 segundos. */
+function laneCounts(s: MatchState): boolean {
+  if (s.phase !== 'live' && s.phase !== 'pass') return false;
+  const ballX = s.holder ? s.holder.x : s.ball.x;
+  return toU(s, s.offense, ballX) <= COURT_LENGTH / 2;
+}
+
+/** Um defensor que marca alguém a um braço, ou o portador da bola, pode ficar na área. */
+function guardingInLane(s: MatchState, b: Body, holderGuard: Body | null): boolean {
+  if (b === holderGuard) return true;
+  return s.court[s.offense].some(a => distance(a.x, a.y, b.x, b.y) <= B.armLength);
+}
+
+/** Conta, a cada passo, há quanto tempo cada um está na área. Quem tem a bola e vai para o cesto não conta. */
+function updateLaneTime(s: MatchState): void {
+  const counting = laneCounts(s);
+  const holderGuard = counting && s.holder ? nearestDefender(s, s.holder) : null;
+  for (const team of s.court) {
+    for (const b of team) {
+      const inside = inLane(toU(s, s.offense, b.x), b.y);
+      const counts = counting && inside && (b.team === s.offense ? !(s.holder === b && s.driving) : !guardingInLane(s, b, holderGuard));
+      b.laneTicks = counts ? b.laneTicks + 1 : 0;
+    }
+  }
+}
+
+/** O ponto mais perto fora da área: para a frente, além da linha de lance livre, ou para o lado. */
+function laneExit(s: MatchState, x: number, y: number): [number, number] {
+  const u = toU(s, s.offense, x);
+  const front = LANE_U + B.laneExitMargin - u;
+  const side = LANE_HALF_V + B.laneExitMargin - Math.abs(y);
+  if (front < side) return [fromU(s, s.offense, LANE_U + B.laneExitMargin), y];
+  return [x, (y < 0 ? -1 : 1) * (LANE_HALF_V + B.laneExitMargin)];
+}
+
+/** Os 3 segundos, sem apito: quem está na área há muito tempo sai dela, ou, se defende, cola-se a um atacante. */
+function applyLaneLimits(s: MatchState): void {
+  if (!laneCounts(s)) return;
+  const leave = seconds(B.laneLeaveSeconds);
+  const f = s.flight;
+  for (const team of s.court) {
+    for (const b of team) {
+      if (b.laneTicks >= leave) b.laneOutUntil = s.tick + seconds(B.laneOutSeconds);
+      if (s.tick >= b.laneOutUntil) continue;
+      if (b.team === s.offense) {
+        // Quem tem a bola, quem a vai receber e quem rola do bloqueio continuam: o portador decide em `decide`.
+        if (b === s.holder || (f?.kind === 'pass' && f.target === b) || s.screen?.by === b) continue;
+        if (inLane(toU(s, s.offense, b.targetX), b.targetY)) [b.targetX, b.targetY] = laneExit(s, b.targetX, b.targetY);
+        continue;
+      }
+      if (!inLane(toU(s, s.offense, b.targetX), b.targetY)) continue;
+      // O defensor cola-se ao atacante mais perto que esteja na área; se não houver nenhum, sai para a beira da área.
+      const hoopX = fromU(s, s.offense, HOOP_U);
+      const near = s.court[s.offense].filter(a => inLane(toU(s, s.offense, a.x), a.y)).sort((p, q) => distance(p.x, p.y, b.x, b.y) - distance(q.x, q.y, b.x, b.y))[0];
+      if (near) {
+        const d = distance(near.x, near.y, hoopX, 0) || 1;
+        b.targetX = near.x + ((hoopX - near.x) / d) * B.laneGuardGap;
+        b.targetY = near.y + ((0 - near.y) / d) * B.laneGuardGap;
+      } else {
+        [b.targetX, b.targetY] = laneExit(s, b.targetX, b.targetY);
+      }
+    }
   }
 }
 
@@ -1940,6 +2025,7 @@ export function step(s: MatchState): void {
   updateTargets(s);
   movePlayers(s);
   resolveContacts(s);
+  updateLaneTime(s);
   updateBall(s);
 
   switch (s.phase) {
@@ -2022,6 +2108,8 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
         fallHead: 1,
         fallProne: false,
         screenCooldownUntil: 0,
+        laneTicks: 0,
+        laneOutUntil: 0,
         slowedUntil: 0,
         nextBumpTick: 0,
         radius: B.bodyRadius,
