@@ -20,7 +20,7 @@ import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel,
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
-import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab } from './panel.ts';
+import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
 import { portraitImage } from './art/portrait.ts';
 
@@ -100,6 +100,8 @@ let liveLeague: LiveLeague | null = null;
 let subPick: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+// A opção de ataque que se está a escolher no painel de táticas do jogo.
+let optionPicking: number | null = null;
 // Num desconto ou ao intervalo, sem ninguém tocar em nada durante 30 s, o jogo continua sozinho.
 const IDLE_RESUME_MS = 30_000;
 let idleTimer = 0;
@@ -616,7 +618,11 @@ function refreshContent(): void {
   updateCoachButtons();
   if (tacticsOpen) {
     content.dataset.shown = '';
-    content.innerHTML = `${tacticsControls(view!.s.tactics[0])}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
+    // Só se redesenha quando muda, para a lista das opções não voltar ao início a meio de a percorrer.
+    const html = `${tacticsControls(view!.s.tactics[0])}${optionsControls(view!.s.teams[0].roster, view!.s.tactics[0], optionPicking, p => portraitImage({ ...lookOf(p, 'blue'), custom: activeKit(club!) }))}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
+    if (content.dataset.shown === html) return;
+    content.dataset.shown = html;
+    content.innerHTML = html;
     return;
   }
   if (subsOpen) {
@@ -686,9 +692,25 @@ function closeSubs(): void {
 
 panel.addEventListener('click', event => {
   if (menusOpen()) return;
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], [data-option-slot], [data-option-set], [data-option-cancel], [data-option-clear], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
   if (!target || (target as HTMLButtonElement).disabled) return;
   pointerDown = false;
+  // As opções de ataque também se mudam a meio do jogo, e ficam registadas como as outras táticas.
+  if (target.dataset.optionSlot !== undefined || target.dataset.optionCancel !== undefined) {
+    optionPicking = target.dataset.optionSlot !== undefined ? Number(target.dataset.optionSlot) : null;
+    refreshContent();
+    return;
+  }
+  if (target.dataset.optionSet !== undefined || target.dataset.optionClear !== undefined) {
+    const options = target.dataset.optionSet !== undefined ? pickOption(club!.tactics.options ?? [], optionPicking ?? 0, target.dataset.optionSet) : [];
+    optionPicking = null;
+    const tactics: Tactics = { ...club!.tactics, options };
+    club = { ...club!, tactics };
+    saveClub();
+    setTactics(view!.s, 0, tactics);
+    refreshContent();
+    return;
+  }
   if (target.dataset.tactic !== undefined) {
     const tactics: Tactics = { ...club!.tactics, [target.dataset.tactic]: tacticValue(target.dataset.tactic, target.dataset.tacticValue!) };
     club = { ...club!, tactics };
@@ -1180,6 +1202,18 @@ const hideTip = (): void => {
   clearTimeout(tipTimer);
   tip.hidden = true;
 };
+// O Safari do iPhone e do iPad ignora o user-scalable: os gestos de zoom têm de ser travados aqui.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, event => event.preventDefault(), { passive: false });
+document.addEventListener('touchmove', event => {
+  if (event.touches.length > 1) event.preventDefault();
+}, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', event => {
+  // Dois toques seguidos não fazem zoom; o segundo toque continua a contar como clique.
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && (event.target as HTMLElement).closest('button, canvas, a') === null) event.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 document.addEventListener('contextmenu', event => {
   if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
 });

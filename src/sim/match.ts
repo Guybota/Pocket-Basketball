@@ -16,6 +16,8 @@ import {
   threeLineGap,
   seconds,
   segmentDistance,
+  HOOP_U,
+  CLEAR_SPOTS,
 } from './court.ts';
 import { between, chance, makeRng, next, weightedIndex, type Rng } from './rng.ts';
 import { freeThrowChance, shotChance } from './shot.ts';
@@ -200,6 +202,9 @@ export type Command =
   | { kind: 'autoRotation'; tick: number; team: TeamIndex; on: boolean }
   | { kind: 'tactics'; tick: number; team: TeamIndex; tactics: Tactics };
 
+/** As jogadas de uma posse: livre, bloqueio direto, bloqueios sem bola, e as montadas para uma opção (isolamento, isolamento no poste, bloqueio e abrir). */
+export type Play = 'free' | 'pickRoll' | 'screens' | 'iso' | 'postIso' | 'pickPop';
+
 export interface MatchState {
   teams: [Team, Team];
   /** Equipa dirigida por uma pessoa: não pede descontos sozinha. */
@@ -243,7 +248,9 @@ export interface MatchState {
   /** A trajetória da bola depois de um falhanço, e onde vai cair. */
   loose: LooseBall | null;
   /** A jogada desta posse, escolhida ao começar pelo foco do ataque. */
-  play: 'free' | 'pickRoll' | 'screens';
+  play: Play;
+  /** Para quem é a jogada desta posse, quando é montada para uma opção de ataque. */
+  playFor: Body | null;
   freeThrow: { shooter: Body; left: number } | null;
   score: [number, number];
   teamFouls: [number, number];
@@ -274,7 +281,7 @@ const emptyTeamLine = (): TeamLine => ({
 /** +1 significa que a equipa ataca o cesto em x = 28. As equipas trocam de lado ao intervalo. */
 const attackDirection = (s: MatchState, team: TeamIndex): 1 | -1 => ((team === 0) !== s.period >= 3 ? 1 : -1);
 const attackBaseline = (s: MatchState, team: TeamIndex): number => (attackDirection(s, team) > 0 ? COURT_LENGTH : 0);
-const toU = (s: MatchState, team: TeamIndex, x: number): number => Math.abs(attackBaseline(s, team) - x);
+export const toU = (s: MatchState, team: TeamIndex, x: number): number => Math.abs(attackBaseline(s, team) - x);
 const fromU = (s: MatchState, team: TeamIndex, u: number): number => attackBaseline(s, team) - attackDirection(s, team) * u;
 
 function emit(s: MatchState, type: MatchEventType, team: TeamIndex, extra: Partial<MatchEvent> = {}): void {
@@ -318,6 +325,26 @@ function checkScreenHit(s: MatchState): void {
 
 function emitMove(s: MatchState, b: Body, move: MoveId): void {
   emit(s, 'move', b.team, { player: b.player.name, move });
+}
+
+/** Não há ninguém capaz de se meter entre quem tem a bola e o cesto, como num contra-ataque. */
+function hasOpenLane(s: MatchState, h: Body): boolean {
+  const hoopX = fromU(s, h.team, HOOP_U);
+  const dx = hoopX - h.x;
+  const dy = -h.y;
+  const length = dx * dx + dy * dy;
+  if (length === 0) return true;
+  let ahead = 0;
+  for (const d of s.court[other(h.team)]) {
+    if (d.stunnedUntil > s.tick) continue;
+    const along = ((d.x - h.x) * dx + (d.y - h.y) * dy) / length;
+    if (along <= 0) continue;
+    // Com a defesa toda à frente é um ataque organizado, mesmo que haja um corredor.
+    if (++ahead > B.openLaneMaxAhead) return false;
+    const t = Math.min(1, along);
+    if (distance(d.x, d.y, h.x + dx * t, h.y + dy * t) < B.openLaneWidth) return false;
+  }
+  return true;
 }
 
 /** Pressão de 0 a 1, conforme a distância e a qualidade do defensor mais próximo. */
@@ -377,7 +404,32 @@ function newPossession(s: MatchState, team: TeamIndex): void {
   s.lastPasser = null;
   s.shotClock = seconds(B.shotClockSeconds);
   const focus = s.tactics[team].spacing;
+  s.playFor = null;
+  // Com opções de ataque, muitas posses são uma jogada montada para uma delas, conforme o tipo de jogador que é.
+  const options = (s.tactics[team].options ?? []).map(name => s.court[team].find(b => b.player.name === name)).filter((b): b is Body => b !== undefined);
+  if (options.length > 0 && chance(s.rng, B.optionPlayChance)) {
+    const target = options.length > 1 && !chance(s.rng, B.optionFirstShare) ? options[1]! : options[0]!;
+    s.playFor = target;
+    s.play = playFor(target);
+    return;
+  }
   s.play = (['free', 'pickRoll', 'screens'] as const)[weightedIndex(s.rng, focus < 0 ? B.playsInside : focus > 0 ? B.playsOutside : B.playsMixed)]!;
+}
+
+/** A jogada que serve cada tipo de jogador. */
+function playFor(b: Body): Play {
+  const p = b.player;
+  const a = p.attributes;
+  if (p.heightCm >= B.bigHeightCm) return p.onBall === 'postUp' || a.shooting < B.popShooting ? 'postIso' : 'pickPop';
+  if (p.onBall === 'playmaker') return 'pickRoll';
+  if (p.onBall === 'shooter' || p.offBall === 'spotUp' || a.shooting >= Math.max(a.speed, a.technique)) return 'screens';
+  return 'iso';
+}
+
+/** Quanto mais uma opção de ataque é procurada: 1 para quem não é. */
+function optionFactor(s: MatchState, b: Body): number {
+  const options = s.tactics[b.team].options ?? [];
+  return options[0] === b.player.name ? B.firstOptionFactor : options[1] === b.player.name ? B.secondOptionFactor : 1;
 }
 
 function giveBall(s: MatchState, b: Body): void {
@@ -1007,6 +1059,16 @@ function decide(s: MatchState): void {
       return;
     }
   }
+  // Com o caminho livre não se segura nem se passa para trás: vai-se ao cesto. Um grande longe do cesto continua a dar a bola a quem a conduz.
+  if ((h.slot < 3 || toU(s, h.team, h.x) <= B.outletU || s.driving) && hasOpenLane(s, h)) {
+    if (hoopDistance(toU(s, h.team, h.x), h.y) <= B.openLaneFinish) {
+      shoot(s, h);
+    } else {
+      s.driving = true;
+      s.nextDecision = s.tick + seconds(B.openLaneCheckSeconds);
+    }
+    return;
+  }
   if (chance(s.rng, B.looseBallBase * (1.5 - a.technique / 100))) {
     s.lines[h.team].turnovers++;
     emit(s, 'turnover', h.team, { player: h.player.name });
@@ -1086,6 +1148,19 @@ function decide(s: MatchState): void {
     cube(driveValue) * B.driveWeight * style.drive * (1 - B.tacticInsideDrive * tactics.spacing) * (s.screen?.on === nearestDefender(s, h) ? B.pickRollDrive : 1),
     ...passValues.map((value, i) => cube(value) * B.passWeight * style.pass * (1 - B.tacticPacePass * tactics.pace) * (h.slot >= 3 && u > B.outletU && (teammates[i]!.slot === 0 || teammates[i]!.player.offBall === 'leaker') ? B.outletBoost : 1)),
   ];
+  // As opções de ataque lançam e penetram mais e recebem mais a bola; na jogada montada para uma delas, ainda mais.
+  const own = optionFactor(s, h);
+  // Um organizador como opção cria para os outros: só se procura a si próprio quando o lance dele vale pelo menos o melhor passe.
+  const creator = own > 1 && h.player.onBall === 'playmaker';
+  const passer = s.lastPasser;
+  const fed = passer !== null && passer !== h && s.tick - s.lastPassTick <= seconds(B.fedSeconds) && optionFactor(s, passer) > 1 && passer.player.onBall === 'playmaker';
+  const bestPass = Math.max(0, ...passValues);
+  weights[0]! *= (creator && shootValue < bestPass ? 1 : own) * (fed ? B.fedShotFactor : 1);
+  weights[2]! *= (creator && driveValue < bestPass ? 1 : own) * (s.playFor === h && s.play === 'iso' ? B.isoDriveFactor : 1) * (fed ? B.fedShotFactor : 1);
+  teammates.forEach((b, i) => {
+    const rolling = s.driving && s.screen?.by === b;
+    weights[3 + i]! *= optionFactor(s, b) * (s.playFor === b ? B.playPassFactor : 1) * (creator ? B.creatorPassFactor * (rolling ? B.rollPassFactor : 1) : 1);
+  });
   const choice = weightedIndex(s.rng, weights);
   if (choice === 0) shoot(s, h);
   else if (choice === 2) {
@@ -1143,7 +1218,7 @@ function isPosting(s: MatchState, b: Body): boolean {
   if (dist < B.postMinDistance || dist > B.postMaxDistance) return false;
   const defender = nearestDefender(s, b);
   if (distance(b.x, b.y, defender.x, defender.y) > B.postContactRange) return false;
-  return b.player.onBall === 'postUp' || pushPower(b) - pushPower(defender) >= B.postPowerEdge;
+  return b.player.onBall === 'postUp' || (s.play === 'postIso' && s.playFor === b) || pushPower(b) - pushPower(defender) >= B.postPowerEdge;
 }
 
 /** Quanto a pressão diminui para quem ganhou o encosto: um defensor mais fraco não consegue contestar bem. */
@@ -1226,17 +1301,22 @@ function updateTargets(s: MatchState): void {
       helper.targetX = fromU(s, offense, hu - B.pressHelpDistance);
       helper.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, h.y + (defender.y > h.y ? -2.5 : 2.5)));
     } else if (hu <= B.shootingRangeU && !s.driving) {
-      if (s.play === 'pickRoll') {
-        // O poste vem bloquear o defensor do portador; com o bloqueio posto e a penetração a começar, rola para o cesto.
-        const big = s.court[offense][h.slot === 4 ? 3 : 4]!;
+      // Se a opção saiu numa troca a meio da posse, a jogada deixa de ser para ela.
+      if (s.playFor && s.playFor.slot < 0) s.playFor = null;
+      const pf = s.playFor;
+      // O grande de serviço para os bloqueios: o mais alto que não seja quem tem a bola nem a opção.
+      const biggest = (except: readonly Body[]): Body => [...s.court[offense]].filter(b => !except.includes(b)).sort((a, b) => b.player.heightCm - a.player.heightCm)[0]!;
+      if ((s.play === 'pickRoll' && (!pf || pf === h)) || (s.play === 'pickPop' && pf && pf !== h)) {
+        // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola para o cesto; no pick-and-pop abre para o arco.
+        const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 4 ? 3 : 4]!;
         const on = nearestDefender(s, h);
         big.targetX = on.x + (on.x - h.x) * 0.3;
         big.targetY = on.y + (on.y - h.y) * 0.3;
         s.screen = { by: big, on };
-      } else if (s.play === 'screens') {
-        // O extremo-poste bloqueia o defensor do escolta, que corta para um sítio aberto do arco.
-        const shooter = s.court[offense][h.slot === 1 ? 0 : 1]!;
-        const blocker = s.court[offense][h.slot === 3 ? 4 : 3]!;
+      } else if (s.play === 'screens' && pf !== h) {
+        // Bloqueio sem bola: um grande bloqueia o defensor do lançador, que se desmarca para um sítio aberto do arco.
+        const shooter = pf ?? s.court[offense][h.slot === 1 ? 0 : 1]!;
+        const blocker = pf ? biggest([h, pf]) : s.court[offense][h.slot === 3 ? 4 : 3]!;
         const on = s.court[defense][shooter.slot]!;
         blocker.targetX = on.x + (on.x - shooter.x) * 0.3;
         blocker.targetY = on.y + (on.y - shooter.y) * 0.3;
@@ -1248,8 +1328,30 @@ function updateTargets(s: MatchState): void {
     }
   }
   if (s.driving && s.screen && s.screen.on === nearestDefender(s, s.holder!)) {
-    s.screen.by.targetX = fromU(s, offense, 2.2);
-    s.screen.by.targetY = 0;
+    if (s.play === 'pickPop') {
+      // Abre para o arco, do lado de onde está, à espera do passe para lançar.
+      const [pu, pv] = ARC_SPOTS[1]!;
+      s.screen.by.targetX = fromU(s, offense, pu);
+      s.screen.by.targetY = pv * (s.screen.by.y >= 0 ? 1 : -1);
+    } else {
+      s.screen.by.targetX = fromU(s, offense, 2.2);
+      s.screen.by.targetY = 0;
+    }
+  }
+  // Isolamentos: quem joga para a opção abre o campo do lado contrário, para lhe deixar o caminho, ou o poste, livres.
+  const iso = s.playFor;
+  if (iso && iso.slot >= 0 && (s.play === 'iso' || s.play === 'postIso') && s.phase === 'live' && s.holder && !s.driving && toU(s, offense, s.holder.x) <= B.shootingRangeU) {
+    const side = iso.y >= 0 ? 1 : -1;
+    if (iso !== s.holder) {
+      const [iu, iv] = s.play === 'postIso' ? LOW_POST_SPOTS[0]! : ARC_SPOTS[2]!;
+      iso.targetX = fromU(s, offense, iu);
+      iso.targetY = iv * side;
+    }
+    s.court[offense].filter(b => b !== iso && b !== s.holder).forEach((b, i) => {
+      const [cu, cv] = CLEAR_SPOTS[i]!;
+      b.targetX = fromU(s, offense, cu);
+      b.targetY = -cv * side;
+    });
   }
   if (s.phase === 'dead' && s.inbound) {
     const { passer, x, y, receivers, hasBall } = s.inbound;
@@ -1350,7 +1452,12 @@ function movePlayers(s: MatchState): void {
       b.stepX = 0;
       b.stepY = 0;
       if (dist < 0.01 || b.stunnedUntil > s.tick) continue;
-      const slowed = (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
+      // Em posição de defesa, perto do seu homem, anda-se de lado, mais devagar; longe dele, corre-se.
+      // Na zona não há homem a marcar: conta o atacante mais perto.
+      const man = b.team !== s.offense && s.phase === 'live' ? (s.tactics[b.team].defense === 'zone' ? nearestDefender(s, b) : s.court[s.offense][b.slot]) : undefined;
+      // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
+      const stance = man !== undefined && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
+      const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
       const stepLength = Math.min(dist, maxSpeed(b) * slowed * DT);
       b.stepX = (dx / dist) * stepLength;
       b.stepY = (dy / dist) * stepLength;
@@ -1871,6 +1978,7 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
     ball: { x: COURT_LENGTH / 2, y: 0, z: 1 },
     loose: null,
     play: 'free',
+    playFor: null,
     posting: null,
     screen: null,
     inbound: null,

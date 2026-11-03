@@ -533,7 +533,7 @@ try {
   await practice.screenshot({ path: `${OUT}/jogo-treino-depois.png` });
   check('O jogo-treino acaba ao fim de dois períodos', afterPractice.state.period === 2, `período ${afterPractice.state.period}`);
   check('O jogo-treino não mexe na confiança nem no recorde', afterPractice.club.confidence === beforePractice.confidence && afterPractice.club.wins + afterPractice.club.losses === beforePractice.wins + beforePractice.losses);
-  check('O jogo-treino não fecha a semana e só se joga uma vez', afterPractice.club.week === beforePractice.week && afterPractice.club.practicedThisWeek);
+  check('O jogo-treino gasta a semana livre', afterPractice.club.week === beforePractice.week + 1);
   check('Os jogadores saem do jogo-treino mais cansados', afterPractice.club.team.roster.reduce((sum, p) => sum + p.fatigue, 0) > beforePractice.team.roster.reduce((sum, p) => sum + p.fatigue, 0));
   check('Sem erros no jogo-treino', practiceProblems.length === 0, practiceProblems.join(' | '));
 

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
-import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
+import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState, toU } from './match.ts';
 import { BALANCE as B } from './balance.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
@@ -89,6 +89,28 @@ describe('colisões e encontrões', () => {
     const weak = falls(30);
     expect(weak).toBeGreaterThan(0);
     expect(falls(95)).toBeGreaterThan(weak * 1.5);
+  });
+
+  it('com o caminho livre, vai-se ao cesto e lança-se sem passar para trás', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = createMatch(generateTeam(seed, 'A', 55), generateTeam(seed + 100, 'B', 55), seed);
+      while (s.phase !== 'live') step(s);
+      const h = s.holder!;
+      const toX = (u: number): number => (toU(s, h.team, 0) === u ? 0 : toU(s, h.team, 0) === 0 ? u : 28 - u);
+      h.x = toX(12);
+      h.y = 2;
+      const team = h.team === 0 ? 1 : 0;
+      for (const d of s.court[team]) d.x = toX(24);
+      s.shotClock = 400;
+      s.nextDecision = s.tick;
+      let result = '';
+      for (let i = 0; i < 200 && !result; i++) {
+        step(s);
+        if (s.flight) result = s.flight.kind;
+      }
+      expect(result, `semente ${seed}`).toBe('shot');
+      expect(s.holder).toBeNull();
+    }
   });
 
   it('em jogo, quase nunca há dois jogadores sobrepostos', () => {

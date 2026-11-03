@@ -53,6 +53,8 @@ export const LOW_POST_SPOTS: readonly (readonly [number, number])[] = [[2.6, 1.9
 /** A zona 2-3: dois à frente, três atrás, de cada lado do garrafão. */
 export const ZONE_SPOTS: readonly (readonly [number, number])[] = [[6.6, -3.2], [6.6, 3.2], [2.6, -3.6], [2.6, 0], [2.6, 3.6]];
 export const CRASH_SPOTS: readonly (readonly [number, number])[] = [[3.6, 0], [3.2, -3], [3.2, 3], [3, 2.1], [2.6, -1.9]];
+/** Num isolamento, os outros quatro abrem o campo do lado contrário ao de quem ataca: dois cantos, uma asa e o topo. O v é para o lado de lá. */
+export const CLEAR_SPOTS: readonly (readonly [number, number])[] = [[0.9, 6.6], [5.6, 6.0], [8.2, 1.5], [0.9, -6.6]];
 /** Pontos de quem corta: uma posição aberta e duas junto ao cesto. */
 export const CUT_SPOTS: readonly (readonly [number, number])[] = [[5.4, 5.7], [1.9, 0.9], [2.4, 0.3]];
 

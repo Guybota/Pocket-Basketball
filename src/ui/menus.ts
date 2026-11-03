@@ -7,7 +7,7 @@ import { LEAGUE_SIZE, MOVING_PLACES, type Standing } from '../sim/league.ts';
 import { setTactics } from '../sim/match.ts';
 import { DIVISIONS, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, COMBOS, MAX_CARDS_PER_PLAYER, previewGains, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
-import { ATTRIBUTE_KEYS, MAX_FOCUS, NEUTRAL_TACTICS, gradeOf, type Attributes, type Player, type Tactics, type Team } from '../sim/types.ts';
+import { ATTRIBUTE_KEYS, MAX_FOCUS, MAX_OPTIONS, NEUTRAL_TACTICS, gradeOf, type Attributes, type Player, type Tactics, type Team } from '../sim/types.ts';
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
 import { clubIdentity } from './art/identity.ts';
 import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
@@ -23,7 +23,7 @@ import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, SLOT_NAMES, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
 import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
@@ -68,6 +68,8 @@ let federationPlayer = -1;
 let federationScroll = 0;
 // No ecrã do adversário: as notas ou os números da época.
 let rivalStats = false;
+// A opção de ataque que se está a escolher na lista: 0, 1, ou nenhuma.
+let optionPicking: number | null = null;
 let federationClub = PLAYER_CLUB;
 let officeItem: OfficeItem = 'board';
 let selectedTrophy = 0;
@@ -333,7 +335,6 @@ const offerLabel = (id: number): [string, string] => {
   const special = SPECIAL_RIVALS.find(r => r.id === id);
   return special ? [special.name, special.note] : [club.clubs[id]!.name, DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name.replace('Liga ', '')];
 };
-const practiceAllowed = (): boolean => !club.practicedThisWeek;
 const friendlyAllowed = (): boolean => !currentFixture(club);
 
 function offersScreen(): Rendered {
@@ -345,10 +346,10 @@ function offersScreen(): Rendered {
     top: inside(`<div class="note"><header><b>${offerKind === 'practice' ? 'Jogo-treino' : 'Particular'}</b><span>${offerKind === 'practice' ? 'Pavilhão fechado' : 'No nosso pavilhão'}</span></header><div class="inner">
       <div class="vsbox"><div>${ownCrest(32)}${esc(club.team.name)}<small>${esc(DIVISIONS[club.division]!.name)}</small></div><span>contra</span><div><img class="emblem" alt="Emblema do ${esc(rival.name)}" style="width:32px;height:32px" src="${emblemImage(clubIdentity(rival.name).emblem)}">${esc(rival.name)}<small>${esc(SPECIAL_RIVALS.find(r => r.id === (list[offerClub] ?? list[0]!))?.note ?? DIVISIONS[club.divisions.findIndex(ids => ids.includes(list[offerClub] ?? list[0]!))]!.name)}</small></div></div>
       ${(['shooting', 'speed', 'strength', 'jumping'] as const).map(key => compare(ATTRIBUTE_LABELS.find(([k]) => k === key)![1], avg(club.team, key), avg(rival, key))).join('')}
-      <div class="quote">${offerKind === 'practice' ? 'Só dois períodos, à porta fechada e sem público. Dá menos cartas, cansa menos e não mexe na confiança.' : 'Jogo inteiro com público. Dá cartas, cansa, e conta metade para a confiança. Não conta para a liga.'}</div>
+      <div class="quote">${offerKind === 'practice' ? 'Só dois períodos, à porta fechada e sem público. Gasta a semana, dá menos cartas, cansa menos e não mexe na confiança.' : 'Jogo inteiro com público. Dá cartas, cansa, e conta metade para a confiança. Não conta para a liga.'}</div>
     </div></div>`),
     bottom: `<div class="chalk"><h2>Propostas de jogo</h2>
-      <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}" ${practiceAllowed() ? '' : 'disabled'}>${practiceAllowed() ? 'Jogo-treino' : 'Jogo-treino feito'}</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}" ${friendlyAllowed() ? '' : 'disabled'}>Particular</button></div>
+      <div class="chalktabs"><button type="button" data-offer-kind="practice" aria-pressed="${offerKind === 'practice'}">Jogo-treino</button><button type="button" data-offer-kind="friendly" aria-pressed="${offerKind === 'friendly'}" ${friendlyAllowed() ? '' : 'disabled'}>Particular</button></div>
       <div class="scroll">${list.map((id, n) => `<button type="button" class="crow offer" data-offer="${n}" aria-pressed="${offerClub === n}"><span class="name">${esc(offerLabel(id)[0])}</span><img alt="" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"><small>${esc(offerLabel(id)[1])}</small></button>`).join('')}</div>
     </div>${bar(backBtn('town'), `<button type="button" class="primary" data-pre="${offerKind}">Aceitar</button>`)}`,
   };
@@ -506,9 +507,13 @@ function tacticsScreen(): Rendered {
   const { tactics } = club;
   return {
     top: fullCanvas('tacticsBoard'),
-    bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, fallback, options }) => `<div class="tacrow"><span>${label}: ${(options.find(([v]) => v === (tactics[key] ?? fallback)) ?? options[0]!)[2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === (tactics[key] ?? fallback)}">${name}</button>`).join('')}</div></div>`).join('')}</div>${bar(backBtn(tacticsBack))}`,
+    bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, fallback, options }) => `<div class="tacrow"><span>${label}: ${(options.find(([v]) => v === (tactics[key] ?? fallback)) ?? options[0]!)[2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === (tactics[key] ?? fallback)}">${name}</button>`).join('')}</div></div>`).join('')}${optionsRow()}</div>${bar(backBtn(tacticsBack))}`,
     after: () => drawTacticsBoard(element<HTMLCanvasElement>('tacticsBoard'), tactics),
   };
+}
+
+function optionsRow(): string {
+  return optionsControls(club.team.roster, club.tactics, optionPicking, p => portraitImage(lookFor(p)));
 }
 
 /** Parecido demais com o equipamento creme do adversário? */
@@ -955,6 +960,18 @@ function onClick(event: Event): void {
     render();
   } else if (data.tactic) {
     applyTactics({ ...club.tactics, [data.tactic]: tacticValue(data.tactic, data.tacticValue!) });
+  } else if (data.optionSlot !== undefined) {
+    optionPicking = Number(data.optionSlot);
+    render();
+  } else if (data.optionSet !== undefined) {
+    const options = pickOption(club.tactics.options ?? [], optionPicking ?? 0, data.optionSet);
+    optionPicking = null;
+    applyTactics({ ...club.tactics, options });
+  } else if (data.optionCancel !== undefined) {
+    optionPicking = null;
+    render();
+  } else if (data.optionClear !== undefined) {
+    applyTactics({ ...club.tactics, options: [] });
   } else if (data.target !== undefined) {
     const index = Number(data.target);
     const focus = club.tactics.focus ?? [];
@@ -1141,7 +1158,7 @@ export function openOffers(): void {
   club = host.club();
   half = false;
   offerClub = 0;
-  offerKind = practiceAllowed() ? 'practice' : 'friendly';
+  offerKind = 'practice';
   go('offers');
 }
 

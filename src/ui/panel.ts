@@ -310,3 +310,26 @@ export function resultScreen(view: MatchView, cards: readonly CardId[], league: 
     ${statsTab(view)}
   </div>`;
 }
+
+/** A nova lista de opções de ataque depois de escolher `name` para a opção `slot` (0 é a primeira, que fica sempre à frente). */
+export function pickOption(options: readonly string[], slot: number, name: string): string[] {
+  const next = slot === 0 ? [name, ...options.slice(1).filter(n => n !== name)] : [options[0], name].filter((n, i, all): n is string => Boolean(n) && all.indexOf(n) === i);
+  return next.slice(0, 2);
+}
+
+/** As opções de ataque: um botão para cada uma, com o jogador escolhido por baixo, e ao tocar a lista do plantel com as notas. */
+export function optionsControls(roster: readonly Player[], tactics: { options?: string[] }, picking: number | null, face: (p: Player) => string): string {
+  const options = tactics.options ?? [];
+  const label = (n: number): string => (n === 0 ? 'Primeira opção' : 'Segunda opção');
+  const grade = (value: number): string => `<b class="gr gr-${gradeOf(value)}">${gradeOf(value)}</b>`;
+  if (picking !== null) {
+    const head = `<div class="optpick head"><span></span><span></span>${ATTRIBUTE_KEYS.map(key => `<img alt="" src="${attributeIcon(key)}">`).join('')}</div>`;
+    const rows = roster.map((p, i) => `<button type="button" class="optpick${i >= 5 ? ' bench' : ''}" data-option-set="${escapeHtml(p.name)}" aria-pressed="${options[picking] === p.name}"><img alt="" src="${face(p)}"><span>${escapeHtml(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</button>`).join('');
+    return `<div class="tacrow"><span>Escolhe a ${label(picking).toLowerCase()}. No banco só conta quando entrar.</span><div class="optlist">${head}${rows}</div><button type="button" data-option-cancel="1">Cancelar</button></div>`;
+  }
+  const slot = (n: number): string => {
+    const player = roster.find(p => p.name === options[n]);
+    return `<div class="optslot"><button type="button" data-option-slot="${n}" ${n === 1 && !options[0] ? 'disabled' : ''}>${label(n)}</button>${player ? `<span class="optwho"><img alt="" src="${face(player)}">${escapeHtml(player.name)}</span>` : '<span class="optwho empty">Nenhuma</span>'}</div>`;
+  };
+  return `<div class="tacrow"><span>Opções de ataque: a equipa procura-as primeiro e monta jogadas para elas, conforme o tipo de jogador.</span><div class="optbtns">${slot(0)}${slot(1)}</div><button type="button" data-option-clear="1" ${options.length ? '' : 'disabled'}>Limpar opções</button></div>`;
+}

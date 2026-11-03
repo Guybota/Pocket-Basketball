@@ -252,6 +252,42 @@ describe('táticas', () => {
     expect(against({ pressure: 1 }).turnovers).toBeGreaterThan(against({ pressure: -1 }).turnovers);
   });
 
+  it('a primeira opção de ataque marca mais, e uma opção inválida é recusada', () => {
+    const N = 120;
+    const points = (withOption: boolean): number => {
+      let total = 0;
+      for (let i = 0; i < N; i++) {
+        const team = generateTeam(i, 'A', 55);
+        const star = team.roster[3]!.name;
+        const tactics = { pressure: 0, spacing: 0, pace: 0, ...(withOption ? { options: [star] } : {}) };
+        const s = simulateMatch(withTactics(team, tactics), generateTeam(i + 500, 'B', 55), i + 1);
+        total += s.bodies.find(b => b.team === 0 && b.player.name === star)!.line.points;
+      }
+      return total / N;
+    };
+    expect(points(true)).toBeGreaterThan(points(false) * 1.25);
+    expect(() => validateTactics({ ...NEUTRAL_TACTICS, options: ['A', 'A'] }, 'x')).toThrow();
+    expect(() => validateTactics({ ...NEUTRAL_TACTICS, options: ['A', 'B', 'C'] }, 'x')).toThrow();
+  });
+
+  it('um organizador como opção dá mais assistências', () => {
+    const N = 120;
+    const assists = (withOption: boolean): number => {
+      let total = 0;
+      for (let i = 0; i < N; i++) {
+        const base = generateTeam(i, 'A', 60);
+        const team = { ...base, roster: base.roster.map((p, j) => (j === 0 ? { ...p, onBall: 'playmaker' as const } : p)) };
+        const name = team.roster[0]!.name;
+        const s = simulateMatch(withTactics(team, { pressure: 0, spacing: 0, pace: 0, ...(withOption ? { options: [name] } : {}) }), generateTeam(i + 500, 'B', 60), i + 1);
+        total += s.bodies.find(b => b.team === 0 && b.player.name === name)!.line.assists;
+      }
+      return total / N;
+    };
+    expect(assists(true)).toBeGreaterThan(assists(false) * 1.1);
+    // E continua a poder marcar: não deixa de lançar.
+
+  });
+
   it('nenhuma tática ganha sempre', () => {
     const rate = (tactics: Tactics): number => {
       let wins = 0;

@@ -125,7 +125,6 @@ export interface ClubState {
   /** Quem já treinou esta semana: cada jogador treina uma vez entre jogos. */
   trainedThisWeek: string[];
   /** Um jogo-treino por semana, antes do jogo oficial ou numa semana livre. */
-  practicedThisWeek: boolean;
   /** As categorias dos últimos treinos de cada jogador, a mais recente primeiro. */
   /** As últimas semanas de cada jogador (época × 100 + semana): positiva se treinou, negativa se esteve lesionado. Em saves antigos há nomes de categorias, que nunca coincidem. */
   recentTraining: Record<string, (number | CardCategory)[]>;
@@ -212,8 +211,7 @@ export const salaryFor = (player: Player): number => Math.round(B.salaryBase + B
 const salariesFor = (team: Team): Record<string, number> => Object.fromEntries(team.roster.map(player => [player.name, salaryFor(player)]));
 
 /** O que um clube guarda além da liga, com os valores de quem acabou de chegar. */
-const clubExtras = (team: Team, division = 0, season = 1): Pick<ClubState, 'practicedThisWeek' | 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice' | 'joined' | 'money' | 'salaries' | 'pendingRenewals' | 'offers'> => ({
-  practicedThisWeek: false,
+const clubExtras = (team: Team, division = 0, season = 1): Pick<ClubState, 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice' | 'joined' | 'money' | 'salaries' | 'pendingRenewals' | 'offers'> => ({
   offers: [],
   joined: Object.fromEntries(team.roster.map(player => [player.name, season])),
   money: B.budgetByDivision[division]!,
@@ -329,7 +327,10 @@ export function aiTeam(club: LeagueClub): Team {
   const pick = (): number => TACTIC_CHOICES[Math.floor(next(rng) * TACTIC_CHOICES.length)]!;
   const defense = next(rng) < 0.3 ? 'zone' : 'man';
   const generated = club.players ? generateTeamFrom(club.players.map(i => PLAYER_POOL[i]!), club.seed, club.name, club.level) : generateTeam(club.seed, club.name, club.level);
-  const team: Team = { ...generated, short: club.short, tactics: { pressure: pick(), spacing: pick(), pace: pick(), defense } };
+  // Os adversários montam o ataque para os seus dois titulares mais fortes.
+  const strength = (p: Player): number => Object.values(p.attributes).reduce((sum, value) => sum + value, 0);
+  const options = [...generated.roster.slice(0, 5)].sort((a, b) => strength(b) - strength(a)).slice(0, 2).map(p => p.name);
+  const team: Team = { ...generated, short: club.short, tactics: { pressure: pick(), spacing: pick(), pace: pick(), defense, options } };
   if (teamCache.size > 60) teamCache.clear();
   teamCache.set(key, team);
   return team;
@@ -728,7 +729,7 @@ function closeWeek(club: ClubState, played: (index: number) => number): ClubStat
   for (const player of club.team.roster) {
     if ((player.injuryWeeks ?? 0) > 0) recentTraining[player.name] = [-(club.season * 100 + club.week), ...(recentTraining[player.name] ?? [])].slice(0, RECENT_TRAINING);
   }
-  const closed: ClubState = { ...settled, recentTraining, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [], practicedThisWeek: false };
+  const closed: ClubState = { ...settled, recentTraining, tactics: { ...club.tactics, focus: [] }, week: club.week + 1, trainedThisWeek: [] };
   return closed.week > SEASON_WEEKS ? afterRegularSeason(closed) : drawCups(closed);
 }
 
@@ -1003,17 +1004,13 @@ export const firstHalfOver = (s: MatchState): boolean => s.period >= 3 || (s.per
 
 /** O fim de um jogo-treino: dá menos cartas, cansa menos e não fecha a semana. Só conta para as cartas e para o cansaço. */
 export function finishPractice(club: ClubState, s: MatchState, found: readonly CardId[]): MatchResult {
-  if (club.practicedThisWeek) throw new Error('Esta semana já houve jogo-treino');
   const won = s.score[0] > s.score[1];
   const cards = [...found, ...(won ? endOfMatchCards(won, weekSeed(club)).slice(0, 1) : [])];
   const owned = { ...club.cards };
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
-  const bodies = s.bodies.filter(b => b.team === 0);
-  const roster = club.team.roster.map((player, index) => {
-    const fatigue = player.fatigue + (secondsPlayedBy(club, s)(index) / 480) * MATCH_FATIGUE * PRACTICE_FATIGUE;
-    return { ...player, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
-  });
-  return { club: { ...club, cards: owned, team: { ...club.team, roster }, practicedThisWeek: true }, cards, round: null, cup: null, series: null, confidenceDelta: 0 };
+  // O jogo-treino gasta a semana livre, tal como o particular, por isso nunca há dois na mesma semana.
+  const seconds = secondsPlayedBy(club, s);
+  return { club: closeWeek({ ...club, cards: owned }, index => seconds(index) * PRACTICE_FATIGUE), cards, round: null, cup: null, series: null, confidenceDelta: 0 };
 }
 
 /** Os adversários de jogo-treino que não são clubes: números negativos, para não se confundirem com os da liga. */
@@ -1170,7 +1167,7 @@ function validExtras(club: ClubState): boolean {
   const playoffs = club.playoffs === null || (isRecord(club.playoffs) && Array.isArray(club.playoffs.seeds) && Array.isArray(club.playoffs.rounds) && PLAYOFF_FORMATS[club.playoffs.division] !== undefined);
   const money = Number.isFinite(club.money) && isRecord(club.salaries) && isRecord(club.joined) && (club.pendingRenewals === null || (Array.isArray(club.pendingRenewals) && club.pendingRenewals.every(r => typeof r.name === 'string' && Number.isFinite(r.asked))))
     && Array.isArray(club.offers) && club.offers.every(o => isRecord(o.player) && Number.isFinite(o.fee) && Number.isFinite(o.weeksLeft));
-  return playoffs && money && Array.isArray(club.trainedThisWeek) && typeof club.practicedThisWeek === 'boolean' && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
+  return playoffs && money && Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
     && validEmblem(club.emblem) && Array.isArray(club.kits) && club.kits.length > 0 && club.kits.every(validKit)
     && club.kits.some(kit => kit.id === club.kitChoice);
 }

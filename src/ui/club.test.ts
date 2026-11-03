@@ -299,8 +299,7 @@ describe('clube', () => {
     while (!firstHalfOver(s)) step(s);
     expect(s.period).toBe(2);
     const { club: after, confidenceDelta, round } = finishPractice(c, s, ['fado']);
-    expect(after.week).toBe(c.week);
-    expect(after.practicedThisWeek).toBe(true);
+    expect(after.week).toBe(c.week + 1);
     expect(after.cards.fado).toBeGreaterThanOrEqual(1);
     expect(confidenceDelta).toBe(0);
     expect(round).toBeNull();
@@ -310,9 +309,6 @@ describe('clube', () => {
     const tiredness = (x: ClubState): number => x.team.roster.reduce((sum, p) => sum + p.fatigue, 0);
     expect(tiredness(after)).toBeGreaterThan(tiredness(c));
     expect(tiredness(after) - tiredness(c)).toBeLessThan(tiredness(playWeek(c)) - tiredness(c) * 0.5);
-    expect(() => finishPractice(after, s, [])).toThrow();
-    // O jogo oficial da mesma semana fecha-a e volta a permitir um jogo-treino.
-    expect(playWeek(after).practicedThisWeek).toBe(false);
   });
 
   it('o nome do clube é à escolha, com o nome curto e as letras do emblema a acompanhar', () => {
@@ -459,8 +455,9 @@ describe('época', () => {
 
   it('a Vontade conta para quem joga fora, seja que equipa for', () => {
     const c = newClub(17);
-    const away = (visitor: 0 | 1): number[] => simulateMatch(clubTeam(c), opponentOf(c), 3, [true, false], visitor).score;
-    expect(away(0)).not.toEqual(away(1));
+    // Um só jogo pode dar o mesmo resultado por acaso: em vários, a Vontade tem de mudar algum.
+    const away = (visitor: 0 | 1, seed: number): number[] => simulateMatch(clubTeam(c), opponentOf(c), seed, [true, false], visitor).score;
+    expect([3, 4, 5, 6].some(seed => JSON.stringify(away(0, seed)) !== JSON.stringify(away(1, seed)))).toBe(true);
     expect(simulateMatch(clubTeam(c), opponentOf(c), 3, [true, false], 0).visitor).toBe(0);
   });
 

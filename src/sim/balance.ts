@@ -57,6 +57,28 @@ export const BALANCE = {
   // Livre e à distância, ninguém fica a segurar a bola.
   openPressure: 0.25,
   // Em cada posse, a equipa escolhe a jogada pelo foco do ataque: [livre, pick-and-roll, bloqueios sem bola].
+  // Com opções de ataque escolhidas, esta parte das posses é uma jogada para uma delas, e destas esta parte é para a primeira.
+  optionPlayChance: 0.55,
+  optionFirstShare: 0.65,
+  // Peso extra para a opção lançar ou penetrar, e para lhe passarem a bola.
+  firstOptionFactor: 1.6,
+  secondOptionFactor: 1.3,
+  // Na jogada montada para ele, os colegas procuram-no ainda mais, e no isolamento penetra mais.
+  playPassFactor: 2.5,
+  isoDriveFactor: 1.6,
+  // Um organizador como opção cria para os outros: os passes dele pesam mais, e o passe ao grande que rola ainda mais.
+  creatorPassFactor: 1.6,
+  rollPassFactor: 2,
+  // Quem acabou de receber do organizador lança e ataca mais: é assim que nascem as assistências dele.
+  fedShotFactor: 1.8,
+  fedSeconds: 2,
+  // Em posição de defesa, perto de quem marca, anda-se de lado e mais devagar; longe dele, corre-se para lá.
+  stanceRange: 2.5,
+  stanceSpeed: 0.88,
+  stanceChaseRange: 1,
+  // A partir desta altura é um grande: joga de costas, ou abre para o arco se lançar bem.
+  bigHeightCm: 203,
+  popShooting: 60,
   playsInside: [0.3, 0.6, 0.1],
   playsMixed: [0.5, 0.25, 0.25],
   playsOutside: [0.3, 0.1, 0.6],
@@ -204,6 +226,11 @@ export const BALANCE = {
   crossoverChance: 0.85,
   crossoverMinPressure: 0.3,
   crossoverStunSeconds: 2.2,
+  // Caminho livre: nenhum defensor a esta distância da linha até ao cesto. Vai-se direito a ele, e lança-se ao chegar.
+  openLaneWidth: 1.5,
+  openLaneMaxAhead: 1,
+  openLaneFinish: 1.6,
+  openLaneCheckSeconds: 0.15,
   // Quem é mais alto é mais lento: 20 cm valem 0,3 m/s.
   speedLossPerCm: 0.015,
   // Quedas: fica no chão e levanta-se, sem poder fazer nada entretanto.
