@@ -950,6 +950,11 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .town-bar .game { color: var(--gold); }
 
+.town-bar #skipWeekBtn { flex: none; white-space: nowrap; }
+
+/* No telemóvel, o marcador é mais pequeno para não tapar os bancos e a bancada. */
+#game:not(.landscape) .scorebug { zoom: 0.7; }
+
 .town-bar #skipWeekBtn { min-height: 26px; padding: 0 8px; font: 400 15px/1 var(--ui-sm); background: var(--gold); color: var(--ink); border: 2px solid var(--ink); box-shadow: 1px 1px 0 var(--ink); }
 
 .chip { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: center; min-height: 32px; padding: 2px 4px; font: 400 14px/1 var(--small); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: 1px 1px 0 var(--ink); }
@@ -1054,3 +1059,11 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .fedstyle { flex: none; font: 400 15px/1.1 var(--small); }
 .fedstyle b { font-weight: 400; color: var(--ball); }
 .fedsquad { flex: none; }
+
+/* O ecrã do adversário: a ficha do clube por baixo da prancheta, e os números da época nas linhas do plantel. */
+.fedsheet .board { flex: none; }
+.rivalview { flex: none; }
+.thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px); }
+.statcols .num { text-align: right; font: 400 15px/1 var(--small); }
+.rivalview button { color: var(--ink); background: var(--paper-2); }
+.rivalview button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }

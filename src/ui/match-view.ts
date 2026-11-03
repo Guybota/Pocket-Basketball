@@ -1,3 +1,4 @@
+import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
@@ -167,9 +168,11 @@ export class MatchView {
     const crowdKit = this.crowdTeam === 0 ? 'blue' : 'cream';
     const looks: Look[] = [];
     for (let i = 0; i < 12; i++) {
-      const fan: Player = { name: `Adepto ${i * 7919}`, attributes: { shooting: 50, speed: 50, stamina: 50, technique: 50, strength: 40 + ((i * 37) % 40), jumping: 50, willpower: 50 }, heightCm: 168 + ((i * 53) % 24), weightKg: 66 + ((i * 29) % 30), moves: [], offBall: 'balanced', onBall: 'balanced', potential: 50, fatigue: 0 };
+      const fan: Player = { name: `Adepto ${i * 7919}`, attributes: { shooting: 50, speed: 50, stamina: 50, technique: 50, strength: 40 + ((i * 37) % 40), jumping: 50, willpower: 50 }, heightCm: 168 + ((i * 53) % 24), moves: [], offBall: 'balanced', onBall: 'balanced', potential: 50, fatigue: 0 };
       // Metade veste a camisola do clube; os outros, roupa de rua. Ninguém usa fita na cabeça, que é coisa de jogador.
       const look: Look = i % 2 === 1 ? lookOf(fan, i % 4 === 1 ? 'fan' : 'fan2') : { ...lookOf(fan, crowdKit), custom: this.crowdTeam === 0 ? homeKit : awayKit };
+      // Nas bancadas há de tudo: magros, fortes e gordos.
+      look.build = buildOf(fan.heightCm, 66 + ((i * 29) % 30), fan.attributes.strength);
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
@@ -406,6 +409,10 @@ export class MatchView {
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
           callbacks.sound('bigCheer');
           callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
+          break;
+        case 'knockdown':
+          callbacks.sound('bump');
+          this.excitedUntil = s.tick + 15;
           break;
         case 'turnover':
           callbacks.sound('whistle');
@@ -666,7 +673,14 @@ export class MatchView {
       if (s.tick < risesAt) return { pose: 'defend', withBall: false };
       if (s.tick < risesAt + tip.total * (1 - TIP_RISE) * 2) return { pose: 'block', withBall: false };
     }
-    if (b.stunnedUntil > s.tick) return { pose: 'stumble', withBall: false };
+    if (b.fallenUntil > s.tick) {
+      // Tropeça, fica no chão, e os últimos instantes são a levantar-se.
+      const since = s.tick - b.fallenFrom;
+      const left = b.fallenUntil - s.tick;
+      const pose: PoseName = since < 2 ? 'stumble' : since < 4 ? 'fallA' : since < 6 ? 'fallB' : left > 10 ? 'fallen' : left > 5 ? 'getup1' : 'getup2';
+      return { pose, withBall: false };
+    }
+    if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
     if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
     if (s.phase === 'freeThrow') {
       const shooting = s.freeThrow?.shooter === b && s.timer < 12;
@@ -679,6 +693,7 @@ export class MatchView {
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
     if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
+    if (s.screen?.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
     return { pose: b.team === s.offense ? 'idle' : 'defend', withBall: false };
@@ -815,8 +830,10 @@ export class MatchView {
       const motion = this.motionOf(b);
       const look = this.looks.get(b)!;
       const { pose, withBall } = this.poseOf(b, motion.moving);
-      const flip = motion.flip;
-      const back = motion.back && pose.startsWith('run');
+      const falling = b.fallenUntil > s.tick;
+      // A cabeça fica para o lado da queda; quem cai de barriga para baixo mostra as costas.
+      const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : motion.flip;
+      const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
       return { x: sx, y: sy, lift: this.tipLift(b, alpha), pose, withBall, look, flip, back };
     });
     const { referee } = this;

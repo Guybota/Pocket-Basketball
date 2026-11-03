@@ -43,6 +43,7 @@ export function narrate(e: MatchEvent, s: MatchState): string | null {
     case 'rebound': return `${team}: ressalto ${e.offensive ? 'ofensivo' : 'defensivo'} de ${e.player}`;
     case 'steal': return `${team}: ${e.player} rouba a bola a ${e.other}`;
     case 'turnover': return `${team}: ${e.player} perde a bola`;
+    case 'knockdown': return `${team}: ${e.player} vai ao chão`;
     case 'foul': return `${team}: falta de ${e.player}`;
     case 'freeThrowMade': return `${team}: ${e.player} marca o lance livre`;
     case 'freeThrowMissed': return `${team}: ${e.player} falha o lance livre`;

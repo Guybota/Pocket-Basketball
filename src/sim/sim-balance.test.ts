@@ -98,23 +98,15 @@ describe('critérios da Fase 0', () => {
       for (const player of roster) {
         expect(player.heightCm).toBeGreaterThanOrEqual(165);
         expect(player.heightCm).toBeLessThanOrEqual(225);
-        expect(player.weightKg / ((player.heightCm / 100) * (player.heightCm / 100))).toBeGreaterThan(17);
-        expect(player.weightKg / ((player.heightCm / 100) * (player.heightCm / 100))).toBeLessThan(36);
       }
     }
     expect(postes).toBeGreaterThan(bases + 100 * 20);
   });
 
   it('a altura ajuda sem decidir tudo', () => {
-    const rate = bodyWinRate(10, 0, 500);
+    const rate = bodyWinRate(10, 500);
     expect(rate).toBeGreaterThan(0.53);
     expect(rate).toBeLessThan(0.75);
-  });
-
-  it('o peso sem físico não compensa por si só', () => {
-    const rate = bodyWinRate(0, 15, 500);
-    expect(rate).toBeGreaterThan(0.3);
-    expect(rate).toBeLessThan(0.62);
   });
 
   it('uma equipa mais alta ganha mais ressaltos', () => {
@@ -122,7 +114,7 @@ describe('critérios da Fase 0', () => {
     let base = 0;
     for (let i = 0; i < 100; i++) {
       const team = generateTeam(i, 'A', 55);
-      const s = simulateMatch(withBody(team, 12, 0), team, i + 1);
+      const s = simulateMatch(withBody(team, 12), team, i + 1);
       tall += s.lines[0].offensiveRebounds + s.lines[0].defensiveRebounds;
       base += s.lines[1].offensiveRebounds + s.lines[1].defensiveRebounds;
     }

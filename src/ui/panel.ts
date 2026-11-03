@@ -1,7 +1,6 @@
 import type { Body, MatchState, TeamLine } from '../sim/match.ts';
 import type { CardId } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/types.ts';
-import { BUILD_NAMES } from './art/body.ts';
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
@@ -26,9 +25,8 @@ export interface LiveLeague {
 
 /** Altura e peso de 1 a 3 estrelas, pelos terços dos jogadores gerados: até 192 cm e 87 kg é uma estrela, a partir de 203 cm e 105 kg são três. */
 export const heightStars = (cm: number): number => (cm < 193 ? 1 : cm < 203 ? 2 : 3);
-export const weightStars = (kg: number): number => (kg < 88 ? 1 : kg < 105 ? 2 : 3);
 const stars = (count: number, label: string): string => `<span class="stars" title="${label}" aria-label="${label} ${count} de 3">${[1, 2, 3].map(n => `<i class="${n <= count ? 'on' : ''}"></i>`).join('')}</span>`;
-export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${stars(heightStars(p.heightCm), 'Altura')}<span>Peso</span>${stars(weightStars(p.weightKg), 'Peso')}</span>`;
+export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${stars(heightStars(p.heightCm), 'Altura')}</span>`;
 
 export function energyColor(energy: number): string {
   if (energy > 0.55) return 'var(--good)';
@@ -173,7 +171,7 @@ export function playerSheet(player: Player, look: Look, team: 0 | 1, number: num
       <img class="portrait team-${team}" alt="Retrato de ${escapeHtml(player.name)}" src="${portraitImage(look)}">
       <div class="card-side">
         <span class="card-club">${escapeHtml(clubName)}</span>
-        <span class="card-body-info">${bodyStars(player)} · ${BUILD_NAMES[look.build]}</span>
+        <span class="card-body-info">${bodyStars(player)}</span>
         ${side}
       </div>
     </div>

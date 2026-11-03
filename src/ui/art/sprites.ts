@@ -1,5 +1,5 @@
 import type { Player } from '../../sim/types.ts';
-import { buildOf, pixelsForHeight } from './body.ts';
+import { pixelsForHeight } from './body.ts';
 import { kitKey, shadeOf, usesSecond, type ClubKit } from './kit.ts';
 import { INK } from './palette.ts';
 
@@ -47,6 +47,18 @@ const POSES = {
   dribRun3: (L: number): PoseShape => ({ a: [-1, 4], b: [4, 2], f: [1, L], g: [-1, L - 1], ball: [7, L - 6] }),
   crossover: (L: number): PoseShape => ({ a: [-4, 3], b: [3, 4], f: [-4, L], g: [4, L], ball: [-5, L - 3] }),
   stumble: (L: number): PoseShape => ({ a: [-5, 0], b: [4, 5], f: [-1, L], g: [5, L - 1] }),
+  // Os tornozelos partidos: de pernas trocadas, a tentar não cair, dum lado para o outro.
+  ankle0: (L: number): PoseShape => ({ a: [-6, -1], b: [5, 2], f: [-5, L], g: [2, L - 1] }),
+  ankle1: (L: number): PoseShape => ({ a: [-3, 3], b: [6, -1], f: [-2, L - 1], g: [5, L] }),
+  // O bloqueio: pés bem abertos e braços junto ao peito.
+  screen: (L: number): PoseShape => ({ a: [-2, 1], b: [2, 1], f: [-4, L], g: [4, L] }),
+  // A queda: duas fases a ir abaixo e o corpo no chão, de braços abertos e uma perna dobrada. Estas três desenham-se inclinadas (ver LEAN).
+  fallA: (L: number): PoseShape => ({ a: [-5, -3], b: [5, -2], f: [-2, L], g: [3, L - 2] }),
+  fallB: (L: number): PoseShape => ({ a: [-6, -5], b: [6, -4], f: [-1, L - 1], g: [4, L - 3] }),
+  fallen: (L: number): PoseShape => ({ a: [-6, -8], b: [7, 1], f: [-3, L], g: [3, L - 3] }),
+  // A levantar-se: primeiro sentado de mãos no chão, depois de joelhos.
+  getup1: (L: number): PoseShape => ({ a: [-5, 5], b: [5, 5], f: [-5, 3], g: [5, 3], jump: 3 - L }),
+  getup2: (L: number): PoseShape => ({ a: [-4, 3], b: [4, 1], f: [-3, 5], g: [3, 5], jump: Math.min(0, 5 - L) }),
   gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
   dunk: (L: number): PoseShape => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], jump: 10, ball: [6, -19] }),
@@ -105,7 +117,8 @@ export function lookOf(player: Player, kit: KitName): Look {
     hair: (hash >>> 3) % HAIRS.length,
     style: (hash >>> 6) % 5,
     ...pixelsForHeight(player.heightCm),
-    build: buildOf(player.heightCm, player.weightKg, player.attributes.strength),
+    // Os jogadores têm todos o mesmo corpo; os adeptos e os outros bonecos escolhem o seu.
+    build: 'athletic',
     face: hash >>> 9,
   };
 }
@@ -284,12 +297,40 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   return canvas;
 }
 
+/** As poses da queda e quanto o corpo já está inclinado, em graus, com a cabeça para a direita. */
+const LEAN: Partial<Record<PoseName, number>> = { fallA: 30, fallB: 60, fallen: 90 };
+
+/** Inclina um boneco sobre os pés, sem suavizar, para continuar a ser pixel art. */
+function leaned(source: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = SPRITE_W + SPRITE_H;
+  canvas.height = canvas.width;
+  const g = canvas.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.translate(canvas.width >> 1, canvas.width >> 1);
+  g.rotate((degrees * Math.PI) / 180);
+  g.drawImage(source, -ANCHOR_X, -ANCHOR_Y);
+  return canvas;
+}
+
 export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean): void {
   const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}`;
+  const lean = LEAN[pose];
   let sprite = cache.get(key);
   if (!sprite) {
-    sprite = buildSprite(pose, look, back, withBall);
+    const built = buildSprite(pose, look, back, withBall);
+    sprite = lean === undefined ? built : leaned(built, lean);
     cache.set(key, sprite);
+  }
+  if (lean !== undefined) {
+    // À medida que cai, o corpo fica centrado onde estava e encostado ao chão.
+    const half = sprite.width >> 1;
+    g.save();
+    g.translate(x | 0, (y | 0) - Math.round((lean / 90) * 3));
+    if (flip) g.scale(-1, 1);
+    g.drawImage(sprite, -half - Math.round((lean / 90) * 12), -half);
+    g.restore();
+    return;
   }
   if (flip) {
     g.save();

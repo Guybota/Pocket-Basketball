@@ -1,3 +1,4 @@
+import type { Team } from './types.ts';
 // Parte dos testes da simulação. Estão divididos em ficheiros para correrem em paralelo.
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -33,10 +34,8 @@ describe('colisões e encontrões', () => {
     });
     const a = s.court[0][0]!;
     const b = s.court[1][0]!;
-    a.player = { ...a.player, attributes: { ...a.player.attributes, strength: strongerFirst }, weightKg: 95, heightCm: 195 };
-    b.player = { ...b.player, attributes: { ...b.player.attributes, strength: strongerSecond }, weightKg: 95, heightCm: 195 };
-    a.bmi = 25;
-    b.bmi = 25;
+    a.player = { ...a.player, attributes: { ...a.player.attributes, strength: strongerFirst }, heightCm: 195 };
+    b.player = { ...b.player, attributes: { ...b.player.attributes, strength: strongerSecond }, heightCm: 195 };
     a.radius = 0.41;
     b.radius = 0.41;
     a.fatigue = 0;
@@ -64,16 +63,32 @@ describe('colisões e encontrões', () => {
     expect(Math.abs(a.x - 14)).toBeLessThan(Math.abs(b.x - 14.2) / 2);
   });
 
-  it('o físico, o peso e a altura contam para empurrar, e o cansaço tira força', () => {
+  it('o físico e a altura contam para empurrar, e o cansaço tira força', () => {
     const { a } = pair(60, 60);
     const base = pushPower(a);
-    a.player = { ...a.player, weightKg: 115 };
-    expect(pushPower(a)).toBeGreaterThan(base);
-    a.player = { ...a.player, weightKg: 95, heightCm: 210 };
+    a.player = { ...a.player, heightCm: 210 };
     expect(pushPower(a)).toBeGreaterThan(base);
     a.player = { ...a.player, heightCm: 195 };
     a.fatigue = 1;
     expect(pushPower(a)).toBeLessThan(base);
+  });
+
+  it('quanto mais forte o adversário, mais vezes se vai ao chão, e toda a gente se levanta', () => {
+    const withStrength = (team: Team, strength: number): Team => ({ ...team, roster: team.roster.map(p => ({ ...p, attributes: { ...p.attributes, strength } })) });
+    const falls = (strength: number): number => {
+      let total = 0;
+      for (let i = 0; i < 40; i++) {
+        const a = withStrength(generateTeam(i, 'A', 60), strength);
+        const b = withStrength(generateTeam(i + 500, 'B', 60), 50);
+        const s = simulateMatch(a, b, i + 1);
+        total += s.events.filter(e => e.type === 'knockdown' && e.team === 1).length;
+        for (const body of s.bodies) expect(body.fallenUntil).toBeLessThanOrEqual(s.tick + 40);
+      }
+      return total;
+    };
+    const weak = falls(30);
+    expect(weak).toBeGreaterThan(0);
+    expect(falls(95)).toBeGreaterThan(weak * 1.5);
   });
 
   it('em jogo, quase nunca há dois jogadores sobrepostos', () => {
