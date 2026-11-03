@@ -635,6 +635,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .town-note .say b { display: inline; margin-right: 4px; }
 
 .town-note .citydetail { text-align: left; }
+.tower-actions { display: flex; gap: 6px; pointer-events: auto; }
+.tower-actions button.quiet { align-self: auto; }
 
 .town-chip {
   position: absolute;
@@ -1084,3 +1086,5 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .optpick.head img { width: 16px; height: 16px; }
 .optpick img { width: 24px; height: 24px; image-rendering: pixelated; }
 .optpick.bench { opacity: 0.8; }
+
+button.update-ready { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 1000; width: auto; padding: 6px 16px; font-size: 16px; }

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { matchHash } from '../sim/hash.ts';
 import { cancelSubstitution, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
@@ -18,6 +19,7 @@ import { clubIdentity, kitAgainst } from './art/identity.ts';
 import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { clockText } from './narrate.ts';
+import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
 import { portraitImage } from './art/portrait.ts';
@@ -285,6 +287,54 @@ canvas.addEventListener('click', event => {
   if (place) document.getElementById(chips[place])?.click();
 });
 
+/** Guarda o clube num ficheiro. No telemóvel abre a folha de partilha, para o ficheiro poder ir para Ficheiros ou para outro aparelho. */
+function exportClub(): void {
+  const current = club!;
+  const name = `pocket-basketball-${current.team.short.replace(/[^\w-]/g, '') || 'clube'}-epoca-${current.season}.json`;
+  const file = new File([JSON.stringify(current)], name, { type: 'application/json' });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    navigator.share({ files: [file] }).catch(() => {});
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+/** Lê um clube de um ficheiro exportado. Passa pelas mesmas verificações e conversões que o clube guardado. */
+function importClub(): void {
+  // No iPad, o ficheiro escolhido só chega ao jogo se o campo estiver na página. Sem filtro de tipo, porque o iOS
+  // às vezes deixa os .json a cinzento; o parseClub recusa o que não for um clube.
+  document.getElementById('importFile')?.remove();
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.id = 'importFile';
+  input.hidden = true;
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+    const loaded = parseClub(await file.text().catch(() => null));
+    if (!loaded) {
+      alert('Este ficheiro não tem um clube que o jogo consiga ler.');
+      return;
+    }
+    const question = club
+      ? `Substituir ${club.team.name}, época ${club.season}, por ${loaded.team.name}, época ${loaded.season}? O clube atual perde-se, a não ser que o tenhas exportado.`
+      : saveUnreadable ? `O clube guardado que não se consegue ler vai ser substituído por ${loaded.team.name}. Continuar?` : null;
+    if (question && !confirm(question)) return;
+    club = loaded;
+    saveUnreadable = false;
+    saveClub();
+    applyClubColors();
+    showClub();
+  });
+  input.click();
+}
+
 function placeTownUi(): void {
   const current = club!;
   townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveFailed);
@@ -293,7 +343,13 @@ function placeTownUi(): void {
     if (box) box.textContent = text;
   };
   element('arenaChip').addEventListener('click', openArena);
-  element('towerChip').addEventListener('click', () => note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página.' : TOWER_NOTE));
+  element('towerChip').addEventListener('click', () => {
+    note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
+    if (document.getElementById('exportBtn')) return;
+    document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button></div>');
+    element('exportBtn').addEventListener('click', exportClub);
+    element('importBtn').addEventListener('click', importClub);
+  });
   element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));
   element('officeBtn').addEventListener('click', () => openMenu('office'));
@@ -378,21 +434,9 @@ function newSeed(): number {
 
 const ballLogo = (): string => {
   const c = document.createElement('canvas');
-  c.width = 9;
-  c.height = 9;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#1b2230';
-  g.fillRect(2, 0, 5, 9);
-  g.fillRect(0, 2, 9, 5);
-  g.fillRect(1, 1, 7, 7);
-  g.fillStyle = '#e8622a';
-  g.fillRect(2, 1, 5, 7);
-  g.fillRect(1, 2, 7, 5);
-  g.fillStyle = '#a93f14';
-  g.fillRect(4, 1, 1, 7);
-  g.fillRect(1, 4, 7, 1);
-  g.fillStyle = '#ffb27a';
-  g.fillRect(2, 2, 1, 1);
+  c.width = BALL_SIZE;
+  c.height = BALL_SIZE;
+  drawBall(c.getContext('2d')!);
   return c.toDataURL();
 };
 
@@ -405,6 +449,7 @@ function showNewClub(): void {
     ${saveUnreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
     ${club ? `<button type="button" class="primary" id="continueBtn">Continuar · ${escapeHtml(club.team.short)}</button>` : ''}
     <button type="button" class="${club ? 'quiet' : 'primary'}" id="newClubBtn">Criar clube</button>
+    <button type="button" class="quiet" id="importBtn">Importar clube</button>
     <p class="hint">${club ? `Época ${club.season}, semana ${club.week}.` : `Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.`}</p>
   </div>`;
   document.getElementById('continueBtn')?.addEventListener('click', () => {
@@ -413,6 +458,7 @@ function showNewClub(): void {
   });
   clearTimeout(demoTimer);
   demoTimer = window.setTimeout(startDemo, DEMO_AFTER_MS);
+  element('importBtn').addEventListener('click', importClub);
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
     // Os troféus são do treinador, por isso acompanham-no para o clube novo.
@@ -1187,3 +1233,30 @@ document.addEventListener('pointerdown', event => {
   }, 450);
 });
 for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);
+
+// Modo offline: só no jogo publicado, porque no `npm run dev` a cache atrapalhava.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(() => navigator.serviceWorker.ready).then(async () => {
+    // O que a página já carregou antes do service worker existir também tem de ficar guardado.
+    const cache = await caches.open('pocket-basketball');
+    const urls = [location.href.split('?')[0]!, ...performance.getEntriesByType('resource').map(entry => entry.name)];
+    await Promise.all(urls.map(url => fetch(url, { mode: 'no-cors' }).then(response => cache.put(url, response)).catch(() => {})));
+  }).catch(() => {});
+}
+
+// Ao voltar à app, que o iPad muitas vezes só retoma sem recarregar, vê se o jogo publicado mudou.
+// Não recarrega sozinho, para não cortar um jogo a meio: mostra um botão.
+if (import.meta.env.PROD) {
+  const running = document.querySelector('script[type="module"][src]')?.getAttribute('src');
+  const checkForUpdate = async (): Promise<void> => {
+    if (!running || !navigator.onLine || document.getElementById('updateBtn')) return;
+    const html = await fetch(location.pathname, { cache: 'no-cache' }).then(response => (response.ok ? response.text() : '')).catch(() => '');
+    const published = html.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
+    if (!published || published === running) return;
+    document.body.insertAdjacentHTML('beforeend', '<button type="button" class="primary update-ready" id="updateBtn">Há uma versão nova · Atualizar</button>');
+    element('updateBtn').addEventListener('click', () => location.reload());
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void checkForUpdate();
+  });
+}
