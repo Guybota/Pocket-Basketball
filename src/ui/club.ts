@@ -1197,7 +1197,6 @@ export function parseClub(text: string | null): ClubState | null {
     let parsed = JSON.parse(text) as ClubState;
     if (!Number.isInteger(parsed.seed) || !Number.isInteger(parsed.week) || parsed.week < 1) return null;
     if (!Number.isInteger(parsed.division) || parsed.division < 0 || parsed.division >= DIVISIONS.length) return null;
-    validateTeam(parsed.team);
     if (typeof parsed.team.name !== 'string' || !parsed.team.name || parsed.team.name.length > CLUB_NAME_MAX) return null;
     validateTactics(parsed.tactics, parsed.team.name);
     if (typeof parsed.cards !== 'object' || parsed.cards === null) return null;
@@ -1205,7 +1204,12 @@ export function parseClub(text: string | null): ClubState | null {
       if (!(card in CARDS) || !Number.isInteger(count) || (count as number) < 0) return null;
     }
     if (!Array.isArray(parsed.knownCombos)) return null;
-    if (parsed.version === 1) return migrateV1(parsed);
+    // A equipa só se verifica depois de convertida: um save antigo tem campos que a versão atual já não aceita.
+    if (parsed.version === 1) {
+      const migrated = migrateV1(parsed);
+      validateTeam(migrated.team);
+      return migrated;
+    }
     if (parsed.version === 2) parsed = migrateV2(parsed);
     if (parsed.version === 3) parsed = migrateV3(parsed);
     if (parsed.version === 4) parsed = migrateV4(parsed);
@@ -1217,6 +1221,7 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 10) parsed = migrateV10(parsed);
     if (parsed.version === 11) parsed = migrateV11(parsed);
     if (parsed.version === 12) parsed = migrateV12(parsed);
+    validateTeam(parsed.team);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
