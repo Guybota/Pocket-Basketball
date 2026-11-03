@@ -179,6 +179,9 @@ body {
 #game.landscape.result-open #panel { position: fixed; inset: 0; margin: auto; height: fit-content; border: 3px solid var(--ink); box-shadow: 0 0 0 4px rgb(0 0 0 / 0.35); z-index: 5; }
 /* Por trás do resultado não há campo: só o fundo da página. */
 #game.result-open .screen { display: none; }
+/* Na janela ao centro, a lista do resultado tem a altura do que mostra e só desliza acima do máximo: com `flex: 1` numa caixa
+   da altura do conteúdo, o Safari dava-lhe altura zero e só se viam os botões. */
+#game.landscape.result-open #panel .result { flex: 0 1 auto; }
 #game.landscape.result-open { background: transparent; }
 
 /* Na cidade não há painel: a cidade é o menu. */
@@ -1028,6 +1031,10 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .symbols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .editor input { width: 90px; min-height: 36px; padding: 2px 6px; font: 400 24px/1 var(--ui); letter-spacing: .1em; color: var(--ink); background: #fff; border: 2px solid var(--ink); text-transform: uppercase; }
 .editor input:focus-visible { outline: 3px solid var(--gold); }
+/* Criar clube: o nome e, ao lado, a abreviatura de três letras. */
+.editor .namerow { grid-template-columns: 1fr 74px; gap: 6px; align-items: end; }
+.editor .namerow > div { display: grid; gap: 3px; }
+.editor .namerow #clubShort { width: 100%; }
 .choices { flex: none; display: flex; flex-wrap: wrap; gap: 3px; }
 .choices button { flex: 1 1 auto; min-height: 32px; padding: 1px 5px; font: 400 15px/1 var(--small); box-shadow: 1px 1px 0 var(--ink); }
 .swatches { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }

@@ -88,19 +88,18 @@ export interface TownDress {
   festive: boolean;
 }
 
-/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve ou chuva em certas semanas. */
-export type Weather = { tint: string | null; snow: boolean; rain: boolean; night: boolean };
+/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve em certas semanas do inverno. Não chove. */
+export type Weather = { tint: string | null; snow: boolean; night: boolean };
 export function weatherFor(week: number): Weather {
   // 29 semanas, de setembro a março: a luz muda com os meses, e o tempo com a semana.
   const month = Math.floor((week - 1) / 4);
-  const rain = week % 7 === 3;
-  if (month <= 0) return { tint: null, snow: false, rain, night: false };
-  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, rain, night: false };
-  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, rain, night: false };
-  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, rain: false, night: true };
-  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, rain: false, night: false };
-  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, rain: false, night: false };
-  return { tint: 'rgba(255,230,160,0.1)', snow: false, rain, night: false };
+  if (month <= 0) return { tint: null, snow: false, night: false };
+  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, night: false };
+  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, night: false };
+  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, night: true };
+  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, night: false };
+  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, night: false };
+  return { tint: 'rgba(255,230,160,0.1)', snow: false, night: false };
 }
 
 function buildTown(width: number, height: number, division: number, dress: TownDress): Town {
@@ -543,13 +542,12 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       g.fillRect(x + 2, y - 6, 2, 2);
     }
   }
-  if (weather.snow || weather.rain) {
-    g.fillStyle = weather.snow ? 'rgba(255,255,255,0.9)' : 'rgba(200,220,240,0.7)';
-    const speed = weather.snow ? 22 : 180;
+  if (weather.snow) {
+    g.fillStyle = 'rgba(255,255,255,0.9)';
     for (let n = 0; n < 60; n++) {
       const x = ((n * 97) % width + Math.sin(now / 900 + n) * 6 + width) % width;
-      const y = ((n * 61) % height + (now / 1000) * speed + n * 3) % height;
-      g.fillRect(Math.round(x), Math.round(y), weather.snow ? 2 : 1, weather.snow ? 2 : 4);
+      const y = ((n * 61) % height + (now / 1000) * 22 + n * 3) % height;
+      g.fillRect(Math.round(x), Math.round(y), 2, 2);
     }
   }
 }

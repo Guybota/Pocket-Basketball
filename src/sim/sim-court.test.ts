@@ -67,6 +67,8 @@ describe('ressaltos', () => {
     let close = 0;
     let dunks = 0;
     let atRim = 0;
+    let layups = 0;
+    let layupsAtRim = 0;
     for (let seed = 1; seed <= 20; seed++) {
       const s = createMatch(home, away, seed);
       let seen = 0;
@@ -79,10 +81,16 @@ describe('ressaltos', () => {
           if (e.type === 'rebound') {
             rebounds++;
             if (Math.hypot(b.x - s.ball.x, b.y - s.ball.y) <= 0.9) close++;
-          } else if (s.events.slice(0, seen).reverse().find(x => x.type === 'shot')?.dunk) {
-            dunks++;
+          } else {
+            const shot = s.events.slice(0, seen).reverse().find(x => x.type === 'shot');
             const hoopX = (e.team === 0) !== e.period >= 3 ? 26.425 : 1.575;
-            if (Math.hypot(b.x - hoopX, b.y) <= 0.9) atRim++;
+            if (shot?.dunk) {
+              dunks++;
+              if (Math.hypot(b.x - hoopX, b.y) <= 0.9) atRim++;
+            } else if (shot?.layup) {
+              layups++;
+              if (Math.hypot(b.x - hoopX, b.y) <= 1.2) layupsAtRim++;
+            }
           }
         }
       }
@@ -91,6 +99,9 @@ describe('ressaltos', () => {
     expect(close / rebounds).toBeGreaterThan(0.95);
     expect(dunks).toBeGreaterThan(100);
     expect(atRim / dunks).toBeGreaterThan(0.9);
+    // O lay-up também se acaba junto ao aro, com a bola levada na mão.
+    expect(layups).toBeGreaterThan(50);
+    expect(layupsAtRim / layups).toBeGreaterThan(0.9);
   });
 
   it('a bola nunca sai para fora do campo depois de um desarme', () => {

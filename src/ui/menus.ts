@@ -18,7 +18,7 @@ import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.t
 import { drawFlagScene } from './art/flag.ts';
 import { drawMatchPoster, drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
-import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
+import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, setClubShort, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
@@ -463,7 +463,7 @@ function createScreen(): Rendered {
       <div class="createplayers">${club.team.roster.slice(0, 3).map(p => `<img alt="" src="${spriteImage(lookFor(p))}">`).join('')}</div>
     </div></div>`),
     bottom: `<div class="editor" style="flex:1;min-height:0">
-        <div><label for="clubName">Nome do clube</label><input id="clubName" maxlength="${CLUB_NAME_MAX}" autocomplete="off" spellcheck="false" style="width:100%;text-transform:none;letter-spacing:0" value="${esc(club.team.name)}"></div>
+        <div class="namerow"><div><label for="clubName">Nome do clube</label><input id="clubName" maxlength="${CLUB_NAME_MAX}" autocomplete="off" spellcheck="false" style="width:100%;text-transform:none;letter-spacing:0" value="${esc(club.team.name)}"></div><div><label for="clubShort">Abreviatura</label><input id="clubShort" maxlength="3" autocomplete="off" spellcheck="false" value="${esc(club.team.short)}"></div></div>
         <div class="menu tight" style="padding:0;background:none;flex:none">
           <button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button>
           <button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button>
@@ -646,7 +646,6 @@ function emblemScreen(): Rendered {
         <div><span>Símbolo</span><div class="symbols">${symbols}</div></div>
         <div><span>Cores</span><div class="chips4 three">${parts.map(([id, label]) => chip('data-em-part', id, label, emblem[id], emblemPart === id)).join('')}</div>${swatches('data-em-color', emblem[emblemPart])}</div>
         <div><span>Contorno</span>${choices('data-em-border', EMBLEM_BORDER_LIST, emblem.border ?? 'ink')}</div>
-        <div><label for="emblemLetters">Letras, até três</label><input id="emblemLetters" maxlength="3" autocomplete="off" value="${esc(emblem.letters)}"></div>
       </div>
       ${bar(`<button type="button" class="back" data-go="${emblemBack}">‹ Voltar</button>`)}`,
   };
@@ -1132,16 +1131,15 @@ function onInput(event: Event): void {
     commit(renameClub(club, input.value));
     element('createName').textContent = club.team.name;
     element('createCrest').innerHTML = ownCrest(96);
+    // Enquanto não se escolhe outra, a abreviatura acompanha o nome.
+    const short = document.getElementById('clubShort') as HTMLInputElement | null;
+    if (short && short !== document.activeElement) short.value = club.team.short;
     return;
   }
-  if (input.id !== 'emblemLetters') return;
+  if (input.id !== 'clubShort') return;
   input.value = emblemLetters(input.value);
-  commit({ ...club, emblem: { ...club.emblem, letters: input.value } });
-  // A bandeira redesenha-se sozinha a cada imagem; as miniaturas da grelha é que precisam das letras novas.
-  document.querySelectorAll<HTMLImageElement>('.designs img').forEach(img => {
-    const [shape, pattern] = (img.parentElement as HTMLElement).dataset.emDesign!.split(':') as [Emblem['shape'], Emblem['pattern']];
-    img.src = emblemImage({ ...club.emblem, shape, pattern });
-  });
+  commit(setClubShort(club, input.value));
+  element('createCrest').innerHTML = ownCrest(96);
 }
 
 export function initMenus(menuHost: MenuHost): void {

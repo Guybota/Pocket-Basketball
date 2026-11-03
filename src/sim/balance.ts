@@ -180,6 +180,12 @@ export const BALANCE = {
   blockedTravel: 0.12,
   // Afundanço: de perto e com impulsão, leva-se a bola até ao aro.
   dunkMaxDistance: 1.7,
+  // Um lançamento perto do cesto que não é afundanço é um lay-up: o jogador leva a bola até ao aro e larga-a por cima.
+  layupMaxDistance: 2.4,
+  layupArc: 1,
+  // Um lay-up completamente livre, sem defensor perto nem ninguém na linha até ao cesto, entra quase sempre, seja quem for:
+  // é assim que um extremo ou um base também marcam de perto, e não só o poste.
+  openLayupChance: 0.92,
   // Os 3 segundos, como na NBA, mas sem apito: com a bola controlada no meio-campo atacante, quem está na área há este tempo
   // sai dela (atacante sem bola) ou cola-se a um atacante a um braço (defensor); quem tem a bola lança ou passa.
   laneLeaveSeconds: 2,

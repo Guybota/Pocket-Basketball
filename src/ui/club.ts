@@ -7,7 +7,7 @@ import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
-import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
+import { DEFAULT_KITS, defaultEmblem, emblemLetters, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
@@ -419,15 +419,23 @@ export const leaguePosition = (club: ClubState): number => leagueTable(club).fin
 export function renameClub(club: ClubState, name: string): ClubState {
   const trimmed = name.trim().replace(/\s+/g, ' ').slice(0, CLUB_NAME_MAX);
   if (!trimmed) return club;
-  const short = shortName(trimmed);
-  const emblem = club.emblem.letters === club.team.short ? { ...club.emblem, letters: short } : club.emblem;
-  return {
-    ...club,
-    team: { ...club.team, name: trimmed, short },
-    clubs: club.clubs.map((entry, id) => (id === PLAYER_CLUB ? { ...entry, name: trimmed, short } : entry)),
-    emblem,
-  };
+  // A abreviatura acompanha o nome enquanto for a que o nome dá; escolhida à mão, fica.
+  const short = club.team.short === shortName(club.team.name) ? shortName(trimmed) : club.team.short;
+  return withShort({ ...club, team: { ...club.team, name: trimmed }, clubs: club.clubs.map((entry, id) => (id === PLAYER_CLUB ? { ...entry, name: trimmed } : entry)) }, short);
 }
+
+/** A abreviatura do clube, escolhida ao lado do nome: vai para o marcador, as listas e as letras do emblema. */
+export function setClubShort(club: ClubState, value: string): ClubState {
+  const short = emblemLetters(value);
+  return short ? withShort(club, short) : club;
+}
+
+const withShort = (club: ClubState, short: string): ClubState => ({
+  ...club,
+  team: { ...club.team, short },
+  clubs: club.clubs.map((entry, id) => (id === PLAYER_CLUB ? { ...entry, short } : entry)),
+  emblem: { ...club.emblem, letters: short },
+});
 
 /** Há quantas épocas o jogador está no clube. */
 export const yearsAtClub = (club: ClubState, name: string): number => club.season - (club.joined[name] ?? 1) + 1;
@@ -1230,6 +1238,8 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.clubs.some((c: LeagueClub) => c.past !== undefined && (!Array.isArray(c.past) || c.past.some(e => !DIVISIONS[e.division] || !Number.isInteger(e.position))))) return null;
     if (!leagueIds(parsed).includes(PLAYER_CLUB) || !Array.isArray(parsed.rounds) || !validRounds(parsed) || !validCups(parsed)) return null;
     if (typeof parsed.stats !== 'object' || parsed.stats === null || !Array.isArray(parsed.history)) return null;
+    // As letras do emblema são sempre a abreviatura do clube: um save antigo com outras letras passa a mostrá-la.
+    if (emblemLetters(parsed.team.short) === parsed.team.short) parsed = { ...parsed, emblem: { ...parsed.emblem, letters: parsed.team.short } };
     return parsed;
   } catch {
     return null;

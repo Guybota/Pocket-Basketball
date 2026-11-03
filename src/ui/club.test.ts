@@ -10,7 +10,7 @@ import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -298,7 +298,7 @@ describe('clube', () => {
 
   it('o emblema e os equipamentos ficam guardados', () => {
     const c = club();
-    const edited: ClubState = { ...c, emblem: { ...c.emblem, shape: 'circle', letters: 'XY7' }, kits: c.kits.map(kit => ({ ...kit, pattern: 'stripes' })), kitChoice: 'gold' };
+    const edited: ClubState = { ...setClubShort(c, 'XY7'), emblem: { ...setClubShort(c, 'XY7').emblem, shape: 'circle' }, kits: c.kits.map(kit => ({ ...kit, pattern: 'stripes' })), kitChoice: 'gold' };
     const read = parseClub(JSON.stringify(edited))!;
     expect(read.emblem.letters).toBe('XY7');
     expect(activeKit(read).id).toBe('gold');
@@ -340,8 +340,12 @@ describe('clube', () => {
     expect(opponentOf(named).name).not.toBe('Dragões do Minho');
     expect(renameClub(c, '   ')).toBe(c);
     expect(renameClub(c, 'a'.repeat(40)).team.name).toHaveLength(24);
-    const custom = renameClub({ ...c, emblem: { ...c.emblem, letters: 'XYZ' } }, 'Outro');
-    expect(custom.emblem.letters).toBe('XYZ');
+    // Uma abreviatura escolhida à mão fica, mesmo que o nome mude, e vai para o emblema e para a liga.
+    const custom = renameClub(setClubShort(c, 'xy7'), 'Outro');
+    expect(custom.team.short).toBe('XY7');
+    expect(custom.emblem.letters).toBe('XY7');
+    expect(custom.clubs[PLAYER_CLUB]!.short).toBe('XY7');
+    expect(setClubShort(c, '  ')).toBe(c);
     expect(parseClub(JSON.stringify(named))).toEqual(named);
     expect(parseClub(JSON.stringify({ ...c, team: { ...c.team, name: 'a'.repeat(40) } }))).toBeNull();
   });

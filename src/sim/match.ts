@@ -11,7 +11,8 @@ import {
   LANE_HALF_V,
   inLane,
   DT,
-  FREE_THROW_SPOTS,
+  FREE_THROW_DEFENSE_SPOTS,
+  FREE_THROW_OFFENSE_SPOTS,
   LOW_POST_SPOTS,
   SPOTS,
   distance,
@@ -173,6 +174,8 @@ export interface MatchEvent {
   move?: MoveId;
   /** O lançamento é um afundanço garantido pelo movimento especial. */
   dunk?: boolean;
+  /** Um lay-up: perto do cesto, em corrida, a largar a bola por cima do aro. */
+  layup?: boolean;
   /** Numa troca: quanto tempo quem sai leva a chegar ao banco, à sua velocidade. */
   ticks?: number;
 }
@@ -206,6 +209,7 @@ interface ShotFlight {
   fouledBy: Body | null;
   blockedBy: Body | null;
   dunk: boolean;
+  layup: boolean;
 }
 
 /** Decisões do treinador. Ficam registadas: semente, equipas e comandos reproduzem o jogo exatamente. */
@@ -413,7 +417,9 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
     clutch: s.period >= 4 && s.clock <= seconds(B.clutchSeconds),
     away: b.team === s.visitor,
   });
-  return { chance: probability, points: three ? 3 : 2, distance: dist };
+  // Um lay-up livre entra quase sempre, para qualquer jogador: a probabilidade não desce abaixo de `openLayupChance`.
+  const openLayup = dist <= B.layupMaxDistance && pressure < B.openShotPressure && s.posting !== b && hasOpenLane(s, b);
+  return { chance: openLayup ? Math.max(probability, B.openLayupChance) : probability, points: three ? 3 : 2, distance: dist };
 }
 
 function newPossession(s: MatchState, team: TeamIndex): void {
@@ -851,7 +857,9 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
   if (odds.points === 3) line.threeAttempts++;
   else line.twoAttempts++;
   const dunk = unstoppable || (odds.distance <= B.dunkMaxDistance && offenseAttrs.jumping >= B.dunkMinJumping);
-  emit(s, 'shot', shooter.team, { player: shooter.player.name, points: odds.points, distance: odds.distance, ...(dunk ? { dunk: true } : {}) });
+  // Perto do cesto sem afundar, e sem ser de costas no poste, é um lay-up.
+  const layup = !dunk && odds.distance <= B.layupMaxDistance && s.posting !== shooter;
+  emit(s, 'shot', shooter.team, { player: shooter.player.name, points: odds.points, distance: odds.distance, ...(dunk ? { dunk: true } : {}), ...(layup ? { layup: true } : {}) });
 
   let blockedBy: Body | null = null;
   if (!unstoppable && pressure >= B.blockPressureMin && odds.distance <= B.blockMaxDistance) {
@@ -878,6 +886,7 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
     fouledBy,
     blockedBy,
     dunk,
+    layup,
   };
   s.holder = null;
   s.phase = 'shot';
@@ -1354,8 +1363,8 @@ function updateTargets(s: MatchState): void {
         b.targetY = v * 0.5;
       }
     }
-    // Quem afunda corre com a bola até ao aro, em vez de a atirar de onde está.
-    if (flight?.kind === 'shot' && flight.dunk && !flight.blockedBy && b === flight.shooter) {
+    // Quem afunda, ou faz um lay-up, corre com a bola até ao aro, em vez de a atirar de onde está.
+    if (flight?.kind === 'shot' && (flight.dunk || flight.layup) && !flight.blockedBy && b === flight.shooter) {
       b.targetX = fromU(s, offense, 1.9);
       b.targetY = 0;
     }
@@ -1601,7 +1610,7 @@ function movePlayers(s: MatchState): void {
       // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
       const stance = man !== undefined && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
       const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
-      const dunking = s.flight?.kind === 'shot' && s.flight.dunk && !s.flight.blockedBy && s.flight.shooter === b;
+      const dunking = s.flight?.kind === 'shot' && (s.flight.dunk || s.flight.layup) && !s.flight.blockedBy && s.flight.shooter === b;
       const stepLength = Math.min(dist, maxSpeed(b) * slowed * (dunking ? B.dunkBurst : 1) * DT);
       b.stepX = (dx / dist) * stepLength;
       b.stepY = (dy / dist) * stepLength;
@@ -1717,8 +1726,8 @@ function updateFatigue(s: MatchState): void {
 
 function placeShotBall(s: MatchState, f: ShotFlight, t: number): void {
   const hoopX = fromU(s, f.shooter.team, 1.575);
-  // Quem afunda leva a bola consigo até ao aro.
-  const carried = f.dunk && !f.blockedBy;
+  // Quem afunda, ou faz um lay-up, leva a bola consigo até ao aro.
+  const carried = (f.dunk || f.layup) && !f.blockedBy;
   const fromX = carried ? f.shooter.x : f.fromX;
   const fromY = carried ? f.shooter.y : f.fromY;
   const dist = distance(fromX, fromY, hoopX, 0) || 1;
@@ -1732,7 +1741,7 @@ function placeShotBall(s: MatchState, f: ShotFlight, t: number): void {
     const miss = f.made ? 0 : B.rimMissOffset * (f.total % 2 === 0 ? 1 : -1);
     const aimX = hoopX + ((fromX - hoopX) / dist) * miss;
     const aimY = (fromY / dist) * miss;
-    const arc = Math.max(B.shotMinArc, carried ? B.dunkArc : B.shotArcBase + dist * B.shotArcPerMeter);
+    const arc = Math.max(B.shotMinArc, carried ? (f.dunk ? B.dunkArc : B.layupArc) : B.shotArcBase + dist * B.shotArcPerMeter);
     s.ball.x = fromX + (aimX - fromX) * t;
     s.ball.y = fromY + (aimY - fromY) * t;
     s.ball.z = 2.2 + (B.rimHeight - 2.2) * t + arc * t * (1 - t);
@@ -1847,9 +1856,15 @@ function updateFreeThrowTargets(s: MatchState): void {
   const team = shooter.team;
   shooter.targetX = fromU(s, team, 5.9);
   shooter.targetY = 0;
-  const others = [...s.court[other(team)], ...s.court[team].filter(b => b !== shooter)];
-  others.forEach((b, i) => {
-    const [u, v] = FREE_THROW_SPOTS[i]!;
+  // A defesa fica com os lugares de baixo e um terceiro; o ataque com os do meio; os grandes de cada equipa vão para o garrafão.
+  const bySize = (list: readonly Body[]): Body[] => [...list].sort((a, b) => b.slot - a.slot);
+  bySize(s.court[other(team)]).forEach((b, i) => {
+    const [u, v] = FREE_THROW_DEFENSE_SPOTS[i]!;
+    b.targetX = fromU(s, team, u);
+    b.targetY = v;
+  });
+  bySize(s.court[team].filter(b => b !== shooter)).forEach((b, i) => {
+    const [u, v] = FREE_THROW_OFFENSE_SPOTS[i]!;
     b.targetX = fromU(s, team, u);
     b.targetY = v;
   });

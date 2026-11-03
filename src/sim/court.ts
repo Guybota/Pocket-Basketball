@@ -45,10 +45,10 @@ export function segmentDistance(px: number, py: number, x0: number, y0: number, 
 }
 
 /** Lugares no lance livre, em (u, v): primeiro os defensores, junto ao cesto. */
-export const FREE_THROW_SPOTS: readonly (readonly [number, number])[] = [
-  [1.9, 2.9], [1.9, -2.9], [3.1, 2.9], [3.1, -2.9], [4.3, 2.9],
-  [4.3, -2.9], [7.8, 0], [8.2, 3], [8.2, -3],
-];
+// Nos lances livres, como na FIBA: a defesa nos dois lugares mais perto do cesto e num terceiro lugar, o ataque nos dois
+// lugares do meio, e os outros quatro atrás da linha de 3, fora da linha de lance livre prolongada.
+export const FREE_THROW_DEFENSE_SPOTS: readonly (readonly [number, number])[] = [[1.9, 2.9], [1.9, -2.9], [4.3, 2.9], [8.2, 3.2], [8.2, -3.2]];
+export const FREE_THROW_OFFENSE_SPOTS: readonly (readonly [number, number])[] = [[3.1, 2.9], [3.1, -2.9], [8.8, 0], [7.6, 5.4]];
 
 /** Pontos de quem espera aberto na linha de 3. `v` é multiplicado pelo lado do jogador. */
 export const ARC_SPOTS: readonly (readonly [number, number])[] = [[1.3, 6.5], [5, 6.2], [7.8, 3.2]];

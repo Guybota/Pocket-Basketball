@@ -79,16 +79,39 @@ const POSES = {
   ftDip: (L: number): PoseShape => ({ a: [2, 4], b: [4, 4], f: [-3, L - 1], g: [3, L - 1], jump: -2, ball: [5, -2] }),
   gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
+  // O lay-up, em três tempos: o passo de chamada com a bola ao peito e o joelho a subir, o impulso a uma perna com a bola
+  // a passar o ombro, e lá em cima o braço esticado a largá-la, com o joelho de fora levantado.
+  layupStep: (L: number): PoseShape => ({ a: [2, -2], b: [4, -3], f: [-2, L - 4], g: [2, L], jump: 1 }),
+  layupRise: (L: number): PoseShape => ({ a: [-2, 0], b: [4, -10], f: [-1, L - 5], g: [1, L - 1], jump: 5 }),
+  layupTop: (L: number): PoseShape => ({ a: [-3, 2], b: [3, -11], f: [-2, L - 5], g: [1, L - 1], jump: 8 }),
   dunk: (L: number): PoseShape => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], jump: 10, ball: [6, -19] }),
   // A abafar: os dois braços bem acima da cabeça, à vista.
-  block: (L: number): PoseShape => ({ a: [-3, -13], b: [3, -13], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
+  block: (L: number): PoseShape => ({ a: [-3, -10], b: [3, -10], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
   // Na bola ao alto: um braço esticado bem acima da cabeça para tocar a bola, o outro dobrado.
-  tip: (L: number): PoseShape => ({ a: [-4, -2], b: [2, -15], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
+  tip: (L: number): PoseShape => ({ a: [-4, -2], b: [2, -11], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
   // Em defesa: agachado, braços abertos para os lados e um pouco para cima; a deslizar de lado, os pés afastam-se e juntam-se.
   defend: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-4, L - 1], g: [4, L - 1], jump: -1 }),
   slide0: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),
   slide1: (L: number): PoseShape => ({ a: [-7, -2], b: [7, -3], f: [-2, L - 1], g: [2, L - 1], jump: -1 }),
   pass: (L: number): PoseShape => ({ a: [4, 0], b: [5, 1], f: [-2, L], g: [3, L], ball: [8, -6] }),
+  // O passe picado, de braços para baixo; o lob, de braços no ar; e quem o recebe salta de braços esticados.
+  bouncePass: (L: number): PoseShape => ({ a: [5, 5], b: [6, 6], f: [-2, L], g: [4, L - 1] }),
+  lob: (L: number): PoseShape => ({ a: [-2, -9], b: [4, -10], f: [-2, L], g: [3, L], jump: 1 }),
+  reach: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 2], g: [2, L - 2], jump: 8 }),
+  // O salto ao ressalto: a mesma pose, mas a altura vem da vista, que o faz subir e descer em arco.
+  leap: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 2], g: [2, L - 2], jump: 1 }),
+  // O step-back: recua a driblar, inclinado para trás, e lança a cair para trás.
+  stepBack: (L: number): PoseShape => ({ a: [-5, 2], b: [5, 3], f: [-5, L], g: [3, L - 1], jump: 1, ball: [8, L - 3] }),
+  fadeaway: (L: number): PoseShape => ({ a: [-4, -8], b: [2, -10], f: [-6, L - 1], g: [-2, L - 2], jump: 5, ball: [3, -18] }),
+  // O gancho: de lado, o braço de fora a passar por cima da cabeça.
+  hook: (L: number): PoseShape => ({ a: [-6, -5], b: [6, -11], f: [-3, L - 1], g: [3, L - 2], jump: 4, ball: [8, -17] }),
+  // O roubo: o braço estendido a cortar a bola; o desarme: a palmada, com o braço todo esticado; o ressalto: as duas mãos a agarrar.
+  snatch: (L: number): PoseShape => ({ a: [-2, 3], b: [8, -2], f: [-3, L], g: [4, L - 1], jump: 1, ball: [10, -2] }),
+  swat: (L: number): PoseShape => ({ a: [-3, 4], b: [5, -11], f: [-2, L - 2], g: [2, L - 1], jump: 9 }),
+  grab: (L: number): PoseShape => ({ a: [-3, -10], b: [3, -10], f: [-2, L - 1], g: [2, L - 1], jump: 1, ball: [0, -17] }),
+  // O encontrão, de ombro e braços para a frente; e quem deixa a bola escapar, a tentar apanhá-la.
+  shove: (L: number): PoseShape => ({ a: [7, 0], b: [8, -2], f: [-5, L], g: [2, L - 1] }),
+  fumble: (L: number): PoseShape => ({ a: [6, 5], b: [8, 3], f: [-3, L], g: [3, L - 1] }),
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),

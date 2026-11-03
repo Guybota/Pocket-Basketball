@@ -27,11 +27,12 @@ describe('mapa da cidade', () => {
     expect(townHit(360, 574, 1, 0.02, 0.02)).toBeNull();
   });
 
-  it('a luz e o tempo mudam com a semana: setembro limpo, dezembro de noite, janeiro com neve', () => {
+  it('a luz e o tempo mudam com a semana: setembro limpo, dezembro de noite, janeiro com neve e nunca chuva', () => {
     expect(weatherFor(1)).toMatchObject({ tint: null, night: false, snow: false });
     expect(weatherFor(14).night).toBe(true);
     expect(weatherFor(18).snow).toBe(true);
-    expect(weatherFor(3).rain).toBe(true);
+    // Não chove: o dono do projeto tirou a chuva a 3 de novembro de 2026.
+    expect(weatherFor(3)).not.toHaveProperty('rain');
   });
 
   it('as casas não ficam umas em cima das outras', () => {

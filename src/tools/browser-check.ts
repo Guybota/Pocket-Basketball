@@ -177,6 +177,7 @@ try {
   check('O jogo de demonstração pára ao sair do título', await coach.evaluate(() => window.__pocket.state().demo === null));
   await coach.waitForSelector('#startClubBtn');
   await coach.locator('#clubName').fill('Dragões do Minho');
+  check('A abreviatura acompanha o nome do clube', (await coach.locator('#clubShort').inputValue()) === 'MIN');
   await coach.click('[data-go="emblem"]');
   await coach.click('[data-em-design="pennant:plain"]');
   await coach.click('.back');
@@ -268,8 +269,7 @@ try {
   await coach.click('[data-go="emblem"]');
   await coach.click('[data-em-design="circle:plain"]');
   await coach.click('[data-em-symbol="star"]');
-  await coach.locator('#emblemLetters').fill('xy7');
-  check('As letras do emblema ficam em maiúsculas', (await coach.locator('#emblemLetters').inputValue()) === 'XY7');
+  check('O editor do emblema já não tem letras: são a abreviatura do clube', (await coach.locator('#emblemLetters').count()) === 0);
   await coach.screenshot({ path: `${OUT}/emblema.png` });
   await coach.click('.back');
   await coach.click('[data-act="editKit"]');
@@ -304,7 +304,7 @@ try {
   await coach.waitForSelector('#arenaChip');
   check('O emblema e o equipamento ficam guardados', await coach.evaluate(() => {
     const c = window.__pocket.club()!;
-    return c.emblem.letters === 'XY7' && c.emblem.shape === 'circle' && c.kits[0]!.pattern === 'stripes' && c.kits[0]!.second === '#f2c230';
+    return c.emblem.letters === 'MIN' && c.emblem.shape === 'circle' && c.kits[0]!.pattern === 'stripes' && c.kits[0]!.second === '#f2c230';
   }));
   await coach.click('#trainBtn');
   await coach.click('[data-go="tactics"]');
