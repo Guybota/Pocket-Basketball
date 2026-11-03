@@ -193,48 +193,63 @@ function setCanvasSize(width: number, height: number, cssWidth: number, cssHeigh
 }
 
 /** Na vertical, os dois ecrãs empilham-se. Na horizontal, o campo fica ao lado do painel. */
+// A altura da janela sem o teclado do telemóvel. Enquanto se escreve num campo de texto, o teclado tira metade da altura:
+// medir aí encolhia o jogo todo, e ficava encolhido depois de o teclado fechar, porque nem sempre vem um aviso de mudança.
+let stableHeight = innerHeight;
+let stableWidth = innerWidth;
+const typing = (): boolean => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+function windowHeight(): number {
+  // Rodar o telemóvel muda a largura: aí a altura guardada já não vale, mesmo com o teclado aberto.
+  if (!typing() || innerWidth !== stableWidth) {
+    stableHeight = innerHeight;
+    stableWidth = innerWidth;
+  }
+  return Math.max(innerHeight, stableHeight);
+}
+
 function fit(): void {
+  const viewHeight = windowHeight();
   const dpr = devicePixelRatio || 1;
-  const landscape = innerWidth / innerHeight >= LANDSCAPE_MIN_RATIO;
+  const landscape = innerWidth / viewHeight >= LANDSCAPE_MIN_RATIO;
   game.classList.toggle('landscape', landscape);
   // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
   game.classList.toggle('result-open', resultOpen && stage === 'match');
   const centred = landscape && resultOpen && stage === 'match';
   if (landscape) {
     // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
-    const ui = innerHeight < 600 ? Math.max(0.7, innerHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 1000) / 4, Math.floor((innerHeight * 4) / 540) / 4));
+    const ui = viewHeight < 600 ? Math.max(0.7, viewHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 1000) / 4, Math.floor((viewHeight * 4) / 540) / 4));
     // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
     const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
-    const stageHeight = stage === 'match' ? Math.min(innerHeight, stageWidth / MATCH_MIN_RATIO) : innerHeight;
+    const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
     const scale = stage === 'town' || stage === 'title'
-      ? Math.max(1, Math.floor((innerHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
+      ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
       : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = Math.ceil(stageWidth / scale);
     const height = Math.ceil(stageHeight / scale);
     setCanvasSize(width, height, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
-    const bar = Math.max(0, (innerHeight - height * scale) / 2);
+    const bar = Math.max(0, (viewHeight - height * scale) / 2);
     canvas.style.marginTop = `${bar}px`;
     hud.style.top = `${bar}px`;
     hud.style.bottom = `${bar}px`;
     game.style.zoom = '';
     game.style.height = '';
     screen_.style.width = `${stageWidth}px`;
-    screen_.style.height = `${innerHeight}px`;
+    screen_.style.height = `${viewHeight}px`;
     panel.style.zoom = String(ui);
     panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : LANDSCAPE_PANEL_WIDTH}px`;
-    panel.style.height = centred ? '' : `${innerHeight / ui}px`;
-    panel.style.maxHeight = centred ? `${(innerHeight * 0.94) / ui}px` : '';
+    panel.style.height = centred ? '' : `${viewHeight / ui}px`;
+    panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
     screen_.style.setProperty('--hud-zoom', String(ui));
-    const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, innerHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
-    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(innerHeight / topZoom), topZoom);
+    const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
+    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom);
   } else {
-    const available = Math.min(innerWidth / 360, innerHeight / 640);
+    const available = Math.min(innerWidth / 360, viewHeight / 640);
     const scale = Math.max(1, Math.floor(available * dpr)) / dpr;
     const finalScale = Math.min(scale, Math.max(available, 0.5));
-    const gameHeight = Math.max(640, innerHeight / finalScale);
+    const gameHeight = Math.max(640, viewHeight / finalScale);
     // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
     const menuHeight = menuPanel > 0 ? Math.max(MENU_STAGE_HEIGHT, Math.floor(gameHeight - menuPanel)) : MENU_STAGE_HEIGHT;
     // No título, a cidade fica com o que o logótipo e os botões não usam.
@@ -1091,6 +1106,10 @@ initMenus({
   sound: name => audio.play(name),
 });
 addEventListener('resize', fit);
+// No telemóvel, a área visível muda sem aviso de 'resize' quando o teclado abre ou fecha; e ao sair de um campo de texto
+// volta-se a medir depois de o teclado ter fechado.
+window.visualViewport?.addEventListener('resize', fit);
+addEventListener('focusout', () => window.setTimeout(fit, 400));
 fit();
 // O clube de ensaio começa já na primeira jornada, a não ser que a morada diga a semana.
 club = testSeed !== null ? { ...newClub(testSeed, testDivision), week: paramInt('semana') ?? PRESEASON_WEEKS + 1 } : loadClub();

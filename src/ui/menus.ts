@@ -16,7 +16,7 @@ import { leagueIcon } from './art/leagues.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { drawFlagScene } from './art/flag.ts';
-import { drawMatchPoster, kitImage } from './art/wardrobe.ts';
+import { drawMatchPoster, drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
 import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
@@ -600,14 +600,10 @@ const swatches = (attr: string, current: string): string => `<div class="swatche
 const choices = (attr: string, list: readonly (readonly [string, string])[], current: string): string => `<div class="choices">${list.map(([id, label]) => `<button type="button" ${attr}="${id}" aria-pressed="${current === id}">${label}</button>`).join('')}</div>`;
 
 /** O roupeiro: o equipamento escolhido em destaque, com os nossos vestidos e o adversário da semana ao lado. */
+/** O roupeiro do editor, como no original: os quatro equipamentos nos cabides, o que se edita em destaque, e o adversário da semana ao lado. */
 function paintWardrobe(): void {
-  // No editor, o cartaz mostra o equipamento a editar ao lado do que o adversário da semana veste contra ele.
-  const canvas = document.getElementById('poster') as HTMLCanvasElement | null;
-  if (!canvas) return;
-  const rival = currentRival();
-  const kit = kitById(kitEditing);
-  drawMatchPoster(canvas, kit.name, { kit, emblem: emblemCanvas(club.emblem), roster: club.team.roster },
-    { kit: rivalKitFor(club, rival.name, kit), emblem: emblemCanvas(clubIdentity(rival.name).emblem), roster: rival.roster });
+  const canvas = document.getElementById('wardrobe') as HTMLCanvasElement | null;
+  if (canvas) drawWardrobe(canvas, club.kits, kitEditing, club.team.roster, currentRival());
 }
 
 const chip = (attr: string, id: string, label: string, color: string, on: boolean): string => `<button type="button" class="chip" ${attr}="${id}" aria-pressed="${on}"><i style="background:${color}"></i>${label}</button>`;
@@ -617,7 +613,7 @@ function kitEditScreen(): Rendered {
   const kit = kitById(kitEditing);
   const parts: readonly (readonly [typeof kitPart, string])[] = [['jersey', 'Camisola'], ['second', 'Segunda'], ['shorts', 'Calções'], ['trim', 'Pormenores']];
   return {
-    top: fullCanvas('poster'),
+    top: fullCanvas('wardrobe'),
     bottom: `${choices('data-kit-edit', club.kits.map(k => [k.id, esc(k.name)] as const), kitEditing)}
       <div class="scroll editor">
         <div><span>Peça e cor</span><div class="chips4">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
@@ -898,7 +894,7 @@ const pattern = (): string => {
 function render(): void {
   const { top: top_, panel } = host;
   const scroll = panel.querySelector('.scroll')?.scrollTop ?? 0;
-  host.tallTop(screen === 'kit' ? 450 : screen === 'kitEdit' ? 360 : screen === 'create' ? 290 : screen === 'pre' ? 470 : 0);
+  host.tallTop(screen === 'kit' ? 450 : screen === 'kitEdit' ? 450 : screen === 'create' ? 290 : screen === 'pre' ? 470 : 0);
   const { top, bottom, after } = SCREENS[screen]();
   top_.innerHTML = top;
   top_.style.backgroundImage = `url(${pattern()})`;

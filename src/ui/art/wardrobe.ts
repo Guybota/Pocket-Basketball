@@ -1,5 +1,6 @@
-// Os equipamentos desenhados: a camisola de alças e os calções estendidos, e o cartaz do jogo com os das duas equipas.
-import type { Player } from '../../sim/types.ts';
+// Os equipamentos desenhados: a camisola de alças e os calções estendidos; o roupeiro do editor, com os quatro pendurados
+// em cabides como no original; e o cartaz do jogo com os das duas equipas.
+import type { Player, Team } from '../../sim/types.ts';
 import { text } from './font.ts';
 import { kitKey, usesSecond, type ClubKit } from './kit.ts';
 import { INK } from './palette.ts';
@@ -53,6 +54,57 @@ export function kitImage(kit: ClubKit): string {
     kitImages.set(key, url);
   }
   return url;
+}
+
+/** O roupeiro: cada equipamento no seu cabide, o escolhido em destaque, com os nossos bonecos por baixo e os do adversário ao lado. */
+export function drawWardrobe(canvas: HTMLCanvasElement, kits: readonly ClubKit[], selectedId: string, roster: readonly Player[], rival: Team): void {
+  const g = canvas.getContext('2d')!;
+  const { width: W, height: H } = canvas;
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#9c7a48';
+  g.fillRect(0, 0, W, H);
+  const top = 22;
+  const panelW = Math.floor((W - 12) / kits.length);
+  const scale = Math.max(2, Math.min(Math.floor((panelW - 10) / SHIRT_W), Math.floor((H - top - 54) / KIT_H)));
+  kits.forEach((kit, n) => {
+    const x = 6 + n * panelW;
+    const selected = kit.id === selectedId;
+    g.fillStyle = selected ? '#e8eef0' : '#c9d1d6';
+    g.fillRect(x + 2, top, panelW - 4, H - top - 4);
+    g.fillStyle = INK;
+    g.fillRect(x, top - 2, 2, H - top);
+    // O varão e o cabide.
+    g.fillStyle = '#6b4b24';
+    g.fillRect(x + 2, top + 4, panelW - 4, 2);
+    const cx = x + Math.floor(panelW / 2);
+    const shirtTop = top + 16;
+    g.fillStyle = INK;
+    g.fillRect(cx, top + 6, 1, 4);
+    g.fillRect(cx - 1, top + 10, 3, 2);
+    g.fillRect(cx - scale * 7, shirtTop - 2, scale * 14, 2);
+    g.fillRect(cx - scale * 7, shirtTop - 5, 2, 4);
+    g.fillRect(cx + scale * 7 - 2, shirtTop - 5, 2, 4);
+    drawKitFlat(g, kit, cx - scale * (SHIRT_W / 2), shirtTop, scale);
+    if (selected) {
+      g.strokeStyle = '#f2c230';
+      g.lineWidth = 3;
+      g.strokeRect(x + 3.5, top + 1.5, panelW - 7, H - top - 7);
+    }
+  });
+  g.fillStyle = INK;
+  g.fillRect(6 + kits.length * panelW, top - 2, 2, H - top);
+  g.fillRect(6, top - 2, W - 12, 2);
+  // Por baixo do escolhido, três dos nossos já vestidos. No canto, o adversário desta semana.
+  const chosen = kits.find(kit => kit.id === selectedId) ?? kits[0]!;
+  const index = Math.max(0, kits.indexOf(chosen));
+  const panelX = 6 + index * panelW;
+  g.fillStyle = '#1b2230';
+  g.fillRect(panelX + 6, H - 46, panelW - 12, 42);
+  roster.slice(0, 3).forEach((p, i) => drawSprite(g, i === 1 ? 'run0' : 'idle', { ...lookOf(p, 'blue'), custom: chosen }, panelX + Math.floor(panelW / 2) + (i - 1) * Math.min(22, Math.floor(panelW / 4)), H - 8, i === 2, false, false));
+  g.fillStyle = '#1b2230';
+  g.fillRect(0, 0, Math.min(W, 118), 20);
+  text(g, 'ADVERSARIO', 4, 3, '#f2c230', 2);
+  rival.roster.slice(0, 2).forEach((p, i) => drawSprite(g, i === 0 ? 'idle' : 'defend', lookOf(p, 'cream'), 96 + i * 14, 18, i === 1, false, false));
 }
 
 export interface PosterSide {
