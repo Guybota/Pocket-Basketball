@@ -23,6 +23,13 @@ export function iconFrom(rows: readonly string[], color: string, back: string | 
   return canvas.toDataURL();
 }
 
+// A estrela das opções de ataque, com contorno: dourada para a primeira, prateada para a segunda.
+const OPTION_STAR = ['....x....', '...x#x...', '...x#x...', 'xxxx#xxxx', 'x#######x', '.x#####x.', '..x###x..', '.x##x##x.', '.xx...xx.'];
+const optionStars: string[] = [];
+export function optionStar(rank: 0 | 1): string {
+  return (optionStars[rank] ??= iconFrom(OPTION_STAR, rank === 0 ? '#f2c230' : '#c9d1db', null, 9));
+}
+
 const ATTRIBUTE_PIXELS: Record<keyof Attributes, readonly [readonly string[], string, string]> = {
   shooting: [['..oo.###', '.oooo#.#', '.oooo###', '..oo..#.', '.....#..', '...##...', '.##.....'], '#ffffff', '#7246c4'],
   speed: [['#..#....', '##.##...', '.##.##..', '..##.##.', '.##.##..', '##.##...', '#..#....'], '#ffffff', '#2f9b6a'],

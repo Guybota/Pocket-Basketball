@@ -68,10 +68,22 @@ const POSES = {
   // A levantar-se: primeiro sentado de mãos no chão, depois de joelhos.
   getup1: (L: number): PoseShape => ({ a: [-5, 5], b: [5, 5], f: [-5, 3], g: [5, 3], jump: 3 - L }),
   getup2: (L: number): PoseShape => ({ a: [-4, 3], b: [4, 1], f: [-3, 5], g: [3, 5], jump: Math.min(0, 5 - L) }),
+  // A bola segura com as duas mãos à frente da barriga: na reposição e no lance livre; a rodar a bola, e a correr com ela na mão.
+  hold: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [-2, L], g: [2, L], ball: [5, -3] }),
+  holdSpin: (L: number): PoseShape => ({ a: [3, 1], b: [5, 3], f: [-2, L], g: [2, L], ball: [5, -5] }),
+  holdRun0: (L: number): PoseShape => ({ a: [2, 2], b: [4, 2], f: [-3, L - 1], g: [3, L], jump: 1, ball: [5, -4] }),
+  holdRun1: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [-1, L], g: [1, L - 1], ball: [5, -3] }),
+  holdRun2: (L: number): PoseShape => ({ a: [2, 2], b: [4, 2], f: [3, L - 1], g: [-3, L], jump: 1, ball: [5, -4] }),
+  holdRun3: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [1, L], g: [-1, L - 1], ball: [5, -3] }),
+  // Antes do lance livre: fletir os joelhos com a bola em baixo, e depois subir.
+  ftDip: (L: number): PoseShape => ({ a: [2, 4], b: [4, 4], f: [-3, L - 1], g: [3, L - 1], jump: -2, ball: [5, -2] }),
   gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
   dunk: (L: number): PoseShape => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], jump: 10, ball: [6, -19] }),
-  block: (L: number): PoseShape => ({ a: [-1, -8], b: [2, -8], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
+  // A abafar: os dois braços bem acima da cabeça, à vista.
+  block: (L: number): PoseShape => ({ a: [-3, -13], b: [3, -13], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
+  // Na bola ao alto: um braço esticado bem acima da cabeça para tocar a bola, o outro dobrado.
+  tip: (L: number): PoseShape => ({ a: [-4, -2], b: [2, -15], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
   // Em defesa: agachado, braços abertos para os lados e um pouco para cima; a deslizar de lado, os pés afastam-se e juntam-se.
   defend: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-4, L - 1], g: [4, L - 1], jump: -1 }),
   slide0: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),

@@ -4,7 +4,7 @@ import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/ty
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
-import { attributeIcon } from './art/icons.ts';
+import { attributeIcon, optionStar } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
 import { SPOTS } from '../sim/court.ts';
 import { foundCards } from './club-screens.ts';
@@ -48,6 +48,12 @@ function periodTable(view: MatchView): string {
   return `<div class="qt" style="--periods:${periods}"><span></span>${head}<span class="tot">T</span>${row(0)}${row(1)}</div>`;
 }
 
+/** A estrela ao lado do nome de quem é opção de ataque: dourada para a primeira, prateada para a segunda. */
+export function optionMark(options: readonly string[] | undefined, name: string): string {
+  const rank = options?.indexOf(name) ?? -1;
+  return rank === 0 || rank === 1 ? `<img class="ostar" alt="${rank === 0 ? 'primeira' : 'segunda'} opção" src="${optionStar(rank)}">` : '';
+}
+
 // As barras de energia andam em saltos de 5 %: assim o painel não muda, nem se reescreve, a cada segundo.
 function benchTab(view: MatchView): string {
   const { s } = view;
@@ -57,7 +63,7 @@ function benchTab(view: MatchView): string {
     return `<button type="button" class="row${b === carrier ? ' has-ball' : ''}" data-player="${s.bodies.indexOf(b)}" aria-label="Ver a ficha de ${escapeHtml(b.player.name)}">
       <img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">
       <span class="pos">${slotCode(b.slot)}</span>
-      <span class="name">${escapeHtml(b.player.name)}</span>
+      <span class="name">${escapeHtml(b.player.name)}${optionMark(s.tactics[team].options, b.player.name)}</span>
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
     </button>`;
@@ -231,7 +237,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
     return `<button type="button" class="srow${b.slot === -1 ? ' bench' : ''}${index === picked ? ' has-ball' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${b.slot === -1 && b.line.fouls >= 5 ? 'disabled' : ''}>
       <span class="face-wrap"><img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">${mark ? `<i class="arrow ${mark}"></i>` : ''}</span>
       <span class="pos">${b.slot >= 0 ? slotCode(b.slot) : ''}</span>
-      <span class="name">${escapeHtml(b.player.name)}</span>
+      <span class="name">${escapeHtml(b.player.name)}${optionMark(s.tactics[b.team].options, b.player.name)}</span>
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
       ${ATTRIBUTE_KEYS.map(key => `<b class="gr gr-${gradeOf(b.player.attributes[key])}">${gradeOf(b.player.attributes[key])}</b>`).join('')}

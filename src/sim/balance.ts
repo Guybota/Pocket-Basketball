@@ -1,7 +1,7 @@
 // Todos os números de equilíbrio do jogo. Depois de mudar qualquer um, corre `npm run sim`.
 export const BALANCE = {
   // Tempo, em segundos reais
-  periodSeconds: 120,
+  periodSeconds: 135,
   overtimeSeconds: 60,
   periodBreakSeconds: 4,
   shotClockSeconds: 11,
@@ -9,6 +9,9 @@ export const BALANCE = {
   deadBallSeconds: 0.4,
   // Com trocas, a bola parada dura o bastante para quem entra e quem sai irem a andar antes da reposição.
   substitutionSeconds: 1.6,
+  // Nas trocas, o jogo espera que quem sai chegue ao banco e quem entra chegue ao seu lugar, mas nunca mais do que isto.
+  substitutionMaxWaitSeconds: 6,
+  substitutionArriveDistance: 0.6,
   // Reposição: quem repõe fica fora de campo, assenta os pés e passa a quem vem receber.
   // Quem repõe vai buscar a bola onde ela ficou e leva-a até à linha; só se espera por ele até aqui.
   inboundMaxWaitSeconds: 8,
@@ -21,6 +24,8 @@ export const BALANCE = {
   introMaxSeconds: 5,
   introWalkFactor: 0.5,
   jumpSeconds: 1.1,
+  // Quanto a bola ao alto sobe acima da linha reta entre as mãos do árbitro e as dos saltadores: pouco, para lhes cair nas mãos.
+  jumpBallArc: 4,
   // Cada ponto de diferença a saltar vale 1% de hipóteses, e nunca passa de 70%.
   jumpEdgePerPoint: 0.01,
   jumpMaxEdge: 0.2,
@@ -43,7 +48,7 @@ export const BALANCE = {
   defensePickUpU: 10.5,
   halfCourtPickUpU: 14,
   // Zona: cada defensor guarda o seu sítio, puxado um pouco para a bola; quem a tem mais perto fecha-se sobre ela.
-  zoneBallPull: 0.45,
+  zoneBallPull: 0.7,
   zoneCloseRange: 3,
   zoneCloseGap: 0.8,
   // Saída contra pressão: no campo de trás, um colega vem dar linha de passe, e quem tem a bola passa-a em vez de a segurar.
@@ -68,6 +73,12 @@ export const BALANCE = {
   isoDriveFactor: 1.6,
   // Um organizador como opção cria para os outros: os passes dele pesam mais, e o passe ao grande que rola ainda mais.
   creatorPassFactor: 1.6,
+  // Um colega muito livre (pressão abaixo disto) ou com o caminho livre para o cesto pede a bola: o passe para ele pesa o dobro.
+  wideOpenPressure: 0.1,
+  openTeammatePass: 2,
+  // O base, ou um organizador, passa-lhe quase sempre, se o lance dele valer pelo menos esta parte do seu.
+  guardOpenPassChance: 0.7,
+  guardOpenPassValue: 0.8,
   rollPassFactor: 2,
   // Quem acabou de receber do organizador lança e ataca mais: é assim que nascem as assistências dele.
   fedShotFactor: 1.8,
@@ -113,7 +124,7 @@ export const BALANCE = {
   reboundMaxWaitSeconds: 1.5,
 
   // Movimento
-  baseSpeed: 4.2,
+  baseSpeed: 3.7,
   speedPerPoint: 0.02,
   fatigueSpeedLoss: 0.3,
   cutMinSeconds: 1.2,
@@ -131,6 +142,8 @@ export const BALANCE = {
   urgencyPerShotClock: 2,
   drivePressureRelief: 0.5,
   aheadPassChance: 0.25,
+  // Um colega à frente com o caminho livre para o cesto quase sempre recebe a bola.
+  aheadOpenLaneChance: 0.8,
   aheadPassRangeU: 9,
   passSpeed: 15,
   minPassSeconds: 0.2,
@@ -167,8 +180,12 @@ export const BALANCE = {
   blockedTravel: 0.12,
   // Afundanço: de perto e com impulsão, leva-se a bola até ao aro.
   dunkMaxDistance: 1.7,
+  // Quem afunda arranca para o aro: corre a esta fração a mais da sua velocidade, para lá chegar no tempo do lance.
+  dunkBurst: 1.5,
   dunkMinJumping: 45,
   dunkArc: 0.3,
+  // Nenhum lançamento chega ao aro a subir: mesmo debaixo do cesto, a bola passa por cima e cai lá dentro.
+  shotMinArc: 1.6,
 
   // Pressão do defensor
   pressureRange: 2.5,
@@ -227,10 +244,10 @@ export const BALANCE = {
   // Os centímetros com que cada nível de altura entra nos cálculos, e os limites com que se sorteiam.
   heightByLevel: [184, 198, 212],
   heightLevelFrom: [193, 203],
-  reboundPerCm: 0.012,
-  blockPerCm: 0.003,
-  finishPerCm: 0.0015,
-  contestPerCm: 0.002,
+  reboundPerCm: 0.02,
+  blockPerCm: 0.005,
+  finishPerCm: 0.003,
+  contestPerCm: 0.005,
 
   // Movimentos especiais
   crossoverChance: 0.85,
@@ -244,8 +261,8 @@ export const BALANCE = {
   openShotPressure: 0.2,
   openLaneFinish: 1.6,
   openLaneCheckSeconds: 0.15,
-  // Quem é mais alto é mais lento: 20 cm valem 0,3 m/s.
-  speedLossPerCm: 0.015,
+  // Quem é mais alto é mais lento: 20 cm valem 0,14 m/s.
+  speedLossPerCm: 0.007,
   // Quedas: fica no chão e levanta-se, sem poder fazer nada entretanto.
   fallSeconds: 1.8,
   ankleFallBase: 0.15,

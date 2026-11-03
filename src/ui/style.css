@@ -175,6 +175,12 @@ body {
 
 #game.landscape #panel { flex: none; border-left: 3px solid var(--ink); }
 
+/* O resultado do jogo, na horizontal: uma janela ao centro, por cima do campo. */
+#game.landscape.result-open #panel { position: fixed; inset: 0; margin: auto; height: fit-content; border: 3px solid var(--ink); box-shadow: 0 0 0 4px rgb(0 0 0 / 0.35); z-index: 5; }
+/* Por trás do resultado não há campo: só o fundo da página. */
+#game.result-open .screen { display: none; }
+#game.landscape.result-open { background: transparent; }
+
 /* Na cidade não há painel: a cidade é o menu. */
 #game.city-home #panel { display: none; }
 
@@ -720,6 +726,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 .prow { width: 100%; min-height: 22px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
 .prow.bench { background: rgba(203, 185, 142, .22); }
+/* A estrela das opções de ataque, ao lado do nome. */
+.ostar { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; image-rendering: pixelated; }
 .prow:active { transform: none; box-shadow: none; }
 .prow[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
 .prow.swapfrom { background: var(--ball); color: #fff; }

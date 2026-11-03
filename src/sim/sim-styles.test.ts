@@ -124,24 +124,36 @@ describe('comportamentos', () => {
   });
 
   it('o guarda do aro desarma mais, o dínamo rouba mais, e o sexto homem recupera mais no banco', () => {
-    const totals = (offBall: OffBallStyle): { blocks: number; steals: number; benchFatigue: number } => {
+    const totals = (offBall: OffBallStyle): { blocks: number; steals: number; benchRecovery: number } => {
       let blocks = 0;
       let steals = 0;
-      let benchFatigue = 0;
+      // Quanto cansaço os cinco titulares perdem, em média, por cada passo em que estão a recuperar no banco.
+      let recovered = 0;
+      let restingTicks = 0;
       for (let i = 0; i < 60; i++) {
         const team = plain(i, 'A');
         const roster = team.roster.map((player, index) => (index < 5 ? { ...player, offBall } : player));
-        const s = simulateMatch({ ...team, roster }, plain(i + 500, 'B'), i + 1);
+        const s = createMatch({ ...team, roster }, plain(i + 500, 'B'), i + 1);
+        const starters = s.bodies.slice(0, 5);
+        while (s.phase !== 'end') {
+          const before = starters.map(b => b.fatigue);
+          step(s);
+          starters.forEach((b, k) => {
+            if (b.slot === -1 && b.fatigue < before[k]!) {
+              recovered += before[k]! - b.fatigue;
+              restingTicks++;
+            }
+          });
+        }
         blocks += s.lines[0].blocks;
         steals += s.lines[0].steals;
-        for (let k = 0; k < 5; k++) benchFatigue += s.bodies[k]!.fatigue;
       }
-      return { blocks, steals, benchFatigue };
+      return { blocks, steals, benchRecovery: recovered / Math.max(1, restingTicks) };
     };
     const base = totals('balanced');
     expect(totals('rimProtector').blocks).toBeGreaterThan(base.blocks);
     expect(totals('dynamo').steals).toBeGreaterThan(base.steals);
-    expect(totals('sixthMan').benchFatigue).toBeLessThan(base.benchFatigue);
+    expect(totals('sixthMan').benchRecovery).toBeGreaterThan(base.benchRecovery * 1.3);
   });
 
   it('os ressaltadores ganham mais ressaltos ofensivos', () => {
