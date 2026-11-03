@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- inicio-da-pagina -->
+<title>Tipos de Corpo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+20&family=Rubik:wght@400;500&display=swap">
+<style>
+/* Layout: folhas de papel sobre o xadrez da cidade, com a arte verdadeira do jogo a escalas inteiras. */
+:root {
+  --ink: #1b2230; --paper: #f8f0d8; --paper-2: #efe3c2; --line: #cbb98e; --wood: #dca35c; --ball: #e8622a;
+  --paint-dk: #0f5560; --paint-dkr: #0c4a54; --muted: #5d5a4f; --on-dark: #f8f0d8; --on-dark-2: #b9d6d2; --gold: #f2c230;
+  --bg-blue: linear-gradient(#6f97e6, #c6d6f6); --bg-red: linear-gradient(#dd7468, #f5c8c2);
+  --display: "Jersey 10", "Courier New", monospace; --ui: "Jersey 20", "Courier New", monospace; --body: "Rubik", "Trebuchet MS", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background-color: var(--paint-dk);
+  background-image: conic-gradient(var(--paint-dkr) 25%, transparent 0 50%, var(--paint-dkr) 0 75%, transparent 0);
+  background-size: 64px 64px;
+  color: var(--on-dark);
+  font: 400 16px/1.5 var(--body);
+  padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 1040px; margin: 0 auto; display: grid; gap: 36px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(3rem, 9vw, 5rem); }
+h2 { font-size: clamp(2.25rem, 5vw, 3rem); }
+h3 { font-size: 1.75rem; }
+p { margin: 0; max-width: 66ch; }
+section { display: grid; gap: 14px; }
+.eyebrow { font: 400 20px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--gold); }
+.lead { color: var(--on-dark-2); }
+.sheet { background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); padding: 16px; min-width: 0; }
+.sheet p { color: var(--ink); }
+.small { font-size: .875rem; color: var(--muted) !important; }
+canvas, img.px { image-rendering: pixelated; display: block; }
+.tile { background: var(--wood); border: 2px solid var(--ink); }
+.scroll { overflow-x: auto; }
+
+.lab { display: grid; gap: 18px; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); }
+.lab-art { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.sliders { display: grid; gap: 10px; }
+.slider { display: grid; gap: 2px; }
+.slider label { display: flex; justify-content: space-between; font: 400 20px var(--ui); }
+input[type=range] { width: 100%; accent-color: var(--ball); height: 28px; }
+.result { display: grid; gap: 4px; padding: 8px 10px; background: var(--paper-2); border: 2px solid var(--ink); }
+.result b { font: 400 30px/1 var(--display); color: var(--ball); }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+button { font: 400 20px/1 var(--ui); color: var(--ink); background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); min-height: 40px; padding: 4px 10px; cursor: pointer; }
+button:hover { background: var(--paper-2); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+table { border-collapse: collapse; }
+th { font: 400 20px var(--ui); padding: 4px 8px; text-align: center; }
+th.row-head { text-align: left; white-space: nowrap; }
+td { padding: 4px; }
+.poses { display: flex; flex-wrap: wrap; gap: 8px; }
+.pose { display: grid; gap: 2px; justify-items: center; font-size: .875rem; }
+.pair { display: grid; gap: 16px; }
+.pair > div { display: grid; gap: 6px; min-width: 0; }
+.pair canvas { max-width: 100%; border: 2px solid var(--ink); }
+.faces { display: flex; flex-wrap: wrap; gap: 12px; }
+.face-card { display: grid; gap: 4px; }
+.face-card img { width: 140px; height: 140px; box-sizing: content-box; border: 2px solid var(--ink); }
+.variety img { width: 112px; height: 112px; box-sizing: content-box; border: 2px solid var(--ink); }
+.face-card b { font: 400 20px/1 var(--ui); }
+.decisions { display: grid; gap: 10px; }
+.decisions li { max-width: 66ch; }
+ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+@media (max-width: 640px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+</style>
+<!-- fim-do-cabecalho -->
+</head>
+<body>
+<main>
+  <header style="display:grid;gap:10px">
+    <div class="eyebrow">Aprovado e já no jogo</div>
+    <h1>Tipos de corpo</h1>
+    <p>Cada jogador passa a ter altura e peso. A silhueta sai desses dois números e da força, por isso a equipa deixa de parecer feita de cópias. Toda a arte abaixo é a do jogo, desenhada ao vivo.</p>
+  </header>
+
+  <section>
+    <h2>Experimenta um jogador</h2>
+    <div class="sheet lab">
+      <div class="sliders">
+        <div class="slider"><label for="height"><span>Altura</span><span id="heightValue"></span></label><input id="height" type="range" min="170" max="220" step="1"></div>
+        <div class="slider"><label for="weight"><span>Peso</span><span id="weightValue"></span></label><input id="weight" type="range" min="60" max="140" step="1"></div>
+        <div class="slider"><label for="strength"><span>Físico</span><span id="strengthValue"></span></label><input id="strength" type="range" min="0" max="100" step="1"></div>
+        <div class="presets" id="presets"></div>
+      </div>
+      <div style="display:grid;gap:10px;align-content:start">
+        <div class="lab-art">
+          <canvas id="labBig" class="tile" width="34" height="46" style="width:204px;height:276px" aria-label="Boneco do jogador, ampliado 6 vezes"></canvas>
+          <div style="display:grid;gap:4px;justify-items:center"><canvas id="labReal" class="tile" width="34" height="46" style="width:68px;height:92px" aria-label="Boneco a 2 vezes o tamanho"></canvas><span class="small">No jogo</span></div>
+          <img id="labFace" class="px" alt="Retrato do jogador" width="168" height="168" style="border:2px solid var(--ink);background:var(--bg-blue)">
+        </div>
+        <div class="result"><b id="labType"></b><span id="labInfo"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quatro corpos, três alturas</h2>
+    <p class="lead">O tipo é decidido pelo índice de massa corporal: abaixo de 21,5 é magro, e a partir de 28 é pesado ou musculado, conforme o físico. Com físico muito alto, um corpo normal também passa a musculado.</p>
+    <div class="sheet scroll"><table id="grid"></table></div>
+  </section>
+
+  <section>
+    <h2>Tem de funcionar em movimento</h2>
+    <p class="lead">Cada tipo em todas as ações do jogo, ampliado 2 vezes.</p>
+    <div class="sheet" id="poseRows" style="display:grid;gap:14px"></div>
+  </section>
+
+  <section>
+    <h2>Em campo: antes e depois</h2>
+    <p class="lead">A mesma jogada, com os dois quintetos: primeiro como está hoje, depois com alturas e corpos diferentes. Ambas ampliadas 2 vezes.</p>
+    <div class="sheet pair">
+      <div><h3>Hoje</h3><canvas id="sceneBefore" width="360" height="216" style="width:720px" aria-label="Campo com jogadores todos do mesmo corpo"></canvas></div>
+      <div><h3>Proposta</h3><canvas id="sceneAfter" width="360" height="216" style="width:720px" aria-label="Campo com jogadores de corpos diferentes"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O corpo também muda o retrato</h2>
+    <p class="lead">Ombros, pescoço e maxilar acompanham o tipo de corpo, para a ficha bater certo com o boneco em campo.</p>
+    <div class="sheet faces" id="faces"></div>
+    <h3>Variedade de caras</h3>
+    <div class="sheet faces variety" id="variety"></div>
+  </section>
+
+  <section>
+    <h2>O que o corpo muda no jogo</h2>
+    <div class="sheet decisions">
+      <ol>
+        <li><b>Altura:</b> mais ressaltos e desarmes, melhor finalização perto do cesto e mais pressão sobre quem lança.</li>
+        <li><b>Peso:</b> ganha no contacto e nos ressaltos, mas corre mais devagar e cansa-se mais depressa.</li>
+      </ol>
+    </div>
+  </section>
+</main>
+<!-- fim-da-pagina -->
+<script type="module" src="/src/ui/mock-bodies.ts"></script>
+</body>
+</html>

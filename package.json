@@ -9,14 +9,21 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc",
-    "check": "tsc && tsc -p tsconfig.web.json --noEmit && vitest run",
+    "check": "tsc && vitest run",
     "sim": "node src/tools/simulate.ts",
     "watch-match": "node src/tools/watch.ts",
-    "build": "tsc -p tsconfig.web.json && node -e \"const fs=require('node:fs');fs.copyFileSync('src/web/index.html','dist/index.html')\""
+    "dev": "vite",
+    "build": "vite build",
+    "browser-check": "node src/tools/browser-check.ts",
+    "anim-check": "node src/tools/anim-check.ts",
+    "build-page": "node src/tools/build-page.ts",
+    "build-mock": "node src/tools/build-mock.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "playwright-core": "^1.64.1",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
 }

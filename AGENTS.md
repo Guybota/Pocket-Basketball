@@ -7,6 +7,7 @@ Lê antes de começar:
 - [Pesquisa sobre o original](docs/01-pesquisa-npfc.md)
 - [Plano e fases](docs/02-plano-desenvolvimento.md)
 - [Estudo visual](docs/03-estudo-visual.html)
+- [Análise visual e charme, antes da Fase 5](docs/05-analise-visual-charme.md)
 
 ## Comandos
 
@@ -14,9 +15,15 @@ Lê antes de começar:
 npm run check          # verifica os tipos e corre os testes
 npm run sim            # simula jogos em massa e mostra o relatório de equilíbrio
 npm run watch-match    # mostra um jogo em texto: npm run watch-match -- 42
+npm run dev            # abre o jogo no browser, em http://localhost:5173
+npm run browser-check  # testa o jogo num browser verdadeiro e guarda imagens em dist-check/
+npm run anim-check     # desenha as poses e os movimentos especiais em dist-check/, sem correr o jogo
+npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
 ```
 
-Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 2 minutos, porque confirma o equilíbrio com milhares de jogos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
+Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. Usa o Edge; noutra máquina, define `BROWSER_CHANNEL=chrome`.
+
+Corre `npm run check` antes de dares uma tarefa por terminada. Confirma o equilíbrio com milhares de jogos; os testes da simulação estão divididos em ficheiros `src/sim/sim-*.test.ts` para correrem em paralelo, e num computador com vários processadores demoram uns minutos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 
 ## Regras da simulação (`src/sim/`)
 
@@ -28,6 +35,13 @@ Corre `npm run check` antes de dares uma tarefa por terminada. Demora cerca de 2
 - **Números de equilíbrio:** ficam todos em `balance.ts`.
 
 Um teste automático faz cumprir as regras de proibição e de importação.
+
+## Interface (`src/ui/`)
+
+- A interface lê o estado da simulação e só a muda pelos comandos do treinador (`requestTimeout`, `queueSubstitution`, `cancelSubstitution`, `setAutoRotation`, `setTactics`). Ficam registados em `commands`, para o jogo se poder repetir.
+- Só `step()` faz o jogo avançar.
+- Há dois esquemas: vertical (360×640, com o campo por cima do painel) e horizontal (o campo ao lado do painel), escolhido pela proporção da janela. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
+- Toda a arte é gerada por código. Os sons são sintetizados, por isso não há ficheiros de áudio.
 
 ## Trabalho a dois
 

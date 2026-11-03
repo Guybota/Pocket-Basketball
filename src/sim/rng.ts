@@ -28,3 +28,13 @@ export function weightedIndex(rng: Rng, weights: readonly number[]): number {
   }
   return weights.length - 1;
 }
+
+/** Baralha uma lista, sempre da mesma forma para a mesma semente. */
+export function shuffled<T>(list: readonly T[], rng: Rng): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next(rng) * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}

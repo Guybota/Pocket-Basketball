@@ -1,18 +1,20 @@
+// Parte dos testes da simulação. Estão divididos em ficheiros para correrem em paralelo.
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { attributeWinRate, betterTeamWinRate, fullBonusWinRate, summarize, type Summary } from './batch.ts';
-import { THREE_RADIUS, hoopDistance, isThree, segmentDistance } from './court.ts';
-import { createMatch, simulateMatch, step } from './match.ts';
+import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
+import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
+import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
-import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating } from './teamgen.ts';
-import { ATTRIBUTE_KEYS, gradeOf, validateTeam, type Attributes } from './types.ts';
+import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
+import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
 
 const home = generateTeam(1, 'Vilar BC', 55);
 const away = generateTeam(2, 'Ribeirinha BC', 55);
 const flat = (value: number): Attributes => ({
   shooting: value, speed: value, stamina: value, technique: value, strength: value, jumping: value, willpower: value,
 });
+
 
 describe('gerador aleatório', () => {
   it('repete a mesma sequência para a mesma semente', () => {
@@ -39,7 +41,7 @@ describe('regras da simulação', () => {
     }));
 
   it.each(sources.map(s => [s.file, s.text]))('%s não usa funções proibidas', (_file, text) => {
-    expect(text).not.toMatch(/Math\.(random|sin|cos|tan|asin|acos|atan|atan2|pow|exp|log|log2|log10|hypot|cbrt)\b|\bDate\b|\*\*/);
+    expect(text).not.toMatch(/Math\.(random|sin|cos|tan|asin|acos|atan|atan2|pow|exp|log|log2|log10|hypot|cbrt)\b|\b(Date|document|window|process)\b|\*\*/);
   });
 
   it.each(sources.map(s => [s.file, s.text]))('%s só importa de src/sim', (_file, text) => {
@@ -79,6 +81,16 @@ describe('validação das equipas', () => {
     const broken = { ...home.roster[0]!, attributes: { ...flat(50), speed: Number.NaN } };
     expect(() => validateTeam({ ...home, roster: [broken, ...home.roster.slice(1)] })).toThrow();
     expect(() => createMatch({ ...home, roster: [] }, away, 1)).toThrow();
+    const short = { ...home.roster[0]!, heightCm: 90 };
+    expect(() => validateTeam({ ...home, roster: [short, ...home.roster.slice(1)] })).toThrow();
+    const light = { ...home.roster[0]!, weightKg: Number.NaN };
+    expect(() => validateTeam({ ...home, roster: [light, ...home.roster.slice(1)] })).toThrow();
+    const cheat = { ...home.roster[0]!, moves: ['voar' as MoveId] };
+    expect(() => validateTeam({ ...home, roster: [cheat, ...home.roster.slice(1)] })).toThrow();
+    const lost = { ...home.roster[0]!, offBall: 'perdido' as OffBallStyle };
+    expect(() => validateTeam({ ...home, roster: [lost, ...home.roster.slice(1)] })).toThrow();
+    const greedy = { ...home.roster[0]!, onBall: 'guloso' as OnBallStyle };
+    expect(() => validateTeam({ ...home, roster: [greedy, ...home.roster.slice(1)] })).toThrow();
   });
 
   it('joga até ao fim só com cinco jogadores, mesmo sem suplentes', () => {
@@ -98,8 +110,8 @@ describe('fórmulas', () => {
   it('reconhece a linha de 3 pontos, incluindo os cantos', () => {
     expect(isThree(1.575 + THREE_RADIUS + 0.1, 0)).toBe(true);
     expect(isThree(1.575 + THREE_RADIUS - 0.1, 0)).toBe(false);
-    expect(isThree(1.3, 6.8)).toBe(true);
-    expect(isThree(1.3, 6.4)).toBe(false);
+    expect(isThree(1.3, THREE_CORNER_V + 0.1)).toBe(true);
+    expect(isThree(1.3, THREE_CORNER_V - 0.1)).toBe(false);
     expect(hoopDistance(1.575, 0)).toBe(0);
   });
 
@@ -157,11 +169,18 @@ describe('coerência de um jogo', () => {
   it('a cada passo, os jogadores estão perto do campo e a bola tem um só dono', () => {
     const s = createMatch(home, away, 77);
     const problems: string[] = [];
+    let graceUntil = -1;
     while (s.phase !== 'end') {
       step(s);
+      // Quem repõe fica até um metro fora da linha. Ao intervalo saem todos para o balneário. Com a bola em jogo, ninguém está fora das linhas.
+      const leaving = s.phase === 'break' && s.period === 2;
+      // Quem acabou de repor ainda está a deslizar para dentro durante uns passos.
+      if (s.flight?.kind === 'pass' && s.flight.restart) graceUntil = s.tick + 6;
+      const playing = s.tick >= graceUntil && (s.phase === 'live' || s.phase === 'pass' || s.phase === 'shot' || s.phase === 'rebound');
       for (const team of s.court) {
         for (const b of team) {
-          if (b.x < -0.5 || b.x > 28.5 || Math.abs(b.y) > 8.5) problems.push(`${s.tick}: ${b.player.name} fora do campo`);
+          if (!leaving && (b.x < -1 || b.x > 29 || Math.abs(b.y) > 8.5)) problems.push(`${s.tick}: ${b.player.name} fora do campo`);
+          if (playing && (b.x < -0.2 || b.x > 28.2 || Math.abs(b.y) > 7.7)) problems.push(`${s.tick}: ${b.player.name} fora das linhas com a bola em jogo`);
         }
       }
       const expectedHolder = s.phase === 'live' ? s.holder?.team === s.offense : s.holder === null;
@@ -173,76 +192,3 @@ describe('coerência de um jogo', () => {
 });
 
 // Os critérios da Fase 0, em docs/02-plano-desenvolvimento.md.
-describe('critérios da Fase 0', () => {
-  const league = (level: number) => (i: number): [ReturnType<typeof generateTeam>, ReturnType<typeof generateTeam>] => [
-    generateLeagueTeam(i * 2 + 1, 'A', level),
-    generateLeagueTeam(i * 2 + 2, 'B', level),
-  ];
-  let summary: Summary;
-  beforeAll(() => {
-    summary = summarize(league(55), 500);
-  });
-
-  it('resultados entre 35 e 50 pontos por equipa', () => {
-    expect(summary.meanPoints).toBeGreaterThanOrEqual(38);
-    expect(summary.meanPoints).toBeLessThanOrEqual(46);
-    // A sorte de um jogo curto faz alguns resultados saírem do intervalo.
-    expect(summary.pointsInRange).toBeGreaterThanOrEqual(0.6);
-  });
-
-  it('todas as divisões têm uma média dentro do intervalo', () => {
-    for (const { level } of DIVISIONS) {
-      const { meanPoints } = summarize(league(level), 200);
-      expect(meanPoints).toBeGreaterThanOrEqual(35);
-      expect(meanPoints).toBeLessThanOrEqual(50);
-    }
-  });
-
-  it('60 a 70 posses por jogo', () => {
-    expect(summary.meanPossessions).toBeGreaterThanOrEqual(60);
-    expect(summary.meanPossessions).toBeLessThanOrEqual(70);
-  });
-
-  it('as estatísticas parecem basquetebol', () => {
-    expect(summary.twoPercent).toBeGreaterThan(0.45);
-    expect(summary.twoPercent).toBeLessThan(0.62);
-    expect(summary.threePercent).toBeGreaterThan(0.3);
-    expect(summary.threePercent).toBeLessThan(0.42);
-    expect(summary.threeShare).toBeGreaterThan(0.25);
-    expect(summary.threeShare).toBeLessThan(0.5);
-    expect(summary.offensiveReboundPercent).toBeGreaterThan(0.18);
-    expect(summary.offensiveReboundPercent).toBeLessThan(0.32);
-    expect(summary.overtimes).toBeLessThan(0.1);
-  });
-
-  it('a melhor equipa do campeonato ganha cerca de 70% das vezes', () => {
-    const rate = betterTeamWinRate(55, 600);
-    expect(rate).toBeGreaterThanOrEqual(0.65);
-    expect(rate).toBeLessThanOrEqual(0.76);
-  });
-
-  it('uma nota acima em tudo ganha quase sempre, mas não sempre', () => {
-    const rate = fullBonusWinRate(17, 400);
-    expect(rate).toBeGreaterThan(0.8);
-    expect(rate).toBeLessThan(0.99);
-  });
-
-  it('todos os atributos contam, e nenhum domina', () => {
-    for (const key of ATTRIBUTE_KEYS) {
-      const rate = attributeWinRate(key, 17, 600);
-      expect(rate, key).toBeGreaterThan(0.52);
-      expect(rate, key).toBeLessThan(0.72);
-    }
-  });
-
-  it('uma equipa gerada não repete apelidos', () => {
-    for (let seed = 0; seed < 50; seed++) {
-      const names = generateTeam(seed, 'A', 55).roster.map(player => player.name);
-      expect(new Set(names).size).toBe(names.length);
-    }
-  });
-
-  it('a classificação da equipa reflete o nível pedido', () => {
-    expect(teamRating(generateTeam(1, 'A', 70))).toBeGreaterThan(teamRating(generateTeam(1, 'A', 40)));
-  });
-});

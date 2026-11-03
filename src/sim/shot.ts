@@ -1,4 +1,5 @@
 import { BALANCE as B } from './balance.ts';
+import { THREE_RADIUS } from './court.ts';
 import type { Attributes } from './types.ts';
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -6,12 +7,12 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 /** Probabilidade base de cesto, só pela distância ao cesto. */
 export function baseChance(distanceToHoop: number, three: boolean): number {
-  if (three) return B.threeChance - Math.max(0, distanceToHoop - 6.75) * B.threeFalloffPerMeter;
+  if (three) return B.threeChance - Math.max(0, distanceToHoop - THREE_RADIUS) * B.threeFalloffPerMeter;
   if (distanceToHoop <= B.rimDistance) return B.rimChance;
   if (distanceToHoop <= B.midDistance) {
     return lerp(B.rimChance, B.midChance, (distanceToHoop - B.rimDistance) / (B.midDistance - B.rimDistance));
   }
-  return lerp(B.midChance, B.longChance, clamp((distanceToHoop - B.midDistance) / (6.75 - B.midDistance), 0, 1));
+  return lerp(B.midChance, B.longChance, clamp((distanceToHoop - B.midDistance) / (THREE_RADIUS - B.midDistance), 0, 1));
 }
 
 export interface ShotContext {
@@ -21,6 +22,8 @@ export interface ShotContext {
   fatigue: number;
   clutch: boolean;
   away: boolean;
+  /** Vantagem física e de movimentos especiais, somada à probabilidade. */
+  bonus?: number;
 }
 
 /** Perto do cesto conta a força, o salto e a técnica. Longe conta o lançamento. */
@@ -34,6 +37,7 @@ export function shotChance(attributes: Attributes, context: ShotContext): number
   chance += (close ? B.closeSkillSlope : B.farSkillSlope) * (skill / 20 - B.skillPivot);
   chance -= B.pressurePenalty * context.pressure * (1 - B.composureSlope * will);
   chance -= B.fatiguePenalty * context.fatigue;
+  chance += context.bonus ?? 0;
   if (context.clutch) chance += B.clutchSlope * will;
   if (context.away) chance += B.awaySlope * will;
   return clamp(chance, B.minChance, B.maxChance);

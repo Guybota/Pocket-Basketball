@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Pocket Basketball</title>
+    <link rel="icon" href="data:,">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&display=swap">
+    <link rel="stylesheet" href="/src/ui/style.css">
+  </head>
+  <body>
+    <div id="game">
+      <div class="screen" id="screen">
+        <canvas id="court" width="360" height="216" aria-label="Campo de basquetebol com o jogo a decorrer"></canvas>
+        <div id="hud"></div>
+        <div id="banner" hidden></div>
+      </div>
+      <div id="panel"></div>
+    </div>
+    <script type="module" src="/src/ui/main.ts"></script>
+  </body>
+</html>
