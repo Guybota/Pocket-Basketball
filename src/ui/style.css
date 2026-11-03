@@ -631,6 +631,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .town-note .say b { display: inline; margin-right: 4px; }
 
 .town-note .citydetail { text-align: left; }
+.tower-actions { display: flex; gap: 6px; pointer-events: auto; }
+.tower-actions button.quiet { align-self: auto; }
 
 .town-chip {
   position: absolute;
