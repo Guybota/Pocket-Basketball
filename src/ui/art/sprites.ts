@@ -50,6 +50,14 @@ const POSES = {
   // Os tornozelos partidos: de pernas trocadas, a tentar não cair, dum lado para o outro.
   ankle0: (L: number): PoseShape => ({ a: [-6, -1], b: [5, 2], f: [-5, L], g: [2, L - 1] }),
   ankle1: (L: number): PoseShape => ({ a: [-3, 3], b: [6, -1], f: [-2, L - 1], g: [5, L] }),
+  // De costas para o cesto: agachado, pés abertos, o braço de fora a afastar o defensor e a bola a driblar baixo do outro lado.
+  post0: (L: number): PoseShape => ({ a: [-6, 0], b: [5, 4], f: [-4, L - 2], g: [4, L - 2], jump: -2, ball: [8, L - 3] }),
+  post1: (L: number): PoseShape => ({ a: [-6, 1], b: [5, 3], f: [-4, L - 2], g: [4, L - 2], jump: -2, ball: [8, L - 5] }),
+  // A recuar de costas, passo curto a passo curto, sempre agachado.
+  postStep0: (L: number): PoseShape => ({ a: [-6, 0], b: [5, 4], f: [-5, L - 2], g: [2, L - 3], jump: -2, ball: [8, L - 3] }),
+  postStep1: (L: number): PoseShape => ({ a: [-6, 1], b: [5, 3], f: [-2, L - 3], g: [5, L - 2], jump: -2, ball: [8, L - 5] }),
+  // Quem defende o poste: agachado, encostado, com os braços para a frente a fazer força.
+  brace: (L: number): PoseShape => ({ a: [4, 0], b: [6, 1], f: [-4, L - 2], g: [3, L - 2], jump: -2 }),
   // O bloqueio: pés bem abertos e braços junto ao peito.
   screen: (L: number): PoseShape => ({ a: [-2, 1], b: [2, 1], f: [-4, L], g: [4, L] }),
   // A queda: duas fases a ir abaixo e o corpo no chão, de braços abertos e uma perna dobrada. Estas três desenham-se inclinadas (ver LEAN).
@@ -63,7 +71,10 @@ const POSES = {
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
   dunk: (L: number): PoseShape => ({ a: [-4, 2], b: [4, -9], f: [-3, L - 2], g: [-4, L - 3], jump: 10, ball: [6, -19] }),
   block: (L: number): PoseShape => ({ a: [-1, -8], b: [2, -8], f: [-2, L - 1], g: [2, L - 1], jump: 6 }),
-  defend: (L: number): PoseShape => ({ a: [-4, -2], b: [4, -2], f: [-3, L], g: [3, L] }),
+  // Em defesa: agachado, braços abertos para os lados e um pouco para cima; a deslizar de lado, os pés afastam-se e juntam-se.
+  defend: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-4, L - 1], g: [4, L - 1], jump: -1 }),
+  slide0: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),
+  slide1: (L: number): PoseShape => ({ a: [-7, -2], b: [7, -3], f: [-2, L - 1], g: [2, L - 1], jump: -1 }),
   pass: (L: number): PoseShape => ({ a: [4, 0], b: [5, 1], f: [-2, L], g: [3, L], ball: [8, -6] }),
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),

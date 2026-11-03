@@ -31,6 +31,9 @@ const RUN_BANNERS = [8, 12, 16];
 // Os bancos ficam afastados da linha, com espaço para o treinador andar à frente deles.
 const BENCH_Y = -9.6;
 const COACH_Y = -8.6;
+// A que distância o defensor salta para contestar o lançamento, e a que distância do seu homem fica em posição de defesa.
+const CONTEST_RANGE = 1.8;
+const STANCE_RANGE = 2.5;
 // O treinador anda a passo, em metros por segundo.
 const COACH_SPEED = 2.5;
 const SWISH_TICKS = 10;
@@ -305,6 +308,9 @@ export class MatchView {
           if (!body) break;
           const dunk = e.dunk === true;
           this.overrides.set(body, { pose: dunk ? 'dunk' : 'shoot', until: s.tick + (dunk ? 12 : 16) });
+          // Quem está em cima do lançador salta de braços no ar para o tentar abafar.
+          const contester = this.nearestOpponent(body);
+          if (contester && (contester.x - body.x) * (contester.x - body.x) + (contester.y - body.y) * (contester.y - body.y) < CONTEST_RANGE * CONTEST_RANGE) this.overrides.set(contester, { pose: 'block', until: s.tick + 10 });
           break;
         }
         case 'made': {
@@ -327,6 +333,7 @@ export class MatchView {
         }
         case 'freeThrowMade':
           this.addPoints(e, 1);
+          this.floaters.push({ label: '+1', x: this.attackedHoop(e.team), y: 0, z: 3.05, born: s.tick });
           this.swishUntil = s.tick + SWISH_TICKS;
           this.swishHoop = this.attackedHoop(e.team);
           callbacks.sound('swish');
@@ -687,11 +694,18 @@ export class MatchView {
       return { pose: shooting ? 'shoot' : 'idle', withBall: false };
     }
     if (s.flight?.kind === 'pass' && s.flight.passer === b) return { pose: 'pass', withBall: false };
+    // De costas no poste: agachado a proteger a bola, a recuar aos poucos; e o defensor encostado a fazer força.
+    if (s.posting === b) return { pose: moving ? (frame % 4 < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
+    if (s.posting && b.team !== s.offense && this.nearestOpponent(s.posting) === b) return { pose: 'brace', withBall: false };
     if (s.holder === b) {
       // A correr, as pernas acompanham o drible; parado, só a bola mexe.
       if (moving) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
+    // Perto de quem marca, defende a deslizar de lado; longe, corre.
+    const man = b.team !== s.offense && s.phase === 'live' ? s.court[s.offense][b.slot] : undefined;
+    const guarding = man !== undefined && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
+    if (moving && guarding) return { pose: frame % 4 < 2 ? 'slide0' : 'slide1', withBall: false };
     if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
     if (s.screen?.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
@@ -832,7 +846,9 @@ export class MatchView {
       const { pose, withBall } = this.poseOf(b, motion.moving);
       const falling = b.fallenUntil > s.tick;
       // A cabeça fica para o lado da queda; quem cai de barriga para baixo mostra as costas.
-      const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : motion.flip;
+      // No poste, os dois ficam virados para fora do cesto: o atacante de costas para ele, o defensor de frente para o atacante.
+      const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
+      const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
       return { x: sx, y: sy, lift: this.tipLift(b, alpha), pose, withBall, look, flip, back };
     });

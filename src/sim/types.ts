@@ -53,15 +53,23 @@ export interface Tactics {
   defense?: Defense;
   /** Até dois adversários a marcar de perto, pelo lugar deles no plantel. Os outros ficam mais soltos. */
   focus?: number[];
+  /** A primeira e a segunda opção de ataque, pelo nome: a equipa procura-as primeiro e monta jogadas para elas. */
+  options?: string[];
 }
 export const NEUTRAL_TACTICS: Tactics = { pressure: 0, spacing: 0, pace: 0 };
 export const MAX_FOCUS = 2;
+/** Quantas opções de ataque se podem escolher. */
+export const MAX_OPTIONS = 2;
 
 export function validateTactics(tactics: Tactics, label: string): void {
   for (const value of [tactics.pressure, tactics.spacing, tactics.pace]) {
     if (!Number.isFinite(value) || value < -1 || value > 1) throw new Error(`${label}: tática inválida`);
   }
   if (tactics.defense !== undefined && !DEFENSES.includes(tactics.defense)) throw new Error(`${label}: defesa inválida`);
+  if (tactics.options !== undefined) {
+    const { options } = tactics;
+    if (!Array.isArray(options) || options.length > MAX_OPTIONS || new Set(options).size !== options.length || options.some(name => typeof name !== 'string' || name.length === 0)) throw new Error(`${label}: opções de ataque inválidas`);
+  }
   if (tactics.focus !== undefined) {
     const { focus } = tactics;
     if (!Array.isArray(focus) || focus.length > MAX_FOCUS || new Set(focus).size !== focus.length || focus.some(i => !Number.isInteger(i) || i < 0 || i >= 15)) throw new Error(`${label}: alvos inválidos`);
