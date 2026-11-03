@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": true,
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["src/sim", "src/ui", "src/web"],
+  "exclude": ["**/*.test.ts"]
+}

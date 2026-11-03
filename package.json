@@ -9,9 +9,10 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc",
-    "check": "tsc && vitest run",
+    "check": "tsc && tsc -p tsconfig.web.json --noEmit && vitest run",
     "sim": "node src/tools/simulate.ts",
-    "watch-match": "node src/tools/watch.ts"
+    "watch-match": "node src/tools/watch.ts",
+    "build": "tsc -p tsconfig.web.json && node -e \"const fs=require('node:fs');fs.copyFileSync('src/web/index.html','dist/index.html')\""
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
