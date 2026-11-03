@@ -303,11 +303,17 @@ function exportClub(): void {
 
 /** Lê um clube de um ficheiro exportado. Passa pelas mesmas verificações e conversões que o clube guardado. */
 function importClub(): void {
+  // No iPad, o ficheiro escolhido só chega ao jogo se o campo estiver na página. Sem filtro de tipo, porque o iOS
+  // às vezes deixa os .json a cinzento; o parseClub recusa o que não for um clube.
+  document.getElementById('importFile')?.remove();
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.json,application/json';
+  input.id = 'importFile';
+  input.hidden = true;
+  document.body.append(input);
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
+    input.remove();
     if (!file) return;
     const loaded = parseClub(await file.text().catch(() => null));
     if (!loaded) {
