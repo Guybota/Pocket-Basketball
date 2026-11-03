@@ -95,7 +95,7 @@ function townNote(club: ClubState, saveFailed: boolean): string {
   </div>`;
 }
 
-export const TOWER_NOTE = 'A torre guarda tudo sozinha. Este clube fica guardado neste browser.';
+export const TOWER_NOTE = 'A torre guarda tudo sozinha, mas só neste aparelho. Para levar o clube para outro lado ou ter uma cópia, exporta-o num ficheiro.';
 export const AIRPORT_NOTE = 'O aeroporto ainda está em obras. Os jogos contra outros treinadores chegam mais tarde.';
 
 /** O que fica por baixo do mapa: a secretária, o próximo jogo e o que não tem edifício próprio. */

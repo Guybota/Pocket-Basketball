@@ -17,7 +17,8 @@
     "browser-check": "node src/tools/browser-check.ts",
     "anim-check": "node src/tools/anim-check.ts",
     "build-page": "node src/tools/build-page.ts",
-    "build-mock": "node src/tools/build-mock.ts"
+    "build-mock": "node src/tools/build-mock.ts",
+    "build-icon": "node src/tools/build-icon.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
