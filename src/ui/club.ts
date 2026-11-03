@@ -11,7 +11,7 @@ import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type 
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 11;
+const SAVE_VERSION = 12;
 // Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
 const PLAYOFF_GAME_FATIGUE = 0.6;
 // Um jogo inteiro tira 10 % de condição; quem joga e treina todas as semanas fica à volta dos 70 %.
@@ -364,9 +364,40 @@ export const leagueIds = (club: ClubState): number[] => club.divisions[club.divi
 
 export const leagueTable = (club: ClubState): Standing[] => standings(leagueIds(club), club.rounds);
 
+export interface SeasonLine {
+  games: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+}
+
+// Dos pontos da equipa, quantos ressaltos e assistências lhe costumam corresponder, e quanto joga cada lugar do plantel.
+const TEAM_REBOUNDS_PER_POINT = 0.45;
+const TEAM_ASSISTS_PER_POINT = 0.35;
+const shareOfMinutes = (index: number): number => (index < 5 ? 1 : index < 10 ? 0.4 : 0.15);
+
+/** Os números da época de cada jogador de um clube, pela ordem do plantel. */
+export function seasonLines(club: ClubState, id: number, team: Team): SeasonLine[] {
+  if (id === PLAYER_CLUB) return team.roster.map(p => club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0 });
+  // shortcut: dos jogos dos outros só se guarda o resultado, por isso os pontos reais da equipa repartem-se pelas notas; para números reais seria preciso simular jogador a jogador.
+  const played = club.rounds.flat().filter(f => f.score && (f.home === id || f.away === id));
+  const points = played.reduce((sum, f) => sum + (f.home === id ? f.score![0] : f.score![1]), 0);
+  const split = (total: number, weight: (p: Player) => number): number[] => {
+    const weights = team.roster.map((p, i) => weight(p) * weight(p) * shareOfMinutes(i));
+    const sum = weights.reduce((x, y) => x + y, 0);
+    return weights.map(w => (total * w) / sum);
+  };
+  const scored = split(points, p => p.attributes.shooting);
+  const rebounds = split(points * TEAM_REBOUNDS_PER_POINT, p => p.attributes.jumping + (p.heightCm - 165));
+  const assists = split(points * TEAM_ASSISTS_PER_POINT, p => p.attributes.technique);
+  return team.roster.map((_, i) => ({ games: played.length, points: scored[i]!, rebounds: rebounds[i]!, assists: assists[i]! }));
+}
+
 /** As três últimas épocas de um clube, para a ficha da federação. O lugar é null quando o nosso clube ainda não existia. */
 export function clubSeasons(club: ClubState, id: number): { label: string; division: number; position: number | null }[] {
   const division = club.divisions.findIndex(ids => ids.includes(id));
+  // Os clubes de fora e os adversários especiais não têm épocas nas nossas ligas.
+  if (division < 0) return [];
   const now = division === club.division
     ? leagueTable(club).findIndex(row => row.club === id)
     : [...club.divisions[division]!].sort((a, b) => club.clubs[b]!.level - club.clubs[a]!.level).indexOf(id);
@@ -1057,18 +1088,18 @@ function migrateV7(old: ClubState): ClubState {
 }
 
 /** Até à versão 8 cada jogador tinha uma posição fixa. Agora o lugar na lista é que manda, e o campo desaparece de todo o lado. */
-function stripPositions(value: unknown): void {
-  if (Array.isArray(value)) value.forEach(stripPositions);
+function stripField(value: unknown, field: string): void {
+  if (Array.isArray(value)) value.forEach(item => stripField(item, field));
   else if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    if ('attributes' in record && 'position' in record) delete record.position;
-    for (const key of Object.keys(record)) stripPositions(record[key]);
+    if ('attributes' in record && field in record) delete record[field];
+    for (const key of Object.keys(record)) stripField(record[key], field);
   }
 }
 
 function migrateV8(old: ClubState): ClubState {
   const next = { ...old, version: 9 };
-  stripPositions(next);
+  stripField(next, 'position');
   return migrateV9(next);
 }
 
@@ -1080,7 +1111,14 @@ function migrateV9(old: ClubState): ClubState {
 /** Os jogadores passaram a vir de um pool fixo: os clubes guardados sem jogadores recebem os deles. O nosso plantel já está guardado. */
 function migrateV10(old: ClubState): ClubState {
   const deal = dealPool(makeRng(old.seed ^ 0x77a1c3), FOREIGN_START);
-  return { ...old, version: SAVE_VERSION, clubs: old.clubs.map((club, i) => (i < FOREIGN_START && !club.players ? { ...club, players: deal[i] } : club)) };
+  return migrateV11({ ...old, version: 11, clubs: old.clubs.map((club, i) => (i < FOREIGN_START && !club.players ? { ...club, players: deal[i] } : club)) });
+}
+
+/** Os jogadores deixaram de ter peso. */
+function migrateV11(old: ClubState): ClubState {
+  const next = { ...old, version: SAVE_VERSION };
+  stripField(next, 'weightKg');
+  return next;
 }
 
 /** Antes dos playoffs, a época acabava na fase regular. */
@@ -1162,6 +1200,7 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 8) parsed = migrateV8(parsed);
     if (parsed.version === 9) parsed = migrateV9(parsed);
     if (parsed.version === 10) parsed = migrateV10(parsed);
+    if (parsed.version === 11) parsed = migrateV11(parsed);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;

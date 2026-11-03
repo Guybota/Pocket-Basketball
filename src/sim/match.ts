@@ -80,6 +80,16 @@ export interface Body {
   nextCutTick: number;
   enteredTick: number;
   stunnedUntil: number;
+  /** Porque está atordoado: nos tornozelos partidos tem uma animação própria. */
+  stunKind: 'ankle' | null;
+  /** No chão, de `fallenFrom` a `fallenUntil`. */
+  fallenFrom: number;
+  fallenUntil: number;
+  /** Para que lado de x fica a cabeça, e se cai de barriga para baixo (senão, de costas). */
+  fallHead: -1 | 1;
+  fallProne: boolean;
+  /** Até quando um bloqueio não o volta a apanhar. */
+  screenCooldownUntil: number;
   /** Depois de perder um encontrão, corre mais devagar até aqui. */
   slowedUntil: number;
   nextBumpTick: number;
@@ -88,7 +98,6 @@ export interface Body {
   /** Quanto andou no último passo: um encontrão só acontece com alguém a correr contra o outro. */
   stepX: number;
   stepY: number;
-  bmi: number;
   fatigue: number;
   line: PlayerLine;
 }
@@ -125,6 +134,7 @@ export type MatchEventType =
   | 'substitution'
   | 'move'
   | 'bump'
+  | 'knockdown'
   | 'tipOff'
   | 'jumpBall'
   | 'timeout'
@@ -272,9 +282,39 @@ function emit(s: MatchState, type: MatchEventType, team: TeamIndex, extra: Parti
 }
 
 const maxSpeed = (b: Body): number =>
-  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint - B.speedLossPerBmi * (b.bmi - B.referenceBmi)) * (1 - B.fatigueSpeedLoss * b.fatigue);
+  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint - B.speedLossPerCm * (b.player.heightCm - B.referenceHeight)) * (1 - B.fatigueSpeedLoss * b.fatigue);
 
 const hasMove = (b: Body, move: MoveId): boolean => b.player.moves.includes(move);
+
+/** Vai ao chão: não se mexe nem defende até se levantar. */
+function knockDown(s: MatchState, b: Body, headX: number, prone: boolean): void {
+  const ticks = seconds(B.fallSeconds);
+  b.stunKind = null;
+  b.fallHead = headX < 0 ? -1 : 1;
+  b.fallProne = prone;
+  b.fallenFrom = s.tick;
+  b.fallenUntil = s.tick + ticks;
+  b.stunnedUntil = Math.max(b.stunnedUntil, s.tick + ticks);
+  emit(s, 'knockdown', b.team, { player: b.player.name });
+}
+
+/** O defensor marcado bate no bloqueio posto: pode ficar atordoado, e quanto mais forte o bloqueador mais vezes cai. */
+function checkScreenHit(s: MatchState): void {
+  const screen = s.screen;
+  if (!screen || s.phase !== 'live') return;
+  const { by, on } = screen;
+  if (s.tick < on.screenCooldownUntil || on.stunnedUntil > s.tick || distance(by.x, by.y, on.x, on.y) >= B.screenContactRange) return;
+  on.screenCooldownUntil = s.tick + seconds(B.screenHitCooldownSeconds);
+  const strength = by.player.attributes.strength;
+  if (!chance(s.rng, B.screenStunBase + (strength - on.player.attributes.strength) * B.screenStunPerStrength)) return;
+  if (chance(s.rng, (strength - B.screenFallFromStrength) * B.screenFallPerStrength)) {
+    // Bate no bloqueio e cai para trás, de costas, com a cabeça para o lado contrário ao do bloqueador.
+    knockDown(s, on, on.x - by.x, false);
+    return;
+  }
+  on.stunKind = null;
+  on.stunnedUntil = s.tick + seconds(B.screenStunSeconds);
+}
 
 function emitMove(s: MatchState, b: Body, move: MoveId): void {
   emit(s, 'move', b.team, { player: b.player.name, move });
@@ -314,7 +354,7 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
   const three = isThree(u, b.y);
   const dist = hoopDistance(u, b.y);
   const physical = dist <= B.midDistance
-    ? (b.player.heightCm - B.referenceHeight) * B.finishPerCm + (b.player.weightKg - B.referenceWeight) * B.finishPerKg
+    ? (b.player.heightCm - B.referenceHeight) * B.finishPerCm
     : 0;
   const focus = s.tactics[other(b.team)].focus ?? [];
   const marked = focus.length === 0 ? 0 : focus.includes(s.teams[b.team].roster.indexOf(b.player)) ? -B.focusShotPenalty : B.unfocusedShotBonus;
@@ -493,7 +533,7 @@ function swapIn(s: MatchState, team: TeamIndex, slot: number, incoming: Body): v
   incoming.enteredTick = s.tick;
   // Entra a andar desde a linha do banco.
   incoming.x = COURT_LENGTH / 2;
-  incoming.y = -COURT_HALF_WIDTH - 1;
+  incoming.y = -COURT_HALF_WIDTH - 0.5;
   s.court[team][slot] = incoming;
   emit(s, 'substitution', team, { player: incoming.player.name, other: outgoing.player.name });
 }
@@ -774,6 +814,12 @@ function resolveShot(s: MatchState, f: ShotFlight): void {
   }
   if (f.fouledBy) commitFoul(s, f.fouledBy);
   if (f.made) {
+    if (f.dunk) {
+      // Um poster: quem estava em cima do lance pode ir ao chão.
+      const victim = nearestDefender(s, f.shooter);
+      const fall = Math.min(B.posterFallMax, B.posterFallBase + (f.shooter.player.attributes.strength - 50) * B.posterFallPerStrength);
+      if (distance(victim.x, victim.y, f.shooter.x, f.shooter.y) < B.posterRange && chance(s.rng, fall)) knockDown(s, victim, victim.x - f.shooter.x, false);
+    }
     addRun(s, team, f.points);
     s.score[team] += f.points;
     f.shooter.line.points += f.points;
@@ -839,7 +885,7 @@ function pickRebounder(s: MatchState): Body {
   const weights = candidates.map(b => {
     const a = b.player.attributes;
     const dist = distance(b.x, b.y, toX, toY);
-    const size = (b.player.heightCm - B.referenceHeight) * B.reboundPerCm + (b.player.weightKg - B.referenceWeight) * B.reboundPerKg;
+    const size = (b.player.heightCm - B.referenceHeight) * B.reboundPerCm;
     const skill = Math.max(0.1, 0.25 + (a.jumping * 0.5 + a.strength * 0.5) / 100 + size);
     const closeness = 1 / (1 + dist * dist);
     const eager = b.team === s.offense && b.player.offBall === 'crasher' ? 1 + B.crasherReboundBonus : 1;
@@ -1046,7 +1092,9 @@ function decide(s: MatchState): void {
     s.driving = true;
     // O crossover deixa o defensor parado por um instante e abre o caminho para o cesto.
     if (hasMove(h, 'crossover') && pressure >= B.crossoverMinPressure && chance(s.rng, B.crossoverChance)) {
+      defender.stunKind = 'ankle';
       defender.stunnedUntil = s.tick + seconds(B.crossoverStunSeconds);
+      if (chance(s.rng, B.ankleFallBase + (a.technique - 50) * B.ankleFallPerTechnique)) knockDown(s, defender, h.x - defender.x, true);
       emitMove(s, h, 'crossover');
     }
   }
@@ -1083,8 +1131,8 @@ function onBallSpot(b: Body): readonly [number, number] {
 
 /** A força de um jogador num encontrão: conta o físico, o peso e a altura, e cansado empurra menos. */
 export function pushPower(b: Body): number {
-  const { attributes, weightKg, heightCm } = b.player;
-  const raw = attributes.strength + (weightKg - B.referenceWeight) * B.pushPerKg + (heightCm - B.referenceHeight) * B.pushPerCm;
+  const { attributes, heightCm } = b.player;
+  const raw = attributes.strength + (heightCm - B.referenceHeight) * B.pushPerCm;
   return Math.max(B.pushPowerMin, raw * (1 - B.pushFatigueLoss * b.fatigue));
 }
 
@@ -1293,6 +1341,7 @@ function isScreened(s: MatchState, b: Body): boolean {
 }
 
 function movePlayers(s: MatchState): void {
+  checkScreenHit(s);
   for (const team of s.court) {
     for (const b of team) {
       const dx = b.targetX - b.x;
@@ -1325,7 +1374,10 @@ function tryBump(s: MatchState, a: Body, b: Body, nx: number, ny: number): void 
   const loser = winner === a ? b : a;
   const hard = Math.abs(margin) >= B.bumpHardMargin;
   loser.slowedUntil = s.tick + seconds(B.bumpSlowSeconds);
-  if (hard) loser.stunnedUntil = Math.max(loser.stunnedUntil, s.tick + seconds(B.bumpStunSeconds));
+  if (hard) {
+    loser.stunKind = null;
+    loser.stunnedUntil = Math.max(loser.stunnedUntil, s.tick + seconds(B.bumpStunSeconds));
+  }
   a.nextBumpTick = s.tick + seconds(B.bumpCooldownSeconds);
   b.nextBumpTick = a.nextBumpTick;
   const bump = inPost ? 'post' : s.phase === 'rebound' ? 'rebound' : 'run';
@@ -1404,7 +1456,7 @@ function updateFatigue(s: MatchState): void {
     if (b.slot >= 0) {
       b.line.secondsPlayed += DT;
       const teamTactics = s.tactics[b.team];
-      const bodyLoad = (1 + B.fatiguePerBmi * (b.bmi - B.referenceBmi)) * (1 + B.tacticPressureFatigue * teamTactics.pressure + B.tacticPaceFatigue * teamTactics.pace);
+      const bodyLoad = (1 + B.tacticPressureFatigue * teamTactics.pressure + B.tacticPaceFatigue * teamTactics.pace);
       b.fatigue = clamp01(b.fatigue + B.fatigueGain * bodyLoad * (1 + B.fatigueStaminaFactor * (0.6 - a.stamina / 100)) * DT);
     } else {
       b.fatigue = clamp01(b.fatigue - B.benchRecovery * (b.player.offBall === 'sixthMan' ? B.sixthManRecovery : 1) * (1 + B.benchStrengthFactor * (a.strength / 100 - 0.6)) * DT);
@@ -1764,12 +1816,17 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
         nextCutTick: 0,
         enteredTick: 0,
         stunnedUntil: 0,
+        stunKind: null,
+        fallenFrom: 0,
+        fallenUntil: 0,
+        fallHead: 1,
+        fallProne: false,
+        screenCooldownUntil: 0,
         slowedUntil: 0,
         nextBumpTick: 0,
-        radius: B.bodyRadius + (player.weightKg / ((player.heightCm / 100) * (player.heightCm / 100)) - B.referenceBmi) * B.bodyRadiusPerBmi,
+        radius: B.bodyRadius,
         stepX: 0,
         stepY: 0,
-        bmi: player.weightKg / ((player.heightCm / 100) * (player.heightCm / 100)),
         fatigue: clamp01(player.fatigue * (1 + B.conditionStaminaFactor * (0.5 - player.attributes.stamina / 100))),
         line: { points: 0, assists: 0, rebounds: 0, steals: 0, blocks: 0, fouls: 0, secondsPlayed: 0 },
       };

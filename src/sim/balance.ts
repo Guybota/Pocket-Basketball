@@ -84,8 +84,8 @@ export const BALANCE = {
   reboundMaxWaitSeconds: 1.5,
 
   // Movimento
-  baseSpeed: 4.3,
-  speedPerPoint: 0.03,
+  baseSpeed: 4.2,
+  speedPerPoint: 0.02,
   fatigueSpeedLoss: 0.3,
   cutMinSeconds: 1.2,
   cutMaxSeconds: 2.4,
@@ -195,21 +195,34 @@ export const BALANCE = {
 
   // Corpo: referência de 195 cm, 95 kg e índice de massa corporal 25
   referenceHeight: 195,
-  referenceWeight: 95,
-  referenceBmi: 25,
-  speedLossPerBmi: 0.06,
-  fatiguePerBmi: 0.01,
   reboundPerCm: 0.012,
-  reboundPerKg: 0.007,
   blockPerCm: 0.003,
   finishPerCm: 0.0015,
-  finishPerKg: 0.0006,
   contestPerCm: 0.002,
 
   // Movimentos especiais
   crossoverChance: 0.85,
   crossoverMinPressure: 0.3,
   crossoverStunSeconds: 2.2,
+  // Quem é mais alto é mais lento: 20 cm valem 0,3 m/s.
+  speedLossPerCm: 0.015,
+  // Quedas: fica no chão e levanta-se, sem poder fazer nada entretanto.
+  fallSeconds: 1.8,
+  ankleFallBase: 0.15,
+  ankleFallPerTechnique: 0.004,
+  // Bater num bloqueio: atordoa conforme a diferença de força, e derruba conforme a força de quem bloqueia.
+  screenContactRange: 0.9,
+  screenHitCooldownSeconds: 4,
+  screenStunBase: 0.35,
+  screenStunPerStrength: 0.006,
+  screenStunSeconds: 0.9,
+  screenFallPerStrength: 0.004,
+  screenFallFromStrength: 30,
+  // Levar um afundanço em cima: quanto mais forte quem afunda, mais vezes vai ao chão.
+  posterRange: 1.8,
+  posterFallBase: 0.1,
+  posterFallPerStrength: 0.008,
+  posterFallMax: 0.7,
   stepBackChance: 0.75,
   stepBackMinPressure: 0.3,
   stepBackMinDistance: 3.5,
@@ -290,8 +303,6 @@ export const BALANCE = {
 
   // Colisões. O corpo ocupa este raio, e quem tem mais físico e peso é empurrado menos.
   bodyRadius: 0.41,
-  bodyRadiusPerBmi: 0.012,
-  pushPerKg: 0.8,
   pushPerCm: 0.1,
   pushFatigueLoss: 0.3,
   pushPowerMin: 15,

@@ -104,13 +104,9 @@ export function trainingFactor(potential: number, fatigue: number): number {
 /** Subir é mais difícil quanto mais alto já se está, para o clube não chegar ao topo em poucas épocas. */
 const attributeFactor = (value: number): number => Math.max(0.1, 1 - value / B.trainingHardCap);
 
-/** O maior combo contido nas cartas escolhidas. Só conta um por semana. */
+/** O combo destas cartas exatas, por qualquer ordem. Uma carta a mais ou a menos já não é combo. */
 export function comboFor(cards: readonly CardId[]): Combo | null {
-  let best: Combo | null = null;
-  for (const combo of COMBOS) {
-    if (combo.cards.every(card => cards.includes(card)) && (!best || combo.cards.length > best.cards.length)) best = combo;
-  }
-  return best;
+  return COMBOS.find(combo => combo.cards.length === cards.length && combo.cards.every(card => cards.includes(card))) ?? null;
 }
 
 export interface TrainingResult {

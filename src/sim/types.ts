@@ -31,7 +31,6 @@ export interface Player {
   name: string;
   attributes: Attributes;
   heightCm: number;
-  weightKg: number;
   moves: MoveId[];
   offBall: OffBallStyle;
   onBall: OnBallStyle;
@@ -95,7 +94,6 @@ export function validateTeam(team: Team): void {
   if (team.tactics) validateTactics(team.tactics, team.name);
   for (const player of team.roster) {
     if (!Number.isFinite(player.heightCm) || player.heightCm < 150 || player.heightCm > 240) throw new Error(`${player.name}: altura inválida`);
-    if (!Number.isFinite(player.weightKg) || player.weightKg < 40 || player.weightKg > 180) throw new Error(`${player.name}: peso inválido`);
     if (!Array.isArray(player.moves) || player.moves.some(move => !MOVES.includes(move))) throw new Error(`${player.name}: movimento inválido`);
     if (!OFF_BALL_STYLES.includes(player.offBall)) throw new Error(`${player.name}: comportamento sem bola inválido`);
     if (!ON_BALL_STYLES.includes(player.onBall)) throw new Error(`${player.name}: comportamento com bola inválido`);

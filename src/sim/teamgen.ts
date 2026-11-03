@@ -38,13 +38,13 @@ const BIASES: Record<Position, Partial<Attributes>> = {
   POS: { strength: 12, jumping: 14, speed: -10, shooting: -10, technique: -8 },
 };
 
-// Medidas típicas por posição: altura em cm e índice de massa corporal.
-const BODIES: Record<Position, { height: number; bmi: number }> = {
-  BAS: { height: 183, bmi: 23.5 },
-  ESC: { height: 192, bmi: 24 },
-  EXT: { height: 198, bmi: 24.5 },
-  EXP: { height: 204, bmi: 25.5 },
-  POS: { height: 210, bmi: 26.5 },
+// A altura típica de cada posição, em cm.
+const BODIES: Record<Position, { height: number }> = {
+  BAS: { height: 183 },
+  ESC: { height: 192 },
+  EXT: { height: 198 },
+  EXP: { height: 204 },
+  POS: { height: 210 },
 };
 const POSITION_MOVES: Record<Position, readonly MoveId[]> = {
   BAS: ['crossover', 'alleyOop', 'pickpocket'],
@@ -80,7 +80,6 @@ export interface PoolPlayer {
   name: string;
   position: Position;
   heightCm: number;
-  weightKg: number;
 }
 
 /** Os 12 lugares de um plantel: cinco titulares, cinco suplentes por posição e dois extra. */
@@ -91,8 +90,7 @@ const POOL_CLUBS = 42;
 function makeBody(rng: Rng, name: string, position: Position): PoolPlayer {
   const body = BODIES[position];
   const heightCm = Math.round(body.height + noise(rng, 11));
-  const bmi = body.bmi + noise(rng, 4.5);
-  return { name, position, heightCm, weightKg: Math.round(bmi * (heightCm / 100) * (heightCm / 100)) };
+  return { name, position, heightCm };
 }
 
 /** O pool de jogadores, igual em todas as carreiras: nome, posição e corpo fixos, como no original. */
@@ -130,13 +128,11 @@ function makePlayerFrom(rng: Rng, body: PoolPlayer, level: number, spread: numbe
     const value = level + (BIASES[position][key] ?? 0) + noise(rng, spread);
     attributes[key] = Math.round(Math.max(1, Math.min(99, value)));
   }
-  // Quem tem mais físico pesa um pouco mais do que o corpo base.
-  const weightKg = Math.round(body.weightKg + (attributes.strength - level) * 0.1);
   const options = POSITION_MOVES[position];
   const moves: MoveId[] = next(rng) < MOVE_CHANCE ? [options[Math.floor(next(rng) * options.length)]!] : [];
   const pick = <T>(list: readonly T[]): T => list[Math.floor(next(rng) * list.length)]!;
   const potential = Math.round(Math.max(10, Math.min(100, 60 + noise(rng, 40))));
-  return { name: body.name, attributes, heightCm: body.heightCm, weightKg, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
+  return { name: body.name, attributes, heightCm: body.heightCm, moves, offBall: pick(POSITION_OFF_BALL[position]), onBall: pick(POSITION_ON_BALL[position]), potential, fatigue: 0 };
 }
 
 /** Um jogador fora do pool, para os testes, os clubes de fora e o mercado. */
@@ -194,8 +190,8 @@ export function generateLeagueTeam(seed: number, name: string, level: number, cl
   return generateTeam(seed, name, level + between(rng, -clubSpread, clubSpread));
 }
 
-export function withBody(team: Team, heightCm: number, weightKg: number): Team {
-  return { ...team, roster: team.roster.map(player => ({ ...player, heightCm: player.heightCm + heightCm, weightKg: player.weightKg + weightKg })) };
+export function withBody(team: Team, heightCm: number): Team {
+  return { ...team, roster: team.roster.map(player => ({ ...player, heightCm: player.heightCm + heightCm })) };
 }
 
 export function withMoves(team: Team, moves: readonly MoveId[]): Team {

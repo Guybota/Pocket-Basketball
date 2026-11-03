@@ -56,7 +56,7 @@ export function townOverlay(club: ClubState, places: Record<TownPlace, { x: numb
   const until = weeksToNextGame(club);
   const game = until === null ? 'Época terminada' : until === 0 ? 'Jogo esta semana' : until === 1 ? 'Jogo na próxima semana' : `Jogo daqui a ${until} semanas`;
   const skip = until !== 0 ? '<button type="button" id="skipWeekBtn">Passar a semana ›</button>' : '';
-  return `<div class="town-bar"><span>${month} · Semana ${week % WEEKS_PER_MONTH + 1}</span><span class="game">${game}</span>${skip}<span class="${club.confidence < 15 ? 'low' : ''}">Confiança ${Math.round(club.confidence)}%</span></div>${matchNotice(club, until)}
+  return `<div class="town-bar"><span>${month} · Semana ${week % WEEKS_PER_MONTH + 1}</span>${until === null ? `<span class="game">${game}</span>` : ''}${skip}<span class="${club.confidence < 15 ? 'low' : ''}">Confiança ${Math.round(club.confidence)}%</span></div>${matchNotice(club, until)}
     ${chip('arena', 'arenaChip', 'Pavilhão')}
     ${chip('office', 'officeBtn', 'Escritório')}
     ${chip('training', 'trainBtn', `Treino (${cards})`)}
