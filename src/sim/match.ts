@@ -1,3 +1,4 @@
+import { heightCmOf } from './teamgen.ts';
 import { BALANCE as B } from './balance.ts';
 import {
   COURT_HALF_WIDTH,
@@ -251,7 +252,8 @@ export interface MatchState {
   play: Play;
   /** Para quem é a jogada desta posse, quando é montada para uma opção de ataque. */
   playFor: Body | null;
-  freeThrow: { shooter: Body; left: number } | null;
+  /** `returning`: entre dois lances, a bola ainda está a voltar ao lançador pelas mãos do árbitro. */
+  freeThrow: { shooter: Body; left: number; returning?: boolean } | null;
   score: [number, number];
   teamFouls: [number, number];
   lines: [TeamLine, TeamLine];
@@ -289,7 +291,7 @@ function emit(s: MatchState, type: MatchEventType, team: TeamIndex, extra: Parti
 }
 
 const maxSpeed = (b: Body): number =>
-  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint - B.speedLossPerCm * (b.player.heightCm - B.referenceHeight)) * (1 - B.fatigueSpeedLoss * b.fatigue);
+  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint - B.speedLossPerCm * (heightCmOf(b.player) - B.referenceHeight)) * (1 - B.fatigueSpeedLoss * b.fatigue);
 
 const hasMove = (b: Body, move: MoveId): boolean => b.player.moves.includes(move);
 
@@ -354,7 +356,7 @@ function pressureOn(s: MatchState, b: Body): number {
     if (d.stunnedUntil > s.tick) continue;
     const closeness = clamp01((B.pressureRange - distance(b.x, b.y, d.x, d.y)) / B.pressureRange);
     const a = d.player.attributes;
-    const quality = (a.speed * 0.5 + a.strength * 0.3 + a.jumping * 0.2) / 100 + (d.player.heightCm - B.referenceHeight) * B.contestPerCm;
+    const quality = (a.speed * 0.5 + a.strength * 0.3 + a.jumping * 0.2) / 100 + (heightCmOf(d.player) - B.referenceHeight) * B.contestPerCm;
     const freshness = 1 - B.fatigueDefenseLoss * d.fatigue;
     // Um defensor preso num bloqueio pressiona a metade.
     const screened = s.screen !== null && s.screen.on === d && distance(s.screen.by.x, s.screen.by.y, d.x, d.y) < B.screenSetRange ? B.screenPressureFactor : 1;
@@ -381,7 +383,7 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
   const three = isThree(u, b.y);
   const dist = hoopDistance(u, b.y);
   const physical = dist <= B.midDistance
-    ? (b.player.heightCm - B.referenceHeight) * B.finishPerCm
+    ? (heightCmOf(b.player) - B.referenceHeight) * B.finishPerCm
     : 0;
   const focus = s.tactics[other(b.team)].focus ?? [];
   const marked = focus.length === 0 ? 0 : focus.includes(s.teams[b.team].roster.indexOf(b.player)) ? -B.focusShotPenalty : B.unfocusedShotBonus;
@@ -420,7 +422,7 @@ function newPossession(s: MatchState, team: TeamIndex): void {
 function playFor(b: Body): Play {
   const p = b.player;
   const a = p.attributes;
-  if (p.heightCm >= B.bigHeightCm) return p.onBall === 'postUp' || a.shooting < B.popShooting ? 'postIso' : 'pickPop';
+  if (p.height >= B.bigHeight) return p.onBall === 'postUp' || a.shooting < B.popShooting ? 'postIso' : 'pickPop';
   if (p.onBall === 'playmaker') return 'pickRoll';
   if (p.onBall === 'shooter' || p.offBall === 'spotUp' || a.shooting >= Math.max(a.speed, a.technique)) return 'screens';
   return 'iso';
@@ -655,7 +657,7 @@ function jumpSpots(s: MatchState, team: TeamIndex, jumper: Body): Map<Body, [num
 const bestJumper = (s: MatchState, team: TeamIndex): Body =>
   [...s.court[team]].sort((a, b) => jumpReach(b) - jumpReach(a))[0]!;
 
-const jumpReach = (b: Body): number => b.player.attributes.jumping + (b.player.heightCm - B.referenceHeight) * B.jumpPerCm;
+const jumpReach = (b: Body): number => b.player.attributes.jumping + (heightCmOf(b.player) - B.referenceHeight) * B.jumpPerCm;
 
 /** As equipas vão para o círculo: a entrar do banco, no início do jogo, ou de onde estavam na pausa, no prolongamento. */
 function placeForJump(s: MatchState, walkIn: boolean): void {
@@ -811,7 +813,7 @@ function shoot(s: MatchState, shooter: Body, lob = false): void {
 
   let blockedBy: Body | null = null;
   if (!unstoppable && pressure >= B.blockPressureMin && odds.distance <= B.blockMaxDistance) {
-    const edge = defenseAttrs.jumping - offenseAttrs.jumping + (defender.player.heightCm - shooter.player.heightCm) * (B.blockPerCm / B.blockSlope);
+    const edge = defenseAttrs.jumping - offenseAttrs.jumping + (heightCmOf(defender.player) - heightCmOf(shooter.player)) * (B.blockPerCm / B.blockSlope);
     if (chance(s.rng, Math.max(0.005, B.blockBase + B.blockSlope * edge) * (defender.player.offBall === 'rimProtector' ? B.rimProtectorBlock : 1))) blockedBy = defender;
   }
   let fouledBy: Body | null = null;
@@ -937,7 +939,7 @@ function pickRebounder(s: MatchState): Body {
   const weights = candidates.map(b => {
     const a = b.player.attributes;
     const dist = distance(b.x, b.y, toX, toY);
-    const size = (b.player.heightCm - B.referenceHeight) * B.reboundPerCm;
+    const size = (heightCmOf(b.player) - B.referenceHeight) * B.reboundPerCm;
     const skill = Math.max(0.1, 0.25 + (a.jumping * 0.5 + a.strength * 0.5) / 100 + size);
     const closeness = 1 / (1 + dist * dist);
     const eager = b.team === s.offense && b.player.offBall === 'crasher' ? 1 + B.crasherReboundBonus : 1;
@@ -1058,6 +1060,11 @@ function decide(s: MatchState): void {
       }
       return;
     }
+  }
+  // Sozinho perto do cesto, lança: nem a opção de ataque nem o organizador valem mais do que um lançamento livre ali.
+  if (hoopDistance(toU(s, h.team, h.x), h.y) <= B.openShotDistance && pressure < B.openShotPressure) {
+    shoot(s, h);
+    return;
   }
   // Com o caminho livre não se segura nem se passa para trás: vai-se ao cesto. Um grande longe do cesto continua a dar a bola a quem a conduz.
   if ((h.slot < 3 || toU(s, h.team, h.x) <= B.outletU || s.driving) && hasOpenLane(s, h)) {
@@ -1206,8 +1213,8 @@ function onBallSpot(b: Body): readonly [number, number] {
 
 /** A força de um jogador num encontrão: conta o físico, o peso e a altura, e cansado empurra menos. */
 export function pushPower(b: Body): number {
-  const { attributes, heightCm } = b.player;
-  const raw = attributes.strength + (heightCm - B.referenceHeight) * B.pushPerCm;
+  const { attributes } = b.player;
+  const raw = attributes.strength + (heightCmOf(b.player) - B.referenceHeight) * B.pushPerCm;
   return Math.max(B.pushPowerMin, raw * (1 - B.pushFatigueLoss * b.fatigue));
 }
 
@@ -1305,7 +1312,7 @@ function updateTargets(s: MatchState): void {
       if (s.playFor && s.playFor.slot < 0) s.playFor = null;
       const pf = s.playFor;
       // O grande de serviço para os bloqueios: o mais alto que não seja quem tem a bola nem a opção.
-      const biggest = (except: readonly Body[]): Body => [...s.court[offense]].filter(b => !except.includes(b)).sort((a, b) => b.player.heightCm - a.player.heightCm)[0]!;
+      const biggest = (except: readonly Body[]): Body => [...s.court[offense]].filter(b => !except.includes(b)).sort((a, b) => b.player.height - a.player.height)[0]!;
       if ((s.play === 'pickRoll' && (!pf || pf === h)) || (s.play === 'pickPop' && pf && pf !== h)) {
         // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola para o cesto; no pick-and-pop abre para o arco.
         const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 4 ? 3 : 4]!;
@@ -1453,8 +1460,8 @@ function movePlayers(s: MatchState): void {
       b.stepY = 0;
       if (dist < 0.01 || b.stunnedUntil > s.tick) continue;
       // Em posição de defesa, perto do seu homem, anda-se de lado, mais devagar; longe dele, corre-se.
-      // Na zona não há homem a marcar: conta o atacante mais perto.
-      const man = b.team !== s.offense && s.phase === 'live' ? (s.tactics[b.team].defense === 'zone' ? nearestDefender(s, b) : s.court[s.offense][b.slot]) : undefined;
+      // Só quem defende o jogador com a bola fica em posição de defesa: o defensor mais perto dele.
+      const man = b.team !== s.offense && s.phase === 'live' && s.holder && nearestDefender(s, s.holder) === b ? s.holder : undefined;
       // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
       const stance = man !== undefined && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
       const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
@@ -1650,8 +1657,37 @@ function updateBall(s: MatchState): void {
       s.ball.x = shooter.x + (fromU(s, shooter.team, 1.575) - shooter.x) * t;
       s.ball.y = shooter.y * (1 - t);
       s.ball.z = 2 + 1.05 * t + (B.shotArcBase + 4 * B.shotArcPerMeter) * t * (1 - t);
+    } else if (s.freeThrow.returning) {
+      // Entre lances: cai do aro, rola até ao árbitro, que está debaixo do cesto um pouco ao lado, e ele passa-a ao lançador.
+      const elapsed = seconds(B.freeThrowSeconds) - s.timer;
+      const fall = seconds(B.freeThrowFallSeconds);
+      const roll = seconds(B.freeThrowRollSeconds);
+      const throwTicks = seconds(B.freeThrowPassSeconds);
+      const hoopX = fromU(s, shooter.team, HOOP_U);
+      const refX = fromU(s, shooter.team, B.freeThrowRefereeU);
+      const refY = B.freeThrowRefereeV;
+      if (elapsed < fall) {
+        s.ball.x = hoopX;
+        s.ball.y = 0;
+        s.ball.z = Math.max(B.ballRestHeight, 3.05 - (3.05 - B.ballRestHeight) * (elapsed / fall));
+      } else if (elapsed < fall + roll) {
+        const t = (elapsed - fall) / roll;
+        s.ball.x = hoopX + (refX - hoopX) * t;
+        s.ball.y = refY * t;
+        s.ball.z = B.ballRestHeight + (1 - B.ballRestHeight) * t;
+      } else if (elapsed < fall + roll + throwTicks) {
+        const t = (elapsed - fall - roll) / throwTicks;
+        s.ball.x = refX + (shooter.x - refX) * t;
+        s.ball.y = refY + (shooter.y - refY) * t;
+        s.ball.z = 1 + t + 1.2 * t * (1 - t);
+      } else {
+        s.freeThrow.returning = false;
+        s.ball.x = shooter.x;
+        s.ball.y = shooter.y;
+        s.ball.z = 2;
+      }
     } else if (distance(shooter.x, shooter.y, s.ball.x, s.ball.y) > 0.4) {
-      // Entre lances, a bola cai do aro e o árbitro leva-a ao lançador a andar.
+      // Antes do primeiro lance, o árbitro leva a bola ao lançador a andar.
       s.ball.z = Math.max(B.ballRestHeight, s.ball.z - B.ballFallSpeed * DT);
       if (s.ball.z <= B.ballRestHeight + 0.01) {
         const dist = distance(shooter.x, shooter.y, s.ball.x, s.ball.y);
@@ -1699,6 +1735,7 @@ function stepFreeThrow(s: MatchState): void {
   emit(s, made ? 'freeThrowMade' : 'freeThrowMissed', team, { player: shooter.player.name, points: 1 });
   if (free.left > 0) {
     s.timer = seconds(B.freeThrowSeconds);
+    free.returning = true;
     return;
   }
   s.freeThrow = null;

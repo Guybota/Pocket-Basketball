@@ -1,3 +1,4 @@
+import { heightCmOf } from '../../sim/teamgen.ts';
 import type { Player } from '../../sim/types.ts';
 import { pixelsForHeight } from './body.ts';
 import { kitKey, shadeOf, usesSecond, type ClubKit } from './kit.ts';
@@ -127,10 +128,11 @@ export function lookOf(player: Player, kit: KitName): Look {
     // Com >>> o resultado nunca é negativo, o que daria uma cor de cabelo inexistente.
     hair: (hash >>> 3) % HAIRS.length,
     style: (hash >>> 6) % 5,
-    ...pixelsForHeight(player.heightCm),
+    ...pixelsForHeight(heightCmOf(player)),
     // Os jogadores têm todos o mesmo corpo; os adeptos e os outros bonecos escolhem o seu.
     build: 'athletic',
-    face: hash >>> 9,
+    // Os jogadores nunca têm óculos; o presidente e outras caras fixas continuam a poder ter.
+    face: ((hash >>> 9) >>> 20) % 5 === 0 ? (hash >>> 9) + (1 << 20) : hash >>> 9,
   };
 }
 

@@ -4,14 +4,14 @@ import { CUP_ROUNDS, CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, createKn
 import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
-import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
+import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
 import { DEFAULT_KITS, defaultEmblem, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 12;
+const SAVE_VERSION = 13;
 // Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
 const PLAYOFF_GAME_FATIGUE = 0.6;
 // Um jogo inteiro tira 10 % de condição; quem joga e treina todas as semanas fica à volta dos 70 %.
@@ -389,7 +389,7 @@ export function seasonLines(club: ClubState, id: number, team: Team): SeasonLine
     return weights.map(w => (total * w) / sum);
   };
   const scored = split(points, p => p.attributes.shooting);
-  const rebounds = split(points * TEAM_REBOUNDS_PER_POINT, p => p.attributes.jumping + (p.heightCm - 165));
+  const rebounds = split(points * TEAM_REBOUNDS_PER_POINT, p => p.attributes.jumping + (heightCmOf(p) - 165));
   const assists = split(points * TEAM_ASSISTS_PER_POINT, p => p.attributes.technique);
   return team.roster.map((_, i) => ({ games: played.length, points: scored[i]!, rebounds: rebounds[i]!, assists: assists[i]! }));
 }
@@ -1113,8 +1113,26 @@ function migrateV10(old: ClubState): ClubState {
 
 /** Os jogadores deixaram de ter peso. */
 function migrateV11(old: ClubState): ClubState {
-  const next = { ...old, version: SAVE_VERSION };
+  const next = { ...old, version: 12 };
   stripField(next, 'weightKg');
+  return migrateV12(next);
+}
+
+/** A altura passou de centímetros a três níveis, com o mesmo corte das estrelas. */
+function migrateV12(old: ClubState): ClubState {
+  const next = { ...old, version: SAVE_VERSION };
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if ('attributes' in record && typeof record.heightCm === 'number') {
+        record.height = levelOfHeight(record.heightCm);
+        delete record.heightCm;
+      }
+      for (const key of Object.keys(record)) walk(record[key]);
+    }
+  };
+  walk(next);
   return next;
 }
 
@@ -1198,6 +1216,7 @@ export function parseClub(text: string | null): ClubState | null {
     if (parsed.version === 9) parsed = migrateV9(parsed);
     if (parsed.version === 10) parsed = migrateV10(parsed);
     if (parsed.version === 11) parsed = migrateV11(parsed);
+    if (parsed.version === 12) parsed = migrateV12(parsed);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;
     if (!Array.isArray(parsed.clubs) || !Array.isArray(parsed.divisions) || parsed.divisions.length !== DIVISIONS.length) return null;
