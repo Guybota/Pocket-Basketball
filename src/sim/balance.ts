@@ -1,7 +1,7 @@
 // Todos os números de equilíbrio do jogo. Depois de mudar qualquer um, corre `npm run sim`.
 export const BALANCE = {
   // Tempo, em segundos reais
-  periodSeconds: 135,
+  periodSeconds: 120,
   overtimeSeconds: 60,
   periodBreakSeconds: 4,
   shotClockSeconds: 11,
@@ -10,12 +10,12 @@ export const BALANCE = {
   // Com trocas, a bola parada dura o bastante para quem entra e quem sai irem a andar antes da reposição.
   substitutionSeconds: 1.6,
   // Nas trocas, o jogo espera que quem sai chegue ao banco e quem entra chegue ao seu lugar, mas nunca mais do que isto.
-  substitutionMaxWaitSeconds: 6,
-  substitutionArriveDistance: 0.6,
+  substitutionMaxWaitSeconds: 4,
   // Reposição: quem repõe fica fora de campo, assenta os pés e passa a quem vem receber.
   // Quem repõe vai buscar a bola onde ela ficou e leva-a até à linha; só se espera por ele até aqui.
-  inboundMaxWaitSeconds: 8,
-  inboundSettleSeconds: 0.35,
+  inboundMaxWaitSeconds: 4,
+  inboundSettleSeconds: 0.25,
+  inboundSettleDistance: 0.6,
   inboundOutside: 0.7,
   // Uma bola perdida rola até à linha mais perto, a esta velocidade, antes de a reposição começar.
   lostBallRollSpeed: 6,
@@ -218,6 +218,9 @@ export const BALANCE = {
   laneGuardGap: 0.7,
   // Quem afunda arranca para o aro: corre a esta fração a mais da sua velocidade, para lá chegar no tempo do lance.
   dunkBurst: 1.5,
+  // Sprint: quem corta para o cesto, quem entra com a bola e o ataque em contra-ataque correm mais depressa e cansam-se mais.
+  sprintFactor: 1.25,
+  sprintFatigue: 2,
   dunkMinJumping: 45,
   dunkArc: 0.3,
   // Nenhum lançamento chega ao aro a subir: mesmo debaixo do cesto, a bola passa por cima e cai lá dentro.

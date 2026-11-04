@@ -93,9 +93,9 @@ const POSES = {
   defend: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-4, L - 1], g: [4, L - 1], jump: -1 }),
   slide0: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),
   slide1: (L: number): PoseShape => ({ a: [-7, -2], b: [7, -3], f: [-2, L - 1], g: [2, L - 1], jump: -1 }),
-  pass: (L: number): PoseShape => ({ a: [4, 0], b: [5, 1], f: [-2, L], g: [3, L], ball: [8, -6] }),
+  pass: (L: number): PoseShape => ({ a: [4, 3], b: [5, 0], f: [-2, L], g: [3, L], ball: [8, -6] }),
   // O passe picado, de braços para baixo; o lob, de braços no ar; e quem o recebe salta de braços esticados.
-  bouncePass: (L: number): PoseShape => ({ a: [5, 5], b: [6, 6], f: [-2, L], g: [4, L - 1] }),
+  bouncePass: (L: number): PoseShape => ({ a: [-1, 4], b: [4, 4], f: [-2, L], g: [4, L - 1] }),
   lob: (L: number): PoseShape => ({ a: [-2, -9], b: [4, -10], f: [-2, L], g: [3, L], jump: 1 }),
   reach: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 2], g: [2, L - 2], jump: 8 }),
   // O salto ao ressalto: a mesma pose, mas a altura vem da vista, que o faz subir e descer em arco.
@@ -205,9 +205,11 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   };
   const limb = (x0: number, y0: number, x1: number, y1: number, thickness: number, colorAt: (k: number) => string): void => {
     const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    // Um membro deitado é tão grosso na vertical como um de pé é na horizontal.
+    const flat = Math.abs(x1 - x0) > Math.abs(y1 - y0);
     for (let i = 0; i <= steps; i++) {
       const k = i / steps;
-      rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), thickness, 2, colorAt(k));
+      rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), flat ? 2 : thickness, flat ? Math.max(2, thickness) : 2, colorAt(k));
     }
   };
   const L = look.legs;
@@ -239,6 +241,19 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   rect(hipLeft, hipY + 2, 2, 1, kit.trim);
   rect(hipLeft + body.hips - 2, hipY + 2, 2, 1, kit.trim);
   const top = hipY - T;
+  const shoulderLeft = hx - (body.shoulder >> 1);
+  const shoulderRight = shoulderLeft + body.shoulder - 1;
+  const overlap = body.arm > 1 ? 1 : 0;
+  const leftArm = shoulderLeft - body.arm + overlap;
+  const rightArm = shoulderRight + 1 - overlap;
+  // O braço de trás é sombreado, salvo quando atravessa o peito, à luz; numa pele escura a sombra confundia-se com o contorno.
+  const drawLeftArm = (): void => limb(leftArm, top + 1, leftArm + shape.a[0], top + 1 + shape.a[1], body.arm, k => (sleeves && k < 0.7 ? kit.shade : shape.a[0] > 0 ? skin : skinShade));
+  const drawRightArm = (): void => limb(rightArm, top + 1, rightArm + shape.b[0], top + 1 + shape.b[1], body.arm, k => (sleeves && k < 0.7 ? kit.jersey : skin));
+  // Um braço deitado que atravessa o peito fica à frente da camisola; de costas, escondido atrás do tronco.
+  const leftCrosses = shape.a[0] > Math.abs(shape.a[1]);
+  const rightCrosses = -shape.b[0] > Math.abs(shape.b[1]);
+  if (back && leftCrosses) drawLeftArm();
+  if (back && rightCrosses) drawRightArm();
   // O tronco é desenhado linha a linha, dos ombros à cintura.
   for (let row = 0; row < T; row++) {
     const width = Math.round(body.shoulder + ((body.waist - body.shoulder) * row) / Math.max(1, T - 1));
@@ -285,13 +300,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     rect(headX + 3, headY + 3, 1, 2, INK);
     rect(headX + 6, headY + 3, 1, 2, INK);
   }
-  const shoulderLeft = hx - (body.shoulder >> 1);
-  const shoulderRight = shoulderLeft + body.shoulder - 1;
-  const overlap = body.arm > 1 ? 1 : 0;
-  const leftArm = shoulderLeft - body.arm + overlap;
-  const rightArm = shoulderRight + 1 - overlap;
-  limb(leftArm, top + 1, leftArm + shape.a[0], top + 1 + shape.a[1], body.arm, k => (sleeves && k < 0.7 ? kit.shade : skinShade));
-  limb(rightArm, top + 1, rightArm + shape.b[0], top + 1 + shape.b[1], body.arm, k => (sleeves && k < 0.7 ? kit.jersey : skin));
+  if (!leftCrosses) drawLeftArm();
+  if (!rightCrosses) drawRightArm();
   if (shape.prop === 'bottle') {
     const bx = rightArm + shape.b[0] + 1;
     const by = top + 1 + shape.b[1] - 3;
@@ -310,6 +320,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   rect(shoulderLeft, top + 1, body.shoulder, 1, kit.jersey);
   put(shoulderRight, top + 1, kit.shade);
   if (!back) rect(hx - 1, top, 2, 1, skin);
+  if (!back && leftCrosses) drawLeftArm();
+  if (!back && rightCrosses) drawRightArm();
   if (withBall && shape.ball) {
     const bx = hx + shape.ball[0];
     const by = hipY + shape.ball[1];

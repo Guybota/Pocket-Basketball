@@ -1073,7 +1073,8 @@ function frame(now: number): void {
   } else if (stage === 'menu') {
     menuFrame(now);
   } else if (current) {
-    current.render(Math.min(1, accumulator), simSeconds, elapsed);
+    // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
+    current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
     updateHud();
   }
   renderMs += performance.now() - start;

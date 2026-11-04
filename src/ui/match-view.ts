@@ -3,7 +3,7 @@ import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { BENCH_SPACING, BENCH_START_X, BENCH_Y, seconds } from '../sim/court.ts';
-import { createMatch, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
+import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures } from './art/court.ts';
@@ -47,10 +47,15 @@ const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
 const TIP_HEIGHT = 16;
+// A pose de passe dura pouco: depois, quem passou volta a correr ou a esperar, em vez de deslizar de braços esticados.
+const PASS_POSE_TICKS = 6;
 // O salto ao ressalto: começa estes passos antes de a bola cair, dura isto e sobe até aqui, em píxeis.
 const REBOUND_JUMP_AHEAD = 5;
 const REBOUND_JUMP_TICKS = 12;
 const REBOUND_JUMP_HEIGHT = 12;
+// No afundanço, o salto leva a mão até ao aro: a mão da pose fica a 32 px dos pés e o aro a 46, por isso sobe-se 14 px.
+const DUNK_LIFT = 14;
+const DUNK_FALL_TICKS = 6;
 // Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
 // à altura do aro, quando ele lhe toca.
@@ -116,6 +121,8 @@ export class MatchView {
   private readonly stepBacks = new Map<Body, number>();
   /** Quem saltou ao ressalto e quando: o salto começa antes de a bola chegar, e apanha-se em cima. */
   private readonly reboundJumps = new Map<Body, number>();
+  /** Quem está a afundar: quando começou o salto e quanto dura a subida, até à mão tocar no aro. */
+  private readonly dunkJumps = new Map<Body, { start: number; up: number }>();
   /** Se um passe é picado decide-se uma vez por passe: com um defensor perto da linha do passe, a bola vai pelo chão. */
   private readonly bounces = new WeakMap<object, boolean>();
   private lastFreeThrowPose: PoseName | null = null;
@@ -326,6 +333,8 @@ export class MatchView {
           const dunk = e.dunk === true;
           // No lay-up e no step-back não há pose fixa: `poseOf` segue o voo. De costas no poste, lança-se de gancho.
           if (!e.layup && this.stepBacks.get(body) !== s.tick) this.overrides.set(body, { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : 16) });
+          // Quem afunda salta até à mão tocar no aro, no fim do lance.
+          if (dunk && s.flight?.kind === 'shot') this.dunkJumps.set(body, { start: s.tick, up: Math.max(4, s.flight.total) });
           // Quem está em cima do lançador salta de braços no ar para o tentar abafar.
           const contester = this.nearestOpponent(body);
           if (contester && (contester.x - body.x) * (contester.x - body.x) + (contester.y - body.y) * (contester.y - body.y) < CONTEST_RANGE * CONTEST_RANGE) this.overrides.set(contester, { pose: 'block', until: s.tick + 10 });
@@ -526,6 +535,20 @@ export class MatchView {
     }
   }
 
+  /** O salto do afundanço, em píxeis: sobe durante o lance até a mão chegar ao aro, e cai logo a seguir. */
+  private dunkLift(b: Body, alpha: number): number {
+    const jump = this.dunkJumps.get(b);
+    if (!jump) return 0;
+    const t = this.s.tick + alpha - jump.start;
+    if (t < jump.up) return DUNK_LIFT * Math.sqrt(t / jump.up);
+    const down = (t - jump.up) / DUNK_FALL_TICKS;
+    if (down >= 1) {
+      this.dunkJumps.delete(b);
+      return 0;
+    }
+    return DUNK_LIFT * (1 - down);
+  }
+
   /** O salto ao ressalto, em píxeis acima do chão: um arco que começa antes de a bola chegar. */
   private reboundLift(b: Body, alpha: number): number {
     const start = this.reboundJumps.get(b);
@@ -691,8 +714,16 @@ export class MatchView {
   private updateMotion(): void {
     const { s, camera } = this;
     const ballX = camera.project(this.ball.x, this.ball.y)[0];
+    const inHands = this.ballInHands();
     for (const b of [...s.court[0], ...s.court[1]]) {
       const m = this.motionOf(b);
+      // Quem tem a bola nas mãos olha para onde a vai mandar: o lançador de livres e o portador para o cesto,
+      // quem repõe para quem vem receber. Assim não se viram de repente no momento de passar ou lançar.
+      let faceX = ballX;
+      if (b === inHands) {
+        const receiver = s.phase === 'dead' && s.inbound ? s.inbound.receivers[0]?.body : undefined;
+        faceX = receiver ? camera.project(receiver.x, receiver.y)[0] : camera.project(this.attackedHoop(b.team), 0)[0];
+      }
       const prev = this.previous.get(b)!;
       const [sx, sy] = camera.project(b.x, b.y);
       const [px, py] = camera.project(prev.x, prev.y);
@@ -703,7 +734,7 @@ export class MatchView {
       // Limites diferentes para arrancar e para parar, para não alternar entre correr e estar parado.
       m.moving = m.moving ? m.speed > 0.4 : m.speed > 1;
       // Parado, só se vira quando a bola passa claramente para o outro lado.
-      const idleFlip = ballX < sx - IDLE_TURN_MARGIN ? true : ballX > sx + IDLE_TURN_MARGIN ? false : m.flip;
+      const idleFlip = faceX < sx - IDLE_TURN_MARGIN ? true : faceX > sx + IDLE_TURN_MARGIN ? false : m.flip;
       const wantFlip = m.moving ? (m.vx < -0.8 ? true : m.vx > 0.8 ? false : m.flip) : idleFlip;
       const wantBack = m.moving && (m.back ? m.vy < -0.4 : m.vy < -1.4);
       if (wantFlip !== m.flip && s.tick >= m.flipLock) {
@@ -727,7 +758,8 @@ export class MatchView {
 
   private poseOf(b: Body, moving: boolean): { pose: PoseName; withBall: boolean } {
     const { s } = this;
-    const frame = Math.floor(s.tick / 2.5);
+    // A sprintar, as pernas mexem-se mais depressa.
+    const frame = Math.floor(s.tick / (moving && isSprinting(s, b) ? 1.6 : 2.5));
     if (s.phase === 'end') {
       const won = s.score[b.team] > s.score[b.team === 0 ? 1 : 0];
       return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'slump', withBall: false };
@@ -762,7 +794,8 @@ export class MatchView {
     }
     // Quem vai repor leva a bola nas mãos até à linha.
     if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[frame % 4]! : 'hold', withBall: true };
-    if (s.flight?.kind === 'pass' && s.flight.passer === b) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
+    // A pose de passe só no instante do passe, e só parado: a correr, as pernas continuam a mexer.
+    if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < PASS_POSE_TICKS && !moving) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
     // No ar à espera do ressalto, de braços esticados.
     const leap = this.reboundJumps.get(b);
     if (leap !== undefined && s.tick - leap < REBOUND_JUMP_TICKS) return { pose: 'leap', withBall: false };
@@ -804,7 +837,7 @@ export class MatchView {
       const len = dx * dx + dy * dy || 1;
       bounce = !f.lob && f.fromZ === null && this.s.court[f.passer.team === 0 ? 1 : 0].some(d => {
         const t = Math.max(0, Math.min(1, ((d.x - f.fromX) * dx + (d.y - f.fromY) * dy) / len));
-        return Math.hypot(d.x - (f.fromX + dx * t), d.y - (f.fromY + dy * t)) < 1.3;
+        return Math.hypot(d.x - (f.fromX + dx * t), d.y - (f.fromY + dy * t)) < 0.9;
       });
       this.bounces.set(f, bounce);
     }
@@ -992,7 +1025,7 @@ export class MatchView {
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
-      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha), pose, withBall, look, flip, back };
+      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha), pose, withBall, look, flip, back };
     });
     const { referee } = this;
     const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
