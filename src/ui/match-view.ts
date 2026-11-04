@@ -60,6 +60,8 @@ const DUNK_FALL_TICKS = 6;
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
 // à altura do aro, quando ele lhe toca.
 const BALL_PX_PER_METRE = 46 / 3.05;
+/** Quanto dura cada nuvem de poeira atrás de quem sprinta, em passos da simulação. */
+const PUFF_TICKS = 14;
 const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
@@ -117,6 +119,8 @@ export class MatchView {
   // Quem sai do jogo vai a andar sentar-se no banco; quem entra vem de lá a andar.
   private readonly exits: { body: Body; from: Point; to: Point; start: number; ticks: number }[] = [];
   private readonly routines = new Map<Body, { dribbles: number; tempo: number; pause: number; spin: boolean }>();
+  /** Nuvens de poeira deixadas pelos pés de quem sprinta: onde estavam, e em que passo. */
+  private readonly puffs: { x: number; y: number; born: number; side: number }[] = [];
   /** O passo em que cada um fez o último step-back: o lançamento a seguir é a cair para trás. */
   private readonly stepBacks = new Map<Body, number>();
   /** Quem saltou ao ressalto e quando: o salto começa antes de a bola chegar, e apanha-se em cima. */
@@ -661,6 +665,11 @@ export class MatchView {
   }
 
   /** Avança um passo da simulação. */
+  /** Quantas nuvens de poeira há no chão: a verificação confirma que quem sprinta as deixa. */
+  puffCount(): number {
+    return this.puffs.length;
+  }
+
   stepSim(): void {
     const { s } = this;
     for (const b of s.bodies) {
@@ -715,8 +724,14 @@ export class MatchView {
     const { s, camera } = this;
     const ballX = camera.project(this.ball.x, this.ball.y)[0];
     const inHands = this.ballInHands();
+    // A poeira some ao fim do seu tempo; a sprintar, cada passo largo deixa uma nuvem atrás dos pés.
+    while (this.puffs.length > 0 && s.tick - this.puffs[0]!.born >= PUFF_TICKS) this.puffs.shift();
     for (const b of [...s.court[0], ...s.court[1]]) {
       const m = this.motionOf(b);
+      if (m.moving && s.tick % 4 === b.slot % 4 && isSprinting(s, b)) {
+        const prev = this.previous.get(b)!;
+        this.puffs.push({ x: prev.x, y: prev.y, born: s.tick, side: (s.tick >> 2) % 2 ? 1 : -1 });
+      }
       // Quem tem a bola nas mãos olha para onde a vai mandar: o lançador de livres e o portador para o cesto,
       // quem repõe para quem vem receber. Assim não se viram de repente no momento de passar ou lançar.
       let faceX = ballX;
@@ -835,9 +850,11 @@ export class MatchView {
       const dx = f.target.x - f.fromX;
       const dy = f.target.y - f.fromY;
       const len = dx * dx + dy * dy || 1;
-      bounce = !f.lob && f.fromZ === null && this.s.court[f.passer.team === 0 ? 1 : 0].some(d => {
-        const t = Math.max(0, Math.min(1, ((d.x - f.fromX) * dx + (d.y - f.fromY) * dy) / len));
-        return Math.hypot(d.x - (f.fromX + dx * t), d.y - (f.fromY + dy * t)) < 0.9;
+      // Só num passe curto, com um defensor a meio da linha: o marcador de quem recebe, colado a ele, não conta, senão quase
+      // todos os passes eram picados, mesmo de longe.
+      bounce = !f.lob && f.fromZ === null && len <= 6 * 6 && this.s.court[f.passer.team === 0 ? 1 : 0].some(d => {
+        const t = ((d.x - f.fromX) * dx + (d.y - f.fromY) * dy) / len;
+        return t > 0.15 && t < 0.8 && Math.hypot(d.x - (f.fromX + dx * t), d.y - (f.fromY + dy * t)) < 0.75;
       });
       this.bounces.set(f, bounce);
     }
@@ -1043,6 +1060,26 @@ export class MatchView {
     // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
     if (theme.reflection > 0) {
       for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection);
+    }
+    // A poeira fica no chão, atrás de quem a levantou: sobe, abre e esbate-se.
+    for (const q of this.puffs) {
+      const age = (s.tick + alpha - q.born) / PUFF_TICKS;
+      if (age >= 1) continue;
+      const [qx, qy] = camera.project(q.x, q.y);
+      drawables.push({
+        y: qy - 1,
+        draw: () => {
+          g.globalAlpha = 0.9 * (1 - age);
+          g.fillStyle = '#fff6e4';
+          const spread = 1 + age * 4;
+          const rise = age * 5;
+          const size = age < 0.4 ? 3 : 2;
+          g.fillRect(Math.round(qx - spread) - 1, Math.round(qy - rise) - 1, size, size);
+          g.fillRect(Math.round(qx + spread * q.side), Math.round(qy - rise * 1.5) - 2, size, size);
+          g.fillRect(Math.round(qx), Math.round(qy - rise * 0.5), 2, 1);
+          g.globalAlpha = 1;
+        },
+      });
     }
     for (const p of placed) {
       drawables.push({

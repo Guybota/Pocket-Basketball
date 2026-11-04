@@ -39,7 +39,7 @@ const POSES = {
   idle: (L: number): PoseShape => ({ a: [-1, 5], b: [1, 5], f: [-2, L], g: [2, L] }),
   run0: (L: number): PoseShape => ({ a: [-3, 2], b: [3, 4], f: [-3, L - 1], g: [3, L], jump: 1 }),
   run1: (L: number): PoseShape => ({ a: [-1, 4], b: [2, 3], f: [-1, L], g: [1, L - 1] }),
-  run2: (L: number): PoseShape => ({ a: [3, 3], b: [-3, 3], f: [3, L - 1], g: [-3, L], jump: 1 }),
+  run2: (L: number): PoseShape => ({ a: [-3, 4], b: [3, 2], f: [3, L - 1], g: [-3, L], jump: 1 }),
   drib0: (L: number): PoseShape => ({ a: [-2, 4], b: [4, 3], f: [-2, L], g: [3, L], ball: [7, L - 2] }),
   drib1: (L: number): PoseShape => ({ a: [-2, 4], b: [4, 2], f: [-2, L], g: [3, L], ball: [7, L - 6] }),
   dribRun0: (L: number): PoseShape => ({ a: [-3, 2], b: [4, 3], f: [-3, L - 1], g: [3, L], jump: 1, ball: [7, L - 2] }),
@@ -205,8 +205,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   };
   const limb = (x0: number, y0: number, x1: number, y1: number, thickness: number, colorAt: (k: number) => string): void => {
     const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
-    // Um membro deitado é tão grosso na vertical como um de pé é na horizontal.
-    const flat = Math.abs(x1 - x0) > Math.abs(y1 - y0);
+    // Um membro deitado é tão grosso na vertical como um de pé é na horizontal; um em diagonal, como os braços a correr, fica fino.
+    const flat = Math.abs(x1 - x0) >= 2 * Math.abs(y1 - y0);
     for (let i = 0; i <= steps; i++) {
       const k = i / steps;
       rect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), flat ? 2 : thickness, flat ? Math.max(2, thickness) : 2, colorAt(k));

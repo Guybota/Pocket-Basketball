@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { matchHash } from '../sim/hash.ts';
-import { cancelSubstitution, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
+import { cancelSubstitution, isSprinting, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
@@ -1192,6 +1192,8 @@ Object.assign(window, {
     },
     state: () => ({
       phase: view?.s.phase ?? 'none',
+      puffs: view?.puffCount() ?? 0,
+      sprinters: view ? [...view.s.court[0], ...view.s.court[1]].filter(b => isSprinting(view!.s, b)).length : 0,
       tick: view?.s.tick ?? 0,
       period: view?.s.period ?? 0,
       score: view?.s.score ?? [0, 0],

@@ -928,7 +928,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .gainlines b { font-weight: 400; }
 
-@media (prefers-reduced-motion: reduce) { .bar7 .fill, .bar7 .track img { transition: none; } }
+/* As barras do treino sobem mesmo com as animações reduzidas no sistema: é o resultado do treino, não um efeito — sem isto, no Windows com os efeitos de animação desligados, nunca se via a subida. */
 
 .gainrow { display: grid; grid-template-columns: 18px 1fr 18px 8px 18px 44px; gap: 4px; align-items: center; padding: 2px 4px; background: var(--paper-2); font: 400 17px/1 var(--ui); }
 .gainrow img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }

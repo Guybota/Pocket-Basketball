@@ -15,7 +15,7 @@ export const BALANCE = {
   // Quem repõe vai buscar a bola onde ela ficou e leva-a até à linha; só se espera por ele até aqui.
   inboundMaxWaitSeconds: 4,
   inboundSettleSeconds: 0.25,
-  inboundSettleDistance: 0.6,
+  inboundSettleDistance: 0.35,
   inboundOutside: 0.7,
   // Uma bola perdida rola até à linha mais perto, a esta velocidade, antes de a reposição começar.
   lostBallRollSpeed: 6,
@@ -221,6 +221,17 @@ export const BALANCE = {
   // Sprint: quem corta para o cesto, quem entra com a bola e o ataque em contra-ataque correm mais depressa e cansam-se mais.
   sprintFactor: 1.25,
   sprintFatigue: 2,
+  // Drive: ataca-se um ombro do defensor (a um metro dele), com um primeiro passo em explosão; se ele volta a ficar à frente ao fim
+  // de um segundo, muda-se de direção uma vez; com pouca técnica lê-se mal o lado; se a ajuda fecha o corredor, passa-se a quem ela deixou.
+  driveSideGap: 1,
+  firstStepSeconds: 0.5,
+  firstStepBurst: 1.2,
+  driveTurnSeconds: 1,
+  driveMisreadChance: 0.5,
+  driveKickChance: 0.75,
+  // Ajuda: quando o portador passa o seu defensor em drive, o defensor mais perto cujo homem está longe do cesto vem fechar o corredor.
+  helpManMinDistance: 5,
+  helpGap: 1.2,
   dunkMinJumping: 45,
   dunkArc: 0.3,
   // Nenhum lançamento chega ao aro a subir: mesmo debaixo do cesto, a bola passa por cima e cai lá dentro.

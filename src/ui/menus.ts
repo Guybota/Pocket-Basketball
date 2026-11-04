@@ -318,7 +318,13 @@ function reportScreen(): Rendered {
       : inside(playerCard(index, `<div class="slots">${cards.map(id => `<div class="slot"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${SHORT_NAMES[id]}</span></div>`).join('')}</div>`)),
     bottom: `<div class="trainpop after${combo ? ' delayed' : ''}"><div class="box"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>${combo ? esc(combo.name) : 'Sem combo'}</b></div><div class="gains">${rows}${learned}</div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}</div></div>`,
     // As barras sobem depois de o ecrã aparecer, senão não havia nada a subir.
-    after: () => requestAnimationFrame(() => document.querySelectorAll('.bar7').forEach(el => el.classList.add('go'))),
+    // As barras precisam de ter o estilo inicial calculado antes de receberem a classe final, senão saltam sem transição:
+    // ler a altura força esse cálculo. Com requestAnimationFrame, num computador rápido a classe chegava antes do primeiro
+    // cálculo de estilo e a barra aparecia já no fim.
+    after: () => document.querySelectorAll<HTMLElement>('.bar7').forEach(el => {
+      void el.offsetHeight;
+      el.classList.add('go');
+    }),
   };
 }
 

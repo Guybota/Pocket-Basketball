@@ -265,6 +265,10 @@ export interface MatchState {
   firstOffense: TeamIndex;
   holder: Body | null;
   driving: boolean;
+  /** O drive em curso: por que ombro do defensor se ataca, quando começou (ou mudou de direção) e quantas vezes mudou. */
+  driveSide: 1 | -1;
+  driveStart: number;
+  driveTurns: number;
   shotClock: number;
   nextDecision: number;
   flight: PassFlight | ShotFlight | null;
@@ -461,11 +465,50 @@ function startCut(s: MatchState, b: Body, to: readonly [number, number]): void {
 
 /** Está a correr a fundo: a cortar para o cesto, a entrar com a bola, ou no ataque de um contra-ataque. */
 export function isSprinting(s: MatchState, b: Body): boolean {
-  if (b.slot < 0 || b.team !== s.offense || (s.phase !== 'live' && s.phase !== 'pass')) return false;
-  return (b.cutStage === 1 && b.cutTo !== null) || (b === s.holder && s.driving) || s.tick < s.breakUntil;
+  if (b.slot < 0 || (s.phase !== 'live' && s.phase !== 'pass')) return false;
+  // No contra-ataque correm os dois lados: quem ataca e quem recupera.
+  if (s.tick < s.breakUntil) return true;
+  return b.team === s.offense && ((b.cutStage === 1 && b.cutTo !== null) || (b === s.holder && s.driving));
 }
 
 /** O defensor está à frente do atacante: entre ele e o cesto que ele ataca. Atrás dele, não se defende, corre-se. */
+/** Por que ombro do defensor se ataca: do lado do bloqueador, se o há; senão, pelo lado com mais espaço — sem ajuda no corredor
+ * até ao cesto, sem ficar encostado à linha e ao contrário de para onde o defensor já está inclinado. Com pouca técnica lê-se mal. */
+function driveSide(s: MatchState, h: Body): 1 | -1 {
+  const defender = nearestDefender(s, h);
+  if (s.screen && s.screen.on === defender) return s.screen.by.y >= h.y ? 1 : -1;
+  const hoopX = fromU(s, h.team, HOOP_U);
+  const score = (side: 1 | -1): number => {
+    const py = defender.y + side * B.driveSideGap;
+    let crowd = 0;
+    for (const d of s.court[other(h.team)]) if (d !== defender && d.stunnedUntil <= s.tick && segmentDistance(d.x, d.y, defender.x, py, hoopX, 0) < B.openLaneWidth) crowd++;
+    const wall = Math.abs(py) > COURT_HALF_WIDTH - 1 ? 2 : 0;
+    return -crowd * 2 - wall - (defender.y - h.y) * side;
+  };
+  const left = score(-1);
+  const right = score(1);
+  // Em igualdade vai-se pelo meio.
+  let side: 1 | -1 = right > left ? 1 : left > right ? -1 : h.y >= 0 ? -1 : 1;
+  if (chance(s.rng, (1 - h.player.attributes.technique / 100) * B.driveMisreadChance)) side = side === 1 ? -1 : 1;
+  return side;
+}
+
+function startDrive(s: MatchState, h: Body): void {
+  s.driving = true;
+  s.driveSide = driveSide(s, h);
+  s.driveStart = s.tick;
+  s.driveTurns = 0;
+}
+
+/** O crossover deixa o defensor parado por um instante e abre o caminho para o cesto. */
+function tryCrossover(s: MatchState, h: Body, defender: Body, pressure: number): void {
+  if (!hasMove(h, 'crossover') || pressure < B.crossoverMinPressure || !chance(s.rng, B.crossoverChance)) return;
+  defender.stunKind = 'ankle';
+  defender.stunnedUntil = s.tick + seconds(B.crossoverStunSeconds);
+  if (chance(s.rng, B.ankleFallBase + (h.player.attributes.technique - 50) * B.ankleFallPerTechnique)) knockDown(s, defender, h.x - defender.x, true);
+  emitMove(s, h, 'crossover');
+}
+
 function inFrontOf(s: MatchState, defender: Body, attacker: Body): boolean {
   const hoopX = fromU(s, attacker.team, HOOP_U);
   return distance(defender.x, defender.y, hoopX, 0) < distance(attacker.x, attacker.y, hoopX, 0);
@@ -851,12 +894,11 @@ function beginPeriod(s: MatchState): void {
   s.holder = null;
   s.phase = 'dead';
   s.timer = seconds(B.deadBallSeconds);
-  if (s.period === 3) {
-    s.ball.x = COURT_LENGTH / 2;
-    s.ball.y = COURT_HALF_WIDTH;
-    s.ball.z = B.ballRestHeight;
-  }
-  // Nos outros períodos a bola fica onde o anterior acabou: quem repõe vai buscá-la e leva-a à linha.
+  // Como na regra: todos os períodos, menos o primeiro, começam com reposição no prolongamento da linha de meio-campo, na
+  // lateral oposta à mesa (os bancos estão no lado negativo). Nos períodos 2 e 4 quem repõe vai buscar a bola ao sítio.
+  s.ball.x = COURT_LENGTH / 2;
+  s.ball.y = COURT_HALF_WIDTH;
+  s.ball.z = B.ballRestHeight;
   setupInbound(s, 'side');
   if (s.period === 3) {
     s.inbound!.passer.x = s.inbound!.x;
@@ -1205,10 +1247,22 @@ function decide(s: MatchState): void {
     if (hoopDistance(toU(s, h.team, h.x), h.y) <= B.openLaneFinish) {
       shoot(s, h);
     } else {
-      s.driving = true;
+      if (!s.driving) startDrive(s, h);
       s.nextDecision = s.tick + seconds(B.openLaneCheckSeconds);
     }
     return;
+  }
+  // A meio do drive, com o defensor outra vez à frente e em cima, muda-se de direção uma vez: ataca-se o outro ombro.
+  if (s.driving && s.driveTurns < 1 && s.tick - s.driveStart >= seconds(B.driveTurnSeconds)) {
+    const defender = nearestDefender(s, h);
+    if (inFrontOf(s, defender, h) && distance(h.x, h.y, defender.x, defender.y) < B.stanceRange) {
+      s.driveSide = s.driveSide === 1 ? -1 : 1;
+      s.driveStart = s.tick;
+      s.driveTurns++;
+      tryCrossover(s, h, defender, pressure);
+      s.nextDecision = s.tick + seconds(B.openLaneCheckSeconds);
+      return;
+    }
   }
   // Com a bola na área há quase 3 segundos, já não se segura: lança-se ou passa-se para quem tiver o melhor lance.
   if (h.laneTicks >= seconds(B.laneDecideSeconds)) {
@@ -1300,6 +1354,14 @@ function decide(s: MatchState): void {
   }
   // O base, ou um organizador, vê o colega livre e passa-lhe quase sempre, se o lance dele valer quase tanto como o seu.
   const freeMates = teammates.map(b => pressureOn(s, b) < B.wideOpenPressure || hasOpenLane(s, b));
+  // A ajuda fechou o corredor do drive: quem ela deixou está livre e recebe a bola.
+  if (s.driving && dist > B.openLaneFinish) {
+    const open = teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free).sort((x, y) => y.value - x.value)[0];
+    if (open && chance(s.rng, B.driveKickChance)) {
+      pass(s, h, open.b);
+      return;
+    }
+  }
   if (h.slot === 0 || h.player.onBall === 'playmaker') {
     const open = teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free && m.value >= shootValue * B.guardOpenPassValue).sort((x, y) => y.value - x.value)[0];
     if (open && chance(s.rng, B.guardOpenPassChance)) {
@@ -1334,14 +1396,8 @@ function decide(s: MatchState): void {
   const choice = weightedIndex(s.rng, weights);
   if (choice === 0) shoot(s, h);
   else if (choice === 2) {
-    s.driving = true;
-    // O crossover deixa o defensor parado por um instante e abre o caminho para o cesto.
-    if (hasMove(h, 'crossover') && pressure >= B.crossoverMinPressure && chance(s.rng, B.crossoverChance)) {
-      defender.stunKind = 'ankle';
-      defender.stunnedUntil = s.tick + seconds(B.crossoverStunSeconds);
-      if (chance(s.rng, B.ankleFallBase + (a.technique - 50) * B.ankleFallPerTechnique)) knockDown(s, defender, h.x - defender.x, true);
-      emitMove(s, h, 'crossover');
-    }
+    startDrive(s, h);
+    tryCrossover(s, h, defender, pressure);
   }
   else if (choice >= 3) pass(s, h, teammates[choice - 3]!);
 }
@@ -1442,8 +1498,16 @@ function updateTargets(s: MatchState): void {
     // Abrir o campo afasta os jogadores do meio; jogar por dentro aproxima-os.
     b.targetY = Math.max(-COURT_HALF_WIDTH + 0.3, Math.min(COURT_HALF_WIDTH - 0.3, v * (1 + B.tacticSpacingSpot * s.tactics[offense].spacing)));
     if (b === s.holder && s.driving) {
-      b.targetX = fromU(s, offense, 1.9);
-      b.targetY = 0;
+      // Dribla-se pelo ombro escolhido do defensor enquanto ele está à frente e perto; passado ele, direito ao aro.
+      const defender = nearestDefender(s, b);
+      const hoopX = fromU(s, offense, 1.9);
+      if (inFrontOf(s, defender, b) && distance(b.x, b.y, defender.x, defender.y) < B.stanceRange) {
+        b.targetX = defender.x + (hoopX > b.x ? 1 : -1);
+        b.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, defender.y + s.driveSide * B.driveSideGap));
+      } else {
+        b.targetX = hoopX;
+        b.targetY = 0;
+      }
     }
     // Contra-ataque: o portador empurra pelo meio, as asas correm abertas à frente da bola, o poste vai direito ao aro e o 4 vem atrás.
     if (s.tick < s.breakUntil && (s.phase === 'live' || s.phase === 'pass') && s.holder) {
@@ -1590,9 +1654,29 @@ function updateTargets(s: MatchState): void {
   const ownHoopX = fromU(s, offense, HOOP_U);
   const protectors = transition ? [...s.court[defense]].sort((p, q) => distance(p.x, p.y, ownHoopX, 0) - distance(q.x, q.y, ownHoopX, 0)).slice(0, 2) : [];
   const stopper = transition ? [...s.court[defense]].filter(d => !protectors.includes(d)).sort((p, q) => distance(p.x, p.y, ballHolder.x, ballHolder.y) - distance(q.x, q.y, ballHolder.x, ballHolder.y))[0] ?? null : null;
+  // Ajuda ao drive, na defesa individual: com o portador já a passar o seu defensor, o defensor mais perto do corredor cujo
+  // homem está longe do cesto larga-o e vem fechar; é esse que deixa alguém livre para o passe para fora.
+  let helper: Body | null = null;
+  if (!zone && !transition && s.driving && s.holder && s.phase === 'live') {
+    const h = s.holder;
+    const marker = nearestDefender(s, h);
+    const hoopX = fromU(s, offense, HOOP_U);
+    if (!inFrontOf(s, marker, h) || distance(h.x, h.y, marker.x, marker.y) > B.stanceRange) {
+      helper = s.court[defense]
+        .filter(d => d !== marker && d.stunnedUntil <= s.tick && hoopDistance(toU(s, offense, s.court[offense][d.slot]!.x), s.court[offense][d.slot]!.y) > B.helpManMinDistance)
+        .sort((p, q) => segmentDistance(p.x, p.y, h.x, h.y, hoopX, 0) - segmentDistance(q.x, q.y, h.x, h.y, hoopX, 0))[0] ?? null;
+    }
+  }
   for (const b of s.court[defense]) {
     const man = s.court[offense][b.slot]!;
     const hoopX = fromU(s, offense, 1.575);
+    if (b === helper) {
+      const h = s.holder!;
+      const d = distance(h.x, h.y, hoopX, 0) || 1;
+      b.targetX = h.x + ((hoopX - h.x) / d) * B.helpGap;
+      b.targetY = h.y + ((0 - h.y) / d) * B.helpGap;
+      continue;
+    }
     if (transition && protectors.includes(b)) {
       b.targetX = fromU(s, offense, B.transitionProtectU);
       b.targetY = protectors[0] === b ? B.transitionProtectV : -B.transitionProtectV;
@@ -1752,7 +1836,10 @@ function movePlayers(s: MatchState): void {
       const stance = man !== undefined && inFrontOf(s, b, man) && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
       const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
       const dunking = s.flight?.kind === 'shot' && (s.flight.dunk || s.flight.layup) && !s.flight.blockedBy && s.flight.shooter === b;
-      const stepLength = Math.min(dist, maxSpeed(b) * slowed * (dunking ? B.dunkBurst : isSprinting(s, b) ? B.sprintFactor : 1) * DT);
+      // O primeiro passo do drive é em explosão; o resto do drive, dos cortes e do contra-ataque é a sprintar.
+      const firstStep = b === s.holder && s.driving && s.tick - s.driveStart < seconds(B.firstStepSeconds);
+      // Quem já vai afundar ou fazer o lay-up chega ao aro mesmo que o tenham encostado pelo caminho.
+      const stepLength = Math.min(dist, maxSpeed(b) * (dunking ? B.dunkBurst : slowed * (firstStep ? B.firstStepBurst : isSprinting(s, b) ? B.sprintFactor : 1)) * DT);
       b.stepX = (dx / dist) * stepLength;
       b.stepY = (dy / dist) * stepLength;
       b.x += b.stepX;
@@ -2338,6 +2425,9 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
     firstOffense,
     holder: null,
     driving: false,
+    driveSide: 1,
+    driveStart: 0,
+    driveTurns: 0,
     shotClock: 0,
     nextDecision: 0,
     flight: null,
