@@ -513,21 +513,11 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       drawSprite(g, WALK_FRAMES[frame]!, look, x, y, !right, false, false);
     }
   };
-  // Pombos na rotunda.
-  const birds = [[PLAZA + 0.2, PLAZA - 0.4], [PLAZA - 0.5, PLAZA + 0.3], [PLAZA + 0.6, PLAZA + 0.5]] as const;
   for (const [depth, draw] of town.objects) {
     walkersUpTo(depth);
     draw();
   }
   walkersUpTo(Infinity);
-  birds.forEach(([bi, bj], n) => {
-    const hop = Math.floor(now / 400 + n) % 3 === 0 ? 1 : 0;
-    const [x, y] = project(grid, bi + Math.sin(now / 2300 + n) * 0.3, bj).map(Math.round) as Point;
-    g.fillStyle = '#6d7a86';
-    g.fillRect(x, y - 2 - hop, 2, 2);
-    g.fillStyle = INK;
-    g.fillRect(x + 2, y - 3 - hop, 1, 1);
-  });
   // A luz do dia e o tempo, por cima de tudo.
   if (weather.tint) {
     g.fillStyle = weather.tint;
