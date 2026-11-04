@@ -171,6 +171,10 @@ export class MatchView {
   private nextDribbleTick = 0;
   private lastHornTick = -1;
   private excitedUntil = 0;
+  /** Quanto vale o momento, de 0 a 1: decide quanta gente se levanta na bancada e por quanto tempo. */
+  private excitement = 0.5;
+  private fansCheerTicks = 0;
+  private fansCheerLevel = 0.6;
   private benchCheerUntil: [number, number] = [0, 0];
   private swishUntil = 0;
   private swishHoop = HOOP_LEFT;
@@ -319,10 +323,27 @@ export class MatchView {
     this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: s.tick });
   }
 
-  /** Os adeptos festejam ou baixam a cabeça durante uns instantes. */
-  private fansReact(happy: boolean, ticks: number): void {
-    if (happy) this.fansCheerUntil = this.s.tick + ticks;
-    else this.fansSadUntil = this.s.tick + ticks;
+  /** Os adeptos festejam ou baixam a cabeça durante uns instantes. `level` diz quantos se levantam: 0,3 é um cesto
+   * qualquer, 1 é toda a gente. */
+  private fansReact(happy: boolean, ticks: number, level = 0.6): void {
+    if (happy) {
+      this.fansCheerUntil = this.s.tick + ticks;
+      this.fansCheerTicks = ticks;
+      this.fansCheerLevel = level;
+    } else this.fansSadUntil = this.s.tick + ticks;
+  }
+
+  /** Quanto vale um cesto para a bancada: mais num triplo ou afundanço, muito mais se for decisivo, no fim de um jogo
+   * equilibrado, ou sobre o apito. */
+  private basketWorth(e: MatchEvent, dunk: boolean): number {
+    const { s } = this;
+    let worth = e.points === 3 || dunk ? 0.6 : 0.35;
+    const lead = s.score[e.team] - s.score[e.team === 0 ? 1 : 0];
+    const late = s.period >= 4 && s.clock <= seconds(60);
+    if (late && Math.abs(lead) <= 6) worth += 0.35;
+    if (s.clock <= 20) worth += 0.25;
+    if (Math.abs(lead) >= 20) worth -= 0.15;
+    return Math.max(0.25, Math.min(1, worth));
   }
 
   private nearestOpponent(body: Body): Body | undefined {
@@ -613,8 +634,10 @@ export class MatchView {
     this.benchCheerUntil[e.team] = s.tick + 24;
     const dunk = this.overrides.get(body!)?.pose === 'dunk';
     const loud = e.points === 3 || dunk;
-    this.excitedUntil = s.tick + (loud ? 44 : 18);
-    this.fansReact(e.team === this.crowdTeam, e.team === this.crowdTeam ? (loud ? 44 : 24) : 30);
+    const worth = this.basketWorth(e, dunk);
+    this.excitement = worth;
+    this.excitedUntil = s.tick + Math.round(18 + 40 * worth);
+    this.fansReact(e.team === this.crowdTeam, e.team === this.crowdTeam ? Math.round(20 + 50 * worth) : 30, worth);
     if (dunk) this.shakeUntil = s.tick + 8;
     callbacks.sound('swish');
     callbacks.sound(loud ? 'bigCheer' : 'cheer');
@@ -1034,8 +1057,10 @@ export class MatchView {
     } else {
       g.setTransform(1, 0, 0, 1, 0, 0);
     }
+    // Num momento grande levantam-se quase todos (imagens 3 e 4, pessoas diferentes a cada batida); num pequeno, poucos (1 e 2).
     const excited = s.tick < this.excitedUntil;
-    const crowdFrame = excited ? (this.animTick >> 2) % 2 ? 2 : 1 : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
+    const beat = (this.animTick >> 2) % 2;
+    const crowdFrame = excited ? (this.excitement >= 0.5 ? 3 : 1) + beat : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
     camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
     if (excited && theme.flashes && !this.reducedMotion) {
       // Flashes de fotografia nas bancadas.
@@ -1272,13 +1297,17 @@ export class MatchView {
         }
       }
     }
-    const cheering = s.tick < this.fansCheerUntil;
     const sad = s.tick < this.fansSadUntil;
     for (const f of this.fans) {
       const [sx, sy] = camera.project(f.x, f.y, f.z);
       if (sx < -20 || sx > camera.width + 20 || sy < -10 || sy > camera.height + 40) continue;
+      // Cada adepto tem o seu entusiasmo: só se levanta se o momento valer mais do que ele pede, e os menos entusiastas
+      // sentam-se mais cedo; uns saltam, outros batem palmas.
+      const zeal = ((f.phase * 2654435761) >>> 0) / 4294967296;
+      const cheering = s.tick < this.fansCheerUntil - zeal * 0.5 * this.fansCheerTicks && zeal < this.fansCheerLevel;
       const beat = this.reducedMotion ? f.phase : (s.tick >> 2) + f.phase;
-      const pose: PoseName = cheering ? (beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
+      const claps = f.phase % 3 === 2;
+      const pose: PoseName = cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
       drawSprite(g, pose, f.look, sx | 0, sy | 0, f.flip, false, false);
       // Na entrada, com a confiança alta, muitos trazem bandeira.
       if (f.flag || (this.forecast?.confident && s.phase === 'intro' && f.phase % 3 === 0)) {

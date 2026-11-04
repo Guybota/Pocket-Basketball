@@ -47,7 +47,9 @@ export const FAN_SPACING = 1.25;
 export const STAND = { nearX: WALL_NEAR_X, farX: WALL_FAR_X, y: WALL_Y } as const;
 /** O túnel para os balneários, no centro da bancada lateral dos pavilhões. */
 export const TUNNEL = { x0: 12.6, x1: 15.4, height: 2.6 } as const;
-export const CROWD_FRAMES = 3;
+// Cinco imagens do público: 0 em repouso; 1 e 2 poucos de pé, mas pessoas diferentes; 3 e 4 quase todos, também alternados.
+// Assim, ao alternar entre duas, não salta toda a gente ao mesmo tempo.
+export const CROWD_FRAMES = 5;
 
 // Marcas inventadas para a publicidade. Sem acentos, porque a fonte 3x5 não os tem.
 const SPONSORS = ['SOPA DA AVO', 'PASTEL BAR', 'SESTA FM', 'BIFANA MAX', 'BAILARICO', 'CAFE CENTRAL'] as const;
@@ -267,9 +269,9 @@ function crowdColor(theme: CourtTheme, u: number, z: number, frame: number): Rgb
   if (h >= 0) return seat;
   if (h > crowd.density) return seat;
   const pick = hash(row * 3 + 1, column * 7 + 2);
-  // Quem se levanta muda com a imagem: poucos em repouso, quase todos num festejo.
-  const excitedChance = frame === 0 ? 0 : frame === 1 ? 0.14 : 0.7;
-  const raised = pick < excitedChance;
+  // Quem se levanta muda com a imagem: poucos num festejo pequeno, muitos num grande; as imagens pares levantam outras pessoas.
+  const excitedChance = frame === 0 ? 0 : frame <= 2 ? 0.18 : 0.7;
+  const raised = (frame % 2 === 0 ? 1 - pick : pick) < excitedChance;
   const lift = raised ? 0.14 : 0;
   const lx = frac(columnValue);
   const lz = frac(rowValue) - lift;

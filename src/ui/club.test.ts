@@ -882,3 +882,19 @@ describe('época', () => {
     expect(parseClub(JSON.stringify({ ...c, confidence: 'muita' }))).toBeNull();
   });
 });
+
+describe('mercado', () => {
+  it('um jogador livre contratado não volta a aparecer no mercado com outro nome', () => {
+    const c = newClub(31);
+    const before = marketList(c).filter(e => e.clubId === null);
+    expect(before.length).toBeGreaterThan(1);
+    const signed = makeOffer(c, before[0]!);
+    const after = marketList(signed).filter(e => e.clubId === null);
+    type P = ClubState['team']['roster'][number];
+    const same = (a: P, b: P): boolean => a.height === b.height && (Object.keys(a.attributes) as (keyof P['attributes'])[]).every(k => a.attributes[k] === b.attributes[k]);
+    expect(after.some(e => same(e.player, before[0]!.player))).toBe(false);
+    expect(after).toHaveLength(before.length - 1);
+    // Os outros livres continuam lá, iguais.
+    expect(after[0]!.player.name).toBe(before[1]!.player.name);
+  });
+});

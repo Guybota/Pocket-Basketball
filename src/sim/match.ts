@@ -33,7 +33,7 @@ import {
 } from './court.ts';
 import { between, chance, makeRng, next, weightedIndex, type Rng } from './rng.ts';
 import { freeThrowChance, shotChance } from './shot.ts';
-import { NEUTRAL_TACTICS, validateTactics, validateTeam, type MoveId, type Player, type Tactics, type Team } from './types.ts';
+import { ATTRIBUTE_KEYS, NEUTRAL_TACTICS, validateTactics, validateTeam, type Attributes, type MoveId, type Player, type Tactics, type Team } from './types.ts';
 
 export type TeamIndex = 0 | 1;
 interface LooseBall {
@@ -230,6 +230,7 @@ interface ShotFlight {
 export type Command =
   | { kind: 'timeout'; tick: number; team: TeamIndex }
   | { kind: 'resume'; tick: number; team: TeamIndex }
+  | { kind: 'hold'; tick: number; team: TeamIndex }
   | { kind: 'substitution'; tick: number; team: TeamIndex; slot: number; incoming: number }
   | { kind: 'cancelSubstitution'; tick: number; team: TeamIndex; slot: number }
   | { kind: 'reorder'; tick: number; team: TeamIndex; a: number; b: number }
@@ -774,11 +775,28 @@ function rotate(s: MatchState, team: TeamIndex): void {
     if (!fouledOut && !needsRest) continue;
     const candidates = bench.filter(b => b.line.fouls < B.foulOutAt && (fouledOut || b.fatigue <= B.subInFatigue + (b.player.offBall === 'sixthMan' ? B.sixthManSubIn : 0)));
     if (candidates.length === 0) continue;
-    // Entra o primeiro do banco que está fresco: a ordem do plantel é a ordem de entrada.
-    const incoming = candidates[0]!;
+    // Entra, dos frescos, quem melhor encaixa no lugar que vaga: um poste não vai jogar a base só por ser o primeiro do banco.
+    // A ordem do banco desempata.
+    const incoming = candidates.map((b, i) => ({ b, score: slotFit(b.player, slot) + B.benchOrderFit * (1 - i / candidates.length) })).sort((p, q) => q.score - p.score)[0]!.b;
     swapIn(s, team, slot, incoming);
     bench.splice(bench.indexOf(incoming), 1, current);
   }
+}
+
+/** Quanto um jogador encaixa num lugar (0 a cerca de 1): os atributos que esse lugar pede, e a altura a contar a favor
+ * nos lugares de dentro e contra nos de fora. Não há posições fixas: é isto que diz quem substitui quem. */
+export function slotFit(player: Player, slot: number): number {
+  const profile = B.slotProfiles[slot] as Partial<Record<keyof Attributes, number>> & { heightPerCm: number };
+  let fit = 0;
+  for (const key of ATTRIBUTE_KEYS) fit += ((profile[key] ?? 0) * player.attributes[key]) / 100;
+  return fit + profile.heightPerCm * (heightCmOf(player) - B.referenceHeight);
+}
+
+/** O lugar onde um jogador encaixa melhor. */
+export function bestSlot(player: Player): number {
+  let best = 0;
+  for (let slot = 1; slot < 5; slot++) if (slotFit(player, slot) > slotFit(player, best)) best = slot;
+  return best;
 }
 
 function placeForPeriod(s: MatchState): void {
@@ -1099,6 +1117,9 @@ function startRebound(s: MatchState, blocked = false): void {
 }
 
 /** Quando a bola cai, decide-se quem a ganha. Só fica com ela quando chega ao pé dela. */
+/** Até onde um jogador chega à bola: os braços de um alto apanham-na mais longe. */
+const reach = (b: Body): number => B.reboundCatchDistance + Math.max(0, heightCmOf(b.player) - B.referenceHeight) * B.reachPerCm;
+
 function pickRebounder(s: MatchState): Body {
   const { toX, toY, chasers: candidates } = s.loose!;
   const weights = candidates.map(b => {
@@ -1106,7 +1127,7 @@ function pickRebounder(s: MatchState): Body {
     const dist = distance(b.x, b.y, toX, toY);
     const size = (heightCmOf(b.player) - B.referenceHeight) * B.reboundPerCm;
     const skill = Math.max(0.1, 0.25 + (a.jumping * 0.5 + a.strength * 0.5) / 100 + size);
-    const closeness = 1 / (1 + dist * dist);
+    const closeness = 1 / (1 + dist);
     const eager = b.team === s.offense && b.player.offBall === 'crasher' ? 1 + B.crasherReboundBonus : 1;
     return skill * closeness * eager * (b.team === s.offense ? 1 : B.reboundDefenseBonus);
   });
@@ -2167,6 +2188,14 @@ export function requestTimeout(s: MatchState, team: TeamIndex): boolean {
   return true;
 }
 
+/** O treinador está atento: a paragem deixa de acabar sozinha e espera por ele (até um máximo). */
+export function holdMatch(s: MatchState, team: TeamIndex): boolean {
+  if ((s.phase !== 'timeout' && s.phase !== 'break') || s.timer >= seconds(B.coachHoldMaxSeconds)) return false;
+  s.timer = seconds(B.coachHoldMaxSeconds);
+  s.commands.push({ kind: 'hold', tick: s.tick, team });
+  return true;
+}
+
 /** O treinador manda continuar: acaba a paragem (desconto ou fim de período) no passo seguinte. */
 export function resumeMatch(s: MatchState, team: TeamIndex): boolean {
   if ((s.phase !== 'timeout' && s.phase !== 'break') || s.timer <= 1) return false;
@@ -2221,6 +2250,7 @@ function applyCommand(s: MatchState, c: Command): void {
   if (c.kind === 'tactics') setTactics(s, c.team, c.tactics);
   else if (c.kind === 'timeout') requestTimeout(s, c.team);
   else if (c.kind === 'resume') resumeMatch(s, c.team);
+  else if (c.kind === 'hold') holdMatch(s, c.team);
   else if (c.kind === 'substitution') queueSubstitution(s, c.team, c.slot, c.incoming);
   else if (c.kind === 'cancelSubstitution') cancelSubstitution(s, c.team, c.slot);
   else if (c.kind === 'reorder') reorderBench(s, c.team, c.a, c.b);
@@ -2357,10 +2387,10 @@ export function step(s: MatchState): void {
       if (loose.winner) {
         // Com a bola no chão e quem a ganhou ainda longe, fica com ela quem chegar primeiro, seja quem for: antes outro
         // podia ficar ao lado dela sem a apanhar. Com o vencedor perto, a altura e o salto continuam a decidir.
-        const onFloor = s.ball.z <= B.ballRestHeight + 0.01 && distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) > B.reboundCatchDistance * 2;
-        const first = onFloor ? [...s.court[0], ...s.court[1]].filter(b => b.stunnedUntil <= s.tick && distance(b.x, b.y, s.ball.x, s.ball.y) <= B.reboundCatchDistance).sort((p, q) => distance(p.x, p.y, s.ball.x, s.ball.y) - distance(q.x, q.y, s.ball.x, s.ball.y))[0] : undefined;
+        const onFloor = s.ball.z <= B.ballRestHeight + 0.01 && distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) > reach(loose.winner) * 2;
+        const first = onFloor ? [...s.court[0], ...s.court[1]].filter(b => b.stunnedUntil <= s.tick && distance(b.x, b.y, s.ball.x, s.ball.y) <= reach(b)).sort((p, q) => distance(p.x, p.y, s.ball.x, s.ball.y) - distance(q.x, q.y, s.ball.x, s.ball.y))[0] : undefined;
         if (first) loose.winner = first;
-        if (first || distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) <= B.reboundCatchDistance || --s.timer <= -seconds(B.reboundMaxWaitSeconds)) resolveRebound(s);
+        if (first || distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) <= reach(loose.winner) || --s.timer <= -seconds(B.reboundMaxWaitSeconds)) resolveRebound(s);
       }
       break;
     }

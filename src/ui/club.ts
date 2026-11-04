@@ -564,6 +564,9 @@ export function liveTable(club: ClubState, ours: MatchState, others: readonly Ot
 export const transferFee = (player: Player): number => Math.round(salaryFor(player) * B.transferFeeFactor);
 
 /** O que está à venda esta semana: alguns livres e alguns de clubes da nossa divisão ou da de cima. Muda todas as semanas. */
+/** Dois jogadores com os mesmos atributos, altura e potencial são o mesmo jogador gerado, mesmo com nomes diferentes. */
+const sameBody = (a: Player, b: Player): boolean => a.height === b.height && a.potential === b.potential && (Object.keys(a.attributes) as (keyof Player['attributes'])[]).every(k => a.attributes[k] === b.attributes[k]);
+
 export function marketList(club: ClubState): MarketEntry[] {
   const rng = makeRng((weekSeed(club) ^ 0x6d4a7b) & 0x7fffffff);
   const taken = new Set([...club.team.roster.map(p => p.name), ...club.offers.map(o => o.player.name)]);
@@ -573,6 +576,9 @@ export function marketList(club: ClubState): MarketEntry[] {
     const position = POSITIONS[Math.floor(next(rng) * POSITIONS.length)]!;
     const player = generatePlayer((weekSeed(club) + i * 977) & 0x7fffffff, position, level + between(rng, -8, 4), between(rng, 30, 85), [...taken]);
     taken.add(player.name);
+    // O mesmo lugar da lista gera sempre o mesmo jogador (só o nome foge aos já ocupados): se ele já foi contratado esta
+    // semana, está no plantel com outro nome e os mesmos atributos, e o lugar fica vazio em vez de o "repor".
+    if (club.team.roster.some(p => sameBody(p, player)) || club.offers.some(o => sameBody(o.player, player))) continue;
     entries.push({ player, clubId: null, salary: salaryFor(player), fee: 0 });
   }
   const pool = [...club.divisions[club.division]!, ...(club.divisions[club.division + 1] ?? [])].filter(id => id !== PLAYER_CLUB);

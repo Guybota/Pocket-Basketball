@@ -113,6 +113,9 @@ const POSES = {
   shove: (L: number): PoseShape => ({ a: [7, 0], b: [8, -2], f: [-5, L], g: [2, L - 1] }),
   fumble: (L: number): PoseShape => ({ a: [6, 5], b: [8, 3], f: [-3, L], g: [3, L - 1] }),
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
+  // A bater palmas, de pé: mãos afastadas e mãos juntas à frente do peito.
+  clap0: (L: number): PoseShape => ({ a: [1, -2], b: [-1, -2], f: [-2, L], g: [2, L] }),
+  clap1: (L: number): PoseShape => ({ a: [3, -3], b: [-3, -3], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
   // Reações: punhos no ar depois de um cesto decisivo, mãos na cabeça depois de um erro ou de uma falta, cabisbaixo a perder.

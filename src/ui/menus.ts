@@ -11,7 +11,7 @@ import { ATTRIBUTE_KEYS, MAX_FOCUS, MAX_OPTIONS, NEUTRAL_TACTICS, gradeOf, type 
 import { CATEGORIES, CATEGORY_INFO, cardImage } from './art/cards.ts';
 import { clubIdentity, kitAgainst } from './art/identity.ts';
 import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemCanvas, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
-import { attributeIcon, iconFrom } from './art/icons.ts';
+import { attributeIcon, controlIcon, iconFrom, subsIcon } from './art/icons.ts';
 import { leagueIcon } from './art/leagues.ts';
 import { portraitImage } from './art/portrait.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
@@ -234,7 +234,7 @@ function trainScreen(): Rendered {
     top: inside(playerCard(selected)),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
-      ${bar(backBtn('town'), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, '<button type="button" data-go="tactics">Táticas</button>', `<button type="button" data-go="combos">Combos ${club.knownCombos.length}/${COMBOS.length}</button>`, `<button type="button" class="primary" data-act="openCards" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}>${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)} ›`}</button>`)}`,
+      ${bar(`<button type="button" class="icon back" data-go="town" aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`, `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
   };
 }
 

@@ -2,7 +2,7 @@
 import { matchHash } from '../sim/hash.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { clockIcon, controlIcon, subsIcon } from './art/icons.ts';
-import { cancelSubstitution, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
+import { cancelSubstitution, holdMatch, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
@@ -111,6 +111,8 @@ let liveLeague: LiveLeague | null = null;
 let subPick: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+/** O treinador já tocou no ecrã durante esta paragem: ela espera por ele, sem contagem. */
+let holdTouched = false;
 // A opção de ataque que se está a escolher no painel de táticas do jogo.
 let optionPicking: number | null = null;
 // Num desconto ou ao intervalo, sem ninguém tocar em nada durante 30 s, o jogo continua sozinho.
@@ -212,10 +214,14 @@ function windowHeight(): number {
 }
 
 function fit(): void {
-  const viewHeight = windowHeight();
+  const landscape = innerWidth / windowHeight() >= LANDSCAPE_MIN_RATIO;
+  // No telemóvel ao alto, a barra de estado fica por cima da página: o jogo começa abaixo dela, senão o marcador ficava
+  // debaixo do desfoque do sistema.
+  const safeTop = landscape ? 0 : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-top')) || 0;
+  const viewHeight = windowHeight() - safeTop;
   const dpr = devicePixelRatio || 1;
-  const landscape = innerWidth / viewHeight >= LANDSCAPE_MIN_RATIO;
   game.classList.toggle('landscape', landscape);
+  document.body.classList.toggle('landscape', landscape);
   // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
   game.classList.toggle('result-open', resultOpen && stage === 'match');
   const centred = landscape && resultOpen && stage === 'match';
@@ -261,8 +267,8 @@ function fit(): void {
     // No título, a cidade fica com o que o logótipo e os botões não usam.
     const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
     const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
-    // A cidade estica até às bordas: a escala fica inteira, mas o mapa ganha a largura que sobrava dos lados.
-    const gameWidth = stage === 'town' ? Math.max(360, Math.floor(innerWidth / finalScale)) : 360;
+    // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
+    const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
     setCanvasSize(gameWidth, stageHeight, gameWidth, stageHeight);
     canvas.style.marginTop = '';
     hud.style.top = '';
@@ -277,7 +283,7 @@ function fit(): void {
     panel.style.height = '';
     panel.style.maxHeight = '';
     screen_.style.setProperty('--hud-zoom', '1');
-    setTopSize(MENU_STAGE_WIDTH, stageHeight, 1);
+    setTopSize(gameWidth, stageHeight, 1);
   }
   if (stage === 'town' && club) placeTownUi();
 }
@@ -735,6 +741,13 @@ function closeSubs(): void {
   showMatch();
 }
 
+// A contagem da paragem serve para o jogo não ficar preso quando ninguém está a olhar: ao primeiro toque, deixa de contar.
+document.addEventListener('pointerdown', () => {
+  const s = view?.s;
+  if (!s || paused || holdTouched || !holdOpen(s) || !timeoutHandled) return;
+  if (holdMatch(s, 0)) holdTouched = true;
+}, { capture: true });
+
 panel.addEventListener('click', event => {
   if (menusOpen()) return;
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], [data-option-slot], [data-option-set], [data-option-cancel], [data-option-clear], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
@@ -1049,9 +1062,10 @@ function frame(now: number): void {
       showMatch();
     }
     const resume = document.querySelector('[data-subs-close]');
-    if (resume) resume.textContent = `Continuar jogo (${Math.ceil(current.s.timer / TICKS_PER_SECOND)} s)`;
+    if (resume) resume.textContent = holdTouched ? 'Continuar jogo' : `Continuar jogo (${Math.ceil(current.s.timer / TICKS_PER_SECOND)} s)`;
   } else if (timeoutHandled) {
     timeoutHandled = false;
+    holdTouched = false;
     if (subsOpen) {
       subsOpen = false;
       subPick = null;

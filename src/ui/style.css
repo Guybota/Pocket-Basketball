@@ -42,7 +42,10 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 html, body { height: 100%; }
 
 /* Sem zoom no telemóvel e no tablet: nem com dois dedos nem com dois toques. Deslizar continua a funcionar nas listas. */
+:root { --safe-top: env(safe-area-inset-top, 0px); }
 html { touch-action: pan-x pan-y; }
+/* Ao alto, a página começa abaixo da barra de estado do telemóvel. */
+body:not(.landscape) { padding-top: var(--safe-top); }
 button, canvas, a { touch-action: manipulation; }
 
 body {
@@ -456,7 +459,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .grade-D { --grade: #2b7fb8; }
 .grade-E { --grade: #7a7a7a; }
 
-.card-nav { display: grid; grid-template-columns: 56px 1fr 56px; gap: 6px; }
+/* Fechar e as setas ficam sempre à vista, presos ao fundo do painel enquanto a ficha rola. */
+.card-nav { display: grid; grid-template-columns: 56px 1fr 56px; gap: 6px; position: sticky; bottom: -6px; padding: 6px 0; background: var(--paper); }
 
 .cmp { display: grid; grid-template-columns: 56px 1fr 56px; text-align: center; line-height: 1.05; align-items: center; }
 
@@ -680,6 +684,13 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .actions { flex: none; display: flex; gap: 5px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--paint-dk); border-top: 3px solid var(--ink); }
 .actions button { flex: 1; min-height: 38px; padding: 2px 4px; font-size: 18px; }
 .actions button.back { flex: 0 0 74px; background: var(--ink); color: var(--paper); }
+/* Barra só com ícones (treino): a arte a 2×, o voltar e o carregado invertidos, e a contagem dos combos num selo. */
+.actions button.icon { display: flex; align-items: center; justify-content: center; position: relative; min-height: 44px; padding: 0; }
+.actions button.icon.back { flex: 0 0 64px; }
+.actions button.icon img { width: 32px; height: 32px; image-rendering: pixelated; }
+.actions button.icon.back img.ink, .actions button.icon[aria-pressed="true"] img.ink, .actions button.icon.primary img.ink { filter: invert(1); }
+.actions button.icon:disabled img { opacity: .4; }
+.actions button.icon .badge { position: absolute; right: 3px; bottom: 2px; padding: 0 3px; font: 700 11px/1.3 var(--ui); color: var(--paper); background: var(--ink); border-radius: 3px; }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Ficha de jogador */
@@ -689,7 +700,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .pcard > header span { font: 400 15px/1 var(--small); }
 .pbody { flex: none; display: grid; grid-template-columns: 88px 44px 1fr; gap: 5px; padding: 4px 5px 2px; }
 .pportrait { display: block; width: 84px; height: 84px; image-rendering: pixelated; border: 2px solid var(--ink); box-sizing: content-box; background: linear-gradient(#6f97e6, #c6d6f6); }
-.pshirt { width: 42px; height: 40px; display: grid; place-items: center; color: var(--home-ink); font: 400 24px/1 var(--display); background: var(--home); clip-path: polygon(22% 0, 78% 0, 100% 24%, 84% 42%, 78% 36%, 78% 100%, 22% 100%, 22% 36%, 16% 42%, 0 24%); }
+/* A camisola da ficha é de alças, como a dos bonecos: ombros estreitos, cavas abertas e decote. */
+.pshirt { width: 42px; height: 40px; display: grid; place-items: center; color: var(--home-ink); font: 400 24px/1 var(--display); background: var(--home); clip-path: polygon(14% 0, 34% 0, 50% 16%, 66% 0, 86% 0, 94% 8%, 82% 40%, 82% 100%, 18% 100%, 18% 40%, 6% 8%); }
 .grades { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .grades img { display: block; width: 100%; image-rendering: pixelated; }
 .gr { display: block; text-align: center; font: 400 15px/15px var(--small); color: #fff; background: #7a7a7a; border: 1px solid var(--ink); min-width: 0; }
@@ -734,6 +746,10 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 .prow { width: 100%; min-height: 22px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
 .prow.bench { background: rgba(203, 185, 142, .22); }
+/* O encaixe de um jogador escolhido em cada lugar, no menu de trocas. */
+.srow .pos.fit-good { color: #2f9b6a; }
+.srow .pos.fit-mid { color: #c98a12; }
+.srow .pos.fit-low { color: #cf3a2c; }
 /* Os reservas, fora da ficha de jogo, ficam mais apagados. */
 .prow.reserve { background: rgba(120, 110, 90, .16); }
 .prow.reserve .name, .prow.reserve .pnum { opacity: .7; }

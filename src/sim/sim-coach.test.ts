@@ -3,11 +3,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
-import { cancelSubstitution, createMatch, pushPower, queueSubstitution, reorderBench, replayMatch, requestTimeout, resolveContacts, resumeMatch, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
+import { cancelSubstitution, createMatch, pushPower, queueSubstitution, reorderBench, replayMatch, bestSlot, holdMatch, requestTimeout, resolveContacts, resumeMatch, slotFit, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
-import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, type Team, NEUTRAL_TACTICS, validateTactics } from './types.ts';
+import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Player, type Tactics, type Team, NEUTRAL_TACTICS, validateTactics } from './types.ts';
 
 const home = generateTeam(1, 'Vilar BC', 55);
 const away = generateTeam(2, 'Ribeirinha BC', 55);
@@ -371,6 +371,10 @@ describe('paragens com treinador', () => {
     untilPhase(s, 'timeout');
     for (let i = 0; i < 20 * 20; i++) step(s);
     expect(s.phase).toBe('timeout');
+    // Com o treinador a mexer, a paragem deixa de acabar sozinha: passados mais de 30 s continua à espera.
+    expect(holdMatch(s, 0)).toBe(true);
+    for (let i = 0; i < 40 * 20; i++) step(s);
+    expect(s.phase).toBe('timeout');
     expect(resumeMatch(s, 0)).toBe(true);
     step(s);
     expect(s.phase).toBe('dead');
@@ -382,5 +386,27 @@ describe('paragens com treinador', () => {
     const start = ai.tick;
     untilPhase(ai, 'dead');
     expect(ai.tick - start).toBeLessThanOrEqual(5 * 20);
+  });
+});
+
+describe('substituições por encaixe', () => {
+  const withBody = (player: Player, attributes: Partial<Attributes>, height: 1 | 2 | 3): Player => ({ ...player, attributes: { ...player.attributes, ...attributes }, height });
+  it('um poste encaixa dentro e um base fora', () => {
+    const base = withBody(home.roster[0]!, { speed: 85, technique: 85, shooting: 70, strength: 40, jumping: 45 }, 1);
+    const poste = withBody(home.roster[0]!, { speed: 40, technique: 45, shooting: 35, strength: 85, jumping: 80 }, 3);
+    expect(bestSlot(base)).toBeLessThanOrEqual(1);
+    expect(bestSlot(poste)).toBeGreaterThanOrEqual(3);
+    expect(slotFit(base, 0)).toBeGreaterThan(slotFit(poste, 0));
+    expect(slotFit(poste, 4)).toBeGreaterThan(slotFit(base, 4));
+  });
+  it('quando o base cansa entra o suplente que encaixa de base, mesmo não sendo o primeiro do banco', () => {
+    const roster = home.roster.map((p, i) => (i === 5 ? withBody(p, { speed: 40, technique: 45, strength: 85, jumping: 80 }, 3) : i === 6 ? withBody(p, { speed: 85, technique: 85, strength: 40, jumping: 45 }, 1) : p));
+    const s = createMatch({ ...home, roster }, away, 4, [false, false]);
+    for (let i = 0; i < 2000 && s.phase !== 'live'; i++) step(s);
+    const tired = s.court[0][0]!;
+    tired.fatigue = 1;
+    for (let i = 0; i < 4000 && s.court[0][0] === tired; i++) step(s);
+    expect(s.court[0][0]).not.toBe(tired);
+    expect(s.court[0][0]!.player.name).toBe(roster[6]!.name);
   });
 });

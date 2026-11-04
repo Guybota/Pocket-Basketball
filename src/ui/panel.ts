@@ -1,4 +1,4 @@
-import type { Body, MatchState, TeamLine } from '../sim/match.ts';
+import { slotFit, type Body, type MatchState, type TeamLine } from '../sim/match.ts';
 import type { CardId } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/types.ts';
 import { clubIdentity } from './art/identity.ts';
@@ -6,6 +6,7 @@ import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
+import { BALANCE as B } from '../sim/balance.ts';
 import { SPOTS, TICKS_PER_SECOND } from '../sim/court.ts';
 import { foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
@@ -249,13 +250,25 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
       if (left) marks.set(left, 'out');
     }
   }
+  // Com um jogador escolhido, cada lugar possível mostra como ele encaixa lá: verde encaixa, amarelo mais ou menos,
+  // vermelho mal. Escolhido um do banco, pinta-se o código dos lugares em campo; escolhido um de campo, cada um do banco
+  // mostra o código desse lugar na sua cor.
+  const pickedBody = picked !== null ? s.bodies[picked] ?? null : null;
+  const pickedSlot = pickedBody ? lineup.indexOf(pickedBody) : -1;
+  const fitClass = (player: Body['player'], slot: number): string => {
+    const best = Math.max(...[0, 1, 2, 3, 4].map(k => slotFit(player, k)));
+    const ratio = slotFit(player, slot) / Math.max(0.01, best);
+    return ratio >= 0.92 ? 'fit-good' : ratio >= 0.8 ? 'fit-mid' : 'fit-low';
+  };
   const row = (b: Body, slot = -1): string => {
     const index = s.bodies.indexOf(b);
     const energy = 1 - b.fatigue;
     const mark = marks.get(b);
+    const fit = pickedBody && pickedBody !== b ? (slot >= 0 && pickedSlot < 0 ? fitClass(pickedBody.player, slot) : slot < 0 && pickedSlot >= 0 ? fitClass(b.player, pickedSlot) : '') : '';
+    const code = slot >= 0 ? slotCode(slot) : fit ? slotCode(pickedSlot) : '';
     return `<button type="button" class="srow${slot < 0 ? ' bench' : ''}${index === picked ? ' has-ball' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${slot < 0 && b.line.fouls >= 5 ? 'disabled' : ''}>
       <span class="face-wrap"><img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">${mark ? `<i class="arrow ${mark}"></i>` : ''}</span>
-      <span class="pos">${slot >= 0 ? slotCode(slot) : ''}</span>
+      <span class="pos${fit ? ` ${fit}` : ''}">${code}</span>
       <span class="name">${escapeHtml(b.player.name)}${optionMark(s.tactics[b.team].options, b.player.name)}</span>
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
@@ -273,7 +286,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
     ${head('Em campo', 'team-0')}${onCourt}
     ${head('No banco', 'plain')}${benchRows}
     <button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada'}</button>
-    <button type="button" class="primary" data-subs-close>${inTimeout ? `Continuar jogo (${Math.ceil(s.timer / TICKS_PER_SECOND)} s)` : 'Fechar'}</button>
+    <button type="button" class="primary" data-subs-close>${inTimeout ? (s.timer > B.coachPauseSeconds * TICKS_PER_SECOND ? 'Continuar jogo' : `Continuar jogo (${Math.ceil(s.timer / TICKS_PER_SECOND)} s)`) : 'Fechar'}</button>
   </div>`;
 }
 

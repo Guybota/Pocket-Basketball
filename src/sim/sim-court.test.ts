@@ -1,6 +1,7 @@
 // Parte dos testes da simulação. Estão divididos em ficheiros para correrem em paralelo.
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { BALANCE as B } from './balance.ts';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
 import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
@@ -80,7 +81,8 @@ describe('ressaltos', () => {
           const b = s.bodies.find(body => body.team === e.team && body.player.name === e.player)!;
           if (e.type === 'rebound') {
             rebounds++;
-            if (Math.hypot(b.x - s.ball.x, b.y - s.ball.y) <= 0.9) close++;
+            // Até onde os braços chegam: o alcance de um jogador do nível mais alto, com folga.
+            if (Math.hypot(b.x - s.ball.x, b.y - s.ball.y) <= B.reboundCatchDistance + (B.heightByLevel[2]! - B.referenceHeight) * B.reachPerCm + 0.1) close++;
           } else {
             const shot = s.events.slice(0, seen).reverse().find(x => x.type === 'shot');
             const hoopX = (e.team === 0) !== e.period >= 3 ? 26.425 : 1.575;

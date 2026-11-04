@@ -119,6 +119,8 @@ export const BALANCE = {
   reboundBlockedTravel: 1.5,
   // A bola cai e fica no chão até quem a ganhou chegar ao pé dela.
   reboundCatchDistance: 0.8,
+  // Cada centímetro acima da altura de referência estica o alcance aos ressaltos: os altos apanham a bola mais longe.
+  reachPerCm: 0.02,
   reboundMaxWaitSeconds: 1.5,
 
   // Movimento
@@ -290,13 +292,24 @@ export const BALANCE = {
   maxStintSeconds: 200,
   stintStaggerSeconds: 10,
   subInFatigue: 0.4,
+  // O encaixe de um jogador em cada lugar, para as substituições: os pesos dos atributos que o lugar pede (somam 1) e o que
+  // cada centímetro acima da altura de referência vale, a favor nos lugares de dentro e contra nos de fora.
+  slotProfiles: [
+    { speed: 0.4, technique: 0.4, shooting: 0.2, heightPerCm: -0.012 },
+    { shooting: 0.4, speed: 0.3, technique: 0.3, heightPerCm: -0.006 },
+    { shooting: 0.25, speed: 0.25, strength: 0.2, jumping: 0.15, technique: 0.15, heightPerCm: 0 },
+    { strength: 0.35, jumping: 0.35, technique: 0.15, stamina: 0.15, heightPerCm: 0.008 },
+    { strength: 0.4, jumping: 0.35, technique: 0.15, stamina: 0.1, heightPerCm: 0.012 },
+  ],
+  // A ordem do banco ainda desempata: o primeiro ganha isto sobre o último, em encaixe.
+  benchOrderFit: 0.03,
 
   // Corpo: referência de 195 cm, 95 kg e índice de massa corporal 25
   referenceHeight: 195,
   // Os centímetros com que cada nível de altura entra nos cálculos, e os limites com que se sorteiam.
   heightByLevel: [184, 198, 212],
   heightLevelFrom: [193, 203],
-  reboundPerCm: 0.02,
+  reboundPerCm: 0.035,
   blockPerCm: 0.005,
   finishPerCm: 0.003,
   contestPerCm: 0.005,
@@ -408,6 +421,8 @@ export const BALANCE = {
   timeoutSeconds: 4,
   // Com um treinador humano, uma paragem (desconto ou fim de período) dura isto, a correr em tempo real, a não ser que ele carregue em Continuar.
   coachPauseSeconds: 30,
+  // Se o treinador tocar no ecrã durante a paragem, ela deixa de acabar sozinha: espera por ele até este máximo.
+  coachHoldMaxSeconds: 600,
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,
