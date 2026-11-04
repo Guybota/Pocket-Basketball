@@ -733,6 +733,9 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 .prow { width: 100%; min-height: 22px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
 .prow.bench { background: rgba(203, 185, 142, .22); }
+/* Os reservas, fora da ficha de jogo, ficam mais apagados. */
+.prow.reserve { background: rgba(120, 110, 90, .16); }
+.prow.reserve .name, .prow.reserve .pnum { opacity: .7; }
 /* A estrela das opções de ataque, ao lado do nome. */
 .ostar { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; image-rendering: pixelated; }
 .prow:active { transform: none; box-shadow: none; }

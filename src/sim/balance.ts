@@ -178,7 +178,7 @@ export const BALANCE = {
   closeSkillSlope: 0.035,
   farSkillSlope: 0.07,
   pressurePenalty: 0.16,
-  composureSlope: 0.25,
+  composureSlope: 0.32,
   fatiguePenalty: 0.14,
   clutchSlope: 0.05,
   clutchSeconds: 30,
@@ -221,6 +221,8 @@ export const BALANCE = {
   // Sprint: quem corta para o cesto, quem entra com a bola e o ataque em contra-ataque correm mais depressa e cansam-se mais.
   sprintFactor: 1.25,
   sprintFatigue: 2,
+  // Driblar custa velocidade: até 15 % a quem tem pouca técnica, quase nada a quem tem muita.
+  dribbleSpeedLoss: 0.15,
   // Drive: ataca-se um ombro do defensor (a um metro dele), com um primeiro passo em explosão; se ele volta a ficar à frente ao fim
   // de um segundo, muda-se de direção uma vez; com pouca técnica lê-se mal o lado; se a ajuda fecha o corredor, passa-se a quem ela deixou.
   driveSideGap: 1,
@@ -455,6 +457,8 @@ export const BALANCE = {
   salaryPotentialWeight: 0.3,
   squadMin: 10,
   squadMax: 15,
+  // A ficha de jogo, como na FIBA: 12 se equipam (5 titulares e 7 suplentes); os outros são reservas e ficam de fora.
+  matchSquad: 12,
   // O mercado: quantos livres e quantos de outros clubes aparecem por semana, o valor de um jogador e as propostas.
   marketFreeAgents: 3,
   marketClubPlayers: 5,

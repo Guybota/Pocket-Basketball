@@ -462,11 +462,15 @@ export function faceImage(look: Look): string {
 export function drawBall(g: CanvasRenderingContext2D, x: number, y: number): void {
   x |= 0;
   y |= 0;
+  // O mesmo desenho da bola nas mãos dos bonecos: 5×5 sem os cantos, costuras em cruz e um brilho, com o contorno que o
+  // desenho automático dos bonecos lhe dá (só os vizinhos de lado, por isso os cantos ficam cortados).
   g.fillStyle = INK;
-  g.fillRect(x - 2, y - 3, 5, 7);
-  g.fillRect(x - 3, y - 2, 7, 5);
-  g.fillStyle = '#e8622a';
+  g.fillRect(x - 1, y - 3, 3, 7);
+  g.fillRect(x - 3, y - 1, 7, 3);
   g.fillRect(x - 2, y - 2, 5, 5);
+  g.fillStyle = '#e8622a';
+  g.fillRect(x - 2, y - 1, 5, 3);
+  g.fillRect(x - 1, y - 2, 3, 5);
   g.fillStyle = '#a93f14';
   g.fillRect(x, y - 2, 1, 5);
   g.fillRect(x - 2, y, 5, 1);

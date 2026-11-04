@@ -1834,7 +1834,9 @@ function movePlayers(s: MatchState): void {
       // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
       // Atrás do seu homem não há posição de defesa: corre-se para voltar a ficar entre ele e o cesto.
       const stance = man !== undefined && inFrontOf(s, b, man) && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
-      const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
+      // Quem leva a bola corre menos do que quem vai sem ela; a técnica reduz a perda.
+      const dribbling = b === s.holder && s.phase === 'live' ? 1 - B.dribbleSpeedLoss * (1 - b.player.attributes.technique / 100) : 1;
+      const slowed = stance * dribbling * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
       const dunking = s.flight?.kind === 'shot' && (s.flight.dunk || s.flight.layup) && !s.flight.blockedBy && s.flight.shooter === b;
       // O primeiro passo do drive é em explosão; o resto do drive, dos cortes e do contra-ataque é a sprintar.
       const firstStep = b === s.holder && s.driving && s.tick - s.driveStart < seconds(B.firstStepSeconds);
@@ -2358,7 +2360,8 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
   const bodies: Body[] = [];
   const court: [Body[], Body[]] = [[], []];
   for (const team of [0, 1] as const) {
-    teams[team].roster.forEach((player, index) => {
+    // Só a ficha de jogo se equipa: os primeiros da ordem do plantel; os reservas ficam de fora.
+    teams[team].roster.slice(0, B.matchSquad).forEach((player, index) => {
       const onCourt = index < 5;
       const body: Body = {
         player,

@@ -1,6 +1,7 @@
 // Parte dos testes da simulação. Estão divididos em ficheiros para correrem em paralelo.
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { BALANCE as B } from './balance.ts';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
 import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
@@ -210,3 +211,15 @@ describe('coerência de um jogo', () => {
 });
 
 // Os critérios da Fase 0, em docs/02-plano-desenvolvimento.md.
+
+describe('ficha de jogo', () => {
+  it('só 12 se equipam: num plantel de 15, os três últimos ficam de fora', () => {
+    const base = generateTeam(1, 'A', 55);
+    const extra = generateTeam(2, 'B', 55).roster.slice(0, 3);
+    const big = { ...base, roster: [...base.roster, ...extra] };
+    expect(big.roster).toHaveLength(15);
+    const s = simulateMatch(big, generateTeam(3, 'C', 55), 5);
+    expect(s.bodies.filter(b => b.team === 0)).toHaveLength(B.matchSquad);
+    expect(s.bodies.some(b => extra.some(p => p.name === b.player.name))).toBe(false);
+  });
+});

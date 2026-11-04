@@ -217,26 +217,45 @@ export const board = (players: string, away = false): string => `<div class="boa
 export function subsPanel(view: MatchView, picked: number | null, inTimeout: boolean): string {
   const { s } = view;
   const team = 0 as const;
-  // As trocas marcadas: seta verde a quem entra, vermelha a quem sai, e um losango aos dois que trocam de lugar em campo.
+  // A lista mostra logo a equipa como vai ficar: quem entra já aparece no lugar, quem sai já está no banco, com seta verde
+  // a quem entra, vermelha a quem sai, e um losango aos dois que trocam de lugar em campo. Igual nos descontos de tempo,
+  // onde a troca se faz no momento e as setas ficam até o jogo recomeçar.
+  const lineup = [...s.court[team]];
+  let bench = s.bodies.filter(b => b.team === team && b.slot === -1);
   const marks = new Map<Body, string>();
   for (const sub of s.pendingSubs) {
     if (sub.team !== team) continue;
-    const leaving = s.court[team][sub.slot]!;
+    const leaving = lineup[sub.slot]!;
     if (sub.incoming.slot === -1) {
+      lineup[sub.slot] = sub.incoming;
+      bench = bench.map(b => (b === sub.incoming ? leaving : b));
       marks.set(sub.incoming, 'in');
       marks.set(leaving, 'out');
     } else {
+      const from = lineup.indexOf(sub.incoming);
+      if (from >= 0) lineup[from] = leaving;
+      lineup[sub.slot] = sub.incoming;
       marks.set(sub.incoming, 'swap');
       marks.set(leaving, 'swap');
     }
   }
-  const row = (b: Body): string => {
+  if (s.phase === 'timeout' || s.phase === 'break') {
+    const since = s.events.reduce((tick, e) => (e.type === 'timeout' || e.type === 'periodEnd' ? e.tick : tick), 0);
+    for (const e of s.events) {
+      if (e.type !== 'substitution' || e.team !== team || e.tick < since) continue;
+      const entered = s.bodies.find(b => b.team === team && b.player.name === e.player);
+      const left = s.bodies.find(b => b.team === team && b.player.name === e.other);
+      if (entered) marks.set(entered, 'in');
+      if (left) marks.set(left, 'out');
+    }
+  }
+  const row = (b: Body, slot = -1): string => {
     const index = s.bodies.indexOf(b);
     const energy = 1 - b.fatigue;
     const mark = marks.get(b);
-    return `<button type="button" class="srow${b.slot === -1 ? ' bench' : ''}${index === picked ? ' has-ball' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${b.slot === -1 && b.line.fouls >= 5 ? 'disabled' : ''}>
+    return `<button type="button" class="srow${slot < 0 ? ' bench' : ''}${index === picked ? ' has-ball' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${slot < 0 && b.line.fouls >= 5 ? 'disabled' : ''}>
       <span class="face-wrap"><img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">${mark ? `<i class="arrow ${mark}"></i>` : ''}</span>
-      <span class="pos">${b.slot >= 0 ? slotCode(b.slot) : ''}</span>
+      <span class="pos">${slot >= 0 ? slotCode(slot) : ''}</span>
       <span class="name">${escapeHtml(b.player.name)}${optionMark(s.tactics[b.team].options, b.player.name)}</span>
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
@@ -245,14 +264,14 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
     </button>`;
   };
   const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><img class="energy" alt="Energia" title="Energia" src="${energyIcon()}"><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
-  const onCourt = s.court[team].map(row).join('');
-  const bench = s.bodies.filter(b => b.team === team && b.slot === -1).map(row).join('');
-  const onBoard = board(s.court[team].map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));
+  const onCourt = lineup.map((b, slot) => row(b, slot)).join('');
+  const benchRows = bench.map(b => row(b)).join('');
+  const onBoard = board(lineup.map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));
   return `<div class="subs">
     ${inTimeout ? '<div class="subs-title">Desconto de tempo</div>' : ''}
     ${onBoard}
     ${head('Em campo', 'team-0')}${onCourt}
-    ${head('No banco', 'plain')}${bench}
+    ${head('No banco', 'plain')}${benchRows}
     <button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada'}</button>
     <button type="button" class="primary" data-subs-close>${inTimeout ? 'Continuar jogo' : 'Fechar'}</button>
   </div>`;

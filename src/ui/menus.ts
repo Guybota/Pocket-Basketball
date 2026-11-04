@@ -180,10 +180,13 @@ function playerCard(index: number, extra?: string): string {
 const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('');
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
-  const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
+  const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= B.matchSquad ? ' reserve' : index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
       ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(club.tactics.options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
-  return club.team.roster.map(row).join('');
+  const rows = club.team.roster.map(row);
+  // Para lá da ficha de jogo ficam os reservas: trocam-se para dentro com o ⇄, como os outros.
+  if (rows.length > B.matchSquad) rows.splice(B.matchSquad, 0, '<div class="starters plain"><span>Reservas · fora da ficha de jogo</span></div>');
+  return rows.join('');
 }
 
 /* ---------- Ecrãs ---------- */
