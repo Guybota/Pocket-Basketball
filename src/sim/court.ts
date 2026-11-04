@@ -63,6 +63,34 @@ export const POST_WAIT_SPOTS: readonly (readonly [number, number])[] = [[2.6, 2.
 /** Onde cada um ataca o ressalto, por lugar no ataque, para não irem todos para o mesmo sítio. */
 /** A zona 2-3: dois à frente, três atrás, de cada lado do garrafão. */
 export const ZONE_SPOTS: readonly (readonly [number, number])[] = [[6.6, -3.2], [6.6, 3.2], [2.6, -3.6], [2.6, 0], [2.6, 3.6]];
+/** Os cinco papéis da zona 2-3, vistos do lado da bola: o guarda e o extremo desse lado, os do outro lado, e o poste no meio. */
+export type ZoneRole = 'nearGuard' | 'farGuard' | 'nearForward' | 'farForward' | 'centre';
+/** Onde está a bola, para a zona: no topo, na asa acima ou abaixo da linha de lance livre, no canto, ou dentro. */
+export type ZoneRegion = 'top' | 'highWing' | 'wing' | 'corner' | 'inside';
+/** A zona 2-3 como se ensina: para cada sítio da bola, quem lhe fecha e onde deslizam os outros, em (u, v) com o v positivo
+ * do lado da bola. No topo só os dois de cima mexem; na asa o guarda desse lado fecha e o outro vem para o meio; abaixo da
+ * linha de lance livre fecha o extremo e o guarda desce ao cotovelo a negar o poste alto; no canto o poste vai ao bloco do
+ * lado da bola e o extremo do outro lado mete-se debaixo do cesto; com a bola dentro, o poste fecha e os outros encolhem. */
+export const ZONE_PLAN: Record<ZoneRegion, { closer: ZoneRole; spots: Record<Exclude<ZoneRole, never>, readonly [number, number]> }> = {
+  top: { closer: 'nearGuard', spots: { nearGuard: [6.6, 3.2], farGuard: [6, -1.3], nearForward: [2.6, 3.6], farForward: [2.6, -3.6], centre: [2.6, 0] } },
+  highWing: { closer: 'nearGuard', spots: { nearGuard: [6.6, 3.2], farGuard: [5.8, -0.8], nearForward: [2.8, 3.2], farForward: [2.3, -1.8], centre: [2.6, 0.9] } },
+  wing: { closer: 'nearForward', spots: { nearGuard: [4.5, 1.8], farGuard: [5.8, -0.8], nearForward: [2.6, 3.6], farForward: [2.3, -1.8], centre: [2.6, 0.9] } },
+  corner: { closer: 'nearForward', spots: { nearGuard: [4.3, 2], farGuard: [5, -0.3], nearForward: [2.6, 3.6], farForward: [1.3, -0.9], centre: [1.9, 1.3] } },
+  inside: { closer: 'centre', spots: { nearGuard: [5, 1.6], farGuard: [5, -1.6], nearForward: [2.2, 2.2], farForward: [2.2, -2.2], centre: [2.6, 0] } },
+};
+export function zoneRegion(u: number, v: number): ZoneRegion {
+  const side = Math.abs(v);
+  if (u <= 3.5 && side >= 4) return 'corner';
+  if (side > 2.3) return u > 4.8 ? 'highWing' : 'wing';
+  return u > 5 ? 'top' : 'inside';
+}
+/** O papel de cada lugar da zona (0 e 1 em cima, 2 e 4 em baixo, 3 no meio) conforme o lado onde a bola está. */
+export function zoneRole(slot: number, side: 1 | -1): ZoneRole {
+  if (slot === 3) return 'centre';
+  const onBallSide = (slot === 1 || slot === 4) === (side > 0);
+  if (slot <= 1) return onBallSide ? 'nearGuard' : 'farGuard';
+  return onBallSide ? 'nearForward' : 'farForward';
+}
 export const CRASH_SPOTS: readonly (readonly [number, number])[] = [[3.6, 0], [3.2, -3], [3.2, 3], [3, 2.1], [2.6, -1.9]];
 /** Num isolamento, os outros quatro abrem o campo do lado contrário ao de quem ataca: dois cantos, uma asa e o topo. O v é para o lado de lá. */
 export const CLEAR_SPOTS: readonly (readonly [number, number])[] = [[0.9, 6.6], [5.6, 6.0], [8.2, 1.5], [0.9, -6.6]];

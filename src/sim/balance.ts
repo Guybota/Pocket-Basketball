@@ -47,9 +47,7 @@ export const BALANCE = {
   // Pressão normal: a defesa espera o ataque aqui. A meio campo, espera na linha do meio. Campo inteiro: segue-o sempre.
   defensePickUpU: 10.5,
   halfCourtPickUpU: 14,
-  // Zona: cada defensor guarda o seu sítio, puxado um pouco para a bola; quem a tem mais perto fecha-se sobre ela.
-  zoneBallPull: 0.7,
-  zoneCloseRange: 3,
+  // Zona 2-3 (ver ZONE_PLAN no court.ts): quem tem a bola na sua área fecha-se sobre ela a esta distância.
   zoneCloseGap: 0.8,
   // Saída contra pressão: no campo de trás, um colega vem dar linha de passe, e quem tem a bola passa-a em vez de a segurar.
   pressHelpDistance: 4,
@@ -129,6 +127,26 @@ export const BALANCE = {
   fatigueSpeedLoss: 0.3,
   cutMinSeconds: 1.2,
   cutMaxSeconds: 2.4,
+  // Cortes a ler o defensor: só se corta com quem tem a bola a conseguir ver (pressão abaixo disto) e perto do cesto atacado;
+  // com o defensor colado entre o atacante e a bola, o corte é pelas costas, para o cesto; quem não recebe sai para o canto contrário.
+  cutSignalPressure: 0.5,
+  cutDenyRange: 1.8,
+  cutMaxU: 8.5,
+  cutSeconds: 1.5,
+  cutClearSeconds: 1.5,
+  // Dar-e-ir: depois de passar, quem está perto do cesto corta para ele esta parte das vezes.
+  giveAndGoChance: 0.35,
+  // Contra-ataque: depois de um ressalto defensivo ou de um roubo, durante este tempo enchem-se os corredores (base ao meio,
+  // asas abertas, o poste direito ao aro, o 4 atrás), passa-se para a frente mais vezes e ataca-se o cesto; sem vantagem
+  // numérica à frente da bola, abranda-se para o ataque organizado. O ritmo rápido prolonga-o.
+  breakSeconds: 4,
+  breakStopU: 7,
+  breakAheadPassChance: 0.6,
+  breakDriveFactor: 1.5,
+  tacticPaceBreak: 0.3,
+  // Defesa de transição: os dois mais perto do próprio cesto correm para o garrafão e o mais perto da bola trava-a.
+  transitionProtectU: 2.5,
+  transitionProtectV: 1,
 
   // Decisões do portador da bola
   decisionMinSeconds: 0.33,
@@ -183,6 +201,8 @@ export const BALANCE = {
   // Um lançamento perto do cesto que não é afundanço é um lay-up: o jogador leva a bola até ao aro e larga-a por cima.
   layupMaxDistance: 2.4,
   layupArc: 1,
+  // No lay-up a bola vai na mão até esta parte do lance, e só então sai para o aro.
+  layupReleaseT: 0.6,
   // Um lay-up completamente livre, sem defensor perto nem ninguém na linha até ao cesto, entra quase sempre, seja quem for:
   // é assim que um extremo ou um base também marcam de perto, e não só o poste.
   openLayupChance: 0.92,

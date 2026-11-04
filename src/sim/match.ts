@@ -5,7 +5,9 @@ import {
   ARC_SPOTS,
   COURT_LENGTH,
   CUT_SPOTS,
-  ZONE_SPOTS,
+  ZONE_PLAN,
+  zoneRegion,
+  zoneRole,
   POST_WAIT_SPOTS,
   LANE_U,
   LANE_HALF_V,
@@ -90,6 +92,10 @@ export interface Body {
   targetX: number;
   targetY: number;
   spot: number;
+  /** Um corte a ler o defensor: para onde vai, até quando, e se já saiu para o canto (0 sem corte, 1 a cortar, 2 a sair). */
+  cutTo: readonly [number, number] | null;
+  cutUntil: number;
+  cutStage: 0 | 1 | 2;
   nextCutTick: number;
   enteredTick: number;
   stunnedUntil: number;
@@ -210,6 +216,10 @@ interface ShotFlight {
   blockedBy: Body | null;
   dunk: boolean;
   layup: boolean;
+  /** No lay-up, onde a bola saiu da mão, quando sai. */
+  releaseX?: number;
+  releaseY?: number;
+  releaseZ?: number;
 }
 
 /** Decisões do treinador. Ficam registadas: semente, equipas e comandos reproduzem o jogo exatamente. */
@@ -274,6 +284,10 @@ export interface MatchState {
   freeThrow: { shooter: Body; left: number; returning?: boolean } | null;
   /** A última leva de trocas: o passo em que aconteceu e até quando quem saiu ainda vai a caminho do banco. */
   subsTick: number;
+  /** Até quando dura o contra-ataque, e quem está a cortar agora (um de cada vez). */
+  breakUntil: number;
+  cutter: Body | null;
+  cutterUntil: number;
   subWaitUntil: number;
   score: [number, number];
   teamFouls: [number, number];
@@ -422,11 +436,42 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
   return { chance: openLayup ? Math.max(probability, B.openLayupChance) : probability, points: three ? 3 : 2, distance: dist };
 }
 
+/** Um contra-ataque: dura uns segundos, mais com o ritmo rápido. */
+function startBreak(s: MatchState, team: TeamIndex): void {
+  s.breakUntil = s.tick + seconds(B.breakSeconds * (1 + B.tacticPaceBreak * s.tactics[team].pace));
+}
+
+/** Para onde se corta: para o cesto; contra a zona, para os buracos dela, o poste alto ou o canto curto. */
+function cutTarget(s: MatchState, b: Body): readonly [number, number] {
+  const side = b.y >= 0 ? 1 : -1;
+  if (s.tactics[other(b.team)].defense === 'zone') return toU(s, b.team, b.x) > 4 ? [5, 0] : [1.5, side * 4.2];
+  return [1.9, side * 0.9];
+}
+
+function startCut(s: MatchState, b: Body, to: readonly [number, number]): void {
+  b.cutTo = to;
+  b.cutStage = 1;
+  b.cutUntil = s.tick + seconds(B.cutSeconds);
+  s.cutter = b;
+  s.cutterUntil = b.cutUntil;
+}
+
+/** O defensor está à frente do atacante: entre ele e o cesto que ele ataca. Atrás dele, não se defende, corre-se. */
+function inFrontOf(s: MatchState, defender: Body, attacker: Body): boolean {
+  const hoopX = fromU(s, attacker.team, HOOP_U);
+  return distance(defender.x, defender.y, hoopX, 0) < distance(attacker.x, attacker.y, hoopX, 0);
+}
+
 function newPossession(s: MatchState, team: TeamIndex): void {
   s.offense = team;
   s.lines[team].possessions++;
   s.driving = false;
   s.lastPasser = null;
+  s.cutter = null;
+  for (const b of s.court[team]) {
+    b.cutTo = null;
+    b.cutStage = 0;
+  }
   s.shotClock = seconds(B.shotClockSeconds);
   const focus = s.tactics[team].spacing;
   s.playFor = null;
@@ -1011,6 +1056,7 @@ function resolveRebound(s: MatchState): void {
   } else {
     s.lines[rebounder.team].defensiveRebounds++;
     newPossession(s, rebounder.team);
+    startBreak(s, rebounder.team);
   }
   emit(s, 'rebound', rebounder.team, { player: rebounder.player.name, offensive });
   giveBall(s, rebounder);
@@ -1024,6 +1070,7 @@ function resolvePass(s: MatchState, f: PassFlight): void {
     s.lines[team].turnovers++;
     emit(s, 'steal', f.interceptedBy.team, { player: f.interceptedBy.player.name, other: f.passer.player.name });
     newPossession(s, f.interceptedBy.team);
+    startBreak(s, f.interceptedBy.team);
     giveBall(s, f.interceptedBy);
     return;
   }
@@ -1041,6 +1088,8 @@ function resolvePass(s: MatchState, f: PassFlight): void {
   s.lastPasser = f.passer;
   s.lastPassTick = s.tick;
   giveBall(s, f.target);
+  // Dar-e-ir: quem passou perto do cesto corta logo para ele, se ninguém estiver a cortar.
+  if (s.tick >= s.cutterUntil && toU(s, team, f.passer.x) <= B.cutMaxU && chance(s.rng, B.giveAndGoChance)) startCut(s, f.passer, cutTarget(s, f.passer));
   if (f.lob) shoot(s, f.target, true);
 }
 
@@ -1097,6 +1146,7 @@ function decide(s: MatchState): void {
       s.lines[h.team].turnovers++;
       emit(s, 'steal', defender.team, { player: defender.player.name, other: h.player.name });
       newPossession(s, defender.team);
+      startBreak(s, defender.team);
       giveBall(s, defender);
       return;
     }
@@ -1111,6 +1161,15 @@ function decide(s: MatchState): void {
       return;
     }
   }
+  // Contra-ataque: só vale com vantagem numérica à frente da bola; sem ela, abranda-se para o ataque organizado.
+  // Conta-se no meio-campo atacado: os nossos lá à frente, com o portador, contra os defensores que já lá chegaram.
+  if (s.tick < s.breakUntil && toU(s, h.team, h.x) < COURT_LENGTH / 2 + 4) {
+    const half = COURT_LENGTH / 2;
+    const ahead = s.court[h.team].filter(b => b !== h && toU(s, b.team, b.x) < half).length + 1;
+    const back = s.court[other(h.team)].filter(d => toU(s, h.team, d.x) < half).length;
+    if (ahead <= back) s.breakUntil = s.tick;
+  }
+  const breaking = s.tick < s.breakUntil;
   // Sozinho perto do cesto, lança: nem a opção de ataque nem o organizador valem mais do que um lançamento livre ali.
   if (hoopDistance(toU(s, h.team, h.x), h.y) <= B.openShotDistance && pressure < B.openShotPressure) {
     shoot(s, h);
@@ -1155,7 +1214,7 @@ function decide(s: MatchState): void {
       pass(s, h, loose);
       return;
     }
-    if (runners.length > 0 && chance(s.rng, B.aheadPassChance)) {
+    if (runners.length > 0 && chance(s.rng, breaking ? B.breakAheadPassChance : B.aheadPassChance)) {
       pass(s, h, runners[0]!);
       return;
     }
@@ -1238,7 +1297,7 @@ function decide(s: MatchState): void {
   const fed = passer !== null && passer !== h && s.tick - s.lastPassTick <= seconds(B.fedSeconds) && optionFactor(s, passer) > 1 && passer.player.onBall === 'playmaker';
   const bestPass = Math.max(0, ...passValues);
   weights[0]! *= (creator && shootValue < bestPass ? 1 : own) * (fed ? B.fedShotFactor : 1);
-  weights[2]! *= (creator && driveValue < bestPass ? 1 : own) * (s.playFor === h && s.play === 'iso' ? B.isoDriveFactor : 1) * (fed ? B.fedShotFactor : 1);
+  weights[2]! *= (creator && driveValue < bestPass ? 1 : own) * (s.playFor === h && s.play === 'iso' ? B.isoDriveFactor : 1) * (fed ? B.fedShotFactor : 1) * (breaking ? B.breakDriveFactor : 1);
   teammates.forEach((b, i) => {
     const rolling = s.driving && s.screen?.by === b;
     // Um colega muito livre, ou com o caminho livre para o cesto, pede a bola.
@@ -1332,17 +1391,59 @@ function updateTargets(s: MatchState): void {
   const leakingShot = flight?.kind === 'shot' && distance(flight.fromX, flight.fromY, fromU(s, offense, 1.575), 0) >= B.leakMinShotDistance;
   for (const b of s.court[offense]) {
     if (s.tick >= b.nextCutTick) {
-      b.spot = weightedIndex(s.rng, [3, 1, 1]);
+      // Lê-se o defensor: colado e entre o atacante e a bola, corta-se pelas costas; senão muda-se de lugar.
+      // Só se corta com quem tem a bola a conseguir ver, perto do cesto, e um de cada vez.
+      const h = s.holder;
+      const defender = nearestDefender(s, b);
+      const canSee = h !== null && h !== b && s.phase === 'live' && pressureOn(s, h) < B.cutSignalPressure && s.tick >= s.cutterUntil;
+      const denied = h !== null && distance(defender.x, defender.y, b.x, b.y) < B.cutDenyRange && distance(defender.x, defender.y, h.x, h.y) < distance(b.x, b.y, h.x, h.y);
+      if (canSee && denied && toU(s, offense, b.x) <= B.cutMaxU) startCut(s, b, cutTarget(s, b));
+      else b.spot = weightedIndex(s.rng, [3, 1, 1]);
       const pace = b.player.offBall === 'cutter' ? B.cutterCutFactor : b.player.offBall === 'dynamo' ? B.dynamoCutFactor : 1;
       b.nextCutTick = s.tick + seconds(between(s.rng, B.cutMinSeconds, B.cutMaxSeconds) * pace);
     }
-    const [u, v] = b === s.holder ? onBallSpot(b) : attackSpot(b);
+    // Quem cortou e não recebeu sai para o canto contrário, para não entupir o garrafão.
+    if (b.cutStage === 1 && s.tick >= b.cutUntil) {
+      b.cutStage = 2;
+      b.cutTo = [0.9, b.y >= 0 ? -6.6 : 6.6];
+      b.cutUntil = s.tick + seconds(B.cutClearSeconds);
+    } else if (b.cutStage === 2 && s.tick >= b.cutUntil) {
+      b.cutStage = 0;
+      b.cutTo = null;
+    }
+    if (b === s.holder) b.cutTo = null;
+    const [u, v] = b === s.holder ? onBallSpot(b) : b.cutTo ?? attackSpot(b);
     b.targetX = fromU(s, offense, u);
     // Abrir o campo afasta os jogadores do meio; jogar por dentro aproxima-os.
     b.targetY = Math.max(-COURT_HALF_WIDTH + 0.3, Math.min(COURT_HALF_WIDTH - 0.3, v * (1 + B.tacticSpacingSpot * s.tactics[offense].spacing)));
     if (b === s.holder && s.driving) {
       b.targetX = fromU(s, offense, 1.9);
       b.targetY = 0;
+    }
+    // Contra-ataque: o portador empurra pelo meio, as asas correm abertas à frente da bola, o poste vai direito ao aro e o 4 vem atrás.
+    if (s.tick < s.breakUntil && (s.phase === 'live' || s.phase === 'pass') && s.holder) {
+      const hu = toU(s, offense, s.holder.x);
+      if (b === s.holder) {
+        b.targetX = fromU(s, offense, Math.max(B.breakStopU, hu - 5));
+        b.targetY = b.y * 0.5;
+      } else {
+        const runners = s.court[offense].filter(r => r !== s.holder).sort((p, q) => q.slot - p.slot);
+        const rim = runners[0]!;
+        const trail = runners[1]!;
+        if (b === rim) {
+          b.targetX = fromU(s, offense, 1.9);
+          b.targetY = b.y >= 0 ? 0.8 : -0.8;
+        } else if (b === trail) {
+          b.targetX = fromU(s, offense, Math.max(7.5, hu - 2));
+          b.targetY = 0;
+        } else {
+          const wings = runners.slice(2);
+          const side = wings.length === 2 && wings[0]!.y * wings[1]!.y > 0 ? (b === wings[0] ? 1 : -1) : b.y >= 0 ? 1 : -1;
+          // As asas correm abertas pelas laterais e, com a bola no meio-campo, fecham em diagonal para o cesto.
+          b.targetX = fromU(s, offense, Math.max(1.5, hu - 5));
+          b.targetY = side * (hu > COURT_LENGTH / 2 ? 6.2 : Math.max(1.5, 6.2 * (hu - 1.5) / (COURT_LENGTH / 2 - 1.5)));
+        }
+      }
     }
     // De costas, vai-se recuando na direção do cesto, com o defensor pelo meio.
     if (b === s.posting) {
@@ -1455,25 +1556,39 @@ function updateTargets(s: MatchState): void {
   const ballU = toU(s, offense, s.ball.x);
   const zone = defenseTactics.defense === 'zone' && ballU <= pickUp && s.phase !== 'dead';
   const ballHolder = s.holder ?? [...s.court[offense]].sort((a, b) => distance(a.x, a.y, s.ball.x, s.ball.y) - distance(b.x, b.y, s.ball.x, s.ball.y))[0]!;
-  const closer = zone ? [...s.court[defense]].sort((a, b) => {
-    const [au, av] = ZONE_SPOTS[a.slot]!;
-    const [bu, bv] = ZONE_SPOTS[b.slot]!;
-    return distance(fromU(s, offense, au), av, ballHolder.x, ballHolder.y) - distance(fromU(s, offense, bu), bv, ballHolder.x, ballHolder.y);
-  })[0] : null;
+  // Na zona, cada um guarda a sua área: a zona desliza em bloco conforme onde a bola está, e só um fecha sobre ela.
+  const zonePlan = zone ? ZONE_PLAN[zoneRegion(toU(s, offense, ballHolder.x), ballHolder.y)] : null;
+  const zoneSide: 1 | -1 = ballHolder.y >= 0 ? 1 : -1;
+  // Defesa de transição: enquanto o adversário contra-ataca, os dois mais perto do próprio cesto protegem o garrafão,
+  // o mais perto da bola trava-a, e os outros correm para a linha onde pegam.
+  const transition = s.tick < s.breakUntil && (s.phase === 'live' || s.phase === 'pass');
+  const ownHoopX = fromU(s, offense, HOOP_U);
+  const protectors = transition ? [...s.court[defense]].sort((p, q) => distance(p.x, p.y, ownHoopX, 0) - distance(q.x, q.y, ownHoopX, 0)).slice(0, 2) : [];
+  const stopper = transition ? [...s.court[defense]].filter(d => !protectors.includes(d)).sort((p, q) => distance(p.x, p.y, ballHolder.x, ballHolder.y) - distance(q.x, q.y, ballHolder.x, ballHolder.y))[0] ?? null : null;
   for (const b of s.court[defense]) {
     const man = s.court[offense][b.slot]!;
     const hoopX = fromU(s, offense, 1.575);
-    if (zone) {
-      // Zona: cada um no seu sítio, puxado para a bola; o mais perto dela fecha-se sobre quem a tem.
-      const [zu, zv] = ZONE_SPOTS[b.slot]!;
-      const zx = fromU(s, offense, zu);
-      if (b === closer && distance(ballHolder.x, ballHolder.y, zx, zv) <= B.zoneCloseRange + 2) {
+    if (transition && protectors.includes(b)) {
+      b.targetX = fromU(s, offense, B.transitionProtectU);
+      b.targetY = protectors[0] === b ? B.transitionProtectV : -B.transitionProtectV;
+      continue;
+    }
+    if (transition && b === stopper) {
+      const d = distance(ballHolder.x, ballHolder.y, hoopX, 0) || 1;
+      b.targetX = ballHolder.x + ((hoopX - ballHolder.x) / d) * 1.2;
+      b.targetY = ballHolder.y + ((0 - ballHolder.y) / d) * 1.2;
+      continue;
+    }
+    if (zonePlan) {
+      const role = zoneRole(b.slot, zoneSide);
+      if (role === zonePlan.closer) {
         const d = distance(ballHolder.x, ballHolder.y, hoopX, 0) || 1;
         b.targetX = ballHolder.x + ((hoopX - ballHolder.x) / d) * B.zoneCloseGap;
         b.targetY = ballHolder.y + ((0 - ballHolder.y) / d) * B.zoneCloseGap;
       } else {
-        b.targetX = zx + (s.ball.x - zx) * B.zoneBallPull;
-        b.targetY = zv + (s.ball.y - zv) * B.zoneBallPull;
+        const [zu, zv] = zonePlan.spots[role];
+        b.targetX = fromU(s, offense, zu);
+        b.targetY = zv * zoneSide;
       }
       continue;
     }
@@ -1608,7 +1723,8 @@ function movePlayers(s: MatchState): void {
       // Só quem defende o jogador com a bola fica em posição de defesa: o defensor mais perto dele.
       const man = b.team !== s.offense && s.phase === 'live' && s.holder && nearestDefender(s, s.holder) === b ? s.holder : undefined;
       // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
-      const stance = man !== undefined && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
+      // Atrás do seu homem não há posição de defesa: corre-se para voltar a ficar entre ele e o cesto.
+      const stance = man !== undefined && inFrontOf(s, b, man) && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
       const slowed = stance * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
       const dunking = s.flight?.kind === 'shot' && (s.flight.dunk || s.flight.layup) && !s.flight.blockedBy && s.flight.shooter === b;
       const stepLength = Math.min(dist, maxSpeed(b) * slowed * (dunking ? B.dunkBurst : 1) * DT);
@@ -1741,7 +1857,27 @@ function placeShotBall(s: MatchState, f: ShotFlight, t: number): void {
     const miss = f.made ? 0 : B.rimMissOffset * (f.total % 2 === 0 ? 1 : -1);
     const aimX = hoopX + ((fromX - hoopX) / dist) * miss;
     const aimY = (fromY / dist) * miss;
-    const arc = Math.max(B.shotMinArc, carried ? (f.dunk ? B.dunkArc : B.layupArc) : B.shotArcBase + dist * B.shotArcPerMeter);
+    if (f.layup && !f.dunk) {
+      // No lay-up a bola vai na mão, a subir, até sair; depois voa sozinha do ponto onde saiu até ao aro.
+      if (t < B.layupReleaseT) {
+        s.ball.x = f.shooter.x;
+        s.ball.y = f.shooter.y;
+        s.ball.z = 1 + 1.6 * (t / B.layupReleaseT);
+        f.releaseX = s.ball.x;
+        f.releaseY = s.ball.y;
+        f.releaseZ = s.ball.z;
+      } else {
+        const rx = f.releaseX ?? f.shooter.x;
+        const ry = f.releaseY ?? f.shooter.y;
+        const rz = f.releaseZ ?? 2.6;
+        const k = (t - B.layupReleaseT) / (1 - B.layupReleaseT);
+        s.ball.x = rx + (aimX - rx) * k;
+        s.ball.y = ry + (aimY - ry) * k;
+        s.ball.z = rz + (B.rimHeight - rz) * k + B.layupArc * k * (1 - k);
+      }
+      return;
+    }
+    const arc = Math.max(B.shotMinArc, carried ? B.dunkArc : B.shotArcBase + dist * B.shotArcPerMeter);
     s.ball.x = fromX + (aimX - fromX) * t;
     s.ball.y = fromY + (aimY - fromY) * t;
     s.ball.z = 2.2 + (B.rimHeight - 2.2) * t + arc * t * (1 - t);
@@ -2125,6 +2261,9 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
         screenCooldownUntil: 0,
         laneTicks: 0,
         laneOutUntil: 0,
+        cutTo: null,
+        cutUntil: 0,
+        cutStage: 0,
         slowedUntil: 0,
         nextBumpTick: 0,
         radius: B.bodyRadius,
@@ -2181,6 +2320,9 @@ export function createMatch(home: Team, away: Team, seed: number, controlled: [b
     jump: null,
     freeThrow: null,
     subsTick: -1,
+    breakUntil: 0,
+    cutter: null,
+    cutterUntil: 0,
     subWaitUntil: 0,
     score: [0, 0],
     teamFouls: [0, 0],

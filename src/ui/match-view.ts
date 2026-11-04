@@ -783,7 +783,10 @@ export class MatchView {
     }
     // Só quem defende o jogador com a bola fica em posição de defesa, a deslizar de lado; os outros andam e correm normalmente.
     const man = b.team !== s.offense && s.phase === 'live' && s.holder && this.nearestOpponent(s.holder) === b ? s.holder : undefined;
-    const guarding = man !== undefined && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
+    // E só à frente dele, entre ele e o cesto: por trás, corre-se.
+    const hoopX = man ? this.attackedHoop(man.team) : 0;
+    const inFront = man !== undefined && Math.hypot(b.x - hoopX, b.y) < Math.hypot(man.x - hoopX, man.y);
+    const guarding = man !== undefined && inFront && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
     if (moving && guarding) return { pose: frame % 4 < 2 ? 'slide0' : 'slide1', withBall: false };
     if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
     if (s.screen?.by === b) return { pose: 'screen', withBall: false };
