@@ -30,8 +30,6 @@ const MAX_STEPS_PER_FRAME = 40;
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 const LANDSCAPE_MIN_RATIO = 1.2;
-// Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
-const MATCH_MIN_RATIO = 1.1;
 const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
@@ -221,14 +219,15 @@ function fit(): void {
     // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
     const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
-    const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
-    // No jogo, a altura lógica é a da vertical, para a câmara e os bonecos ficarem iguais nos dois esquemas.
+    // No jogo, o campo tem a altura lógica da vertical e pelo menos a mesma largura: a câmara e os bonecos ficam iguais.
     const scale = stage === 'town' || stage === 'title'
       ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
-      : Math.ceil((stageHeight * dpr) / (stage === 'match' ? MATCH_STAGE_HEIGHT : LANDSCAPE_ART_HEIGHT)) / dpr;
+      : stage === 'match'
+        ? Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, viewHeight / MATCH_STAGE_HEIGHT) * dpr)) / dpr
+        : Math.ceil((viewHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = Math.ceil(stageWidth / scale);
-    const height = Math.ceil(stageHeight / scale);
+    const height = stage === 'match' ? MATCH_STAGE_HEIGHT : Math.ceil(viewHeight / scale);
     setCanvasSize(width, height, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
     const bar = Math.max(0, (viewHeight - height * scale) / 2);
