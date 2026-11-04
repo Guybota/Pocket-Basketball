@@ -143,7 +143,7 @@ export class MatchView {
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   // O público, como no original: bonecos em filas na bancada, sentados, que se levantam nos momentos especiais. Os balões saem deles.
-  private readonly fans: { x: number; y: number; z: number; look: Look; phase: number; flip: boolean; flag: boolean; front: boolean }[] = [];
+  private readonly fans: { x: number; y: number; z: number; look: Look; phase: number; flip: boolean; flag: boolean; front: boolean; zeal: number }[] = [];
   private readonly flagColor: string;
   // No campo de rua não há bancada: há dois bancos de dois degraus, com uns quantos a ver.
   private readonly street: boolean;
@@ -233,7 +233,7 @@ export class MatchView {
             for (let k = 0; k < 2; k++) {
               n++;
               const x = far ? STAND.farX - dx : STAND.nearX + dx;
-              if (((n * 2654435761) >>> 0) / 4294967296 < 0.6 * fill) this.fans.push({ x, y: side * (4.4 + k * 1.6) + row * 0.5, z, look: looks[n % looks.length]!, phase: n, flip: far, flag: false, front: row === 0 });
+              if (((n * 2654435761) >>> 0) / 4294967296 < 0.6 * fill) this.fans.push({ x, y: side * (4.4 + k * 1.6) + row * 0.5, z, look: looks[n % looks.length]!, phase: n, flip: far, flag: false, front: row === 0, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
             }
           }
         }
@@ -256,12 +256,12 @@ export class MatchView {
         // Cada fila vai de canto a canto da bancada, que recua ao subir; à frente do túnel ninguém se senta.
         for (let x = endFanSpot(theme, false, row).x + 0.7 + (row % 2) * (FAN_SPACING / 2); x < endFanSpot(theme, true, row).x - 0.5; x += FAN_SPACING) {
           if (side.z < TUNNEL.height + 0.3 && x > TUNNEL.x0 - 0.5 && x < TUNNEL.x1 + 0.5) continue;
-          if (seat(n++) < density) this.fans.push({ x, y: side.y, z: side.z, look: looks[n % looks.length]!, phase: n, flip: n % 3 === 0, flag: seat(n * 7 + 3) < 0.05, front: row === 0 });
+          if (seat(n++) < density) this.fans.push({ x, y: side.y, z: side.z, look: looks[n % looks.length]!, phase: n, flip: n % 3 === 0, flag: seat(n * 7 + 3) < 0.05, front: row === 0, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
         }
         for (const far of [false, true]) {
           const end = endFanSpot(theme, far, row);
           for (let y = side.y + 0.7 + (row % 2) * (FAN_SPACING / 2); y < 9; y += FAN_SPACING) {
-            if (seat(n++) < density) this.fans.push({ x: end.x, y, z: end.z, look: looks[n % looks.length]!, phase: n, flip: far, flag: false, front: false });
+            if (seat(n++) < density) this.fans.push({ x: end.x, y, z: end.z, look: looks[n % looks.length]!, phase: n, flip: far, flag: false, front: false, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
           }
         }
       }
@@ -1068,8 +1068,8 @@ export class MatchView {
     const wantZoom = this.holding() ? 2 : 1;
     this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * 4));
     if (Math.abs(this.zoom - wantZoom) < 0.01) this.zoom = wantZoom;
-    g.imageSmoothingEnabled = false;
     if (this.zoom > 1.001) {
+      g.imageSmoothingEnabled = false;
       const [px, py] = camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
@@ -1092,14 +1092,19 @@ export class MatchView {
         this.pixels[y * width + x] = 0xffffffff;
       }
     }
-    // O chão passa por uma tela à parte: `putImageData` ignora a aproximação, `drawImage` não.
-    if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
-      this.scene = document.createElement('canvas');
-      this.scene.width = camera.width;
-      this.scene.height = camera.height;
+    // Com a imagem aproximada, o chão passa por uma tela à parte: `putImageData` ignora a aproximação, `drawImage` não.
+    // Sem aproximação vai direto, que é uma cópia a menos por imagem.
+    if (this.zoom > 1.001) {
+      if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
+        this.scene = document.createElement('canvas');
+        this.scene.width = camera.width;
+        this.scene.height = camera.height;
+      }
+      this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+      g.drawImage(this.scene, 0, 0);
+    } else {
+      g.putImageData(this.image, 0, 0);
     }
-    this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
-    g.drawImage(this.scene, 0, 0);
     this.drawOutsiders();
     if (this.fence) {
       this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
@@ -1324,8 +1329,7 @@ export class MatchView {
       if (sx < -20 || sx > camera.width + 20 || sy < -10 || sy > camera.height + 40) continue;
       // Cada adepto tem o seu entusiasmo: só se levanta se o momento valer mais do que ele pede, e os menos entusiastas
       // sentam-se mais cedo; uns saltam, outros batem palmas.
-      const zeal = ((f.phase * 2654435761) >>> 0) / 4294967296;
-      const cheering = s.tick < this.fansCheerUntil - zeal * 0.5 * this.fansCheerTicks && zeal < this.fansCheerLevel;
+      const cheering = s.tick < this.fansCheerUntil - f.zeal * 0.5 * this.fansCheerTicks && f.zeal < this.fansCheerLevel;
       const beat = this.reducedMotion ? f.phase : (s.tick >> 2) + f.phase;
       const claps = f.phase % 3 === 2;
       const pose: PoseName = cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
