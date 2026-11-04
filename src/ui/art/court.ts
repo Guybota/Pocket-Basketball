@@ -508,9 +508,8 @@ export class Camera {
   setViewport(width: number, height: number): void {
     this.width = width;
     this.height = height;
-    // Os bonecos têm sempre o mesmo tamanho em píxeis, por isso o campo não cresce muito mais do que eles: num ecrã lógico
-    // grande (o jogo de demonstração do título numa janela de computador) ficava quase o dobro, e os jogadores pareciam anões.
-    this.focal = this.tuning.focal * Math.min(1.2, width / BASE_W, height / BASE_H);
+    // Os bonecos têm sempre o mesmo tamanho em píxeis, por isso a lente também: um ecrã maior mostra mais campo, sem mudar o zoom.
+    this.focal = this.tuning.focal;
   }
 
   tune(t: Partial<Camera['tuning']>): void {
