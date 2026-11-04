@@ -336,7 +336,7 @@ function emit(s: MatchState, type: MatchEventType, team: TeamIndex, extra: Parti
 }
 
 const maxSpeed = (b: Body): number =>
-  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint - B.speedLossPerCm * (heightCmOf(b.player) - B.referenceHeight)) * (1 - B.fatigueSpeedLoss * b.fatigue);
+  (B.baseSpeed + b.player.attributes.speed * B.speedPerPoint) * (1 - B.speedLossPerLevel * (b.player.height - 2)) * (1 - B.fatigueSpeedLoss * b.fatigue);
 
 const hasMove = (b: Body, move: MoveId): boolean => b.player.moves.includes(move);
 
@@ -1856,14 +1856,17 @@ function movePlayers(s: MatchState): void {
       b.stepX = 0;
       b.stepY = 0;
       if (dist < 0.01 || b.stunnedUntil > s.tick) continue;
+      // Quem acabou de lançar está no ar: só volta a andar quando aterra. Quem afunda ou faz lay-up leva a bola e corre.
+      const flight = s.flight;
+      if (flight?.kind === 'shot' && flight.shooter === b && !flight.dunk && !flight.layup && flight.ticks < seconds(B.shotJumpSeconds)) continue;
       // Em posição de defesa, perto do seu homem, anda-se de lado, mais devagar; longe dele, corre-se.
       // Só quem defende o jogador com a bola fica em posição de defesa: o defensor mais perto dele.
       const man = b.team !== s.offense && s.phase === 'live' && s.holder && nearestDefender(s, s.holder) === b ? s.holder : undefined;
       // Só desliza devagar quem já está quase no sítio; quem ficou para trás corre para lá.
       // Atrás do seu homem não há posição de defesa: corre-se para voltar a ficar entre ele e o cesto.
       const stance = man !== undefined && inFrontOf(s, b, man) && distance(b.x, b.y, man.x, man.y) < B.stanceRange && dist < B.stanceChaseRange ? B.stanceSpeed : 1;
-      // Quem leva a bola corre menos do que quem vai sem ela; a técnica reduz a perda.
-      const dribbling = b === s.holder && s.phase === 'live' ? 1 - B.dribbleSpeedLoss * (1 - b.player.attributes.technique / 100) : 1;
+      // Quem leva a bola corre menos do que quem vai sem ela; a técnica reduz a perda, e a altura agrava-a (drible alto, mãos longe do chão).
+      const dribbling = b === s.holder && s.phase === 'live' ? 1 - B.dribbleSpeedLoss * (1 - b.player.attributes.technique / 100) - B.dribbleHeightLoss * (b.player.height - 2) : 1;
       const slowed = stance * dribbling * (isScreened(s, b) ? B.screenSlowdown : 1) * (b.slowedUntil > s.tick ? B.bumpSlowdown : 1) * (b === s.posting ? B.postSpeedFactor : 1) * (s.phase === 'intro' ? B.introWalkFactor : 1);
       const dunking = s.flight?.kind === 'shot' && (s.flight.dunk || s.flight.layup) && !s.flight.blockedBy && s.flight.shooter === b;
       // O primeiro passo do drive é em explosão; o resto do drive, dos cortes e do contra-ataque é a sprintar.

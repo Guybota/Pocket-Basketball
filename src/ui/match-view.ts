@@ -55,6 +55,10 @@ const REBOUND_JUMP_TICKS = 12;
 const REBOUND_JUMP_HEIGHT = 12;
 // No afundanço, o salto leva a mão até ao aro: a mão da pose fica a 32 px dos pés e o aro a 46, por isso sobe-se 14 px.
 const DUNK_LIFT = 14;
+/** O salto de um lançamento: quanto dura e quanto sobe, em píxeis; a pose de lançar já traz os pés 6 px acima do chão. */
+const SHOT_JUMP_TICKS = 10;
+const SHOT_JUMP_HEIGHT = 8;
+const SHOOT_POSE_FEET = 6;
 const DUNK_FALL_TICKS = 6;
 // Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
@@ -124,6 +128,8 @@ export class MatchView {
   private scene: HTMLCanvasElement | null = null;
   /** Nuvens de poeira deixadas pelos pés de quem sprinta: onde estavam, e em que passo. */
   private readonly puffs: { x: number; y: number; born: number; side: number }[] = [];
+  /** Quem lançou e ainda está no ar: o passo em que saltou. */
+  private readonly shotJumps = new Map<Body, number>();
   /** O passo em que cada um fez o último step-back: o lançamento a seguir é a cair para trás. */
   private readonly stepBacks = new Map<Body, number>();
   /** Quem saltou ao ressalto e quando: o salto começa antes de a bola chegar, e apanha-se em cima. */
@@ -369,7 +375,9 @@ export class MatchView {
           if (!body) break;
           const dunk = e.dunk === true;
           // No lay-up e no step-back não há pose fixa: `poseOf` segue o voo. De costas no poste, lança-se de gancho.
-          if (!e.layup && this.stepBacks.get(body) !== s.tick) this.overrides.set(body, { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : 16) });
+          if (!e.layup && this.stepBacks.get(body) !== s.tick) this.overrides.set(body, { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : SHOT_JUMP_TICKS) });
+          // O lançador sobe e desce num arco e só se mexe quando aterra; a pose dura exatamente o salto.
+          if (!e.layup && !dunk && body) this.shotJumps.set(body, s.tick);
           // Quem afunda salta até à mão tocar no aro, no fim do lance.
           if (dunk && s.flight?.kind === 'shot') this.dunkJumps.set(body, { start: s.tick, up: Math.max(4, s.flight.total) });
           // Quem está em cima do lançador salta de braços no ar para o tentar abafar.
@@ -573,6 +581,19 @@ export class MatchView {
   }
 
   /** O salto do afundanço, em píxeis: sobe durante o lance até a mão chegar ao aro, e cai logo a seguir. */
+  /** O arco do salto de quem lança: começa com os pés no chão (a pose já os traz 6 px acima), sobe e volta ao chão
+   * no instante em que a pose acaba, para não dar um salto de píxeis ao aterrar. */
+  private shotLift(b: Body, alpha: number): number {
+    const start = this.shotJumps.get(b);
+    if (start === undefined) return 0;
+    const t = (this.s.tick + alpha - start) / SHOT_JUMP_TICKS;
+    if (t >= 1) {
+      this.shotJumps.delete(b);
+      return 0;
+    }
+    return -SHOOT_POSE_FEET + 4 * (SHOOT_POSE_FEET + SHOT_JUMP_HEIGHT) * t * (1 - t);
+  }
+
   private dunkLift(b: Body, alpha: number): number {
     const jump = this.dunkJumps.get(b);
     if (!jump) return 0;
@@ -1120,7 +1141,7 @@ export class MatchView {
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
-      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha), pose, withBall, look, flip, back };
+      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha), pose, withBall, look, flip, back };
     });
     const { referee } = this;
     const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);

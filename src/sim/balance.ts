@@ -24,6 +24,8 @@ export const BALANCE = {
   introMaxSeconds: 5,
   introWalkFactor: 0.5,
   jumpSeconds: 1.1,
+  // Quanto tempo quem lança fica no ar: até aterrar não se mexe (senão parecia deslizar no ar).
+  shotJumpSeconds: 0.5,
   // Quanto a bola ao alto sobe acima da linha reta entre as mãos do árbitro e as dos saltadores: pouco, para lhes cair nas mãos.
   jumpBallArc: 4,
   // Cada ponto de diferença a saltar vale 1% de hipóteses, e nunca passa de 70%.
@@ -225,6 +227,8 @@ export const BALANCE = {
   sprintFatigue: 2,
   // Driblar custa velocidade: até 15 % a quem tem pouca técnica, quase nada a quem tem muita.
   dribbleSpeedLoss: 0.15,
+  // E a altura também pesa no drible: cada nível acima do meio tira mais 5 %, cada nível abaixo dá mais 5 %.
+  dribbleHeightLoss: 0.05,
   // Drive: ataca-se um ombro do defensor (a um metro dele), com um primeiro passo em explosão; se ele volta a ficar à frente ao fim
   // de um segundo, muda-se de direção uma vez; com pouca técnica lê-se mal o lado; se a ajuda fecha o corredor, passa-se a quem ela deixou.
   driveSideGap: 1,
@@ -310,9 +314,9 @@ export const BALANCE = {
   heightByLevel: [184, 198, 212],
   heightLevelFrom: [193, 203],
   reboundPerCm: 0.035,
-  blockPerCm: 0.005,
+  blockPerCm: 0.015,
   finishPerCm: 0.003,
-  contestPerCm: 0.005,
+  contestPerCm: 0.015,
 
   // Movimentos especiais
   crossoverChance: 0.85,
@@ -326,8 +330,8 @@ export const BALANCE = {
   openShotPressure: 0.2,
   openLaneFinish: 1.6,
   openLaneCheckSeconds: 0.15,
-  // Quem é mais alto é mais lento: 20 cm valem 0,14 m/s.
-  speedLossPerCm: 0.007,
+  // Quem é mais alto é mais lento: cada nível de altura (★, ★★, ★★★) tira 10 % à velocidade em relação ao nível do meio.
+  speedLossPerLevel: 0.1,
   // Quedas: fica no chão e levanta-se, sem poder fazer nada entretanto.
   fallSeconds: 1.8,
   ankleFallBase: 0.15,
