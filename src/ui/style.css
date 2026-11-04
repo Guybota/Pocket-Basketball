@@ -42,10 +42,13 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 html, body { height: 100%; }
 
 /* Sem zoom no telemóvel e no tablet: nem com dois dedos nem com dois toques. Deslizar continua a funcionar nas listas. */
-:root { --safe-top: env(safe-area-inset-top, 0px); }
+:root { --safe-top: env(safe-area-inset-top, 0px); --top-extra: 0px; }
 html { touch-action: pan-x pan-y; }
-/* Ao alto, a página começa abaixo da barra de estado do telemóvel. */
-body:not(.landscape) { padding-top: var(--safe-top); }
+/* Ao alto, a página começa abaixo da barra de estado do telemóvel, e essa faixa fica pintada de escuro: o iOS desfoca o que
+ * lhe passa por baixo, e sobre uma cor lisa o desfoque não se vê. Instalado no ecrã inicial, a faixa desfocada é mais alta
+ * do que a barra, por isso há um extra (--top-extra, posto pelo jogo). */
+body:not(.landscape) { padding-top: calc(var(--safe-top) + var(--top-extra)); }
+body:not(.landscape)::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: calc(var(--safe-top) + var(--top-extra)); background: #1b2230; z-index: 60; }
 button, canvas, a { touch-action: manipulation; }
 
 body {

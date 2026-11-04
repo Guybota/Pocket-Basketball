@@ -2,16 +2,16 @@
 <html lang="pt-PT">
   <head>
     <meta charset="utf-8">
-    <!-- Sem viewport-fit=cover: a página fica fora da barra de estado, que no iPhone desfoca o que lhe passa por baixo. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <!-- viewport-fit=cover para o iPhone nos dizer a altura da barra de estado: pintamos essa faixa de escuro, e o desfoque do sistema fica sobre uma cor lisa. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Pocket Basketball</title>
     <link rel="icon" href="data:,">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <meta name="apple-mobile-web-app-title" content="Pocket Basketball">
-    <!-- Instalado no ecrã inicial do iPhone: barra de estado opaca e escura, para não desfocar o marcador por baixo dela. -->
+    <!-- Instalado no ecrã inicial do iPhone: a barra de estado fica por cima da página, e a faixa por baixo dela é pintada por nós. -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1b2230">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&display=swap">

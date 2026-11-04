@@ -213,15 +213,18 @@ function windowHeight(): number {
   return Math.max(innerHeight, stableHeight);
 }
 
+// Instalado no ecrã inicial do iPhone, a faixa que o sistema desfoca no topo é mais alta do que a barra de estado.
+if ((navigator as Navigator & { standalone?: boolean }).standalone === true) document.documentElement.style.setProperty('--top-extra', '24px');
+
 function fit(): void {
   const landscape = innerWidth / windowHeight() >= LANDSCAPE_MIN_RATIO;
   // No telemóvel ao alto, a barra de estado fica por cima da página: o jogo começa abaixo dela, senão o marcador ficava
   // debaixo do desfoque do sistema.
-  const safeTop = landscape ? 0 : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-top')) || 0;
-  const viewHeight = windowHeight() - safeTop;
-  const dpr = devicePixelRatio || 1;
   game.classList.toggle('landscape', landscape);
   document.body.classList.toggle('landscape', landscape);
+  const safeTop = landscape ? 0 : parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+  const viewHeight = windowHeight() - safeTop;
+  const dpr = devicePixelRatio || 1;
   // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
   game.classList.toggle('result-open', resultOpen && stage === 'match');
   const centred = landscape && resultOpen && stage === 'match';
