@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 import { matchHash } from '../sim/hash.ts';
-import { cancelSubstitution, isSprinting, queueSubstitution, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
+import { BALANCE as B } from '../sim/balance.ts';
+import { clockIcon, controlIcon, subsIcon } from './art/icons.ts';
+import { cancelSubstitution, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
@@ -88,6 +90,8 @@ let dropUntil = 0;
 let speed = 1;
 let paused = false;
 let pauseRequested = false;
+/** Uma paragem em que o jogo espera pelo treinador: desconto, ou fim de período sem ser o intervalo. */
+const holdOpen = (s: MatchState): boolean => s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
 const ballSettled = (s: MatchState): boolean => s.holder !== null || s.phase === 'dead' || s.phase === 'timeout' || s.phase === 'break' || s.phase === 'end' || s.ball.z <= 0.2;
 let started = false;
 let tab: PanelTab = 'bench';
@@ -610,14 +614,12 @@ function matchControls(): string {
       <button type="button" role="tab" data-tab="cards" aria-selected="${tab === 'cards'}">Cartas</button>
     </div>
     <div id="tabContent" class="content"></div>
-    <div class="controls">
-      <button type="button" id="pauseBtn" aria-pressed="${paused || pauseRequested}">${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}</button>
-      <button type="button" id="muteBtn" aria-pressed="${audio.muted}">${audio.muted ? 'Sem som' : 'Som'}</button>
-      <div class="coach">
-        <button type="button" id="timeoutBtn">Desconto</button>
-        <button type="button" id="subsBtn" aria-pressed="${subsOpen}">Trocas</button>
-        <button type="button" id="matchTacticsBtn" aria-pressed="${tacticsOpen}">Táticas</button>
-      </div>
+    <div class="coachbar">
+      <button type="button" id="pauseBtn" class="icon" aria-pressed="${paused || pauseRequested}" aria-label="${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}" title="${paused ? 'Continuar' : 'Pausa'}"><img class="ink" alt="" src="${controlIcon(paused ? 'play' : 'pause')}"></button>
+      <button type="button" id="muteBtn" class="icon" aria-pressed="${audio.muted}" aria-label="${audio.muted ? 'Ligar o som' : 'Desligar o som'}" title="Som"><img class="ink" alt="" src="${controlIcon(audio.muted ? 'muted' : 'sound')}"></button>
+      <button type="button" id="timeoutBtn" class="icon" aria-label="Desconto de tempo" title="Desconto de tempo"><img class="ink" id="timeoutIcon" alt="" src="${clockIcon(view?.s.timeoutsLeft[0] ?? 0)}"></button>
+      <button type="button" id="subsBtn" class="icon" aria-pressed="${subsOpen}" aria-label="Trocas" title="Trocas"><img alt="" src="${subsIcon()}"></button>
+      <button type="button" id="matchTacticsBtn" class="icon" aria-pressed="${tacticsOpen}" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>
     </div>`;
 }
 
@@ -664,7 +666,7 @@ function refreshContent(): void {
   }
   if (subsOpen) {
     content.dataset.shown = '';
-    content.innerHTML = subsPanel(view!, subPick, view!.s.phase === 'timeout');
+    content.innerHTML = subsPanel(view!, subPick, holdOpen(view!.s));
     return;
   }
   if (cardBody) {
@@ -709,7 +711,12 @@ function updateCoachButtons(): void {
   const timeoutButton = document.getElementById('timeoutBtn') as HTMLButtonElement | null;
   if (!timeoutButton) return;
   const { s } = view!;
-  timeoutButton.textContent = s.pendingTimeout[0] ? 'Desconto pedido' : `Desconto (${s.timeoutsLeft[0]})`;
+  // O relógio mostra os descontos que restam ao centro; sem nenhum fica apagado e sem número; pedido, fica carregado.
+  const icon = document.getElementById('timeoutIcon') as HTMLImageElement | null;
+  const src = clockIcon(s.timeoutsLeft[0]);
+  if (icon && icon.getAttribute('src') !== src) icon.src = src;
+  timeoutButton.setAttribute('aria-pressed', String(s.pendingTimeout[0] || s.timeoutTeam === 0));
+  timeoutButton.setAttribute('aria-label', s.pendingTimeout[0] ? 'Desconto pedido' : `Desconto de tempo (${s.timeoutsLeft[0]})`);
   timeoutButton.disabled = s.pendingTimeout[0] || s.timeoutsLeft[0] <= 0 || s.timeoutTeam === 0;
 }
 
@@ -721,8 +728,8 @@ function closeSubs(): void {
     openHalf(gameKind, rivalOf);
     return;
   }
-  // Se estava num desconto, o jogo só continua quando o jogador quiser.
-  if (paused && view!.s.phase === 'timeout') paused = false;
+  // Numa paragem, Continuar é um comando do treinador: a paragem acaba no passo seguinte.
+  if (holdOpen(view!.s)) resumeMatch(view!.s, 0);
   clearIdle();
   showMatch();
 }
@@ -780,20 +787,27 @@ panel.addEventListener('click', event => {
   if (target.dataset.pick !== undefined) {
     const index = Number(target.dataset.pick);
     const body = s.bodies[index]!;
-    // Tocar em quem já tem troca marcada desmarca-a. Senão, o primeiro toque escolhe e o segundo troca os dois:
-    // campo com banco é uma substituição, campo com campo troca de lugar, banco com banco troca a ordem de entrada.
-    const pending = s.pendingSubs.find(sub => sub.team === 0 && (sub.incoming === body || s.court[0][sub.slot] === body));
-    if (pending) {
-      cancelSubstitution(s, 0, pending.slot);
-      subPick = null;
-    } else if (subPick === null) {
+    // O primeiro toque escolhe e o segundo troca os dois, contando com as trocas já marcadas (a lista mostra a equipa como
+    // vai ficar): campo com banco é uma substituição, campo com campo troca de lugar, banco com banco troca a ordem de
+    // entrada. Quem já foi trocado volta a poder ser escolhido para outra posição; tocar nos dois de uma troca marcada desfá-la.
+    const shownSlot = (b: Body): number => {
+      for (const sub of s.pendingSubs) {
+        if (sub.team !== 0) continue;
+        if (sub.incoming === b) return sub.slot;
+        if (s.court[0][sub.slot] === b) return sub.incoming.slot;
+      }
+      return b.slot;
+    };
+    if (subPick === null) {
       subPick = index;
     } else if (subPick === index) {
       subPick = null;
     } else {
       const other = s.bodies[subPick]!;
-      if (body.slot >= 0) queueSubstitution(s, 0, body.slot, subPick);
-      else if (other.slot >= 0) queueSubstitution(s, 0, other.slot, index);
+      const marked = s.pendingSubs.find(sub => sub.team === 0 && ((sub.incoming === body && s.court[0][sub.slot] === other) || (sub.incoming === other && s.court[0][sub.slot] === body)));
+      if (marked) cancelSubstitution(s, 0, marked.slot);
+      else if (shownSlot(body) >= 0) queueSubstitution(s, 0, shownSlot(body), subPick);
+      else if (shownSlot(other) >= 0) queueSubstitution(s, 0, shownSlot(other), index);
       else reorderBench(s, 0, subPick, index);
       subPick = null;
     }
@@ -1022,19 +1036,26 @@ function frame(now: number): void {
       if (banner.textContent !== message || banner.hidden) announce(message);
     }
   }
-  // Em qualquer desconto, a equipa junta-se ao banco e depois o jogo espera pelo jogador, com as trocas abertas.
-  if (current?.s.phase === 'timeout' && current.s.timer <= TICKS_PER_SECOND) {
-    if (!timeoutHandled) {
+  // Numa paragem (desconto, ou fim de período sem ser o intervalo) o jogo continua em tempo real: quando a equipa chega ao
+  // banco abrem-se as trocas, o botão Continuar mostra o tempo que falta e, se o treinador não mexer, o jogo recomeça sozinho.
+  if (current && holdOpen(current.s) && !halfSubsOpen) {
+    const arrived = current.s.court[0].every(b => Math.hypot(b.x - b.targetX, b.y - b.targetY) < 1.2);
+    if (!timeoutHandled && (arrived || current.s.timer <= (B.coachPauseSeconds - 5) * TICKS_PER_SECOND)) {
       timeoutHandled = true;
-      paused = true;
       subsOpen = true;
       subPick = null;
       cardBody = null;
       showMatch();
-      resumeAfterIdle(closeSubs);
     }
-  } else {
+    const resume = document.querySelector('[data-subs-close]');
+    if (resume) resume.textContent = `Continuar jogo (${Math.ceil(current.s.timer / TICKS_PER_SECOND)} s)`;
+  } else if (timeoutHandled) {
     timeoutHandled = false;
+    if (subsOpen) {
+      subsOpen = false;
+      subPick = null;
+      showMatch();
+    }
   }
   if (started && !paused && !finished && stage === 'match') audio.ambience(now);
   if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
@@ -1193,6 +1214,7 @@ Object.assign(window, {
     state: () => ({
       phase: view?.s.phase ?? 'none',
       puffs: view?.puffCount() ?? 0,
+      commands: view?.s.commands.map(c => `${c.kind}@${c.tick}`) ?? [],
       sprinters: view ? [...view.s.court[0], ...view.s.court[1]].filter(b => isSprinting(view!.s, b)).length : 0,
       tick: view?.s.tick ?? 0,
       period: view?.s.period ?? 0,

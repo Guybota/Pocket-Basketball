@@ -38,7 +38,7 @@ Um teste automático faz cumprir as regras de proibição e de importação.
 
 ## Interface (`src/ui/`)
 
-- A interface lê o estado da simulação e só a muda pelos comandos do treinador (`requestTimeout`, `queueSubstitution`, `cancelSubstitution`, `setAutoRotation`, `setTactics`). Ficam registados em `commands`, para o jogo se poder repetir.
+- A interface lê o estado da simulação e só a muda pelos comandos do treinador (`requestTimeout`, `resumeMatch`, `queueSubstitution`, `cancelSubstitution`, `setAutoRotation`, `setTactics`). Ficam registados em `commands`, para o jogo se poder repetir.
 - Só `step()` faz o jogo avançar.
 - Há dois esquemas: vertical (360×640, com o campo por cima do painel) e horizontal (o campo ao lado do painel), escolhido pela proporção da janela. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
 - Toda a arte é gerada por código. Os sons são sintetizados, por isso não há ficheiros de áudio.

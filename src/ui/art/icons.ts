@@ -1,8 +1,13 @@
 import type { Attributes } from '../../sim/types.ts';
+import { text } from './font.ts';
 import { INK } from './palette.ts';
 
 /* ---------- Ícones, desenhados aqui para serem nossos ---------- */
 export function iconFrom(rows: readonly string[], color: string, back: string | null, size = 16): string {
+  return iconCanvas(rows, color, back, size).toDataURL();
+}
+
+function iconCanvas(rows: readonly string[], color: string, back: string | null, size: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -20,7 +25,7 @@ export function iconFrom(rows: readonly string[], color: string, back: string | 
       g.fillRect(offX + x, offY + y, 1, 1);
     });
   });
-  return canvas.toDataURL();
+  return canvas;
 }
 
 // A estrela das opções de ataque, com contorno: dourada para a primeira, prateada para a segunda.
@@ -48,6 +53,63 @@ export function energyIcon(): string {
   if (!url) {
     url = iconFrom(ENERGY_PIXELS, '#ffffff', '#2f7d4a');
     iconCache.set('energy', url);
+  }
+  return url;
+}
+
+// Os botões do treinador durante o jogo, só com ícones: pausa e play, som ligado e desligado, o relógio do desconto
+// (o número de descontos vai por cima, em texto), as setas das trocas e a prancheta das táticas.
+const CONTROL_PIXELS = {
+  pause: ['###..###', '###..###', '###..###', '###..###', '###..###', '###..###', '###..###', '###..###', '###..###'],
+  play: ['##.......', '####.....', '######...', '########.', '#########', '########.', '######...', '####.....', '##.......'],
+  sound: ['...##......', '..###..#...', '.####...#..', '#####.#..#.', '#####..#.#.', '#####.#..#.', '.####...#..', '..###..#...', '...##......'],
+  muted: ['...##......', '..###......', '.####..#.#.', '#####...#..', '#####..#.#.', '#####......', '.####......', '..###......', '...##......'],
+  // O relógio é um círculo de 13, ímpar, com a coroa em cima: assim um algarismo de 3 píxeis fica mesmo ao centro.
+  clock: ['....#####....', '.....###.....', '....#####....', '..##.....##..', '.#.........#.', '.#.........#.', '#...........#', '#...........#', '#...........#', '#...........#', '#...........#', '.#.........#.', '.#.........#.', '..##.....##..', '....#####....'],
+  // A prancheta: 12 de largura e 16 de altura, a ocupar o ícone todo; a mola é um bloco cheio a cavalo da borda de cima (uma asa em arco parecia um saco de compras).
+  board: ['....####....', '############', '#...####...#', '#..........#', '#.######...#', '#..........#', '#.########.#', '#..........#', '#.######...#', '#..........#', '#.########.#', '#..........#', '#.######...#', '#..........#', '#..........#', '############'],
+} as const;
+export type ControlIcon = keyof typeof CONTROL_PIXELS;
+export function controlIcon(kind: ControlIcon): string {
+  let url = iconCache.get(`control:${kind}`);
+  if (!url) {
+    url = iconFrom(CONTROL_PIXELS[kind], INK, null, 16);
+    iconCache.set(`control:${kind}`, url);
+  }
+  return url;
+}
+
+// As setas das trocas: uma verde a subir e uma vermelha a descer, altas e juntas, num só ícone.
+const ARROW_UP = ['..##..', '.####.', '######', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..', '..##..'];
+const ARROW_DOWN = [...ARROW_UP].reverse();
+export function subsIcon(): string {
+  let url = iconCache.get('subs');
+  if (!url) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const g = canvas.getContext('2d')!;
+    const plot = (rows: readonly string[], color: string, offX: number, offY: number): void => {
+      g.fillStyle = color;
+      rows.forEach((row, y) => [...row].forEach((ch, x) => ch === '#' && g.fillRect(offX + x, offY + y, 1, 1)));
+    };
+    plot(ARROW_UP, '#2f9b6a', 1, 1);
+    plot(ARROW_DOWN, '#cf3a2c', 9, 2);
+    url = canvas.toDataURL();
+    iconCache.set('subs', url);
+  }
+  return url;
+}
+
+/** O relógio do desconto com os descontos que restam ao centro do mostrador; com zero, só o relógio. */
+export function clockIcon(count: number): string {
+  const key = `clock:${count}`;
+  let url = iconCache.get(key);
+  if (!url) {
+    const canvas = iconCanvas(CONTROL_PIXELS.clock, INK, null, 16);
+    if (count > 0) text(canvas.getContext('2d')!, String(count), 6, 6, INK, 1);
+    url = canvas.toDataURL();
+    iconCache.set(key, url);
   }
   return url;
 }

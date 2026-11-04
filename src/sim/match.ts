@@ -29,6 +29,7 @@ import {
   BENCH_START_X,
   BENCH_SPACING,
   BENCH_Y,
+  huddleSpot,
 } from './court.ts';
 import { between, chance, makeRng, next, weightedIndex, type Rng } from './rng.ts';
 import { freeThrowChance, shotChance } from './shot.ts';
@@ -228,6 +229,7 @@ interface ShotFlight {
 /** Decisões do treinador. Ficam registadas: semente, equipas e comandos reproduzem o jogo exatamente. */
 export type Command =
   | { kind: 'timeout'; tick: number; team: TeamIndex }
+  | { kind: 'resume'; tick: number; team: TeamIndex }
   | { kind: 'substitution'; tick: number; team: TeamIndex; slot: number; incoming: number }
   | { kind: 'cancelSubstitution'; tick: number; team: TeamIndex; slot: number }
   | { kind: 'reorder'; tick: number; team: TeamIndex; a: number; b: number }
@@ -663,12 +665,17 @@ function deadBall(s: MatchState, inbounding: TeamIndex, keepsPossession: boolean
   }
 }
 
+/** Quanto dura uma paragem: com um treinador humano, o tempo de ele decidir (o botão Continuar acaba-a antes); só com IA, o mínimo. */
+function holdSeconds(s: MatchState, aiSeconds: number): number {
+  return s.controlled.some(Boolean) ? B.coachPauseSeconds : aiSeconds;
+}
+
 function grantTimeout(s: MatchState, team: TeamIndex): void {
   s.pendingTimeout[team] = false;
   s.timeoutsLeft[team]--;
   s.timeoutTeam = team;
   s.phase = 'timeout';
-  s.timer = seconds(B.timeoutSeconds);
+  s.timer = seconds(holdSeconds(s, B.timeoutSeconds));
   s.holder = null;
   s.flight = null;
   s.driving = false;
@@ -921,7 +928,7 @@ function endPeriod(s: MatchState): void {
     return;
   }
   s.phase = 'break';
-  s.timer = seconds(B.periodBreakSeconds);
+  s.timer = seconds(holdSeconds(s, B.periodBreakSeconds));
   for (const b of s.bodies) b.fatigue = Math.max(0, b.fatigue - B.periodBreakRecovery);
   rotate(s, 0);
   rotate(s, 1);
@@ -2160,6 +2167,14 @@ export function requestTimeout(s: MatchState, team: TeamIndex): boolean {
   return true;
 }
 
+/** O treinador manda continuar: acaba a paragem (desconto ou fim de período) no passo seguinte. */
+export function resumeMatch(s: MatchState, team: TeamIndex): boolean {
+  if ((s.phase !== 'timeout' && s.phase !== 'break') || s.timer <= 1) return false;
+  s.timer = 1;
+  s.commands.push({ kind: 'resume', tick: s.tick, team });
+  return true;
+}
+
 /** Pede uma troca. Entra na próxima bola parada. Uma troca manual desliga a rotação automática da equipa. */
 export function queueSubstitution(s: MatchState, team: TeamIndex, slot: number, incomingIndex: number): boolean {
   const incoming = s.bodies[incomingIndex];
@@ -2205,6 +2220,7 @@ export function setTactics(s: MatchState, team: TeamIndex, tactics: Tactics): vo
 function applyCommand(s: MatchState, c: Command): void {
   if (c.kind === 'tactics') setTactics(s, c.team, c.tactics);
   else if (c.kind === 'timeout') requestTimeout(s, c.team);
+  else if (c.kind === 'resume') resumeMatch(s, c.team);
   else if (c.kind === 'substitution') queueSubstitution(s, c.team, c.slot, c.incoming);
   else if (c.kind === 'cancelSubstitution') cancelSubstitution(s, c.team, c.slot);
   else if (c.kind === 'reorder') reorderBench(s, c.team, c.a, c.b);
@@ -2222,8 +2238,10 @@ function updateHuddle(s: MatchState): void {
         b.targetX = (team === 0 ? 13.6 : 14.4) + (i % 2) * 0.2;
         b.targetY = -COURT_HALF_WIDTH - 3.8 - i * 0.5;
       } else {
-        b.targetX = (team === 0 ? 8 : 23.5) + (i - 2) * 0.9;
-        b.targetY = -5.6 + (i % 2) * 0.9;
+        // Em roda à volta do treinador; os lugares que ficam de permeio são de suplentes, que a vista põe lá.
+        const [hx, hy] = huddleSpot(team, [0, 2, 4, 6, 7][i]!);
+        b.targetX = hx;
+        b.targetY = hy;
       }
     });
   }

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, movesWinRate, styleWinRate, summarize, type Summary } from './batch.ts';
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
-import { cancelSubstitution, createMatch, pushPower, queueSubstitution, reorderBench, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
+import { cancelSubstitution, createMatch, pushPower, queueSubstitution, reorderBench, replayMatch, requestTimeout, resolveContacts, resumeMatch, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
@@ -357,5 +357,30 @@ describe('táticas', () => {
     expect(createMatch(tired(90), away, 1).bodies[0]!.fatigue).toBeLessThan(0.4);
     expect(createMatch(tired(20), away, 1).bodies[0]!.fatigue).toBeGreaterThan(0.6);
     expect(createMatch({ ...home, roster: home.roster.map(p => ({ ...p, fatigue: 0 })) }, away, 1).bodies[0]!.fatigue).toBe(0);
+  });
+});
+
+describe('paragens com treinador', () => {
+  const untilPhase = (s: MatchState, phase: string): void => {
+    for (let i = 0; i < 40000 && s.phase !== phase && s.phase !== 'end'; i++) step(s);
+  };
+  it('com um treinador humano o desconto espera por ele, e Continuar acaba-o; só com IA é curto', () => {
+    const s = createMatch(home, away, 3, [true, false]);
+    for (let i = 0; i < 40000 && !(s.phase === 'live' && s.offense === 0); i++) step(s);
+    expect(requestTimeout(s, 0)).toBe(true);
+    untilPhase(s, 'timeout');
+    for (let i = 0; i < 20 * 20; i++) step(s);
+    expect(s.phase).toBe('timeout');
+    expect(resumeMatch(s, 0)).toBe(true);
+    step(s);
+    expect(s.phase).toBe('dead');
+    expect(s.commands.some(c => c.kind === 'resume')).toBe(true);
+    const ai = createMatch(home, away, 3, [false, false]);
+    for (let i = 0; i < 40000 && !(ai.phase === 'live' && ai.offense === 0); i++) step(ai);
+    expect(requestTimeout(ai, 0)).toBe(true);
+    untilPhase(ai, 'timeout');
+    const start = ai.tick;
+    untilPhase(ai, 'dead');
+    expect(ai.tick - start).toBeLessThanOrEqual(5 * 20);
   });
 });

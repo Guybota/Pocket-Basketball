@@ -6,7 +6,7 @@ import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
-import { SPOTS } from '../sim/court.ts';
+import { SPOTS, TICKS_PER_SECOND } from '../sim/court.ts';
 import { foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
 import type { MatchView } from './match-view.ts';
@@ -268,12 +268,12 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
   const benchRows = bench.map(b => row(b)).join('');
   const onBoard = board(lineup.map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));
   return `<div class="subs">
-    ${inTimeout ? '<div class="subs-title">Desconto de tempo</div>' : ''}
+    ${inTimeout ? `<div class="subs-title">${s.phase === 'timeout' ? 'Desconto de tempo' : 'Fim do período'}</div>` : ''}
     ${onBoard}
     ${head('Em campo', 'team-0')}${onCourt}
     ${head('No banco', 'plain')}${benchRows}
     <button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada'}</button>
-    <button type="button" class="primary" data-subs-close>${inTimeout ? 'Continuar jogo' : 'Fechar'}</button>
+    <button type="button" class="primary" data-subs-close>${inTimeout ? `Continuar jogo (${Math.ceil(s.timer / TICKS_PER_SECOND)} s)` : 'Fechar'}</button>
   </div>`;
 }
 

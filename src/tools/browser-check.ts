@@ -10,7 +10,7 @@ import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } fr
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
-  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null };
+  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[] };
   setSpeedRaw(value: number): void;
   townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
@@ -150,7 +150,10 @@ try {
   await page.screenshot({ path: `${OUT}/fim.png` });
   const final = await page.evaluate(() => window.__pocket.state());
   const expected = firstMatch(7, 2);
-  check('O jogo visto acaba com o resultado da simulação', final.score[0] === expected.score[0] && final.score[1] === expected.score[1], `${final.score[0]}-${final.score[1]}`);
+  // Sem decisões do treinador, o jogo visto é o da simulação. Com decisões (aqui, o Continuar nos descontos, que agora
+  // encurta a paragem e muda o jogo), o que tem de bater certo é a repetição com essas mesmas decisões.
+  if (final.commands.length === 0) check('O jogo visto acaba com o resultado da simulação', final.score[0] === expected.score[0] && final.score[1] === expected.score[1], `${final.score[0]}-${final.score[1]}`);
+  else check('O jogo visto reproduz-se com as decisões tomadas', await page.evaluate(() => window.__pocket.replayMatchesCurrent()), `${final.commands.length} decisões: ${final.commands.slice(0, 6).join(', ')}`);
   const heard = await page.evaluate(() => window.__pocket.soundsPlayed());
   for (const name of ['whistle', 'buzzer', 'horn']) check(`Toca o som "${name}" durante o jogo`, heard.includes(name), heard.join(', '));
   await page.evaluate(() => window.__pocket.playAllSounds());

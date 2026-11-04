@@ -406,6 +406,8 @@ export const BALANCE = {
   timeoutsPerHalf: 2,
   timeoutsInOvertime: 1,
   timeoutSeconds: 4,
+  // Com um treinador humano, uma paragem (desconto ou fim de período) dura isto, a correr em tempo real, a não ser que ele carregue em Continuar.
+  coachPauseSeconds: 30,
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,

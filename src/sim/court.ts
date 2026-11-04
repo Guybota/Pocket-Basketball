@@ -14,6 +14,19 @@ export const seconds = (s: number): number => Math.round(s * TICKS_PER_SECOND);
 // Os bancos, à frente da mesa: onde cada equipa começa a sentar-se, o espaço entre lugares e a linha dos bancos.
 export const BENCH_START_X: readonly [number, number] = [4.4, 20.3];
 export const BENCH_SPACING = 0.95;
+
+/** A roda do desconto: o treinador ao centro, à frente do seu banco, e oito lugares à volta, com a abertura virada para a câmara. */
+export const HUDDLE_CENTRE: readonly [readonly [number, number], readonly [number, number]] = [[5.4, -6.4], [21.1, -6.4]];
+// Mais larga do que funda: vista de lado e de cima, a profundidade encurta, e uma roda redonda no chão parecia uma fila.
+export const HUDDLE_RADIUS_X = 2.6;
+export const HUDDLE_RADIUS_Y = 2;
+// As direções dos oito lugares (cos, sin), de 140° a 400°, com 100° de abertura para a câmara: a simulação não pode usar Math.cos e Math.sin.
+export const HUDDLE_RING: readonly (readonly [number, number])[] = [[-0.77, 0.64], [-1, 0.05], [-0.83, -0.56], [-0.32, -0.95], [0.32, -0.95], [0.83, -0.56], [1, 0.05], [0.77, 0.64]];
+export const huddleSpot = (team: 0 | 1, k: number): [number, number] => {
+  const [cx, cy] = HUDDLE_CENTRE[team];
+  const [dx, dy] = HUDDLE_RING[k % HUDDLE_RING.length]!;
+  return [cx + dx * HUDDLE_RADIUS_X, cy + dy * HUDDLE_RADIUS_Y];
+};
 export const BENCH_Y = -9.6;
 
 export function distance(x0: number, y0: number, x1: number, y1: number): number {

@@ -2,7 +2,7 @@ import { levelOfHeight } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { BENCH_SPACING, BENCH_START_X, BENCH_Y, seconds } from '../sim/court.ts';
+import { BENCH_SPACING, BENCH_START_X, BENCH_Y, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
@@ -119,6 +119,9 @@ export class MatchView {
   // Quem sai do jogo vai a andar sentar-se no banco; quem entra vem de lá a andar.
   private readonly exits: { body: Body; from: Point; to: Point; start: number; ticks: number }[] = [];
   private readonly routines = new Map<Body, { dribbles: number; tempo: number; pause: number; spin: boolean }>();
+  /** Numa paragem a imagem aproxima-se do banco da casa: 1 é a vista normal, 2 o dobro. */
+  private zoom = 1;
+  private scene: HTMLCanvasElement | null = null;
   /** Nuvens de poeira deixadas pelos pés de quem sprinta: onde estavam, e em que passo. */
   private readonly puffs: { x: number; y: number; born: number; side: number }[] = [];
   /** O passo em que cada um fez o último step-back: o lançamento a seguir é a cair para trás. */
@@ -150,6 +153,8 @@ export class MatchView {
   private coachUpsetUntil: [number, number] = [0, 0];
   // Onde cada treinador está: segue o alvo a andar, e nunca salta de sítio.
   private readonly coachPos: (Point | null)[] = [null, null];
+  /** Onde cada suplente está, quando sai do banco para a roda do desconto e volta. */
+  private readonly huddlePos = new Map<Body, Point>();
   // O relógio das animações: anda com a simulação e, com ela parada, com o tempo real, para ninguém ficar hirto numa pausa.
   private animTime = 0;
   private animTick = 0;
@@ -278,8 +283,15 @@ export class MatchView {
     return { image, pixels: new Uint32Array(image.data.buffer), canvas: layer };
   }
 
+  /** Uma paragem com a equipa junta ao banco: desconto, ou fim de período sem ser o intervalo. */
+  holding(): boolean {
+    return this.s.phase === 'timeout' || (this.s.phase === 'break' && this.s.period !== 2);
+  }
+
   private cameraTarget(): [number, number] {
     const { ball } = this.s;
+    // Na paragem olha-se para o banco da casa, inclinado para baixo.
+    if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, -1.5];
     // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
     if (this.s.phase === 'intro' || this.s.phase === 'jump') return [ball.x, this.camera.tuning.lookY];
     // Olhar um pouco à frente da bola, para o cesto atacado ficar sempre à vista. Quando a bola desce para a linha de baixo,
@@ -735,6 +747,8 @@ export class MatchView {
       // Quem tem a bola nas mãos olha para onde a vai mandar: o lançador de livres e o portador para o cesto,
       // quem repõe para quem vem receber. Assim não se viram de repente no momento de passar ou lançar.
       let faceX = ballX;
+      // Na roda do desconto, toda a gente olha para o treinador.
+      if (this.holding()) faceX = camera.project(HUDDLE_CENTRE[b.team][0], HUDDLE_CENTRE[b.team][1])[0];
       if (b === inHands) {
         const receiver = s.phase === 'dead' && s.inbound ? s.inbound.receivers[0]?.body : undefined;
         faceX = receiver ? camera.project(receiver.x, receiver.y)[0] : camera.project(this.attackedHoop(b.team), 0)[0];
@@ -923,19 +937,36 @@ export class MatchView {
       const startX = team === 0 ? 4.4 : 20.3;
       const leaving = new Set(this.exits.filter(e => e.body.team === team).map(e => e.body));
       const cheering = s.tick < this.benchCheerUntil[team] || (s.phase === 'end' && s.score[team] > s.score[team === 0 ? 1 : 0]);
+      const inHuddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
       benchers.forEach((b, i) => {
         if (leaving.has(b)) return;
-        const x = startX + i * 0.95;
-        const [sx, sy] = camera.project(x, BENCH_Y);
-        const pose: PoseName = cheering ? (Math.floor(s.tick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : 'sit';
-        drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.looks.get(b)!, sx, sy, false, false, false) });
+        const seat: Point = { x: startX + i * 0.95, y: BENCH_Y };
+        // Os três primeiros do banco levantam-se para a roda do desconto, entre os titulares, e voltam a sentar-se no fim.
+        const ringSpot = inHuddle && i < 3 ? huddleSpot(team, [1, 3, 5][i]!) : null;
+        const pos = this.huddlePos.get(b) ?? { ...seat };
+        this.huddlePos.set(b, pos);
+        const target = ringSpot ? { x: ringSpot[0], y: ringSpot[1] } : seat;
+        const dx = target.x - pos.x;
+        const dy = target.y - pos.y;
+        const dist = Math.hypot(dx, dy);
+        const step = Math.min(dist, COACH_SPEED * this.frameSeconds);
+        if (dist > 0.001) {
+          pos.x += (dx / dist) * step;
+          pos.y += (dy / dist) * step;
+        }
+        const walking = step > 0.006;
+        const seated = !ringSpot && dist < 0.01;
+        const [sx, sy] = camera.project(pos.x, pos.y);
+        const pose: PoseName = cheering && seated ? (Math.floor(s.tick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : seated ? 'sit' : walking ? RUN_FRAMES[Math.floor(time * 6) % 4]! : 'idle';
+        const flip = walking ? dx < 0 : HUDDLE_CENTRE[team][0] < pos.x;
+        drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.looks.get(b)!, sx, sy, flip, false, false) });
       });
       // O treinador anda à frente do seu banco e para nas pontas, a pensar com a mão no queixo ou a apontar para o campo.
       // Nas paragens vai ter com a equipa, e fala-lhes de prancheta na mão.
       const huddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
       const coachBase = team === 0 ? 8 : 23.7;
       // O alvo é a roda da equipa, ou um passeio em frente ao banco; o treinador vai lá a andar, ao seu passo.
-      const target: Point = huddle ? { x: coachBase - 2.6, y: -6.4 } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
+      const target: Point = huddle ? { x: HUDDLE_CENTRE[team][0], y: HUDDLE_CENTRE[team][1] } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
       const pos = this.coachPos[team] ?? (this.coachPos[team] = { ...target });
       const dx = target.x - pos.x;
       const dy = target.y - pos.y;
@@ -988,6 +1019,21 @@ export class MatchView {
     const [lookX, lookY] = this.cameraTarget();
     const ease = 1 - Math.exp(-simSeconds * 2.2);
     camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
+    // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
+    // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
+    const wantZoom = this.holding() ? 2 : 1;
+    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * 4));
+    if (Math.abs(this.zoom - wantZoom) < 0.01) this.zoom = wantZoom;
+    g.imageSmoothingEnabled = false;
+    if (this.zoom > 1.001) {
+      const [px, py] = camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
+      const z = this.zoom;
+      const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
+      const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
+      g.setTransform(z, 0, 0, z, Math.round(tx), Math.round(ty));
+    } else {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+    }
     const excited = s.tick < this.excitedUntil;
     const crowdFrame = excited ? (this.animTick >> 2) % 2 ? 2 : 1 : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
     camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
@@ -1000,7 +1046,14 @@ export class MatchView {
         this.pixels[y * width + x] = 0xffffffff;
       }
     }
-    g.putImageData(this.image, 0, 0);
+    // O chão passa por uma tela à parte: `putImageData` ignora a aproximação, `drawImage` não.
+    if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
+      this.scene = document.createElement('canvas');
+      this.scene.width = camera.width;
+      this.scene.height = camera.height;
+    }
+    this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+    g.drawImage(this.scene, 0, 0);
     this.drawOutsiders();
     if (this.fence) {
       this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
@@ -1143,6 +1196,7 @@ export class MatchView {
     } else if (g.canvas.style.transform) {
       g.canvas.style.transform = '';
     }
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   /** Uma marca vermelha por cima de cada adversário a marcar de perto. */
