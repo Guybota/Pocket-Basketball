@@ -111,6 +111,8 @@ let liveLeague: LiveLeague | null = null;
 let subPick: number | null = null;
 let tacticsOpen = false;
 let timeoutHandled = false;
+/** O período cujo fim já foi anunciado: a paragem dura 30 s e o aviso só deve entrar uma vez. */
+let breakAnnounced = 0;
 /** O treinador já tocou no ecrã durante esta paragem: ela espera por ele, sem contagem. */
 let holdTouched = false;
 // A opção de ataque que se está a escolher no painel de táticas do jogo.
@@ -461,6 +463,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   subPick = null;
   tacticsOpen = false;
   timeoutHandled = false;
+  breakAnnounced = 0;
   audio.setVenue(kind === 'practice' ? 0 : current.division);
   banner.hidden = true;
   hudText = '';
@@ -1048,9 +1051,9 @@ function frame(now: number): void {
         announce(current.s.score[0] > current.s.score[1] ? 'Vitória!' : 'Derrota...');
         bannerUntil = Infinity;
       } else if (now - endAt > 2500) showResult();
-    } else if (current.s.phase === 'break') {
-      const message = current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`;
-      if (banner.textContent !== message || banner.hidden) announce(message);
+    } else if (current.s.phase === 'break' && breakAnnounced !== current.s.period) {
+      breakAnnounced = current.s.period;
+      announce(current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`);
     }
   }
   // Numa paragem (desconto, ou fim de período sem ser o intervalo) o jogo continua em tempo real: quando a equipa chega ao
