@@ -227,9 +227,10 @@ function fit(): void {
     const stageWidth = innerWidth - panelWidth;
     const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
+    // No jogo, a altura lógica é a da vertical, para a câmara e os bonecos ficarem iguais nos dois esquemas.
     const scale = stage === 'town' || stage === 'title'
       ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
-      : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
+      : Math.ceil((stageHeight * dpr) / (stage === 'match' ? MATCH_STAGE_HEIGHT : LANDSCAPE_ART_HEIGHT)) / dpr;
     const width = Math.ceil(stageWidth / scale);
     const height = Math.ceil(stageHeight / scale);
     setCanvasSize(width, height, width * scale, height * scale);
