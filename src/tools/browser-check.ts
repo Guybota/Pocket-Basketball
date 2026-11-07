@@ -522,6 +522,71 @@ try {
   }
   check('Sem erros nos playoffs', playoffProblems.length === 0, playoffProblems.join(' | '));
 
+  // As definições: abrem no título e na Torre, guardam-se à parte do clube e ficam depois de recarregar.
+  const prefsContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const prefs = await prefsContext.newPage();
+  const prefsProblems: string[] = [];
+  prefs.on('pageerror', error => prefsProblems.push(error.message));
+  await prefs.goto(url);
+  await prefs.waitForSelector('#settingsBtn');
+  const hintSize = (): Promise<string> => prefs.evaluate(() => getComputedStyle(document.querySelector('.start .hint')!).fontSize);
+  const plainHint = await hintSize();
+  const plainCanvas = await prefs.evaluate(() => [document.querySelector('canvas')!.width, document.querySelector('canvas')!.height].join('x'));
+  await prefs.click('#settingsBtn');
+  await prefs.waitForSelector('#settings[open]');
+  await shot(prefs, `${OUT}/definicoes.png`);
+  await prefs.locator('#set-master').fill('40');
+  await prefs.locator('#set-effects').fill('60');
+  await prefs.locator('#set-music').fill('20');
+  await prefs.click('#set-sound');
+  await prefs.click('#set-big');
+  await prefs.click('#set-contrast');
+  await prefs.click('#set-motion');
+  await shot(prefs, `${OUT}/definicoes-contraste-letra.png`);
+  await prefs.click('#settingsClose');
+  await prefs.waitForSelector('#settings', { state: 'detached', timeout: 2000 }).catch(() => undefined);
+  check('As definições fecham', (await prefs.locator('#settings').count()) === 0);
+  await shot(prefs, `${OUT}/titulo-contraste-letra.png`);
+  check('A letra maior aumenta o texto da interface', parseFloat(await hintSize()) > parseFloat(plainHint), `${plainHint} → ${await hintSize()}`);
+  check('A letra maior não mexe no tamanho do campo',
+    plainCanvas === await prefs.evaluate(() => [document.querySelector('canvas')!.width, document.querySelector('canvas')!.height].join('x')));
+  await prefs.reload();
+  await prefs.waitForSelector('#settingsBtn');
+  const kept = await prefs.evaluate(() => ({
+    saved: JSON.parse(localStorage.getItem('pocket-basketball-settings') ?? '{}'),
+    classes: document.documentElement.className,
+  }));
+  check('As definições ficam guardadas depois de recarregar',
+    kept.saved.master === 0.4 && kept.saved.effects === 0.6 && kept.saved.music === 0.2 && kept.saved.muted === true && kept.saved.bigText === true && kept.saved.highContrast === true && kept.saved.motion === 'reduce',
+    JSON.stringify(kept.saved));
+  check('As definições aplicam-se ao arrancar', ['high-contrast', 'big-text', 'reduce-motion'].every(name => kept.classes.includes(name)) && parseFloat(await hintSize()) > parseFloat(plainHint), kept.classes);
+  await prefs.click('#settingsBtn');
+  check('O ecrã mostra o que ficou guardado', await prefs.evaluate(() =>
+    (document.getElementById('set-master') as HTMLInputElement).value === '40' && document.getElementById('set-sound')!.textContent === 'Desligado' && document.getElementById('set-motion')!.textContent === 'Sim'));
+  // Repor tudo, e ver a cidade sem contraste nem letra maior, para comparar.
+  await prefs.click('#set-sound');
+  await prefs.click('#set-big');
+  await prefs.click('#set-contrast');
+  await prefs.click('#set-motion');
+  await prefs.click('#set-motion');
+  await prefs.click('#settingsClose');
+  check('Desligar a letra maior repõe o tamanho de origem', (await hintSize()) === plainHint, await hintSize());
+  await prefs.goto(`${url}?semente=31&divisao=1&semana=1`);
+  await prefs.waitForSelector('#towerChip');
+  await prefs.click('#towerChip');
+  await prefs.click('#settingsBtn');
+  await prefs.waitForSelector('#settings[open]');
+  check('As definições abrem na Torre', true);
+  await prefs.click('#set-big');
+  await prefs.click('#set-contrast');
+  await prefs.click('#settingsClose');
+  await shot(prefs, `${OUT}/cidade-contraste-letra.png`);
+  await prefs.click('#trainBtn');
+  await prefs.waitForSelector('.prow');
+  await shot(prefs, `${OUT}/treino-contraste-letra.png`);
+  check('Sem erros nas definições', prefsProblems.length === 0, prefsProblems.join(' | '));
+  await prefsContext.close();
+
   // Um jogo-treino antes do jogo oficial: dois períodos, à porta fechada, e só conta para as cartas.
   const practice = await phone.newPage();
   const practiceProblems: string[] = [];

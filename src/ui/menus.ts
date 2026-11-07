@@ -1,4 +1,5 @@
 // Os menus do jogo: em cima a ficha ou a cena, em baixo as decisões. A cidade e o jogo em si ficam em main.ts.
+import { reducedMotion } from './settings.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { CUP_NAMES, CUP_ROUNDS, FEDERATION_ROUNDS, type CupName } from '../sim/cup.ts';
 import { seriesWinner, seriesWins } from '../sim/playoff.ts';
@@ -1265,7 +1266,6 @@ export function menusResized(): void {
   if (active && host.top.querySelector('canvas.full')) render();
 }
 
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Durante o combo, o jogador faz o treino de cada carta: salta, dribla, descansa ou estuda. */
 const TRAINING_POSES: Record<CardCategory, PoseName[]> = { physical: ['block', 'idle', 'block', 'defend'], technique: ['drib0', 'drib1', 'crossover', 'drib1'], tactic: ['idle', 'pass', 'defend', 'pass'], support: ['sit', 'sit', 'cheer0', 'sit'] };
@@ -1276,7 +1276,7 @@ function drawTrainingFx(canvas: HTMLCanvasElement, now: number): void {
   const age = now - fxStarted;
   const g = canvas.getContext('2d')!;
   g.clearRect(0, 0, canvas.width, canvas.height);
-  if (age > 1150 && !reducedMotion) return;
+  if (age > 1150 && !reducedMotion()) return;
   const look = lookFor(club.team.roster[lastTraining.index]!);
   lastTraining.cards.forEach((id, n) => {
     const poses = TRAINING_POSES[CARDS[id].category];
@@ -1293,7 +1293,7 @@ function drawConfetti(canvas: HTMLCanvasElement, now: number): void {
   const record = club.seasonReport;
   if (record) {
     const big = (record.outcome === 'champion' && record.division === DIVISIONS.length - 1) || record.cups.includes('world');
-    const bob = (n: number): number => (reducedMotion ? 0 : Math.floor(now / 220 + n) % 2);
+    const bob = (n: number): number => (reducedMotion() ? 0 : Math.floor(now / 220 + n) % 2);
     club.team.roster.slice(0, 5).forEach((p, n) => {
       const lift = n === 2 ? 0 : bob(n);
       drawSprite(g, lift ? 'cheer1' : 'cheer0', { ...lookOf(p, 'blue'), custom: kit }, 18 + n * 20, canvas.height - 4 - lift * 2, n > 2, false, false);
@@ -1301,7 +1301,7 @@ function drawConfetti(canvas: HTMLCanvasElement, now: number): void {
     // A base do troféu fica nas mãos levantadas do jogador do meio.
     drawTrophy(g, 58, canvas.height - 30 - bob(2) * 2, big ? 'bigCup' : 'cup', true);
   }
-  if (reducedMotion) return;
+  if (reducedMotion()) return;
   const colors = [kit.jersey, kit.trim, '#f2c230', '#f4efe0'];
   for (let n = 0; n < 40; n++) {
     const x = ((n * 53) % canvas.width + Math.sin(now / 700 + n) * 8 + canvas.width) % canvas.width;
@@ -1319,11 +1319,11 @@ export function menuFrame(now: number): void {
   const confetti = document.getElementById('confetti') as HTMLCanvasElement | null;
   if (confetti) drawConfetti(confetti, now);
   const flag = document.getElementById('flag') as HTMLCanvasElement | null;
-  if (flag) drawFlagScene(flag, club.emblem, reducedMotion ? 0 : now);
+  if (flag) drawFlagScene(flag, club.emblem, reducedMotion() ? 0 : now);
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
   if (!canvas) return;
   const view = host.match();
   const kind: SceneKind = half ? 'lockerHalf' : gameKind === 'practice' ? 'gym' : 'lockerPre';
   const score = half && view ? `${view.s.score[0]} - ${view.s.score[1]}` : '';
-  drawSceneFrame(canvas, kind, club.team.roster, activeKit(club), currentRival(), score, reducedMotion ? 0 : now);
+  drawSceneFrame(canvas, kind, club.team.roster, activeKit(club), currentRival(), score, reducedMotion() ? 0 : now);
 }

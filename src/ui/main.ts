@@ -11,6 +11,7 @@ import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
 import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio, MUSIC_THEMES } from './audio.ts';
+import { applySettings, openSettings, reducedMotion, updateSettings, watchSystemMotion } from './settings.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
 import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
@@ -50,6 +51,8 @@ const hud = createHud(hudElement);
 const context = canvas.getContext('2d')!;
 
 const audio = new GameAudio();
+applySettings(audio);
+watchSystemMotion(audio);
 const params = new URLSearchParams(location.search);
 const paramInt = (name: string): number | null => {
   const value = Number(params.get(name));
@@ -208,8 +211,9 @@ function placeTownUi(): void {
   element('towerChip').addEventListener('click', () => {
     note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
     if (document.getElementById('exportBtn')) return;
-    document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button></div>');
+    document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button><button type="button" class="quiet" id="settingsBtn">Definições</button></div>');
     element('exportBtn').addEventListener('click', () => exportClub(club!));
+    element('settingsBtn').addEventListener('click', () => openSettings(audio));
     element('importBtn').addEventListener('click', importFile);
   });
   element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
@@ -313,6 +317,7 @@ function showNewClub(): void {
     ${club ? `<button type="button" class="primary" id="continueBtn">Continuar · ${escapeHtml(club.team.short)}</button>` : ''}
     <button type="button" class="${club ? 'quiet' : 'primary'}" id="newClubBtn">Criar clube</button>
     <button type="button" class="quiet" id="importBtn">Importar clube</button>
+    <button type="button" class="quiet" id="settingsBtn">Definições</button>
     <p class="hint">${club ? `Época ${club.season}, semana ${club.week}.` : `Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.`}</p>
   </div>`;
   document.getElementById('continueBtn')?.addEventListener('click', () => {
@@ -321,6 +326,7 @@ function showNewClub(): void {
   });
   demo.schedule();
   element('importBtn').addEventListener('click', importFile);
+  element('settingsBtn').addEventListener('click', () => openSettings(audio));
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
     // Depois de um despedimento o clube já está perdido: não há nada a confirmar.
@@ -458,7 +464,7 @@ function bindControls(): void {
     showMatch();
   });
   element('muteBtn').addEventListener('click', () => {
-    audio.setMuted(!audio.muted);
+    updateSettings({ muted: !audio.muted }, audio);
     showMatch();
   });
 }
@@ -738,7 +744,7 @@ function showResultPanel(): void {
 
 /** Os números sobem até ao valor, em menos de um segundo. */
 function countUp(elements: NodeListOf<HTMLElement>): void {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (reducedMotion()) return;
   const targets = [...elements].map(el => ({ el, value: Number(el.textContent) }));
   const start = performance.now();
   const tick = (now: number): void => {

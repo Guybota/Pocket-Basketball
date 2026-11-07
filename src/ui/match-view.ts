@@ -1,3 +1,4 @@
+import { reducedMotion } from './settings.ts';
 import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
@@ -207,7 +208,7 @@ export class MatchView {
   private fadeInUntil = 0;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
-  private readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private get reducedMotion(): boolean { return reducedMotion(); }
 
   constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem) {
     this.ownEmblem = ownEmblem;
