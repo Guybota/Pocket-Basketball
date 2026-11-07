@@ -140,7 +140,7 @@ const chevrons = (potential: number): string => {
 
 function playerCard(index: number, extra?: string): string {
   const p = club.team.roster[index]!;
-  const stats = club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0 };
+  const stats = club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 };
   const recent = club.recentTraining[p.name] ?? [];
   // As últimas 4 semanas, da mais antiga para esta: um visto nas que treinou, um X vermelho nas que esteve lesionado.
   const history = [3, 2, 1, 0].map(n => {
