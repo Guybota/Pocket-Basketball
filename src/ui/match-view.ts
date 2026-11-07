@@ -355,14 +355,18 @@ export class MatchView {
   }
 
   /** Um adepto à vista diz qualquer coisa. Num pavilhão sem público, ninguém diz nada. */
-  private crowdSay(mood: CrowdMood): void {
+  private crowdSay(label: string): void {
     const { s, camera } = this;
-    const n = this.crowdSaid.get(mood) ?? 0;
-    this.crowdSaid.set(mood, n + 1);
-    const label = crowdLine(mood, this.crowdSeed, n);
     const near = this.fans.map((f, i) => i).filter(i => this.fans[i]!.front && Math.abs(this.fans[i]!.x - camera.lookX) < 5.5);
     if (near.length === 0) return;
     this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: s.tick });
+  }
+
+  /** A próxima frase de um contexto, sem repetir até se esgotarem. */
+  private crowdPick(mood: CrowdMood): string {
+    const n = this.crowdSaid.get(mood) ?? 0;
+    this.crowdSaid.set(mood, n + 1);
+    return crowdLine(mood, this.crowdSeed, n);
   }
 
   /** Pontos de avanço da casa: a bancada muda de tom quando o jogo está decidido ou por um fio. */
@@ -447,13 +451,13 @@ export class MatchView {
             this.coachUpsetUntil[e.team === 0 ? 1 : 0] = s.tick + 16;
           }
           if (e.team === this.crowdTeam) {
-            if (dunk) this.crowdSay('dunk');
-            else if (decisive || this.crowdTense) this.crowdSay('close');
-            else if (e.points === 3) this.crowdSay('three');
-            else if (this.crowdLead >= 15 && this.crowdChance(2)) this.crowdSay('bigLead');
-          } else if (this.crowdTense) this.crowdSay('close');
-          else if (this.crowdLead <= -15 && (e.points === 3 || dunk || this.crowdChance(2))) this.crowdSay('bigDeficit');
-          else if (e.points === 3 || dunk) this.crowdSay('rivalBig');
+            if (dunk) this.crowdSay(this.crowdPick('dunk'));
+            else if (decisive || this.crowdTense) this.crowdSay(this.crowdPick('close'));
+            else if (e.points === 3) this.crowdSay(this.crowdPick('three'));
+            else if (this.crowdLead >= 15 && this.crowdChance(2)) this.crowdSay(this.crowdPick('bigLead'));
+          } else if (this.crowdTense) this.crowdSay(this.crowdPick('close'));
+          else if (this.crowdLead <= -15 && (e.points === 3 || dunk || this.crowdChance(2))) this.crowdSay(this.crowdPick('bigDeficit'));
+          else if (e.points === 3 || dunk) this.crowdSay(this.crowdPick('rivalBig'));
           break;
         }
         case 'freeThrowMade':
@@ -465,11 +469,11 @@ export class MatchView {
           break;
         case 'missed':
           callbacks.sound('rim');
-          if (e.team !== this.crowdTeam && this.crowdChance(3)) this.crowdSay('miss');
+          if (e.team !== this.crowdTeam && this.crowdChance(3)) this.crowdSay(this.crowdPick('miss'));
           break;
         case 'freeThrowMissed':
           callbacks.sound('rim');
-          if (e.team !== this.crowdTeam && this.crowdChance(2)) this.crowdSay('miss');
+          if (e.team !== this.crowdTeam && this.crowdChance(2)) this.crowdSay(this.crowdPick('miss'));
           if (body) this.view(body).override = { pose: 'slump', until: s.tick + 10 };
           break;
         case 'block':
@@ -478,7 +482,7 @@ export class MatchView {
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           callbacks.sound('block');
           callbacks.announce('Desarme!');
-          if (e.team === this.crowdTeam) this.crowdSay('miss');
+          if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('miss'));
           break;
         case 'rebound':
           // Apanhada no ar, de braços no ar; do chão, baixa-se a agarrá-la.
@@ -499,7 +503,7 @@ export class MatchView {
           callbacks.sound('whistle');
           this.tip = { a: s.jump!.a, b: s.jump!.b, start: s.tick, total: s.jump!.total };
           this.refereeSignal(null, 8);
-          this.crowdSay(this.street ? 'street' : this.s.visitor === 0 ? 'away' : 'home');
+          this.crowdSay(this.crowdPick(this.street ? 'street' : this.s.visitor === 0 ? 'away' : 'home'));
           break;
         case 'bump':
           if (e.hard) {
@@ -514,25 +518,25 @@ export class MatchView {
           // Quem fez a falta protesta, e o treinador dele também.
           if (body) this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
           this.coachUpsetUntil[e.team] = s.tick + 12;
-          if (e.team === this.crowdTeam) this.crowdSay('foul');
+          if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('foul'));
           break;
         case 'periodEnd':
           callbacks.sound('buzzer');
           this.refereeSignal(null);
           // No fim do último período quem fala é o apito final.
-          if (s.period < 4) this.crowdSay(this.street ? 'street' : this.crowdLead >= 15 ? 'bigLead' : this.crowdLead <= -15 ? 'bigDeficit' : this.s.visitor === 0 ? 'away' : 'home');
+          if (s.period < 4) this.crowdSay(this.crowdPick(this.street ? 'street' : this.crowdLead >= 15 ? 'bigLead' : this.crowdLead <= -15 ? 'bigDeficit' : this.s.visitor === 0 ? 'away' : 'home'));
           break;
         case 'end':
           this.excitedUntil = s.tick + 100000;
           this.fansReact(s.score[this.crowdTeam] > s.score[this.crowdTeam === 0 ? 1 : 0], 100000);
-          this.crowdSay(this.crowdLead > 0 ? 'endWin' : 'endLoss');
+          this.crowdSay(this.crowdPick(this.crowdLead > 0 ? 'endWin' : 'endLoss'));
           break;
         case 'timeout':
           callbacks.sound('whistle');
           callbacks.sound('horn');
           callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
           this.refereeSignal(null);
-          if (e.team !== this.crowdTeam) this.crowdSay('timeout');
+          if (e.team !== this.crowdTeam) this.crowdSay(this.crowdPick('timeout'));
           break;
         case 'shotClockViolation':
           callbacks.sound('shotClockBuzzer');
@@ -578,7 +582,7 @@ export class MatchView {
           // Várias trocas na mesma paragem só dão um toque de buzzer.
           if (this.lastHornTick !== s.tick) {
             callbacks.sound('horn');
-            if (e.team === this.crowdTeam) this.crowdSay('sub');
+            if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('sub'));
           }
           this.lastHornTick = s.tick;
           break;
@@ -699,7 +703,7 @@ export class MatchView {
       if (previousRun < threshold && this.run.points >= threshold) {
         this.callbacks.announce(`Parcial de ${this.run.points}-0!`);
         this.callbacks.sound('bigCheer');
-        if (e.team === this.crowdTeam) this.crowdSay('run');
+        if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('run'));
       }
     }
   }
