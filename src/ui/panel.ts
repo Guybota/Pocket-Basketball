@@ -11,6 +11,7 @@ import { SPOTS, TICKS_PER_SECOND } from '../sim/court.ts';
 import { foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
 import type { MatchView } from './match-view.ts';
+import { assistantReport, say } from './staff.ts';
 import { PLAYER_CLUB, liveTable, scoreAt, type ClubState, type OtherGame } from './club.ts';
 
 export const escapeHtml = (value: string): string =>
@@ -103,7 +104,7 @@ function statsTab(view: MatchView): string {
     .filter(b => b.team === team && b.line.secondsPlayed > 0)
     .map(b => `<div class="pstat"><span class="name">${escapeHtml(b.player.name)}</span><span>${b.line.points}</span><span>${b.line.rebounds}</span><span>${b.line.assists}</span><span>${b.line.steals}</span><span>${b.line.blocks}</span><span>${b.line.fouls}</span><span>${minutesText(b.line.secondsPlayed)}</span></div>`)
     .join('')}`;
-  return `<div class="cmp head"><span>${crest(view, 0)}</span><span></span><span>${crest(view, 1)}</span></div>${body}${playerRows(0)}${playerRows(1)}`;
+  return `<div class="cmp head"><span>${crest(view, 0)}</span><span></span><span>${crest(view, 1)}</span></div>${body}${playerRows(0)}${playerRows(1)}<details class="legend"><summary>Legenda</summary>${legendBody()}</details>`;
 }
 
 const minutesText = (seconds: number): string => `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
@@ -150,6 +151,18 @@ export const ATTRIBUTE_LABELS: readonly [keyof Attributes, string][] = [
 export const SLOT_CODES = ['BAS', 'ESC', 'EXT', 'EXP', 'POS'] as const;
 export const SLOT_NAMES = ['Base', 'Escolta', 'Extremo', 'Extremo-Poste', 'Poste'] as const;
 export const slotCode = (slot: number): string => SLOT_CODES[slot] ?? 'SUP';
+
+const STAT_CODES = 'Pts pontos · Res ressaltos · Ass assistências · Rou roubos de bola · Blq desarmes · Fal faltas · Min minutos · Alt altura';
+
+/** O que querem dizer os ícones dos atributos e as siglas. Por baixo de um cabeçalho que se toca, ou no fim de uma lista. */
+export function legendBody(): string {
+  return `<div class="legend-body">${ATTRIBUTE_LABELS.map(([key, label]) => `<span><img alt="" src="${attributeIcon(key)}">${label}</span>`).join('')}
+    <p>${SLOT_CODES.map((code, i) => `${code} ${SLOT_NAMES[i]}`).join(' · ')}</p><p>${STAT_CODES}</p></div>`;
+}
+
+/** Um cabeçalho de lista que, ao tocar, abre a legenda por baixo. */
+export const legendHead = (headClass: string, cells: string): string =>
+  `<details class="legend"><summary class="${headClass}" title="Tocar para ver a legenda">${cells}</summary>${legendBody()}</details>`;
 
 /** A parte da ficha que muda durante o jogo. É a única que se redesenha, para os botões nunca serem substituídos. */
 export function playerCardLive(b: Body): string {
@@ -283,7 +296,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
   // Desligada, fica no cimo: com ela desligada os mesmos cinco jogam até rebentar, e o treinador tem de o ver.
   const rotation = `<button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada · tocar para ligar'}</button>`;
   return `<div class="subs">
-    ${inTimeout ? `<div class="subs-title">${s.phase === 'timeout' ? 'Desconto de tempo' : 'Fim do período'}</div>` : ''}
+    ${inTimeout ? `<div class="subs-title">${s.phase === 'timeout' ? 'Desconto de tempo' : 'Fim do período'}</div>${say('assistant', ...assistantReport(s))}` : ''}
     ${s.autoRotation[team] ? '' : rotation}
     ${onBoard}
     ${head('Em campo', 'team-0')}${onCourt}
@@ -332,6 +345,32 @@ export function decisiveTick(s: MatchState): number {
   return decisive || last;
 }
 
+/**
+ * As três razões do resultado, tiradas das estatísticas: cada candidata vale os pontos (aproximados) que deu ao vencedor,
+ * e ficam as três que mais pesaram a favor dele. Os números vêm sempre pela ordem do marcador, casa primeiro.
+ */
+export function resultReasons(s: MatchState): string[] {
+  const [a, b] = s.lines;
+  const winner = s.score[0] > s.score[1] ? 0 : 1;
+  const sign = winner === 0 ? 1 : -1;
+  const rebounds = (l: TeamLine): number => l.offensiveRebounds + l.defensiveRebounds;
+  const starters = (team: 0 | 1): number => {
+    const list = s.bodies.filter(x => x.team === team && x.starterSlot >= 0);
+    return Math.round((list.reduce((sum, x) => sum + 1 - x.fatigue, 0) / Math.max(1, list.length)) * 100);
+  };
+  const [freshA, freshB] = [starters(0), starters(1)];
+  const candidates: [number, string][] = [
+    [3 * (a.threeMade - b.threeMade), `De 3: ${a.threeMade}/${a.threeAttempts} contra ${b.threeMade}/${b.threeAttempts}`],
+    [2 * (a.twoMade - b.twoMade), `De 2: ${a.twoMade}/${a.twoAttempts} contra ${b.twoMade}/${b.twoAttempts}`],
+    [a.freeThrowsMade - b.freeThrowsMade, `Lances livres: ${a.freeThrowsMade}/${a.freeThrowAttempts} contra ${b.freeThrowsMade}/${b.freeThrowAttempts}`],
+    [rebounds(a) - rebounds(b), `Ressaltos: ${rebounds(a)}–${rebounds(b)}`],
+    [b.turnovers - a.turnovers, `Bolas perdidas: ${a.turnovers}–${b.turnovers}`],
+    // Cada 10 pontos de energia a mais nos titulares conta como um cesto.
+    [(freshA - freshB) / 5, `Cansaço: os titulares acabaram a ${freshA} % contra ${freshB} %`],
+  ];
+  return candidates.filter(([value]) => value * sign > 0).sort((x, y) => y[0] * sign - x[0] * sign).slice(0, 3).map(([, text]) => text);
+}
+
 export function resultScreen(view: MatchView, cards: readonly CardId[], league: string): string {
   const { s } = view;
   const winner: 0 | 1 = s.score[0] > s.score[1] ? 0 : 1;
@@ -342,6 +381,8 @@ export function resultScreen(view: MatchView, cards: readonly CardId[], league: 
   return `<div class="result">
     <div class="final-score">${crest(view, 0, 32)}<b>${s.score[0]}</b><span>-</span><b>${s.score[1]}</b>${crest(view, 1, 32)}</div>
     <div class="winner">Ganha ${escapeHtml(s.teams[winner].name)}</div>
+    <div class="section-head plain"><span>O que decidiu o jogo</span></div>
+    <ul class="reasons">${resultReasons(s).map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
     ${league}
     <div class="section-head plain"><span>Cartas ganhas</span><span>${cards.length}</span></div>
     ${foundCards(cards)}

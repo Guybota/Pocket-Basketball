@@ -506,6 +506,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .mvp { display: flex; align-items: center; justify-content: center; gap: 6px; font: 400 15px/1.1 var(--ui-sm); padding: 4px; background: var(--paper-2); border: 2px solid var(--ink); }
 
 .mvp .face { width: 28px; height: 28px; }
+.reasons { margin: 0; padding: 4px 6px 4px 22px; background: var(--paper-2); border: 2px solid var(--ink); font: 400 15px/1.2 var(--ui-sm); color: var(--ink); }
 
 .end-actions { flex: none; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); border-top: 3px solid var(--ink); }
 .end-actions.two { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; }
@@ -765,6 +766,14 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px); align-items: center; gap: 2px; padding: 1px 4px; }
 .thead { flex: none; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 21px; }
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
+details.legend { flex: none; }
+details.legend > summary { cursor: pointer; list-style: none; }
+details.legend > summary::-webkit-details-marker { display: none; }
+details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(--small); color: var(--ink); text-decoration: underline; }
+.legend-body { display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 3px 6px; background: var(--paper-2); font: 400 14px/1.15 var(--small); color: var(--ink); }
+.legend-body span { display: inline-flex; align-items: center; gap: 3px; }
+.legend-body img { width: 16px; height: 16px; image-rendering: pixelated; }
+.legend-body p { margin: 0; flex-basis: 100%; }
 /* Linhas de lista: 34 px, meio-termo entre ver o plantel quase todo e acertar com o dedo (decisão do utilizador). */
 .prow { width: 100%; min-height: 34px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
 .prow.bench { background: rgba(203, 185, 142, .22); }
@@ -948,6 +957,8 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .bar7 { display: grid; grid-template-rows: 18px 120px 18px; justify-items: center; gap: 18px; }
 
 .bar7 .gr { width: 100%; }
+.bar7 .gr.next { opacity: .6; outline: 2px dashed var(--ink); outline-offset: -2px; }
+.bar7:not(.changed) { opacity: .5; }
 
 /* A calha tem a largura do ícone, e a barra desenha-se ao meio dela: assim o ícone não depende de percentagens nem da largura da barra. */
 .bar7 .track { position: relative; width: 36px; height: 120px; }
@@ -965,6 +976,7 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .gainlines { display: grid; gap: 4px; padding: 6px; background: var(--ink); color: var(--paper); font: 400 18px/1.2 var(--ui); }
 
 .gainlines b { font-weight: 400; }
+.gainhint { font: 400 14px/1.15 var(--small); opacity: .8; }
 
 /* As barras do treino sobem mesmo com as animações reduzidas no sistema: é o resultado do treino, não um efeito — sem isto, no Windows com os efeitos de animação desligados, nunca se via a subida. */
 

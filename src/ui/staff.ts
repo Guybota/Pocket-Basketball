@@ -1,6 +1,7 @@
 // As pessoas do clube: a secretária, o adjunto e o presidente. Têm cara, e a cara nem sempre diz o mesmo que a frase.
 import { teamRating } from '../sim/teamgen.ts';
-import type { Team } from '../sim/types.ts';
+import { NEUTRAL_TACTICS, type Tactics, type Team } from '../sim/types.ts';
+import type { MatchState } from '../sim/match.ts';
 import { portraitImage, type Mood } from './art/portrait.ts';
 import type { Look } from './art/sprites.ts';
 import { surplus, type ClubState, type FacilityId, type Objective, type SeasonRecord } from './club.ts';
@@ -47,6 +48,47 @@ export function assistantHalf(ours: number, theirs: number): [Mood, string] {
   if (lead > -10) return ['worried', 'Está mal, mas não está perdido. Uma pressão mais alta?'];
   // A cara diz o contrário da frase (docs/05); a dica é a sério, para quem não sabe porque está a perder.
   return ['sad', 'Não está tão mau como parece. Vê quem está cansado e quem anda a falhar.'];
+}
+
+/** Como o adjunto descreve uma tática do adversário, do que mais se nota para o menos. */
+function tacticTraits(t: Tactics): string[] {
+  const traits: string[] = [];
+  if (t.defense === 'zone') traits.push('defendem à zona');
+  if (t.pressure >= 0.5) traits.push('pressionam o campo todo');
+  if (t.pace >= 0.5) traits.push('jogam a correr');
+  else if (t.pace <= -0.5) traits.push('estão a queimar tempo');
+  if (t.spacing >= 0.5) traits.push('vivem do triplo');
+  else if (t.spacing <= -0.5) traits.push('atacam por dentro');
+  return traits;
+}
+
+/**
+ * Nos descontos e ao intervalo: o que o adversário (a equipa 1) mudou desde o início do jogo, e o que fazer contra isso.
+ * Se não há nada a dizer da tática, fala de quem está cansado ou carregado de faltas.
+ */
+export function assistantReport(s: MatchState): [Mood, string] {
+  const lead = s.score[0] - s.score[1];
+  const mood: Mood = lead >= 10 ? 'happy' : lead >= 0 ? 'neutral' : lead > -10 ? 'worried' : 'sad';
+  const now = s.tactics[1];
+  const start = s.teams[1].tactics ?? NEUTRAL_TACTICS;
+  const before = tacticTraits(start);
+  const fresh = tacticTraits(now).filter(t => !before.includes(t));
+  const traits = tacticTraits(now);
+  const read = fresh.length ? `Mudaram: agora ${fresh.join(' e ')}.` : traits.length ? `Eles ${traits.slice(0, 2).join(' e ')}.` : '';
+  const ours = s.tactics[0];
+  const tip = now.defense === 'zone' && ours.spacing < 0.5 ? 'Abre o campo para lançar de 3.'
+    : now.spacing >= 0.5 && ours.defense === 'zone' ? 'A zona deixa-os lançar: volta ao homem a homem.'
+    : now.spacing <= -0.5 && ours.defense !== 'zone' ? 'Fecha-te em zona, que eles só querem entrar.'
+    : now.pressure >= 0.5 ? 'Contra a pressão, ritmo rápido: passa a bola antes de eles chegarem.'
+    : now.pace >= 0.5 ? 'Vão cansar-se: roda o banco e guarda as pernas para o fim.'
+    : now.pace <= -0.5 && lead < 0 ? 'Pressiona a bola, que eles querem o relógio a correr.'
+    : '';
+  if (read || tip) return [mood, [read, tip].filter(Boolean).join(' ')];
+  const fouled = s.court[0].find(b => b.line.fouls >= 4);
+  if (fouled) return ['worried', `O ${fouled.player.name} está carregado de faltas. Mais uma e vai para o banco de vez.`];
+  const tired = s.court[0].find(b => b.fatigue >= 0.6);
+  if (tired) return ['worried', `O ${tired.player.name} está de rastos. Uma troca agora vale um cesto no fim.`];
+  return assistantHalf(s.score[0], s.score[1]);
 }
 
 /** No fim do jogo. */

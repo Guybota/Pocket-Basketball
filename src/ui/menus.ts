@@ -26,9 +26,9 @@ import { buyFacility, type FacilityId } from './club.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, SLOT_NAMES, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
-import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
+import { assistantReport, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
 type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
@@ -210,7 +210,7 @@ const inside = (html: string): string => `<div class="patterned">${html}</div>`;
 function squadScreen(): Rendered {
   return {
     top: inside(playerCard(selected)),
-    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
+    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}`)}
       <div class="scroll">
         <div class="starters"><span>Titulares</span><span>${swapping === null ? 'O lugar na lista é o papel em campo' : 'Toca em quem entra para o lugar dele'}</span></div>
         ${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')).replace('<button type="button" class="prow bench', '<div class="starters plain"><span>Banco</span></div><button type="button" class="prow bench')}
@@ -237,7 +237,7 @@ function trainScreen(): Rendered {
   const hurt = (player.injuryWeeks ?? 0) > 0;
   return {
     top: inside(playerCard(selected)),
-    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>
+    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}`)}
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
       ${bar(`<button type="button" class="icon back" data-go="town" aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`, `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
   };
@@ -296,7 +296,7 @@ function reportScreen(): Rendered {
     const start = from < floor ? 0 : from >= ceiling ? 100 : ((from - floor) / (ceiling - floor)) * 100;
     const end = ((to - floor) / (ceiling - floor)) * 100;
     const next = ceiling >= 100 ? 'S' : gradeOf(ceiling);
-    return `<div class="bar7${result.gains[key] ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}"><b class="gr gr-${next}">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
+    return `<div class="bar7${result.gains[key] ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}"><b class="gr gr-${next} next" title="Nota seguinte">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
   }).join('');
   const rows = `<div class="bars">${bars}</div><div class="gainlines">${ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
     const gain = result.gains[key]!;
@@ -304,8 +304,11 @@ function reportScreen(): Rendered {
     const how = gain < 0 ? 'desceu' : 'subiu';
     const much = gainSize(gain) === 1 ? ' ligeiramente' : gainSize(gain) === 3 ? ' bastante' : '';
     // O fundo é escuro: a cor do atributo clareada, para a técnica e o lançamento se lerem.
-    return `<div>${article} <b style="color:color-mix(in srgb, ${ATTRIBUTE_COLORS[key]} 60%, #fff)">${name}</b> ${how}${much}.</div>`;
-  }).join('')}</div>`;
+    const was = gradeOf(before.attributes[key]);
+    const now = gradeOf(result.player.attributes[key]);
+    const step = was === now ? `continua ${now}` : `${was} → ${now}`;
+    return `<div>${article} <b style="color:color-mix(in srgb, ${ATTRIBUTE_COLORS[key]} 60%, #fff)">${name}</b> ${how}${much}: ${step}.</div>`;
+  }).join('') || '<div>Nenhum atributo mudou.</div>'}<div class="gainhint">Em cima, a nota seguinte; em baixo, a de agora. Só mudaram os atributos destacados.</div></div>`;
   const learned = [
     result.newMove ? `Aprendeu ${MOVE_INFO[result.newMove].name}` : '',
     result.moveBlocked ? 'Já sabe 2 movimentos: não aprendeu mais nenhum' : '',
@@ -399,7 +402,7 @@ function preScreen(): Rendered {
   ];
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
-    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantHalf(view.s.score[0], view.s.score[1]) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
+    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantReport(view.s) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
   };
 }
 
@@ -516,7 +519,7 @@ function rivalScreen(): Rendered {
   return {
     top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${five}${clubSheet(id, rival)}</div></div>`),
     bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
-      <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Stats da época</button></div>
+      <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Estatísticas da época</button></div>
       <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}</div>
       <div class="scroll">${rows}</div>
       ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
