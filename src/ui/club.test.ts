@@ -266,7 +266,7 @@ describe('clube', () => {
     expect(JSON.stringify(old)).not.toContain('"height":');
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(14);
+    expect(migrated.version).toBe(15);
     expect(migrated.team.name).toBe(c.team.name);
     expect(migrated.team.roster.map(p => p.name)).toEqual(c.team.roster.map(p => p.name));
     for (const player of migrated.team.roster) expect([1, 2, 3]).toContain(player.height);
@@ -276,7 +276,7 @@ describe('clube', () => {
     const text = readFileSync(new URL('./saves/v13.json', import.meta.url), 'utf8');
     const old = JSON.parse(text) as ClubState;
     const migrated = parseClub(text)!;
-    expect(migrated.version).toBe(14);
+    expect(migrated.version).toBe(15);
     expect(migrated.objective).toBeNull();
     expect(migrated.facilities).toEqual({ gym: 0, medical: 0, scouts: 0 });
     expect(migrated.records).toEqual({ biggestWin: null, mostPoints: null, streak: 0, bestStreak: null });
@@ -914,7 +914,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(14);
+    expect(migrated.version).toBe(15);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -931,7 +931,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(14);
+    expect(migrated.version).toBe(15);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

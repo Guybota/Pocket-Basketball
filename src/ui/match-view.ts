@@ -184,6 +184,8 @@ export class MatchView {
   }
   /** O emblema do nosso clube, para os painéis. Os outros têm o emblema fixo. */
   readonly ownEmblem?: Emblem;
+  /** O emblema do adversário quando não é o que o nome dá: o da equipa de fora, no Aeroporto. */
+  readonly rivalEmblem?: Emblem;
   private coachUpsetUntil: [number, number] = [0, 0];
   // Onde cada treinador está: segue o alvo a andar, e nunca salta de sítio.
   private readonly coachPos: (Point | null)[] = [null, null];
@@ -216,8 +218,9 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem, rivalEmblem?: Emblem) {
     this.ownEmblem = ownEmblem;
+    this.rivalEmblem = rivalEmblem;
     this.crowdSeed = seed;
     this.periods = division === CLOSED_GYM ? 2 : 4;
     this.g = g;

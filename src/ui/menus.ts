@@ -28,10 +28,12 @@ import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
+import { GUEST_RIVAL, guestKit, kitClash, parseTeamFile, teamFile, type GuestTeam } from './airport.ts';
+import { downloadFile, pickFile } from './save.ts';
 import { assistantReport, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
-type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
+type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office' | 'airport';
 type GoTo = Screen | 'town';
 type OfficeItem = 'board' | 'trophies' | 'records' | 'facilities' | 'history' | 'reset';
 
@@ -98,6 +100,8 @@ let kitPart: 'jersey' | 'second' | 'shorts' | 'trim' = 'jersey';
 let emblemPart: 'primary' | 'secondary' | 'accent' = 'primary';
 let emblemPage = 0;
 let gameKind: GameKind = 'official';
+// O particular é contra a equipa de fora trazida pelo Aeroporto, e não contra uma das propostas.
+let guestGame = false;
 let half = false;
 
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -367,15 +371,18 @@ const offerLabel = (id: number): [string, string] => {
 };
 const friendlyAllowed = (): boolean => !currentFixture(club);
 
+const compare = (label: string, a: number, b: number): string => `<div class="compare"><div class="left"><i style="width:${a}%"></i></div><span>${label}</span><div class="right"><i style="width:${b}%"></i></div></div>`;
+const avg = (team: Team, key: keyof Attributes): number => team.roster.slice(0, 5).reduce((sum, p) => sum + p.attributes[key], 0) / 5;
+/** Os cinco titulares das duas equipas, lado a lado, em quatro notas. */
+const compareTeams = (rival: Team): string => (['shooting', 'speed', 'strength', 'jumping'] as const).map(key => compare(ATTRIBUTE_LABELS.find(([k]) => k === key)![1], avg(club.team, key), avg(rival, key))).join('');
+
 function offersScreen(): Rendered {
   const list = offers();
   const rival = rivalTeam(club, list[offerClub] ?? list[0]!);
-  const compare = (label: string, a: number, b: number): string => `<div class="compare"><div class="left"><i style="width:${a}%"></i></div><span>${label}</span><div class="right"><i style="width:${b}%"></i></div></div>`;
-  const avg = (team: Team, key: keyof Attributes): number => team.roster.slice(0, 5).reduce((sum, p) => sum + p.attributes[key], 0) / 5;
   return {
     top: inside(`<div class="note"><header><b>${offerKind === 'practice' ? 'Jogo-treino' : 'Particular'}</b><span>${offerKind === 'practice' ? 'Pavilhão fechado' : 'No nosso pavilhão'}</span></header><div class="inner">
       <div class="vsbox"><div>${ownCrest(32)}${esc(club.team.name)}<small>${esc(DIVISIONS[club.division]!.name)}</small></div><span>contra</span><div><img class="emblem" alt="Emblema do ${esc(rival.name)}" style="width:32px;height:32px" src="${emblemImage(clubIdentity(rival.name).emblem)}">${esc(rival.name)}<small>${esc(SPECIAL_RIVALS.find(r => r.id === (list[offerClub] ?? list[0]!))?.note ?? DIVISIONS[club.divisions.findIndex(ids => ids.includes(list[offerClub] ?? list[0]!))]!.name)}</small></div></div>
-      ${(['shooting', 'speed', 'strength', 'jumping'] as const).map(key => compare(ATTRIBUTE_LABELS.find(([k]) => k === key)![1], avg(club.team, key), avg(rival, key))).join('')}
+      ${compareTeams(rival)}
       <div class="quote">${offerKind === 'practice' ? 'Só dois períodos, à porta fechada e sem público. Gasta a semana, dá menos cartas, cansa menos e não mexe na confiança.' : 'Jogo inteiro com público. Dá cartas, cansa, e conta metade para a confiança. Não conta para a liga.'}</div>
     </div></div>`),
     bottom: `<div class="chalk"><h2>Propostas de jogo</h2>
@@ -385,13 +392,55 @@ function offersScreen(): Rendered {
   };
 }
 
-const rivalId = (): number => (gameKind === 'official' ? opponentId(club) : offers()[offerClub] ?? offers()[0]!);
+// O que o Aeroporto tem para dizer depois de exportar ou de importar.
+let airportNote = '';
+
+/** O Aeroporto: a nossa equipa vai num ficheiro para outra pessoa, e a dela vem cá jogar um amigável. */
+function airportScreen(): Rendered {
+  const guest = club.guest;
+  const rival = guest ? rivalTeam(club, GUEST_RIVAL) : null;
+  const strength = (team: Team): string => `<small>Força ${grade(teamRating(team))}</small>`;
+  const rows = rival ? rival.roster.map((p, index) => `<div class="prow${index >= 5 ? ' bench' : ''}">${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>`).join('') : '';
+  const games = club.guestGames.map(g => `<div class="round-row"><span class="name">${esc(club.team.short)} · ép. ${g.season}</span><b>${g.score[0]}-${g.score[1]}</b><span class="name right">${esc(g.name)}</span></div>`).join('');
+  const why = !guest ? 'Importa primeiro uma equipa.' : friendlyAllowed() ? '' : 'Esta semana há jogo oficial: o amigável fica para uma semana livre.';
+  return {
+    top: inside(`<div class="note"><header><b>Aeroporto</b><span>Amigável · no nosso pavilhão</span></header><div class="inner">
+      ${guest && rival ? `<div class="vsbox"><div>${ownCrest(32)}${esc(club.team.name)}${strength(club.team)}</div><span>contra</span><div><img class="emblem" alt="Emblema do ${esc(guest.name)}" style="width:32px;height:32px" src="${emblemImage(guest.emblem)}">${esc(guest.name)}${strength(rival)}</div></div>
+      ${compareTeams(rival)}` : ''}
+      <div class="quote">Dá cartas e gasta a semana. Não conta para a liga nem para a confiança.</div>
+      ${airportNote ? `<div class="hint" id="airportNote">${esc(airportNote)}</div>` : ''}
+    </div></div>`),
+    bottom: `<div class="chalk"><h2>${guest ? esc(guest.name) : 'Sem equipa de fora'}</h2>
+      <div class="chalktabs"><button type="button" id="teamExportBtn" data-act="teamExport">Exportar a minha</button><button type="button" id="teamImportBtn" data-act="teamImport">Importar equipa</button></div>
+      <div class="scroll">${games ? `<div class="starters plain"><span>Amigáveis contra equipas de fora</span></div>${games}<div class="starters plain"><span>Plantel de fora</span></div>` : ''}${rows}</div>
+      ${why ? `<div class="mwarn">${why}</div>` : ''}
+    </div>${bar(backBtn('town'), `<button type="button" class="primary" id="guestPlayBtn" data-act="guestPlay" ${why ? 'disabled' : ''}>Jogar</button>`)}`,
+  };
+}
+
+/** Lê a equipa de outra pessoa e guarda-a no clube, no lugar da que lá estava. */
+function importTeam(text: string | null): void {
+  try {
+    const guest = parseTeamFile(text ?? '');
+    commit({ ...club, guest });
+    airportNote = `Chegou ${guest.name}, com ${guest.roster.length} jogadores.`;
+  } catch (error) {
+    airportNote = error instanceof Error ? error.message : 'Este ficheiro não é uma equipa.';
+  }
+  render();
+}
+
+const rivalId = (): number => (gameKind === 'official' ? opponentId(club) : guestGame ? GUEST_RIVAL : offers()[offerClub] ?? offers()[0]!);
+/** O emblema e os equipamentos do adversário: os do ficheiro, na equipa de fora; os gerados pelo nome, nos outros. */
+const rivalIdentity = (name: string): { emblem: Emblem; kits: readonly ClubKit[] } => (guestGame && club.guest ? club.guest : clubIdentity(name));
+/** O nome do jogo que não é oficial, para os letreiros. */
+const friendlyLabel = (): string => (gameKind === 'practice' ? 'Jogo-treino' : guestGame ? 'Amigável' : 'Particular');
 const currentRival = (): Team => rivalTeam(club, rivalId());
 
 function preScreen(): Rendered {
   const rival = currentRival();
   const view = host.match();
-  const kind = half ? 'Intervalo' : gameKind === 'official' ? officialLabel(club) : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
+  const kind = half ? 'Intervalo' : gameKind === 'official' ? officialLabel(club) : friendlyLabel();
   const score = half && view ? `${view.s.score[0]} - ${view.s.score[1]}` : '';
   const bars: string[] = [
     `<button type="button" class="mbar" ${half ? 'data-act="halfSubs"' : 'data-squad="pre"'}><img alt="" src="${ICON_SQUAD}"><span>${half ? 'Trocas' : 'Plantel'}</span><small>${half ? 'Quem entra na segunda parte' : 'Titulares e banco'}</small></button>`,
@@ -402,7 +451,7 @@ function preScreen(): Rendered {
   ];
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
-    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantReport(view.s) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : 'offers'))}`,
+    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantReport(view.s) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : guestGame ? 'airport' : 'offers'))}`,
   };
 }
 
@@ -517,8 +566,8 @@ function rivalScreen(): Rendered {
   // Os cinco do adversário na prancheta, como a ficha de equipa do original. Toca-se num boneco para o marcar.
   const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}`, focus.includes(index))).join(''), true);
   return {
-    top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${five}${clubSheet(id, rival)}</div></div>`),
-    bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
+    top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${five}${clubSheet(id, rival)}</div></div>`),
+    bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
       <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Estatísticas da época</button></div>
       <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}</div>
       <div class="scroll">${rows}</div>
@@ -547,29 +596,24 @@ function optionsRow(): string {
 }
 
 /** Parecido demais com o equipamento creme do adversário? */
-/** As duas camisolas são tão parecidas que em campo não se distinguem as equipas. */
-function kitClash(kit: ClubKit, other: ClubKit): boolean {
-  const x = parseInt(kit.jersey.slice(1), 16);
-  const y = parseInt(other.jersey.slice(1), 16);
-  return Math.abs(((x >> 16) & 255) - ((y >> 16) & 255)) + Math.abs(((x >> 8) & 255) - ((y >> 8) & 255)) + Math.abs((x & 255) - (y & 255)) < 90;
-}
 
 // O equipamento do adversário escolhido à mão, só para o jogo desta semana contra esse clube; sem escolha, veste o que contrasta.
 let rivalKitPick: { week: number; name: string; index: number } | null = null;
 
 /** O equipamento que o adversário veste no jogo: o escolhido no ecrã do equipamento, ou o que contrasta com o nosso. */
-export function rivalKitFor(current: ClubState, name: string, ours: ClubKit): ClubKit {
+export function rivalKitFor(current: ClubState, name: string, ours: ClubKit, guest: GuestTeam | null = null): ClubKit {
   const pick = rivalKitPick;
-  if (pick && pick.week === current.week && pick.name === name) return clubIdentity(name).kits[pick.index] ?? kitAgainst(name, ours);
-  return kitAgainst(name, ours);
+  const fallback = (): ClubKit => (guest ? guestKit(guest, ours) : kitAgainst(name, ours));
+  if (pick && pick.week === current.week && pick.name === name) return (guest ?? clubIdentity(name)).kits[pick.index] ?? fallback();
+  return fallback();
 }
 
 /** O equipamento do jogo: o cartaz com as duas equipas em cima, e em baixo escolhe-se o nosso e o do adversário. */
 function kitScreen(): Rendered {
   const rival = currentRival();
   const ours = activeKit(club);
-  const theirs = rivalKitFor(club, rival.name, ours);
-  const rivalKits = clubIdentity(rival.name).kits;
+  const theirs = rivalKitFor(club, rival.name, ours, guestGame ? club.guest : null);
+  const rivalKits = rivalIdentity(rival.name).kits;
   const button = (attr: string, value: string, pressed: boolean, preview: string, name: string): string =>
     `<button type="button" class="kitbtn" ${attr}="${value}" aria-pressed="${pressed}"><canvas ${preview} width="20" height="36"></canvas><span>${esc(name)}</span></button>`;
   const rivalNames = ['Principal', 'Alternativo'];
@@ -578,8 +622,8 @@ function kitScreen(): Rendered {
     bottom: `<div class="kitpick">
       <div class="kithead"><img class="emblem" alt="" src="${emblemImage(club.emblem)}"><b>${esc(club.team.name)}</b></div>
       <div class="kitgrid">${club.kits.map(k => button('data-kit', k.id, k.id === club.kitChoice, `data-kit-preview="${k.id}"`, k.name)).join('')}</div>
-      <div class="kithead"><img class="emblem" alt="" src="${emblemImage(clubIdentity(rival.name).emblem)}"><b>${esc(rival.name)}</b></div>
-      <div class="kitgrid two">${rivalKits.map((k, i) => button('data-rival-kit', String(i), k.jersey === theirs.jersey && k.second === theirs.second && k.pattern === theirs.pattern, `data-rival-preview="${i}"`, rivalNames[i] ?? k.name)).join('')}</div>
+      <div class="kithead"><img class="emblem" alt="" src="${emblemImage(rivalIdentity(rival.name).emblem)}"><b>${esc(rival.name)}</b></div>
+      <div class="kitgrid two">${rivalKits.map((k, i) => button('data-rival-kit', String(i), k.jersey === theirs.jersey && k.second === theirs.second && k.pattern === theirs.pattern, `data-rival-preview="${i}"`, guestGame ? k.name : rivalNames[i] ?? k.name)).join('')}</div>
       ${kitClash(ours, theirs) ? `<div class="mwarn">As duas camisolas são muito parecidas: em campo, vai ser difícil distinguir as equipas.</div>` : ''}
     </div>${bar(backBtn('pre'), '<button type="button" data-act="editKit">Editar equipamento</button>')}`,
     after: () => {
@@ -589,9 +633,9 @@ function kitScreen(): Rendered {
       paintKitPreviews();
       const canvas = document.getElementById('poster') as HTMLCanvasElement | null;
       if (canvas) {
-        drawMatchPoster(canvas, gameKind === 'official' ? officialLabel(club).split(' de ')[0]!.split(' · ')[0]! : gameKind === 'practice' ? 'Jogo-treino' : 'Particular',
+        drawMatchPoster(canvas, gameKind === 'official' ? officialLabel(club).split(' de ')[0]!.split(' · ')[0]! : friendlyLabel(),
           { kit: ours, emblem: emblemCanvas(club.emblem), roster: club.team.roster },
-          { kit: theirs, emblem: emblemCanvas(clubIdentity(rival.name).emblem), roster: rival.roster });
+          { kit: theirs, emblem: emblemCanvas(rivalIdentity(rival.name).emblem), roster: rival.roster });
       }
     },
   };
@@ -610,7 +654,7 @@ function paintKitPreviews(): void {
     if (!rival) return;
     const g = canvas.getContext('2d')!;
     g.clearRect(0, 0, canvas.width, canvas.height);
-    const kit = clubIdentity(rival.name).kits[Number(canvas.dataset.rivalPreview)]!;
+    const kit = rivalIdentity(rival.name).kits[Number(canvas.dataset.rivalPreview)]!;
     drawSprite(g, 'idle', { ...lookOf(rival.roster[0]!, 'cream'), custom: kit }, 10, 35, true, false, false);
   });
 }
@@ -637,7 +681,7 @@ function kitEditScreen(): Rendered {
       <div class="scroll editor">
         <div><span>Peça e cor</span><div class="chips4">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
         <div><span>Desenho da camisola</span><div class="patterns">${KIT_PATTERNS.map(([id, label]) => `<button type="button" data-kit-pattern="${id}" aria-pressed="${kit.pattern === id}"><img alt="" src="${kitImage({ ...kit, pattern: id })}"><span>${label}</span></button>`).join('')}</div></div>
-        <div class="hint">${kitClash(kit, rivalKitFor(club, currentRival().name, kit)) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
+        <div class="hint">${kitClash(kit, rivalKitFor(club, currentRival().name, kit, guestGame ? club.guest : null)) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
       </div>
       ${bar(`<button type="button" class="back" data-go="${kitEditBack}">‹ Voltar</button>`)}`,
     after: paintWardrobe,
@@ -895,7 +939,7 @@ function officeScreen(): Rendered {
 
 const SCREENS: Record<Screen, () => Rendered> = {
   create: createScreen, market: marketScreen, renewals: renewalsScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
-  offers: offersScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
+  offers: offersScreen, airport: airportScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
 };
 
 /** Um padrão de bolas muito discreto atrás das fichas, feito aqui. */
@@ -1122,6 +1166,17 @@ function onClick(event: Event): void {
   } else if (data.act === 'skipFx') {
     target.classList.add('done');
     host.panel.querySelector('.after')?.classList.add('done');
+  } else if (data.act === 'teamExport') {
+    downloadFile(`pocket-basketball-equipa-${club.team.short.replace(/[^\w-]/g, '') || 'clube'}.json`, teamFile(club));
+    airportNote = 'A equipa foi para um ficheiro: manda-o a quem quiser jogar contra ela.';
+    render();
+  } else if (data.act === 'teamImport') {
+    pickFile(importTeam);
+  } else if (data.act === 'guestPlay') {
+    gameKind = 'friendly';
+    guestGame = true;
+    half = false;
+    go('pre');
   } else if (data.act === 'startMatch') {
     host.kickOff(gameKind, rivalId());
   } else if (data.act === 'secondHalf') {
@@ -1204,6 +1259,10 @@ export function openMenu(next: Screen, squadBack: GoTo = 'town'): void {
     federationScroll = 0;
     if (!club.divisions[club.division]!.includes(federationClub)) federationClub = PLAYER_CLUB;
   }
+  if (next === 'airport') {
+    airportNote = '';
+    guestGame = false;
+  }
   if (next === 'office') {
     officeItem = 'board';
     emblemBack = 'office';
@@ -1249,6 +1308,7 @@ export function openOffers(): void {
   half = false;
   offerClub = 0;
   offerKind = 'practice';
+  guestGame = false;
   go('offers');
 }
 
@@ -1257,6 +1317,7 @@ export function openArena(): void {
   club = host.club();
   half = false;
   gameKind = 'official';
+  guestGame = false;
   if (currentFixture(club)) go('pre');
   else openOffers();
 }
@@ -1265,7 +1326,8 @@ export function openHalf(kind: GameKind, rival: number): void {
   club = host.club();
   gameKind = kind;
   half = true;
-  if (kind !== 'official') offerClub = Math.max(0, offers().indexOf(rival));
+  guestGame = rival === GUEST_RIVAL;
+  if (kind !== 'official' && !guestGame) offerClub = Math.max(0, offers().indexOf(rival));
   go('pre');
 }
 

@@ -37,7 +37,7 @@ export function energyColor(energy: number): string {
 
 /** O emblema de uma equipa do jogo: o do nosso clube, se a vista o souber, ou o fixo do clube. */
 export const crest = (view: MatchView, team: 0 | 1, size = 24): string =>
-  `<img class="emblem" alt="Emblema do ${escapeHtml(view.s.teams[team].name)}" style="width:${size}px;height:${size}px" src="${emblemImage((team === 0 ? view.ownEmblem : undefined) ?? clubIdentity(view.s.teams[team].name).emblem)}">`;
+  `<img class="emblem" alt="Emblema do ${escapeHtml(view.s.teams[team].name)}" style="width:${size}px;height:${size}px" src="${emblemImage((team === 0 ? view.ownEmblem : view.rivalEmblem) ?? clubIdentity(view.s.teams[team].name).emblem)}">`;
 
 function periodTable(view: MatchView): string {
   const { s, periodScores } = view;

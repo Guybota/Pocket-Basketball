@@ -1,11 +1,12 @@
 // Abre o jogo num browser verdadeiro e confirma o que os testes em Node não conseguem ver.
 // Usa o Edge no Windows. Noutra máquina usa o Chromium do Playwright, ou BROWSER_PATH=/caminho/do/chrome, ou BROWSER_CHANNEL=chrome.
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 import { preview, build } from 'vite';
 import { PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { matchHash } from '../sim/hash.ts';
 import { simulateMatch } from '../sim/match.ts';
+import { parseTeamFile, teamFile } from '../ui/airport.ts';
 import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } from '../ui/club.ts';
 
 interface Pocket {
@@ -242,9 +243,9 @@ try {
   check('A torre responde pela secretária', ((await coach.locator('#staffNote').textContent()) ?? '').includes('torre'));
   const towerCopy = async (): Promise<string> => (await coach.locator('#towerCopy').textContent()) ?? '';
   check('A Torre diz que ainda não há cópia', (await towerCopy()).includes('Ainda não fizeste'), await towerCopy());
-  const download = coach.waitForEvent('download', { timeout: 5000 }).catch(() => null);
+  const towerDownload = coach.waitForEvent('download', { timeout: 5000 }).catch(() => null);
   await coach.click('#exportBtn');
-  await download;
+  await towerDownload;
   await coach.waitForFunction(() => document.getElementById('towerCopy')?.textContent?.startsWith('Última cópia'), undefined, { timeout: 5000 }).catch(() => {});
   check('Exportar põe a data da cópia na Torre', /^Última cópia: \d+ \S+, \d\d:\d\d$/.test(await towerCopy()), await towerCopy());
   await shot(coach, `${OUT}/torre-copia.png`);
@@ -652,6 +653,67 @@ try {
   check('O jogo-treino gasta a semana livre', afterPractice.club.week === beforePractice.week + 1);
   check('Os jogadores saem do jogo-treino mais cansados', afterPractice.club.team.roster.reduce((sum, p) => sum + p.fatigue, 0) > beforePractice.team.roster.reduce((sum, p) => sum + p.fatigue, 0));
   check('Sem erros no jogo-treino', practiceProblems.length === 0, practiceProblems.join(' | '));
+
+  // O Aeroporto: exportar a nossa equipa, importar a de outra pessoa e jogar o amigável até ao fim.
+  // Num clube a sério, para se ver que tudo fica guardado; acabado de criar, está na pré-época, numa semana livre.
+  const airportContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const airport = await airportContext.newPage();
+  const airportProblems: string[] = [];
+  airport.on('pageerror', error => airportProblems.push(error.message));
+  await airport.goto(url);
+  await airport.waitForFunction(() => window.__pocket !== undefined);
+  await createClub(airport);
+  await airport.click('#airportChip');
+  await airport.waitForSelector('#teamExportBtn');
+  await shot(airport, `${OUT}/aeroporto-vazio.png`);
+  check('Sem equipa de fora não se joga o amigável', await airport.locator('#guestPlayBtn').isDisabled());
+  const [download] = await Promise.all([airport.waitForEvent('download'), airport.click('#teamExportBtn')]);
+  const exported = readFileSync((await download.path())!, 'utf8');
+  const ownClub = await airport.evaluate(() => window.__pocket.club()!);
+  let exportedOk = false;
+  try {
+    exportedOk = parseTeamFile(exported).name === ownClub.team.name && !exported.includes('"money"');
+  } catch {}
+  check('A equipa exportada é só a equipa, e lê-se de volta', exportedOk, `${exported.length} bytes`);
+  const importPath = async (path: string): Promise<void> => {
+    const [chooser] = await Promise.all([airport.waitForEvent('filechooser'), airport.click('#teamImportBtn')]);
+    await chooser.setFiles(path);
+    await airport.waitForSelector('#airportNote');
+    await airport.waitForTimeout(100);
+  };
+  writeFileSync(`${OUT}/equipa-estragada.json`, JSON.stringify({ format: 'pocket-basketball-equipa', version: 1, name: '<b>', roster: [] }));
+  await importPath(`${OUT}/equipa-estragada.json`);
+  check('Um ficheiro estragado é recusado sem partir nada', (await airport.evaluate(() => window.__pocket.club()!.guest)) === null && (await airport.locator('#airportNote').textContent())!.includes('inválido'));
+  const guestFile = teamFile(newClub(77));
+  writeFileSync(`${OUT}/equipa-de-fora.json`, guestFile);
+  await importPath(`${OUT}/equipa-de-fora.json`);
+  await shot(airport, `${OUT}/aeroporto-equipa.png`);
+  check('A equipa importada aparece no Aeroporto', await airport.evaluate(() => window.__pocket.club()!.guest !== null) && (await airport.locator('.prow').count()) === parseTeamFile(guestFile).roster.length);
+  const beforeGuest = await airport.evaluate(() => window.__pocket.club()!);
+  await airport.click('#guestPlayBtn');
+  await airport.waitForSelector('#kickoffBtn');
+  await shot(airport, `${OUT}/aeroporto-balneario.png`);
+  await airport.click('#kickoffBtn');
+  await airport.waitForSelector('#introSkip');
+  await shot(airport, `${OUT}/aeroporto-apresentacao.png`);
+  await skipIntro(airport);
+  await airport.waitForTimeout(800);
+  await airport.locator('.screen').screenshot({ path: `${OUT}/aeroporto-campo.png` });
+  await playToEnd(airport);
+  await shot(airport, `${OUT}/aeroporto-fim.png`);
+  const afterGuest = await airport.evaluate(() => ({ club: window.__pocket.club()!, state: window.__pocket.state() }));
+  check('O amigável joga-se até ao fim, contra a equipa de fora', afterGuest.state.period >= 4 && afterGuest.club.guestGames[0]?.name === parseTeamFile(guestFile).name);
+  check('O amigável não mexe na confiança e gasta a semana', afterGuest.club.confidence === beforeGuest.confidence && afterGuest.club.week === beforeGuest.week + 1);
+  check('O amigável não conta para a liga', JSON.stringify(afterGuest.club.rounds) === JSON.stringify(beforeGuest.rounds));
+  await airport.click('#againBtn');
+  await airport.waitForSelector('#airportChip');
+  await reloadClub(airport);
+  await airport.click('#airportChip');
+  await airport.waitForSelector('#teamExportBtn');
+  await shot(airport, `${OUT}/aeroporto-historico.png`);
+  check('A equipa de fora e o amigável ficam guardados', (await airport.locator('.round-row').count()) === 1 && (await airport.locator('.prow').count()) > 0);
+  check('Sem erros no Aeroporto', airportProblems.length === 0, airportProblems.join(' | '));
+  await airportContext.close();
 
   // Os momentos que importam, para ver como ficam.
   const moments = await phone.newPage();

@@ -8,11 +8,12 @@ import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, weeklyFitness, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
+import { GUEST_RIVAL, guestTeam, readGuest, validGuestGames, withGuestGame, type GuestGame, type GuestTeam } from './airport.ts';
 import { DEFAULT_KITS, defaultEmblem, emblemLetters, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 14;
+const SAVE_VERSION = 15;
 export const CLUB_NAME_MAX = 24;
 const STARTING_CARDS: readonly CardId[] = ['shooting', 'dribble', 'sprints', 'readDefense', 'weights', 'nap'];
 /** O clube do jogador é sempre o número 0 da lista de clubes. */
@@ -198,6 +199,9 @@ export interface ClubState {
   history: SeasonRecord[];
   /** O balanço da época que acabou, até o jogador o ver. */
   seasonReport: SeasonRecord | null;
+  /** A equipa de outra pessoa trazida pelo Aeroporto, e os amigáveis contra equipas de fora. */
+  guest: GuestTeam | null;
+  guestGames: GuestGame[];
 }
 
 /** Os 40 clubes das 4 divisões, sempre os mesmos em cada divisão, como no original. O nosso entra na divisão pedida no lugar do último dela. */
@@ -300,6 +304,8 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
     stats: {},
     history: [],
     seasonReport: null,
+    guest: null,
+    guestGames: [],
   };
   return { ...created, objective: boardObjective(created) };
 }
@@ -1095,7 +1101,7 @@ function playRound(club: ClubState, fixtures: readonly Fixture[], s: MatchState,
 }
 
 /** Fecha a semana: resultado, cartas encontradas, confiança, os outros jogos e o cansaço de quem jogou. */
-export function finishMatch(club: ClubState, s: MatchState, found: readonly CardId[], live: readonly OtherGame[] = []): MatchResult {
+export function finishMatch(club: ClubState, s: MatchState, found: readonly CardId[], live: readonly OtherGame[] = [], guest = false): MatchResult {
   const won = s.score[0] > s.score[1];
   const game = currentGame(club);
   if (game?.playoff) return finishPlayoffGame(club, s, found, game);
@@ -1120,7 +1126,8 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
   const round = game === null ? null : playRound(club, game.cup ? club.cups[game.cup]!.rounds[game.round]! : club.rounds[game.round]!, s, live);
   const rounds = round === null || game!.cup ? club.rounds : club.rounds.map((r, i) => (i === game!.round ? round : r));
   const cups = round === null || !game!.cup ? club.cups : { ...club.cups, [game!.cup]: settleCupRound(club.cups[game!.cup]!, game!.round, round) };
-  const delta = confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), game !== null);
+  // O amigável do Aeroporto não mexe na confiança: a direção não liga a jogos com equipas de fora.
+  const delta = guest ? 0 : confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), game !== null);
   const confidence = Math.max(0, Math.min(100, club.confidence + delta));
   const updated: ClubState = {
     ...club,
@@ -1133,6 +1140,7 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
     wins: club.wins + (won ? 1 : 0),
     losses: club.losses + (won ? 0 : 1),
     records: game ? updateRecords(club, s) : club.records,
+    guestGames: guest ? withGuestGame(club.guestGames, { name: s.teams[1].name, score: [s.score[0], s.score[1]], season: club.season, week: club.week }) : club.guestGames,
   };
   return { club: closeWeek(updated, secondsPlayedBy(club, s)), cards, round, cup: game?.cup ?? null, series: null, confidenceDelta: delta };
 }
@@ -1177,7 +1185,8 @@ export function specialTeam(club: ClubState, id: number): Team {
 }
 
 /** A equipa de qualquer adversário, da liga ou especial. */
-export const rivalTeam = (club: ClubState, id: number): Team => (id < 0 ? specialTeam(club, id) : aiTeam(club.clubs[id]!));
+export const rivalTeam = (club: ClubState, id: number): Team => (id === GUEST_RIVAL && club.guest ? guestTeam(club.guest, club.team) : id < 0 ? specialTeam(club, id) : aiTeam(club.clubs[id]!));
+
 
 /** Quantas semanas faltam para o próximo jogo oficial: 0 se é esta semana, null se a época já não tem mais. */
 export function weeksToNextGame(club: ClubState): number | null {
@@ -1271,6 +1280,11 @@ function migrateV13(old: ClubState): ClubState {
   return { ...old, version: 14, stats, objective: null, facilities: { gym: 0, medical: 0, scouts: 0 }, records: emptyRecords(), comboHints: [] };
 }
 
+/** Antes do Aeroporto: nenhuma equipa de fora e nenhum amigável. */
+function migrateV14(old: ClubState): ClubState {
+  return { ...old, version: 15, guest: null, guestGames: [] };
+}
+
 function heightLevels(value: unknown): void {
   if (Array.isArray(value)) value.forEach(heightLevels);
   else if (value && typeof value === 'object') {
@@ -1345,13 +1359,14 @@ function validExtras(club: ClubState): boolean {
   const extras = objective && facilities && records && Array.isArray(club.comboHints) && club.comboHints.every(id => typeof id === 'string');
   const money = Number.isFinite(club.money) && isRecord(club.salaries) && isRecord(club.joined) && (club.pendingRenewals === null || (Array.isArray(club.pendingRenewals) && club.pendingRenewals.every(r => typeof r.name === 'string' && Number.isFinite(r.asked))))
     && Array.isArray(club.offers) && club.offers.every(o => isRecord(o.player) && Number.isFinite(o.fee) && Number.isFinite(o.weeksLeft));
-  return playoffs && money && extras && Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
+  const guest = (club.guest === null || readGuest(club.guest) !== null) && validGuestGames(club.guestGames);
+  return playoffs && money && extras && guest && Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
     && validEmblem(club.emblem) && Array.isArray(club.kits) && club.kits.length > 0 && club.kits.every(validKit)
     && club.kits.some(kit => kit.id === club.kitChoice);
 }
 
 const MIGRATIONS: Record<number, (old: ClubState) => ClubState> = {
-  1: migrateV1, 2: migrateV2, 3: migrateV3, 4: migrateV4, 5: migrateV5, 6: migrateV6, 7: migrateV7, 8: migrateV8, 9: migrateV9, 10: migrateV10, 11: migrateV11, 12: migrateV12, 13: migrateV13,
+  1: migrateV1, 2: migrateV2, 3: migrateV3, 4: migrateV4, 5: migrateV5, 6: migrateV6, 7: migrateV7, 8: migrateV8, 9: migrateV9, 10: migrateV10, 11: migrateV11, 12: migrateV12, 13: migrateV13, 14: migrateV14,
 };
 
 /** Lê um clube guardado. Devolve null se estiver estragado ou for de outra versão, sem deitar nada fora. */

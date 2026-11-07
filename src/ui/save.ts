@@ -67,21 +67,24 @@ export function loadClub(status: SaveStatus): ClubState | null {
 
 /** Guarda o clube num ficheiro. No telemóvel abre a folha de partilha, para o ficheiro poder ir para Ficheiros ou para outro aparelho. */
 export function exportClub(current: ClubState, done: () => void): void {
-  const name = `pocket-basketball-${current.team.short.replace(/[^\w-]/g, '') || 'clube'}-epoca-${current.season}.json`;
-  const file = new File([JSON.stringify(current)], name, { type: 'application/json' });
+  downloadFile(`pocket-basketball-${current.team.short.replace(/[^\w-]/g, '') || 'clube'}-epoca-${current.season}.json`, JSON.stringify(current), () => {
+    markExported(current);
+    done();
+  });
+}
+
+/** Entrega um ficheiro de texto ao jogador: no telemóvel pela folha de partilha, no computador como transferência. `delivered` corre quando chegou. */
+export function downloadFile(name: string, text: string, delivered: () => void = () => {}): void {
+  const file = new File([text], name, { type: 'application/json' });
   if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
-    navigator.share({ files: [file] }).then(() => {
-      markExported(current);
-      done();
-    }, () => {});
+    navigator.share({ files: [file] }).then(delivered, () => {});
     return;
   }
   const link = document.createElement('a');
   link.href = URL.createObjectURL(file);
   link.download = name;
   link.click();
-  markExported(current);
-  done();
+  delivered();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
@@ -90,19 +93,8 @@ export function exportClub(current: ClubState, done: () => void): void {
  * Pergunta antes de substituir o clube atual, e só chama `loaded` se o jogador aceitar.
  */
 export function importClub(current: () => ClubState | null, status: SaveStatus, loaded: (club: ClubState) => void): void {
-  // No iPad, o ficheiro escolhido só chega ao jogo se o campo estiver na página. Sem filtro de tipo, porque o iOS
-  // às vezes deixa os .json a cinzento; o parseClub recusa o que não for um clube.
-  document.getElementById('importFile')?.remove();
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.id = 'importFile';
-  input.hidden = true;
-  document.body.append(input);
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    input.remove();
-    if (!file) return;
-    const club = parseClub(await file.text().catch(() => null));
+  pickFile(text => {
+    const club = parseClub(text);
     if (!club) {
       alert('Este ficheiro não tem um clube que o jogo consiga ler.');
       return;
@@ -113,6 +105,24 @@ export function importClub(current: () => ClubState | null, status: SaveStatus, 
       : status.unreadable ? `O clube guardado que não se consegue ler vai ser substituído por ${club.team.name}. Continuar?` : null;
     if (question && !confirm(question)) return;
     loaded(club);
+  });
+}
+
+/** Pede um ficheiro ao jogador e entrega o texto dele, ou null se não se conseguir ler. */
+export function pickFile(read: (text: string | null) => void): void {
+  // No iPad, o ficheiro escolhido só chega ao jogo se o campo estiver na página. Sem filtro de tipo, porque o iOS
+  // às vezes deixa os .json a cinzento; quem lê recusa o que não for seu.
+  document.getElementById('importFile')?.remove();
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.id = 'importFile';
+  input.hidden = true;
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+    read(await file.text().catch(() => null));
   });
   input.click();
 }

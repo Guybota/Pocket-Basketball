@@ -16,9 +16,10 @@ import { tacticValue, tacticsControls } from './club-screens.ts';
 import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, showTopScene, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
+import { GUEST_RIVAL } from './airport.ts';
 import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
+import { TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
@@ -226,7 +227,7 @@ function placeTownUi(): void {
     element('settingsBtn').addEventListener('click', () => openSettings(audio));
     element('importBtn').addEventListener('click', importFile);
   });
-  element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
+  element('airportChip').addEventListener('click', () => openMenu('airport'));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));
   element('officeBtn').addEventListener('click', () => openMenu('office'));
   element('trainBtn').addEventListener('click', () => {
@@ -258,6 +259,9 @@ function applyClubColors(): void {
   game.style.setProperty('--home-ink', isLight(jersey) ? '#1b2230' : '#ffffff');
 }
 
+/** A equipa de fora do Aeroporto, quando é ela o adversário. */
+const guestOf = (rivalId: number): ClubState['guest'] => (rivalId === GUEST_RIVAL ? club!.guest : null);
+
 function makeView(kind: GameKind, rivalId: number): void {
   const current = club!;
   const seed = weekSeed(current);
@@ -278,7 +282,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem);
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current), guestOf(rivalId)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem, guestOf(rivalId)?.emblem);
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -714,7 +718,7 @@ function startGame(kind: GameKind, rivalId: number): void {
 /** Os cinco de cada lado entram em campo. Toca-se para saltar, ou espera-se uns segundos. */
 function showIntro(): void {
   const current = club!;
-  const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
+  const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : rivalOf === GUEST_RIVAL ? 'Amigável' : 'Particular';
   panel.innerHTML = introScreen(view!, label);
   audio.music('entrance');
   element('introSkip').addEventListener('click', beginPlay);
@@ -742,7 +746,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!), guestOf(rivalOf)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem, guestOf(rivalOf)?.emblem);
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;
@@ -823,7 +827,7 @@ function showResult(): void {
   finished = true;
   banner.hidden = true;
   drop.hidden = true;
-  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? []);
+  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL);
   const wasHurt = new Set(club!.team.roster.filter(p => p.injuryWeeks).map(p => p.name));
   club = result.club;
   saveClub();
@@ -831,7 +835,7 @@ function showResult(): void {
     .map(p => `<p class="hint warn">Lesão: ${escapeHtml(p.name)} fica ${p.injuryWeeks} ${p.injuryWeeks === 1 ? 'semana' : 'semanas'} de fora.</p>`).join('');
   const { score } = view!.s;
   audio.music(score[0] > score[1] ? 'win' : 'loss');
-  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice')}`);
+  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice', rivalOf === GUEST_RIVAL)}`);
   showResultPanel();
 }
 

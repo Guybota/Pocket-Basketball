@@ -96,7 +96,6 @@ function townNote(club: ClubState, saveFailed: boolean): string {
 }
 
 export const TOWER_NOTE = 'A torre guarda tudo sozinha, mas só neste aparelho. Para levar o clube para outro lado ou ter uma cópia, exporta-o num ficheiro.';
-export const AIRPORT_NOTE = 'O aeroporto ainda está em obras. Os jogos contra outros treinadores chegam mais tarde.';
 
 /** O que fica por baixo do mapa: a secretária, o próximo jogo e o que não tem edifício próprio. */
 /** O nome do jogo oficial desta semana: a jornada ou a ronda da taça. */
@@ -124,16 +123,16 @@ function tableRows(club: ClubState, table: readonly Standing[], division: number
 }
 
 /** O que muda na liga com este jogo, para o ecrã de resultado. */
-export function matchLeagueSummary(result: MatchResult, practice: boolean): string {
+export function matchLeagueSummary(result: MatchResult, practice: boolean, guest = false): string {
   const { club, round, confidenceDelta } = result;
   const won = confidenceDelta > 0;
   const delta = `<span class="${confidenceDelta >= 0 ? 'won' : 'lost'}">${confidenceDelta >= 0 ? '+' : ''}${confidenceDelta}%</span>`;
   const standing = club.seasonReport
     ? `${place(club.seasonReport.position)} no fim da época`
-    : result.series ? (result.series.decided ? (won ? `Série ganha por ${result.series.wins[0]}-${result.series.wins[1]}` : `Série perdida por ${result.series.wins[1]}-${result.series.wins[0]}`) : `Série em ${result.series.wins[0]}-${result.series.wins[1]}, há mais um jogo esta semana`) : result.cup ? (won ? `Seguimos na ${CUP_NAMES[result.cup]}` : `Eliminados da ${CUP_NAMES[result.cup]}`) : round ? `${place(leaguePosition(club))} na ${divisionName(club.division)}` : practice ? 'Jogo-treino, não conta para nada além das cartas' : 'Particular: não conta para a liga, só metade para a confiança';
+    : result.series ? (result.series.decided ? (won ? `Série ganha por ${result.series.wins[0]}-${result.series.wins[1]}` : `Série perdida por ${result.series.wins[1]}-${result.series.wins[0]}`) : `Série em ${result.series.wins[0]}-${result.series.wins[1]}, há mais um jogo esta semana`) : result.cup ? (won ? `Seguimos na ${CUP_NAMES[result.cup]}` : `Eliminados da ${CUP_NAMES[result.cup]}`) : round ? `${place(leaguePosition(club))} na ${divisionName(club.division)}` : practice ? 'Jogo-treino, não conta para nada além das cartas' : guest ? 'Amigável: não conta para a liga nem para a confiança' : 'Particular: não conta para a liga, só metade para a confiança';
   const others = (round ?? []).filter(f => f.home !== PLAYER_CLUB && f.away !== PLAYER_CLUB).map(f =>
     `<div class="round-row"><span class="name">${escapeHtml(club.clubs[f.home]!.name)}</span><b>${f.score![0]}-${f.score![1]}</b><span class="name right">${escapeHtml(club.clubs[f.away]!.name)}</span></div>`).join('');
-  return `<div class="league-line"><span>${standing}</span>${practice ? '' : `<span>Confiança ${delta}</span>`}</div>
+  return `<div class="league-line"><span>${standing}</span>${practice || guest ? '' : `<span>Confiança ${delta}</span>`}</div>
     ${others ? `<div class="section-head plain"><span>${result.cup ? 'Outros jogos da ronda' : 'Outros jogos da jornada'}</span></div>${others}` : ''}`;
 }
 
