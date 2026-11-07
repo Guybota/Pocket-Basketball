@@ -768,7 +768,9 @@ try {
       while (top > 0 && hits(top - 1)) top--;
       while (bottom < innerHeight - 1 && hits(bottom + 1)) bottom++;
       const height = bottom - top + 1;
-      if (height < 44) short.push(`${el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.className.split(' ')[0]}`} "${(el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 14) || el.getAttribute('aria-label') || ''}" ${height}px`);
+      // As linhas de lista ficam com 34 px, por decisão: mais jogadores à vista. Os outros alvos, 44 px.
+      const minimum = el.matches('.prow, .crow, .trow, .srow, .row, .optpick') ? 34 : 44;
+      if (height < minimum) short.push(`${el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.className.split(' ')[0]}`} "${(el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 14) || el.getAttribute('aria-label') || ''}" ${height}px`);
     }
     return [...new Set(short)];
   });
@@ -802,7 +804,7 @@ try {
   await small.waitForTimeout(600);
   await visit('jogo');
   check('Em 360x640, os ecrãs principais cabem na largura', smallFits.length === 0, smallFits.join(', '));
-  check('Em 360x640, os alvos de toque têm pelo menos 44 px de altura', smallTaps.length === 0, smallTaps.join(' | '));
+  check('Em 360x640, os alvos de toque têm pelo menos 44 px de altura (34 px nas linhas de lista)', smallTaps.length === 0, smallTaps.join(' | '));
   check('Em 360x640, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
   await reference.close();
 
