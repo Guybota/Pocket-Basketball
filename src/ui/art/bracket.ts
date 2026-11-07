@@ -24,7 +24,7 @@ const SLOT_H = 11;
 const SLOT_W = 44;
 
 // A letra do jogo só tem maiúsculas sem acentos.
-const plain = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const plain = (value: string): string => value.toUpperCase();
 
 const unknown = (): BracketSlot => ({ short: '', mine: false, score: '', winner: false });
 

@@ -26,7 +26,7 @@ const RUN_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
 const DRIBBLE_RUN_FRAMES: readonly PoseName[] = ['dribRun0', 'dribRun1', 'dribRun2', 'dribRun3'];
 const HOLD_RUN_FRAMES: readonly PoseName[] = ['holdRun0', 'holdRun1', 'holdRun2', 'holdRun3'];
 // A letra do jogo só tem maiúsculas sem acentos.
-const MOVE_LABELS: Record<MoveId, string> = { crossover: 'CROSSOVER', stepBack: 'STEP-BACK', alleyOop: 'ALLEY-OOP', powerDunk: 'AFUNDANCO', pickpocket: 'MAO RAPIDA' };
+const MOVE_LABELS: Record<MoveId, string> = { crossover: 'CROSSOVER', stepBack: 'STEP-BACK', alleyOop: 'ALLEY-OOP', powerDunk: 'AFUNDANÇO', pickpocket: 'MÃO RÁPIDA' };
 const STEP_BACK_TICKS = 5;
 // Uma substituição demora isto a andar entre o banco e a linha.
 const RUN_BANNERS = [8, 12, 16];
@@ -413,7 +413,7 @@ export class MatchView {
             if (dunk) this.crowdSay('!!!');
             else if (e.points === 3) this.crowdSay('QUE BOMBA!');
             else if (decisive) this.crowdSay('VAMOS!');
-          } else if (e.points === 3 || dunk) this.crowdSay('OH NAO...');
+          } else if (e.points === 3 || dunk) this.crowdSay('OH NÃO...');
           break;
         }
         case 'freeThrowMade':
@@ -436,7 +436,7 @@ export class MatchView {
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           callbacks.sound('block');
           callbacks.announce('Desarme!');
-          if (e.team === this.crowdTeam) this.crowdSay('NAO ENTRA!');
+          if (e.team === this.crowdTeam) this.crowdSay('NÃO ENTRA!');
           break;
         case 'rebound':
           // Apanhada no ar, de braços no ar; do chão, baixa-se a agarrá-la.
@@ -471,7 +471,7 @@ export class MatchView {
           // Quem fez a falta protesta, e o treinador dele também.
           if (body) this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
           this.coachUpsetUntil[e.team] = s.tick + 12;
-          if (e.team === this.crowdTeam) this.crowdSay('ARBITRO!');
+          if (e.team === this.crowdTeam) this.crowdSay('ÁRBITRO!');
           break;
         case 'periodEnd':
           callbacks.sound('buzzer');
@@ -487,7 +487,7 @@ export class MatchView {
           callbacks.sound('horn');
           callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
           this.refereeSignal(null);
-          if (e.team !== this.crowdTeam) this.crowdSay('ESTAO COM MEDO');
+          if (e.team !== this.crowdTeam) this.crowdSay('ESTÃO COM MEDO');
           break;
         case 'shotClockViolation':
           callbacks.sound('shotClockBuzzer');
@@ -533,7 +533,7 @@ export class MatchView {
           // Várias trocas na mesma paragem só dão um toque de buzzer.
           if (this.lastHornTick !== s.tick) {
             callbacks.sound('horn');
-            if (e.team === this.crowdTeam) this.crowdSay('EU TAMBEM O TIRAVA');
+            if (e.team === this.crowdTeam) this.crowdSay('EU TAMBÉM O TIRAVA');
           }
           this.lastHornTick = s.tick;
           break;
@@ -708,12 +708,11 @@ export class MatchView {
     g.fillRect(x, y, w, 44);
     g.fillStyle = '#f2c230';
     g.fillRect(x, y, w, 2);
-    text(g, 'PROGNOSTICO', x + ((w - textWidth('PROGNOSTICO', 1)) >> 1), y + 4, '#f2c230', 1);
+    text(g, 'PROGNÓSTICO', x + ((w - textWidth('PROGNÓSTICO', 1)) >> 1), y + 5, '#f2c230', 1);
     const ours = Math.round(forecast.ours * t);
     const theirs = Math.round((100 - forecast.ours) * t);
-    // A letra do jogo não tem o sinal de percentagem: as barras dizem o resto.
-    text(g, `${s.teams[0].short} ${ours}`, x + 6, y + 14, '#fbf6e2', 2);
-    const right = `${theirs} ${s.teams[1].short}`;
+    text(g, `${s.teams[0].short} ${ours}%`, x + 6, y + 14, '#fbf6e2', 2);
+    const right = `${theirs}% ${s.teams[1].short}`;
     text(g, right, x + w - 6 - textWidth(right, 2), y + 14, '#fbf6e2', 2);
     const barY = y + 32;
     const inner = w - 12;
@@ -1381,10 +1380,11 @@ export class MatchView {
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
       const y = Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age);
       g.fillStyle = '#1b2230';
-      g.fillRect(x - 1, y - 1, w + 2, 16);
+      // A caixa sobe 4 píxeis acima do texto para caberem os acentos.
+      g.fillRect(x - 1, y - 5, w + 2, 20);
       g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
       g.fillStyle = '#fbf6e2';
-      g.fillRect(x, y, w, 14);
+      g.fillRect(x, y - 4, w, 18);
       g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
       text(g, b.label, x + 4, y + 2, '#1b2230', 2);
     }
@@ -1452,7 +1452,7 @@ export class MatchView {
     return true;
   }
 
-  /** Os nomes por cima de quem foi tocado. A letra do jogo só tem maiúsculas sem acentos. */
+  /** Os nomes por cima de quem foi tocado. */
   private drawNameTags(alpha: number): void {
     const { g, s, camera } = this;
     for (const [b, view] of this.views) {
@@ -1464,7 +1464,7 @@ export class MatchView {
       }
       const prev = this.view(b).prev;
       const [x, y] = camera.project(prev.x + (b.x - prev.x) * alpha, prev.y + (b.y - prev.y) * alpha);
-      const label = b.player.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+      const label = b.player.name.toUpperCase();
       const w = textWidth(label, 1) + 4;
       const left = Math.max(1, Math.min(camera.width - w - 1, (x | 0) - (w >> 1)));
       const top = Math.max(1, (y | 0) - spriteHeight(this.view(b).look) - 12);
