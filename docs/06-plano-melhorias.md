@@ -257,3 +257,12 @@ O determinismo está bem: gerador exato, só funções matemáticas exatas, orde
 | H | Todos | — | — |
 | I | Todos, incluindo os refactors I8–I10 | — | — |
 | J | — | Adiado | — |
+
+## Estado (7 de novembro de 2026, fim do dia)
+
+- **Feito:** A (todos); B1–B7; D1, D2, D4, D5, D8; E3 (só a parte dos separadores; a barra do treinador fica só com ícones, a pedido); G2; H2; I1–I10; I11 em parte.
+- **Bug encontrado pelo caminho:** os clubes da versão 1 nunca abriam (corrigido, com saves reais de 9 versões em `src/ui/saves/`).
+- **Bug encontrado pelo caminho:** o modo offline não servia os ficheiros do jogo (o `Vary` impedia a cópia de servir); corrigido.
+- **Fica de fora do I11:** a escala inteira em janelas de computador com menos de 360 px (pediria layouts mais estreitos do que 360).
+- **Instável:** no `browser-check`, a espera por uma carta a 8× pode passar dos 60 s com a máquina ocupada.
+- **Por fazer (aprovado):** D6, D10, D11; E1, E2, E4–E12, E14, E15; F1–F5, F15, F17; G1, G3–G8; H1, H3, H4.
