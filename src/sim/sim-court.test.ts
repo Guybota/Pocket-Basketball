@@ -9,13 +9,7 @@ import { makeRng, next, weightedIndex } from './rng.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
 import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
-
-const home = generateTeam(1, 'Vilar BC', 55);
-const away = generateTeam(2, 'Ribeirinha BC', 55);
-const flat = (value: number): Attributes => ({
-  shooting: value, speed: value, stamina: value, technique: value, strength: value, jumping: value, willpower: value,
-});
-
+import { away, flat, home } from './test-teams.ts';
 
 describe('ressaltos', () => {
   /** Para cada ressalto de jogos reais: a altura máxima da bola e onde estava quando começou. */
