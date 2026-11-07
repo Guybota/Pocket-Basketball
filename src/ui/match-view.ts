@@ -9,6 +9,7 @@ import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
+import { crowdLine, type CrowdMood } from './crowd.ts';
 import {
   drawBall,
   drawCarrierArrow,
@@ -160,6 +161,9 @@ export class MatchView {
   private readonly floaters: Floater[] = [];
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
+  // Quantas frases de cada contexto já se disseram, para a bancada não se repetir.
+  private readonly crowdSaid = new Map<CrowdMood, number>();
+  private readonly crowdSeed: number;
   // O público, como no original: bonecos em filas na bancada, sentados, que se levantam nos momentos especiais. Os balões saem deles.
   private readonly fans: { x: number; y: number; z: number; look: Look; phase: number; flip: boolean; flag: boolean; front: boolean; zeal: number }[] = [];
   private readonly flagColor: string;
@@ -212,6 +216,7 @@ export class MatchView {
 
   constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem) {
     this.ownEmblem = ownEmblem;
+    this.crowdSeed = seed;
     this.periods = division === CLOSED_GYM ? 2 : 4;
     this.g = g;
     this.callbacks = callbacks;
@@ -350,11 +355,28 @@ export class MatchView {
   }
 
   /** Um adepto à vista diz qualquer coisa. Num pavilhão sem público, ninguém diz nada. */
-  private crowdSay(label: string): void {
+  private crowdSay(mood: CrowdMood): void {
     const { s, camera } = this;
+    const n = this.crowdSaid.get(mood) ?? 0;
+    this.crowdSaid.set(mood, n + 1);
+    const label = crowdLine(mood, this.crowdSeed, n);
     const near = this.fans.map((f, i) => i).filter(i => this.fans[i]!.front && Math.abs(this.fans[i]!.x - camera.lookX) < 5.5);
     if (near.length === 0) return;
     this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: s.tick });
+  }
+
+  /** Pontos de avanço da casa: a bancada muda de tom quando o jogo está decidido ou por um fio. */
+  private get crowdLead(): number {
+    return this.s.score[this.crowdTeam] - this.s.score[this.crowdTeam === 0 ? 1 : 0];
+  }
+
+  private get crowdTense(): boolean {
+    return this.s.period >= 4 && this.s.clock <= seconds(60) && Math.abs(this.crowdLead) <= 3;
+  }
+
+  /** Uma vez em cada `every` momentos parecidos, para os balões não taparem o jogo. Depende só do tempo de jogo. */
+  private crowdChance(every: number): boolean {
+    return (this.s.tick * 2654435761 >>> 0) % every === 0;
   }
 
   /** Os adeptos festejam ou baixam a cabeça durante uns instantes. `level` diz quantos se levantam: 0,3 é um cesto
@@ -425,10 +447,13 @@ export class MatchView {
             this.coachUpsetUntil[e.team === 0 ? 1 : 0] = s.tick + 16;
           }
           if (e.team === this.crowdTeam) {
-            if (dunk) this.crowdSay('!!!');
-            else if (e.points === 3) this.crowdSay('QUE BOMBA!');
-            else if (decisive) this.crowdSay('VAMOS!');
-          } else if (e.points === 3 || dunk) this.crowdSay('OH NÃO...');
+            if (dunk) this.crowdSay('dunk');
+            else if (decisive || this.crowdTense) this.crowdSay('close');
+            else if (e.points === 3) this.crowdSay('three');
+            else if (this.crowdLead >= 15 && this.crowdChance(2)) this.crowdSay('bigLead');
+          } else if (this.crowdTense) this.crowdSay('close');
+          else if (this.crowdLead <= -15 && (e.points === 3 || dunk || this.crowdChance(2))) this.crowdSay('bigDeficit');
+          else if (e.points === 3 || dunk) this.crowdSay('rivalBig');
           break;
         }
         case 'freeThrowMade':
@@ -440,9 +465,11 @@ export class MatchView {
           break;
         case 'missed':
           callbacks.sound('rim');
+          if (e.team !== this.crowdTeam && this.crowdChance(3)) this.crowdSay('miss');
           break;
         case 'freeThrowMissed':
           callbacks.sound('rim');
+          if (e.team !== this.crowdTeam && this.crowdChance(2)) this.crowdSay('miss');
           if (body) this.view(body).override = { pose: 'slump', until: s.tick + 10 };
           break;
         case 'block':
@@ -451,7 +478,7 @@ export class MatchView {
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           callbacks.sound('block');
           callbacks.announce('Desarme!');
-          if (e.team === this.crowdTeam) this.crowdSay('NÃO ENTRA!');
+          if (e.team === this.crowdTeam) this.crowdSay('miss');
           break;
         case 'rebound':
           // Apanhada no ar, de braços no ar; do chão, baixa-se a agarrá-la.
@@ -472,6 +499,7 @@ export class MatchView {
           callbacks.sound('whistle');
           this.tip = { a: s.jump!.a, b: s.jump!.b, start: s.tick, total: s.jump!.total };
           this.refereeSignal(null, 8);
+          this.crowdSay(this.street ? 'street' : this.s.visitor === 0 ? 'away' : 'home');
           break;
         case 'bump':
           if (e.hard) {
@@ -486,23 +514,25 @@ export class MatchView {
           // Quem fez a falta protesta, e o treinador dele também.
           if (body) this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
           this.coachUpsetUntil[e.team] = s.tick + 12;
-          if (e.team === this.crowdTeam) this.crowdSay('ÁRBITRO!');
+          if (e.team === this.crowdTeam) this.crowdSay('foul');
           break;
         case 'periodEnd':
           callbacks.sound('buzzer');
           this.refereeSignal(null);
+          // No fim do último período quem fala é o apito final.
+          if (s.period < 4) this.crowdSay(this.street ? 'street' : this.crowdLead >= 15 ? 'bigLead' : this.crowdLead <= -15 ? 'bigDeficit' : this.s.visitor === 0 ? 'away' : 'home');
           break;
         case 'end':
           this.excitedUntil = s.tick + 100000;
           this.fansReact(s.score[this.crowdTeam] > s.score[this.crowdTeam === 0 ? 1 : 0], 100000);
-          this.crowdSay(s.score[this.crowdTeam] > s.score[this.crowdTeam === 0 ? 1 : 0] ? 'QUE EQUIPA!' : 'PARA CASA...');
+          this.crowdSay(this.crowdLead > 0 ? 'endWin' : 'endLoss');
           break;
         case 'timeout':
           callbacks.sound('whistle');
           callbacks.sound('horn');
           callbacks.announce(`Desconto: ${s.teams[e.team].short}`);
           this.refereeSignal(null);
-          if (e.team !== this.crowdTeam) this.crowdSay('ESTÃO COM MEDO');
+          if (e.team !== this.crowdTeam) this.crowdSay('timeout');
           break;
         case 'shotClockViolation':
           callbacks.sound('shotClockBuzzer');
@@ -548,7 +578,7 @@ export class MatchView {
           // Várias trocas na mesma paragem só dão um toque de buzzer.
           if (this.lastHornTick !== s.tick) {
             callbacks.sound('horn');
-            if (e.team === this.crowdTeam) this.crowdSay('EU TAMBÉM O TIRAVA');
+            if (e.team === this.crowdTeam) this.crowdSay('sub');
           }
           this.lastHornTick = s.tick;
           break;
@@ -669,7 +699,7 @@ export class MatchView {
       if (previousRun < threshold && this.run.points >= threshold) {
         this.callbacks.announce(`Parcial de ${this.run.points}-0!`);
         this.callbacks.sound('bigCheer');
-        if (e.team === this.crowdTeam) this.crowdSay('VAMOS!');
+        if (e.team === this.crowdTeam) this.crowdSay('run');
       }
     }
   }
