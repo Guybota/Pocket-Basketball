@@ -1,4 +1,3 @@
-/// <reference types="vite/client" />
 import { matchHash } from '../sim/hash.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { clockIcon, controlIcon, subsIcon } from './art/icons.ts';
@@ -6,7 +5,6 @@ import { cancelSubstitution, holdMatch, isSprinting, queueSubstitution, resumeMa
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
-import type { Tactics } from '../sim/types.ts';
 import { cardImage } from './art/cards.ts';
 import { CLOSED_GYM } from './art/court.ts';
 import { emblemImage, isLight } from './art/kit.ts';
@@ -14,42 +12,32 @@ import { lookOf } from './art/sprites.ts';
 import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio } from './audio.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
-import { PLAYER_CLUB, activeKit, aiTeam, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, parseClub, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
-import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openOffers, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
+import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
-import { clubIdentity, kitAgainst } from './art/identity.ts';
+import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
 import { AIRPORT_NOTE, TOWER_NOTE, careerTopStats, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
-import { clockText } from './narrate.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
-import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, slotCode, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
+import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
 import { portraitImage } from './art/portrait.ts';
+import { TICKS_PER_SECOND } from '../sim/court.ts';
+import { createDemo } from './demo.ts';
+import { createHud } from './hud.ts';
+import { createIdleResume } from './idle.ts';
+import { createLayout, type Stage } from './layout.ts';
+import { initPwa } from './pwa.ts';
+import { exportClub, importClub, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
+import { initTouch } from './touch.ts';
 
-const TICKS_PER_SECOND = 20;
+const DROP_TICKS = 50;
 const MAX_STEPS_PER_FRAME = 40;
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
-const LANDSCAPE_MIN_RATIO = 1.2;
-// Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
-const MATCH_MIN_RATIO = 1.1;
-const LANDSCAPE_PANEL_WIDTH = 360;
-// Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
-const LANDSCAPE_ART_HEIGHT = 290;
-// A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
-const LANDSCAPE_TOWN_HEIGHT = 360;
-// O que fica por baixo do mapa, no telemóvel: a secretária, o próximo jogo e dois botões.
-// Os menus têm uma ficha ou uma cena por cima, e essas precisam de mais altura do que o campo.
-const MENU_STAGE_WIDTH = 360;
-const MENU_STAGE_HEIGHT = 270;
 // Quanto o painel do ecrã aberto precisa, na vertical, quando ele pede a parte de cima mais alta (0 é o normal).
 let menuPanel = 0;
-// O que o painel do título precisa, na vertical: o logótipo, os botões e a frase.
-const TITLE_PANEL_HEIGHT = 300;
-const MATCH_STAGE_HEIGHT = 216;
-const SAVE_KEY = 'pocket-basketball-clube';
-const DROP_TICKS = 50;
 
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const game = element<HTMLDivElement>('game');
@@ -57,7 +45,8 @@ const screen_ = element<HTMLDivElement>('screen');
 const canvas = element<HTMLCanvasElement>('court');
 const panel = element<HTMLDivElement>('panel');
 const banner = element<HTMLDivElement>('banner');
-const hud = element<HTMLDivElement>('hud');
+const hudElement = element<HTMLDivElement>('hud');
+const hud = createHud(hudElement);
 const context = canvas.getContext('2d')!;
 
 const audio = new GameAudio();
@@ -71,18 +60,15 @@ const testSeed = paramInt('semente');
 // Só para a verificação automática poder ver os outros pavilhões. Um clube a sério começa sempre na última divisão.
 const testDivision = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisao') ?? 0));
 let club: ClubState | null = null;
-// A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si.
-let stage: 'town' | 'title' | 'menu' | 'match' = 'title';
+let stage: Stage = 'title';
 // Na horizontal, o resultado do jogo abre numa janela ao centro, com o campo a ocupar o ecrã todo por trás.
 let resultOpen = false;
 let townClock: number | null = null;
-let topSize: readonly [number, number] = [MENU_STAGE_WIDTH, MENU_STAGE_HEIGHT];
 let gameKind: GameKind = 'official';
 let rivalOf = 0;
 let halfShown = false;
 let halfSubsOpen = false;
-let saveFailed = false;
-let saveUnreadable = false;
+const saveStatus: SaveStatus = { failed: false, unreadable: false };
 let view: MatchView | undefined;
 let dropRng: Rng = makeRng(0);
 let found: CardId[] = [];
@@ -104,7 +90,6 @@ let bannerUntil = 0;
 let renderMs = 0;
 let renderCount = 0;
 let finished = false;
-let hudText = '';
 let pointerDown = false;
 let cardBody: Body | null = null;
 let subsOpen = false;
@@ -119,36 +104,17 @@ let breakAnnounced = 0;
 let holdTouched = false;
 // A opção de ataque que se está a escolher no painel de táticas do jogo.
 let optionPicking: number | null = null;
-// Num desconto ou ao intervalo, sem ninguém tocar em nada durante 30 s, o jogo continua sozinho.
-const IDLE_RESUME_MS = 30_000;
-let idleTimer = 0;
-let idleResume: (() => void) | null = null;
-function resumeAfterIdle(resume: () => void): void {
-  clearTimeout(idleTimer);
-  idleResume = resume;
-  idleTimer = window.setTimeout(() => {
-    idleResume = null;
-    resume();
-  }, IDLE_RESUME_MS);
-}
-function clearIdle(): void {
-  clearTimeout(idleTimer);
-  idleResume = null;
-}
+const idle = createIdleResume();
 // A apresentação antes do jogo, a cena do fim, e a repetição do lance decisivo.
 let introTimer = 0;
 let endAt = 0;
 let resultHtml = '';
 let replay: MatchView | undefined;
-// O jogo de demonstração do ecrã de título, quando ninguém toca durante uns segundos.
-let demo: MatchView | undefined;
-let demoTimer = 0;
-let demoAccumulator = 0;
-const DEMO_AFTER_MS = 8000;
 let replayUntil = 0;
 let replayAccumulator = 0;
 const REPLAY_SPEED = 0.5;
 const townExtras = newClub(1);
+const demo = createDemo(context, () => club ?? townExtras, () => stage === 'title');
 const soundsPlayed = new Set<Sound>();
 const announced = new Set<string>();
 
@@ -169,152 +135,30 @@ screen_.append(drop);
 
 // Com ?semente= é um clube de ensaio, para a verificação automática nunca mexer no clube a sério.
 function saveClub(): void {
-  if (testSeed !== null) return;
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(club));
-    saveFailed = false;
-  } catch {
-    saveFailed = true;
-  }
+  if (testSeed === null) writeClub(club, saveStatus);
 }
 
-function loadClub(): ClubState | null {
-  try {
-    const text = localStorage.getItem(SAVE_KEY);
-    const loaded = parseClub(text);
-    saveUnreadable = text !== null && loaded === null;
-    return loaded;
-  } catch {
-    saveFailed = true;
-    return null;
-  }
-}
-
-function setCanvasSize(width: number, height: number, cssWidth: number, cssHeight: number): void {
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
+const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud: hudElement, topUi }, {
+  canvasResized: () => {
     view?.resize();
-    demo?.resize();
-  }
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssHeight}px`;
-  context.imageSmoothingEnabled = false;
-}
-
-/** Na vertical, os dois ecrãs empilham-se. Na horizontal, o campo fica ao lado do painel. */
-// A altura da janela sem o teclado do telemóvel. Enquanto se escreve num campo de texto, o teclado tira metade da altura:
-// medir aí encolhia o jogo todo, e ficava encolhido depois de o teclado fechar, porque nem sempre vem um aviso de mudança.
-let stableHeight = innerHeight;
-let stableWidth = innerWidth;
-const typing = (): boolean => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
-function windowHeight(): number {
-  // Rodar o telemóvel muda a largura: aí a altura guardada já não vale, mesmo com o teclado aberto.
-  if (!typing() || innerWidth !== stableWidth) {
-    stableHeight = innerHeight;
-    stableWidth = innerWidth;
-  }
-  return Math.max(innerHeight, stableHeight);
-}
-
-// Instalado no ecrã inicial do iPhone, a faixa que o sistema desfoca no topo é mais alta do que a barra de estado.
-if ((navigator as Navigator & { standalone?: boolean }).standalone === true) document.documentElement.style.setProperty('--top-extra', '24px');
+    demo.resize();
+  },
+  topResized: menusResized,
+});
 
 function fit(): void {
-  const landscape = innerWidth / windowHeight() >= LANDSCAPE_MIN_RATIO;
-  // No telemóvel ao alto, a barra de estado fica por cima da página: o jogo começa abaixo dela, senão o marcador ficava
-  // debaixo do desfoque do sistema.
-  game.classList.toggle('landscape', landscape);
-  document.body.classList.toggle('landscape', landscape);
-  const safeTop = landscape ? 0 : parseFloat(getComputedStyle(document.body).paddingTop) || 0;
-  const viewHeight = windowHeight() - safeTop;
-  const dpr = devicePixelRatio || 1;
-  // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
-  game.classList.toggle('result-open', resultOpen && stage === 'match');
-  const centred = landscape && resultOpen && stage === 'match';
-  if (landscape) {
-    // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
-    const ui = viewHeight < 600 ? Math.max(0.7, viewHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 1000) / 4, Math.floor((viewHeight * 4) / 540) / 4));
-    // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
-    const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
-    const stageWidth = innerWidth - panelWidth;
-    const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
-    // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
-    // No jogo, a altura lógica é a da vertical, para a câmara e os bonecos ficarem iguais nos dois esquemas.
-    const scale = stage === 'town' || stage === 'title'
-      ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
-      : Math.ceil((stageHeight * dpr) / (stage === 'match' ? MATCH_STAGE_HEIGHT : LANDSCAPE_ART_HEIGHT)) / dpr;
-    const width = Math.ceil(stageWidth / scale);
-    const height = Math.ceil(stageHeight / scale);
-    setCanvasSize(width, height, width * scale, height * scale);
-    // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
-    const bar = Math.max(0, (viewHeight - height * scale) / 2);
-    canvas.style.marginTop = `${bar}px`;
-    hud.style.top = `${bar}px`;
-    hud.style.bottom = `${bar}px`;
-    game.style.zoom = '';
-    game.style.height = '';
-    game.style.width = '';
-    screen_.style.width = `${stageWidth}px`;
-    screen_.style.height = `${viewHeight}px`;
-    panel.style.zoom = String(ui);
-    panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : LANDSCAPE_PANEL_WIDTH}px`;
-    panel.style.height = centred ? '' : `${viewHeight / ui}px`;
-    panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
-    screen_.style.setProperty('--hud-zoom', String(ui));
-    const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
-    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom);
-  } else {
-    const available = Math.min(innerWidth / 360, viewHeight / 640);
-    const scale = Math.max(1, Math.floor(available * dpr)) / dpr;
-    const finalScale = Math.min(scale, Math.max(available, 0.5));
-    const gameHeight = Math.max(640, viewHeight / finalScale);
-    // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
-    const menuHeight = menuPanel > 0 ? Math.max(MENU_STAGE_HEIGHT, Math.floor(gameHeight - menuPanel)) : MENU_STAGE_HEIGHT;
-    // No título, a cidade fica com o que o logótipo e os botões não usam.
-    const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
-    const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
-    // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
-    const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
-    setCanvasSize(gameWidth, stageHeight, gameWidth, stageHeight);
-    canvas.style.marginTop = '';
-    hud.style.top = '';
-    hud.style.bottom = '';
-    game.style.zoom = String(finalScale);
-    game.style.height = `${gameHeight}px`;
-    game.style.width = gameWidth === 360 ? '' : `${gameWidth}px`;
-    screen_.style.width = `${gameWidth}px`;
-    screen_.style.height = `${stageHeight}px`;
-    panel.style.zoom = '';
-    panel.style.width = '';
-    panel.style.height = '';
-    panel.style.maxHeight = '';
-    screen_.style.setProperty('--hud-zoom', '1');
-    setTopSize(gameWidth, stageHeight, 1);
-  }
+  layout.fit({ stage, resultOpen, menuPanel });
   if (stage === 'town' && club) placeTownUi();
 }
 
-function setTopSize(width: number, height: number, zoom: number): void {
-  topUi.style.width = `${width}px`;
-  topUi.style.height = `${height}px`;
-  screen_.style.setProperty('--top-zoom', String(zoom));
-  if (topSize[0] === width && topSize[1] === height) return;
-  topSize = [width, height];
-  menusResized();
-}
-
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
-function setStage(next: typeof stage): void {
+function setStage(next: Stage): void {
   stage = next;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
   resultOpen = false;
-  if (next !== 'match' && next !== 'menu') clearIdle();
-  if (next !== 'title') {
-    clearTimeout(demoTimer);
-    demo = undefined;
-  }
+  if (next !== 'match' && next !== 'menu') idle.clear();
+  if (next !== 'title') demo.stop();
   if (next === 'town' || next === 'title') audio.music('town');
   // Durante o jogo não há música: ouve-se o pavilhão.
   else if (next === 'match') audio.music('none');
@@ -342,68 +186,30 @@ canvas.addEventListener('click', event => {
   if (place) document.getElementById(chips[place])?.click();
 });
 
-/** Guarda o clube num ficheiro. No telemóvel abre a folha de partilha, para o ficheiro poder ir para Ficheiros ou para outro aparelho. */
-function exportClub(): void {
-  const current = club!;
-  const name = `pocket-basketball-${current.team.short.replace(/[^\w-]/g, '') || 'clube'}-epoca-${current.season}.json`;
-  const file = new File([JSON.stringify(current)], name, { type: 'application/json' });
-  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
-    navigator.share({ files: [file] }).catch(() => {});
-    return;
-  }
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(file);
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-}
-
-/** Lê um clube de um ficheiro exportado. Passa pelas mesmas verificações e conversões que o clube guardado. */
-function importClub(): void {
-  // No iPad, o ficheiro escolhido só chega ao jogo se o campo estiver na página. Sem filtro de tipo, porque o iOS
-  // às vezes deixa os .json a cinzento; o parseClub recusa o que não for um clube.
-  document.getElementById('importFile')?.remove();
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.id = 'importFile';
-  input.hidden = true;
-  document.body.append(input);
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    input.remove();
-    if (!file) return;
-    const loaded = parseClub(await file.text().catch(() => null));
-    if (!loaded) {
-      alert('Este ficheiro não tem um clube que o jogo consiga ler.');
-      return;
-    }
-    const question = club
-      ? `Substituir ${club.team.name}, época ${club.season}, por ${loaded.team.name}, época ${loaded.season}? O clube atual perde-se, a não ser que o tenhas exportado.`
-      : saveUnreadable ? `O clube guardado que não se consegue ler vai ser substituído por ${loaded.team.name}. Continuar?` : null;
-    if (question && !confirm(question)) return;
+function importFile(): void {
+  importClub(() => club, saveStatus, loaded => {
     club = loaded;
-    saveUnreadable = false;
+    saveStatus.unreadable = false;
     saveClub();
     applyClubColors();
     showClub();
   });
-  input.click();
 }
 
 function placeTownUi(): void {
   const current = club!;
-  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveFailed);
+  townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveStatus.failed);
   const note = (text: string): void => {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
   };
   element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => {
-    note(saveFailed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
+    note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
     if (document.getElementById('exportBtn')) return;
     document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button></div>');
-    element('exportBtn').addEventListener('click', exportClub);
-    element('importBtn').addEventListener('click', importClub);
+    element('exportBtn').addEventListener('click', () => exportClub(club!));
+    element('importBtn').addEventListener('click', importFile);
   });
   element('airportChip').addEventListener('click', () => note(AIRPORT_NOTE));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));
@@ -468,7 +274,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   breakAnnounced = 0;
   audio.setVenue(kind === 'practice' ? 0 : current.division);
   banner.hidden = true;
-  hudText = '';
+  hud.reset();
   endAt = 0;
   replay = undefined;
 }
@@ -502,7 +308,7 @@ function showNewClub(): void {
   setStage('title');
   panel.innerHTML = `<div class="start">
     <h1><img src="${ballLogo()}" alt=""><span>Pocket<br>Basketball</span></h1>
-    ${saveUnreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
+    ${saveStatus.unreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
     ${club ? `<button type="button" class="primary" id="continueBtn">Continuar · ${escapeHtml(club.team.short)}</button>` : ''}
     <button type="button" class="${club ? 'quiet' : 'primary'}" id="newClubBtn">Criar clube</button>
     <button type="button" class="quiet" id="importBtn">Importar clube</button>
@@ -512,19 +318,18 @@ function showNewClub(): void {
     audio.unlock();
     showClub();
   });
-  clearTimeout(demoTimer);
-  demoTimer = window.setTimeout(startDemo, DEMO_AFTER_MS);
-  element('importBtn').addEventListener('click', importClub);
+  demo.schedule();
+  element('importBtn').addEventListener('click', importFile);
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
     // Depois de um despedimento o clube já está perdido: não há nada a confirmar.
     const question = club && !club.fired
       ? `Criar um clube novo apaga ${club.team.name}, época ${club.season}. Exporta-o primeiro na Torre se o quiseres guardar. Continuar?`
-      : saveUnreadable ? 'O clube guardado que não se consegue ler vai ser apagado. Continuar?' : null;
+      : saveStatus.unreadable ? 'O clube guardado que não se consegue ler vai ser apagado. Continuar?' : null;
     if (question && !confirm(question)) return;
     // Os troféus são do treinador, por isso acompanham-no para o clube novo.
     club = newClub(newSeed(), 0, club ? careerOf(club) : []);
-    saveUnreadable = false;
+    saveStatus.unreadable = false;
     saveClub();
     applyClubColors();
     openCreate();
@@ -555,21 +360,6 @@ function showClub(): void {
   drop.hidden = true;
   panel.innerHTML = '';
   setStage('town');
-}
-
-/** Sem ninguém a tocar, o título mostra um jogo entre dois clubes da divisão de cima, como uma máquina de arcada. */
-function startDemo(): void {
-  if (stage !== 'title') return;
-  const source = club ?? townExtras;
-  const top = source.divisions[DIVISIONS.length - 1]!;
-  const seed = Math.floor(Date.now() / 1000) & 0x7fffffff;
-  const home = source.clubs[top[seed % top.length]!]!;
-  const away = source.clubs[top[(seed + 1) % top.length]!]!;
-  const quiet = { announce: () => {}, event: () => {}, sound: () => {} };
-  const homeKit = clubIdentity(home.name).kits[0];
-  demo = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, homeKit, undefined, clubColor(home), 0.7, kitAgainst(away.name, homeKit), clubIdentity(home.name).emblem);
-  demo.snapCamera();
-  demoAccumulator = 0;
 }
 
 /** A cor do pavilhão: quem joga em casa pinta o campo e enche a bancada. */
@@ -750,7 +540,7 @@ function closeSubs(): void {
   }
   // Numa paragem, Continuar é um comando do treinador: a paragem acaba no passo seguinte.
   if (holdOpen(view!.s)) resumeMatch(view!.s, 0);
-  clearIdle();
+  idle.clear();
   showMatch();
 }
 
@@ -963,12 +753,12 @@ function showHalfTime(): void {
   banner.hidden = true;
   drop.hidden = true;
   openHalf(gameKind, rivalOf);
-  resumeAfterIdle(secondHalf);
+  idle.start(secondHalf);
 }
 
 function secondHalf(): void {
   const current = view!;
-  clearIdle();
+  idle.clear();
   halfSubsOpen = false;
   subsOpen = false;
   closeMenus();
@@ -1003,29 +793,6 @@ function showResult(): void {
   audio.music(score[0] > score[1] ? 'win' : 'loss');
   resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice')}`);
   showResultPanel();
-}
-
-/** O marcador é HTML: a letra fica nítida a qualquer tamanho e só muda quando algo muda. */
-function updateHud(): void {
-  const { s } = view!;
-  const carrier = view!.carrier();
-  const period = s.period <= 4 ? `P${s.period}` : 'PR';
-  const shotClock = s.phase === 'live' || s.phase === 'pass' ? Math.max(0, Math.ceil(s.shotClock / TICKS_PER_SECOND)) : null;
-  const carrierName = carrier ? carrier.player.name : '';
-  const carrierPos = carrier ? slotCode(carrier.slot) : '';
-  const next = [s.score[0], s.score[1], period, clockText(s.clock), shotClock, carrierName, carrier?.team, s.teams[0].short, s.teams[1].short].join('|');
-  if (next === hudText) return;
-  hudText = next;
-  const urgent = shotClock !== null && shotClock <= 3;
-  hud.innerHTML = `<div class="scorebug">
-      <span class="side team-0"><img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(club!.emblem)}">${escapeHtml(s.teams[0].short)}</span>
-      <b class="points">${s.score[0]}</b>
-      <span class="time"><small>${period}</small>${clockText(s.clock)}</span>
-      <b class="points">${s.score[1]}</b>
-      <span class="side team-1">${escapeHtml(s.teams[1].short)}<img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(clubIdentity(s.teams[1].name).emblem)}"></span>
-      <span class="shot-clock${urgent ? ' urgent' : ''}">${shotClock ?? '-'}</span>
-    </div>
-    ${carrier ? `<div class="carrier team-${carrier.team}"><i></i><span>${carrierPos}</span><b>${escapeHtml(carrierName)}</b></div>` : ''}`;
 }
 
 function frame(now: number): void {
@@ -1092,7 +859,7 @@ function frame(now: number): void {
   if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
   if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();
-  hud.hidden = stage !== 'match' || replay !== undefined;
+  hudElement.hidden = stage !== 'match' || replay !== undefined;
   if (replay) {
     replayAccumulator += Math.min(0.5, rawElapsed) * REPLAY_SPEED * TICKS_PER_SECOND;
     while (replayAccumulator >= 1 && replay.s.tick < replayUntil && replay.s.phase !== 'end') {
@@ -1101,14 +868,8 @@ function frame(now: number): void {
     }
     if (replay.s.tick >= replayUntil || replay.s.phase === 'end') endReplay();
     else replay.render(Math.min(1, replayAccumulator), elapsed * REPLAY_SPEED);
-  } else if (demo) {
-    demoAccumulator += elapsed * TICKS_PER_SECOND;
-    while (demoAccumulator >= 1 && demo.s.phase !== 'end') {
-      demo.stepSim();
-      demoAccumulator -= 1;
-    }
-    if (demo.s.phase === 'end') startDemo();
-    else demo.render(Math.min(1, demoAccumulator), elapsed);
+  } else if (demo.frame(elapsed)) {
+    // A demonstração do título já se desenhou.
   } else if ((stage === 'town' || stage === 'title' || stage === 'menu') && now - lastStillDraw < STILL_FRAME_MS) {
     // A cidade e as cenas dos menus mexem-se devagar: 30 imagens por segundo chegam, e poupam a bateria.
   } else if (stage === 'town' || stage === 'title') {
@@ -1131,7 +892,7 @@ function frame(now: number): void {
   } else if (current) {
     // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
     current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
-    updateHud();
+    hud.update(current, club!.emblem);
   }
   renderMs += performance.now() - start;
   renderCount++;
@@ -1150,7 +911,7 @@ initMenus({
     applyClubColors();
     saveClub();
   },
-  topSize: () => topSize,
+  topSize: layout.topSize,
   tallTop: panelNeed => {
     if (menuPanel === panelNeed) return;
     menuPanel = panelNeed;
@@ -1172,7 +933,7 @@ window.visualViewport?.addEventListener('resize', fit);
 addEventListener('focusout', () => window.setTimeout(fit, 400));
 fit();
 // O clube de ensaio começa já na primeira jornada, a não ser que a morada diga a semana.
-club = testSeed !== null ? { ...newClub(testSeed, testDivision), week: paramInt('semana') ?? PRESEASON_WEEKS + 1 } : loadClub();
+club = testSeed !== null ? { ...newClub(testSeed, testDivision), week: paramInt('semana') ?? PRESEASON_WEEKS + 1 } : readClub(saveStatus);
 // Com semente na morada, a verificação automática entra logo na cidade; o título vê-se no fluxo sem clube.
 if (club && testSeed !== null) showClub();
 else showNewClub();
@@ -1258,7 +1019,7 @@ Object.assign(window, {
       announced: [...announced],
       canvas: { width: canvas.width, height: canvas.height },
       replay: replay ? { tick: replay.s.tick, until: replayUntil, phase: replay.s.phase } : null,
-      demo: demo ? demo.s.tick : null,
+      demo: demo.tick(),
       ball: view ? { ...view.s.ball } : null,
       tactics: view ? { ...view.s.tactics[0] } : null,
     }),
@@ -1302,73 +1063,8 @@ Object.assign(window, {
   },
 });
 
-// Num tablet, segurar o dedo numa imagem abria o menu do sistema. Aqui segura-se para ler o que é.
-const tip = document.createElement('div');
-tip.id = 'tip';
-tip.hidden = true;
-document.body.append(tip);
-let tipTimer = 0;
-const hideTip = (): void => {
-  clearTimeout(tipTimer);
-  tip.hidden = true;
-};
-// O Safari do iPhone e do iPad ignora o user-scalable: os gestos de zoom têm de ser travados aqui.
-for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, event => event.preventDefault(), { passive: false });
-document.addEventListener('touchmove', event => {
-  if (event.touches.length > 1) event.preventDefault();
-}, { passive: false });
-let lastTouchEnd = 0;
-document.addEventListener('touchend', event => {
-  // Dois toques seguidos não fazem zoom; o segundo toque continua a contar como clique.
-  const now = Date.now();
-  if (now - lastTouchEnd < 300 && (event.target as HTMLElement).closest('button, canvas, a') === null) event.preventDefault();
-  lastTouchEnd = now;
-}, { passive: false });
-document.addEventListener('contextmenu', event => {
-  if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
-});
-document.addEventListener('pointerdown', event => {
-  if (idleResume) resumeAfterIdle(idleResume);
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[title], img[alt], [aria-label]');
-  hideTip();
-  if (!target) return;
-  const label = target.getAttribute('title') || target.getAttribute('aria-label') || (target as HTMLImageElement).alt;
-  if (!label) return;
-  tipTimer = window.setTimeout(() => {
-    tip.textContent = label;
-    tip.hidden = false;
-    const box = target.getBoundingClientRect();
-    tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, box.left + box.width / 2 - tip.offsetWidth / 2))}px`;
-    tip.style.top = `${Math.max(4, box.top - tip.offsetHeight - 6)}px`;
-  }, 450);
-});
-for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);
+initTouch();
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
-// Modo offline: só no jogo publicado, porque no `npm run dev` a cache atrapalhava.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').then(() => navigator.serviceWorker.ready).then(async () => {
-    // O que a página já carregou antes do service worker existir também tem de ficar guardado.
-    const cache = await caches.open('pocket-basketball');
-    const urls = [location.href.split('?')[0]!, ...performance.getEntriesByType('resource').map(entry => entry.name)];
-    await Promise.all(urls.map(url => fetch(url, { mode: 'no-cors' }).then(response => cache.put(url, response)).catch(() => {})));
-  }).catch(() => {});
-}
-
-// Ao voltar à app, que o iPad muitas vezes só retoma sem recarregar, vê se o jogo publicado mudou.
-// Não recarrega sozinho, para não cortar um jogo a meio: mostra um botão.
-if (import.meta.env.PROD) {
-  const running = document.querySelector('script[type="module"][src]')?.getAttribute('src');
-  const checkForUpdate = async (): Promise<void> => {
-    if (!running || !navigator.onLine || document.getElementById('updateBtn')) return;
-    const html = await fetch(location.pathname, { cache: 'no-cache' }).then(response => (response.ok ? response.text() : '')).catch(() => '');
-    const published = html.match(/<script type="module"[^>]*src="([^"]+)"/)?.[1];
-    if (!published || published === running) return;
-    document.body.insertAdjacentHTML('beforeend', '<button type="button" class="primary update-ready" id="updateBtn">Há uma versão nova · Atualizar</button>');
-    element('updateBtn').addEventListener('click', () => location.reload());
-  };
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void checkForUpdate();
-  });
-}
+initPwa();

@@ -1,0 +1,169 @@
+// O tamanho e a escala do jogo: vertical ou horizontal, a tela do campo, o painel e a parte de cima dos menus.
+
+const LANDSCAPE_MIN_RATIO = 1.2;
+// Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
+const MATCH_MIN_RATIO = 1.1;
+const LANDSCAPE_PANEL_WIDTH = 360;
+// Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
+const LANDSCAPE_ART_HEIGHT = 290;
+// A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
+const LANDSCAPE_TOWN_HEIGHT = 360;
+// O que fica por baixo do mapa, no telemóvel: a secretária, o próximo jogo e dois botões.
+// Os menus têm uma ficha ou uma cena por cima, e essas precisam de mais altura do que o campo.
+const MENU_STAGE_WIDTH = 360;
+const MENU_STAGE_HEIGHT = 270;
+// O que o painel do título precisa, na vertical: o logótipo, os botões e a frase.
+const TITLE_PANEL_HEIGHT = 300;
+const MATCH_STAGE_HEIGHT = 216;
+
+/** A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si. */
+export type Stage = 'town' | 'title' | 'menu' | 'match';
+
+/** O que decide o esquema: o modo, se o resultado está aberto e quanto o painel do menu pede (0 é o normal). */
+export interface LayoutState {
+  stage: Stage;
+  resultOpen: boolean;
+  menuPanel: number;
+}
+
+export interface LayoutElements {
+  game: HTMLElement;
+  screen: HTMLElement;
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  panel: HTMLElement;
+  hud: HTMLElement;
+  topUi: HTMLElement;
+}
+
+export interface LayoutHooks {
+  /** A tela do campo mudou de tamanho em píxeis. */
+  canvasResized: () => void;
+  /** A parte de cima dos menus mudou de tamanho. */
+  topResized: () => void;
+}
+
+export interface Layout {
+  fit: (state: LayoutState) => void;
+  topSize: () => readonly [number, number];
+}
+
+// Instalado no ecrã inicial do iPhone, a faixa que o sistema desfoca no topo é mais alta do que a barra de estado.
+if ((navigator as Navigator & { standalone?: boolean }).standalone === true) document.documentElement.style.setProperty('--top-extra', '24px');
+
+const typing = (): boolean => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+
+export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
+  const { game, screen, canvas, context, panel, hud, topUi } = els;
+  let topSize: readonly [number, number] = [MENU_STAGE_WIDTH, MENU_STAGE_HEIGHT];
+  // A altura da janela sem o teclado do telemóvel. Enquanto se escreve num campo de texto, o teclado tira metade da altura:
+  // medir aí encolhia o jogo todo, e ficava encolhido depois de o teclado fechar, porque nem sempre vem um aviso de mudança.
+  let stableHeight = innerHeight;
+  let stableWidth = innerWidth;
+
+  function windowHeight(): number {
+    // Rodar o telemóvel muda a largura: aí a altura guardada já não vale, mesmo com o teclado aberto.
+    if (!typing() || innerWidth !== stableWidth) {
+      stableHeight = innerHeight;
+      stableWidth = innerWidth;
+    }
+    return Math.max(innerHeight, stableHeight);
+  }
+
+  function setCanvasSize(width: number, height: number, cssWidth: number, cssHeight: number): void {
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      hooks.canvasResized();
+    }
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+    context.imageSmoothingEnabled = false;
+  }
+
+  function setTopSize(width: number, height: number, zoom: number): void {
+    topUi.style.width = `${width}px`;
+    topUi.style.height = `${height}px`;
+    screen.style.setProperty('--top-zoom', String(zoom));
+    if (topSize[0] === width && topSize[1] === height) return;
+    topSize = [width, height];
+    hooks.topResized();
+  }
+
+  /** Na vertical, os dois ecrãs empilham-se. Na horizontal, o campo fica ao lado do painel. */
+  function fit({ stage, resultOpen, menuPanel }: LayoutState): void {
+    const landscape = innerWidth / windowHeight() >= LANDSCAPE_MIN_RATIO;
+    // No telemóvel ao alto, a barra de estado fica por cima da página: o jogo começa abaixo dela, senão o marcador ficava
+    // debaixo do desfoque do sistema.
+    game.classList.toggle('landscape', landscape);
+    document.body.classList.toggle('landscape', landscape);
+    const safeTop = landscape ? 0 : parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+    const viewHeight = windowHeight() - safeTop;
+    const dpr = devicePixelRatio || 1;
+    // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
+    game.classList.toggle('result-open', resultOpen && stage === 'match');
+    const centred = landscape && resultOpen && stage === 'match';
+    if (landscape) {
+      // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de perto de um terço da largura.
+      const ui = viewHeight < 600 ? Math.max(0.7, viewHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 1000) / 4, Math.floor((viewHeight * 4) / 540) / 4));
+      // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
+      const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
+      const stageWidth = innerWidth - panelWidth;
+      const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
+      // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
+      // No jogo, a altura lógica é a da vertical, para a câmara e os bonecos ficarem iguais nos dois esquemas.
+      const scale = stage === 'town' || stage === 'title'
+        ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
+        : Math.ceil((stageHeight * dpr) / (stage === 'match' ? MATCH_STAGE_HEIGHT : LANDSCAPE_ART_HEIGHT)) / dpr;
+      const width = Math.ceil(stageWidth / scale);
+      const height = Math.ceil(stageHeight / scale);
+      setCanvasSize(width, height, width * scale, height * scale);
+      // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
+      const bar = Math.max(0, (viewHeight - height * scale) / 2);
+      canvas.style.marginTop = `${bar}px`;
+      hud.style.top = `${bar}px`;
+      hud.style.bottom = `${bar}px`;
+      game.style.zoom = '';
+      game.style.height = '';
+      game.style.width = '';
+      screen.style.width = `${stageWidth}px`;
+      screen.style.height = `${viewHeight}px`;
+      panel.style.zoom = String(ui);
+      panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : LANDSCAPE_PANEL_WIDTH}px`;
+      panel.style.height = centred ? '' : `${viewHeight / ui}px`;
+      panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
+      screen.style.setProperty('--hud-zoom', String(ui));
+      const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
+      setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom);
+    } else {
+      const available = Math.min(innerWidth / 360, viewHeight / 640);
+      const scale = Math.max(1, Math.floor(available * dpr)) / dpr;
+      const finalScale = Math.min(scale, Math.max(available, 0.5));
+      const gameHeight = Math.max(640, viewHeight / finalScale);
+      // No menu principal, a cidade fica com o ecrã quase todo, como no estudo visual.
+      const menuHeight = menuPanel > 0 ? Math.max(MENU_STAGE_HEIGHT, Math.floor(gameHeight - menuPanel)) : MENU_STAGE_HEIGHT;
+      // No título, a cidade fica com o que o logótipo e os botões não usam.
+      const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
+      const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
+      // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
+      const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
+      setCanvasSize(gameWidth, stageHeight, gameWidth, stageHeight);
+      canvas.style.marginTop = '';
+      hud.style.top = '';
+      hud.style.bottom = '';
+      game.style.zoom = String(finalScale);
+      game.style.height = `${gameHeight}px`;
+      game.style.width = gameWidth === 360 ? '' : `${gameWidth}px`;
+      screen.style.width = `${gameWidth}px`;
+      screen.style.height = `${stageHeight}px`;
+      panel.style.zoom = '';
+      panel.style.width = '';
+      panel.style.height = '';
+      panel.style.maxHeight = '';
+      screen.style.setProperty('--hud-zoom', '1');
+      setTopSize(gameWidth, stageHeight, 1);
+    }
+  }
+
+  return { fit, topSize: () => topSize };
+}
