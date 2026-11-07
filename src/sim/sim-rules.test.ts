@@ -7,6 +7,7 @@ import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, S
 import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
 import { weeklyFitness } from './training.ts';
+import { matchHash } from './hash.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
 import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
@@ -52,6 +53,12 @@ describe('regras da simulação', () => {
 });
 
 describe('determinismo', () => {
+  // Muda quando a simulação muda. Se mudou de propósito (equilíbrio, regras), atualiza o valor e di-lo na entrega:
+  // os jogos guardados e os Match ID antigos deixam de se repetir iguais.
+  it('um jogo fixo tem sempre o mesmo hash', () => {
+    expect(matchHash(simulateMatch(generateTeam(1, 'Casa', 55), generateTeam(2, 'Fora', 55), 42))).toBe('e127aa9e');
+  });
+
   it('a mesma semente dá exatamente o mesmo jogo', () => {
     const a = simulateMatch(home, away, 123);
     const b = simulateMatch(home, away, 123);

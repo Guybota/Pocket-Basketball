@@ -21,7 +21,7 @@ npm run anim-check     # desenha as poses e os movimentos especiais em dist-chec
 npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
 ```
 
-Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. Usa o Edge; noutra máquina, define `BROWSER_CHANNEL=chrome`.
+Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. No Windows usa o Edge; noutra máquina usa o Chromium do Playwright, ou o browser que indicares em `BROWSER_PATH` (caminho) ou `BROWSER_CHANNEL` (por exemplo `chrome`).
 
 Corre `npm run check` antes de dares uma tarefa por terminada. Confirma o equilíbrio com milhares de jogos; os testes da simulação estão divididos em ficheiros `src/sim/sim-*.test.ts` para correrem em paralelo, e num computador com vários processadores demoram uns minutos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 

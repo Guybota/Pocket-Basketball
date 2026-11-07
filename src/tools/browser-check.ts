@@ -1,5 +1,5 @@
 // Abre o jogo num browser verdadeiro e confirma o que os testes em Node não conseguem ver.
-// Usa o Edge instalado. Noutra máquina: BROWSER_CHANNEL=chrome npm run browser-check
+// Usa o Edge no Windows. Noutra máquina usa o Chromium do Playwright, ou BROWSER_PATH=/caminho/do/chrome, ou BROWSER_CHANNEL=chrome.
 import { mkdirSync } from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 import { preview, build } from 'vite';
@@ -53,7 +53,7 @@ const kick = async (p: Page): Promise<void> => {
   await p.click('#arenaChip');
   await p.click('#kickoffBtn');
   await p.waitForTimeout(700);
-  await p.screenshot({ path: `${OUT}/apresentacao.png` });
+  await shot(p, `${OUT}/apresentacao.png`);
   await skipIntro(p);
 };
 /** Espera por algo, continuando o jogo nos descontos do adversário, que também o param à espera do treinador. */
@@ -87,6 +87,11 @@ const createClub = async (p: Page, name = ''): Promise<void> => {
   await p.click('#startClubBtn');
   await p.waitForSelector('#arenaChip');
 };
+/** Fotografa já com as transições acabadas e, no fim do jogo, com o marcador parado: senão as capturas saem esbatidas ou com números a meio. */
+const shot = async (p: Page, path: string): Promise<void> => {
+  if (await p.locator('.final-score').count()) await p.waitForTimeout(800);
+  await p.screenshot({ path, animations: 'disabled' });
+};
 const check = (name: string, ok: boolean, detail = ''): void => {
   console.log(`${ok ? 'OK    ' : 'FALHOU'} ${name}${detail ? `: ${detail}` : ''}`);
   if (!ok) failures.push(name);
@@ -95,7 +100,12 @@ const check = (name: string, ok: boolean, detail = ''): void => {
 await build({ logLevel: 'warn' });
 const server = await preview({ preview: { port: 4173, strictPort: false }, logLevel: 'warn' });
 const url = server.resolvedUrls!.local[0]!;
-const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL ?? 'msedge', headless: true });
+// No Windows usa o Edge instalado; noutra máquina o Chromium do Playwright, ou o browser em BROWSER_PATH, ou o canal em BROWSER_CHANNEL.
+const browser = await chromium.launch({
+  channel: process.env.BROWSER_CHANNEL ?? (process.env.BROWSER_PATH || process.platform !== 'win32' ? undefined : 'msedge'),
+  executablePath: process.env.BROWSER_PATH || undefined,
+  headless: true,
+});
 
 try {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
@@ -115,7 +125,7 @@ try {
     check(`Repetição igual no browser (semente ${seed})`, inNode === inBrowser, inBrowser);
   }
 
-  await page.screenshot({ path: `${OUT}/inicio.png` });
+  await shot(page, `${OUT}/inicio.png`);
   await kick(page);
   await page.waitForFunction(() => window.__pocket.state().tick > 5);
   check('O jogo começa ao carregar no botão', (await page.evaluate(() => window.__pocket.state().started)));
@@ -125,7 +135,7 @@ try {
     await page.waitForTimeout(450);
     await page.locator('.screen').screenshot({ path: `${OUT}/frame-${i}.png` });
   }
-  await page.screenshot({ path: `${OUT}/jogo.png` });
+  await shot(page, `${OUT}/jogo.png`);
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   check('Sem deslocamento horizontal no telemóvel', !overflow);
@@ -141,13 +151,13 @@ try {
 
   // Separadores e fim do jogo.
   await page.click('[data-tab="stats"]');
-  await page.screenshot({ path: `${OUT}/stats.png` });
+  await shot(page, `${OUT}/stats.png`);
   await page.click('[data-tab="feed"]');
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `${OUT}/relato.png` });
+  await shot(page, `${OUT}/relato.png`);
   await page.click('[data-tab="bench"]');
   await playToEnd(page);
-  await page.screenshot({ path: `${OUT}/fim.png` });
+  await shot(page, `${OUT}/fim.png`);
   const final = await page.evaluate(() => window.__pocket.state());
   const expected = firstMatch(7, 2);
   // Sem decisões do treinador, o jogo visto é o da simulação. Com decisões (aqui, o Continuar nos descontos, que agora
@@ -172,10 +182,10 @@ try {
   });
   await coach.goto(url);
   await coach.waitForSelector('#newClubBtn');
-  await coach.screenshot({ path: `${OUT}/titulo.png` });
+  await shot(coach, `${OUT}/titulo.png`);
   // Sem ninguém a tocar, o título mostra um jogo de demonstração.
   await coach.waitForFunction(() => (window.__pocket.state().demo ?? 0) > 20, undefined, { timeout: 20_000 });
-  await coach.screenshot({ path: `${OUT}/demonstracao.png` });
+  await shot(coach, `${OUT}/demonstracao.png`);
   await coach.click('#newClubBtn');
   check('O jogo de demonstração pára ao sair do título', await coach.evaluate(() => window.__pocket.state().demo === null));
   await coach.waitForSelector('#startClubBtn');
@@ -184,10 +194,10 @@ try {
   await coach.click('[data-go="emblem"]');
   await coach.click('[data-em-design="pennant:plain"]');
   await coach.click('.back');
-  await coach.screenshot({ path: `${OUT}/criar-clube.png` });
+  await shot(coach, `${OUT}/criar-clube.png`);
   await coach.click('#startClubBtn');
   await coach.waitForSelector('#arenaChip');
-  await coach.screenshot({ path: `${OUT}/clube.png` });
+  await shot(coach, `${OUT}/clube.png`);
   check('O clube novo começa na última divisão', await coach.evaluate(() => window.__pocket.club()!.division === 0));
   check('O clube novo começa na pré-época, sem jogo', await coach.evaluate(() => window.__pocket.club()!.week === 1) && ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-época'));
   await coach.evaluate(n => window.__pocket.fastForward(n), PRESEASON_WEEKS);
@@ -196,7 +206,7 @@ try {
     return c.team.name === 'Dragões do Minho' && c.team.short === 'MIN' && c.emblem.shape === 'pennant' && c.emblem.letters === 'MIN';
   }));
   await coach.locator('.screen').screenshot({ path: `${OUT}/cidade.png` });
-  await coach.screenshot({ path: `${OUT}/cidade-inteira.png` });
+  await shot(coach, `${OUT}/cidade-inteira.png`);
   const chipsFit = await coach.evaluate(() => {
     const box = document.getElementById('screen')!.getBoundingClientRect();
     return [...document.querySelectorAll('.town-chip')].every(chip => {
@@ -230,16 +240,16 @@ try {
   check('A torre responde pela secretária', ((await coach.locator('#staffNote').textContent()) ?? '').includes('torre'));
   await coach.click('#trainBtn');
   await coach.waitForSelector('.prow');
-  await coach.screenshot({ path: `${OUT}/treino-lista.png` });
+  await shot(coach, `${OUT}/treino-lista.png`);
   check('A lista do treino mostra as notas de cada jogador', (await coach.locator('.prow').first().locator('.gr').count()) === 7);
   await coach.click('[data-player="0"]');
   await coach.click('[data-act="openCards"]');
   check('Sem cartas escolhidas não se pode treinar', await coach.locator('[data-act="trainNow"]').isDisabled());
   await coach.click('[data-card="dribble"]');
   await coach.click('[data-card="sprints"]');
-  await coach.screenshot({ path: `${OUT}/treino-jogador-a-meio.png` });
+  await shot(coach, `${OUT}/treino-jogador-a-meio.png`);
   await coach.click('[data-card="readDefense"]');
-  await coach.screenshot({ path: `${OUT}/treino-jogador.png` });
+  await shot(coach, `${OUT}/treino-jogador.png`);
   check('A pré-visualização não revela o combo', !((await coach.locator('.info').textContent()) ?? '').toLowerCase().includes('tornozelo'));
   check('Não se pode pôr mais de 3 cartas', await coach.locator('.gcard[aria-pressed="false"]').evaluateAll(cards => cards.every(c => (c as HTMLButtonElement).disabled)));
   check('O treino não sai do ecrã do telemóvel', await coach.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -247,15 +257,15 @@ try {
   await coach.click('[data-act="trainNow"]');
   await coach.waitForSelector('.combofx');
   await coach.waitForTimeout(400);
-  await coach.screenshot({ path: `${OUT}/combo-animacao.png` });
+  await coach.screenshot({ path: `${OUT}/combo-animacao.png` }); // a meio da animação, de propósito
   await coach.waitForTimeout(1500);
-  await coach.screenshot({ path: `${OUT}/combo.png` });
+  await shot(coach, `${OUT}/combo.png`);
   const trainedClub = await coach.evaluate(() => window.__pocket.club()!);
   check('O combo ensina um movimento especial', trainedClub.team.roster[0]!.moves.length === movesBefore + 1 && trainedClub.knownCombos.includes('brokenAnkles'), trainedClub.team.roster[0]!.moves.join(', '));
   check('Só o jogador escolhido é que treinou', trainedClub.trainedThisWeek.length === 1);
   await coach.click('[data-go="train"]');
   await coach.click('[data-go="combos"]');
-  await coach.screenshot({ path: `${OUT}/treino-combos.png` });
+  await shot(coach, `${OUT}/treino-combos.png`);
   await coach.click('.back');
   await coach.click('.back');
   await reloadClub(coach);
@@ -268,18 +278,18 @@ try {
 
   // O emblema e os equipamentos ficam guardados, e o equipamento chega ao campo.
   await coach.click('#officeBtn');
-  await coach.screenshot({ path: `${OUT}/escritorio.png` });
+  await shot(coach, `${OUT}/escritorio.png`);
   await coach.click('[data-go="emblem"]');
   await coach.click('[data-em-design="circle:plain"]');
   await coach.click('[data-em-symbol="star"]');
   check('O editor do emblema já não tem letras: são a abreviatura do clube', (await coach.locator('#emblemLetters').count()) === 0);
-  await coach.screenshot({ path: `${OUT}/emblema.png` });
+  await shot(coach, `${OUT}/emblema.png`);
   await coach.click('.back');
   await coach.click('[data-act="editKit"]');
   await coach.click('[data-kit-pattern="stripes"]');
   await coach.click('[data-kit-part="second"]');
   await coach.locator('[data-kit-color="#f2c230"]').click();
-  await coach.screenshot({ path: `${OUT}/equipamento-editor.png` });
+  await shot(coach, `${OUT}/equipamento-editor.png`);
   await coach.click('.back');
   // Tocar no edifício abre o mesmo que a etiqueta.
   await coach.click('.back');
@@ -293,14 +303,14 @@ try {
   await coach.waitForSelector('#arenaChip');
   await coach.click('#officeBtn');
   await coach.click('[data-go="market"]');
-  await coach.screenshot({ path: `${OUT}/mercado.png` });
+  await shot(coach, `${OUT}/mercado.png`);
   const marketBefore = await coach.evaluate(() => ({ roster: window.__pocket.club()!.team.roster.length, money: window.__pocket.club()!.money }));
   await coach.click('[data-market="0"]');
   await coach.click('[data-act="offer"]');
   check('Um jogador livre entra logo', await coach.evaluate((b: { roster: number }) => window.__pocket.club()!.team.roster.length === b.roster + 1, marketBefore));
   await coach.click('.back');
   await coach.click('[data-office="trophies"]');
-  await coach.screenshot({ path: `${OUT}/trofeus.png` });
+  await shot(coach, `${OUT}/trofeus.png`);
   await coach.click('.back');
   await coach.click('.back');
   await reloadClub(coach);
@@ -312,19 +322,19 @@ try {
   await coach.click('#trainBtn');
   await coach.click('[data-go="tactics"]');
   await coach.click('[data-tactic="spacing"][data-tactic-value="1"]');
-  await coach.screenshot({ path: `${OUT}/taticas.png` });
+  await shot(coach, `${OUT}/taticas.png`);
   await coach.click('.back');
   await coach.click('.back');
   await coach.click('#arenaChip');
-  await coach.screenshot({ path: `${OUT}/balneario.png` });
+  await shot(coach, `${OUT}/balneario.png`);
   await coach.click('[data-go="rival"]');
   await coach.click('[data-target="0"]');
   await coach.click('[data-target="3"]');
-  await coach.screenshot({ path: `${OUT}/adversario.png` });
+  await shot(coach, `${OUT}/adversario.png`);
   check('Marcam-se até dois alvos, e o terceiro fica desligado', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2) && await coach.locator('.prow[data-target="1"]').isDisabled());
   await coach.click('.back');
   await coach.click('[data-go="kit"]');
-  await coach.screenshot({ path: `${OUT}/equipamento.png` });
+  await shot(coach, `${OUT}/equipamento.png`);
   await coach.click('[data-kit="gold"]');
   await coach.click('.back');
   await coach.click('#kickoffBtn');
@@ -333,7 +343,7 @@ try {
   await coach.waitForSelector('[data-tactic]');
   await coach.click('[data-tactic="pressure"][data-tactic-value="1"]');
   await coach.waitForTimeout(300);
-  await coach.screenshot({ path: `${OUT}/taticas-jogo.png` });
+  await shot(coach, `${OUT}/taticas-jogo.png`);
   check('A tática escolhida fica marcada', (await coach.locator('[data-tactic="pressure"][data-tactic-value="1"]').getAttribute('aria-pressed')) === 'true');
   await coach.click('#matchTacticsClose');
   const checkedTactics = await coach.evaluate(() => window.__pocket.state().tactics!);
@@ -343,19 +353,19 @@ try {
   await coach.evaluate(() => window.__pocket.setSpeedRaw(8));
   await coach.waitForFunction(() => window.__pocket.found().length > 0, undefined, { timeout: 60_000 });
   await coach.waitForSelector('#drop:not([hidden])');
-  await coach.screenshot({ path: `${OUT}/carta-no-jogo.png` });
+  await shot(coach, `${OUT}/carta-no-jogo.png`);
   await coach.evaluate(() => window.__pocket.setSpeedRaw(40));
   await waitThrough(coach, atHalf(coach));
   await coach.waitForTimeout(300);
-  await coach.screenshot({ path: `${OUT}/intervalo.png` });
+  await shot(coach, `${OUT}/intervalo.png`);
   await coach.click('[data-go="halfStats"]');
-  await coach.screenshot({ path: `${OUT}/intervalo-stats.png` });
+  await shot(coach, `${OUT}/intervalo-stats.png`);
   await coach.click('.back');
   await coach.click('[data-act="halfSubs"]');
   await coach.waitForSelector('.subs');
   await coach.click('.srow[data-pick="1"]');
   await coach.click('.srow.bench[data-pick]:not([disabled])');
-  await coach.screenshot({ path: `${OUT}/intervalo-trocas.png` });
+  await shot(coach, `${OUT}/intervalo-trocas.png`);
   await coach.click('[data-subs-close]');
   await coach.click('[data-go="tactics"]');
   await coach.click('[data-tactic="pace"][data-tactic-value="1"]');
@@ -366,7 +376,7 @@ try {
   await coach.locator('.screen').screenshot({ path: `${OUT}/segunda-parte-equipamento.png` });
   check('Os alvos ficam no jogo', await coach.evaluate(() => window.__pocket.club()!.tactics.focus?.length === 2));
   await waitThrough(coach, isFinished(coach));
-  await coach.screenshot({ path: `${OUT}/fim-cartas.png` });
+  await shot(coach, `${OUT}/fim-cartas.png`);
   check('As cartas do jogo vão para o clube', (await coach.locator('.found-card').count()) > 0, `${await coach.locator('.found-card').count()} cartas`);
   check('Com decisões e táticas o jogo reproduz-se igual', await coach.evaluate(() => window.__pocket.replayMatchesCurrent()));
   await coach.click('#againBtn');
@@ -374,11 +384,11 @@ try {
   await reloadClub(coach);
   await coach.waitForSelector('#arenaChip');
   check('A semana 4 é a pré-eliminatória da taça', ((await coach.locator('.citydetail').first().textContent()) ?? '').includes('Pré-eliminatória'));
-  await coach.screenshot({ path: `${OUT}/semana-taca.png` });
+  await shot(coach, `${OUT}/semana-taca.png`);
   check('Passa para a semana 4 e fica guardado', await coach.evaluate(() => window.__pocket.club()!.week === 4 && window.__pocket.club()!.trainedThisWeek.length === 0));
   check('Os alvos esquecem-se no fim da semana', await coach.evaluate(() => (window.__pocket.club()!.tactics.focus ?? []).length === 0));
   await coach.click('#officeBtn');
-  await coach.screenshot({ path: `${OUT}/gabinete.png` });
+  await shot(coach, `${OUT}/gabinete.png`);
   await coach.click('[data-office="reset"]');
   await coach.click('#resetNo');
   check('Cancelar o novo clube não apaga nada', await coach.evaluate(() => window.__pocket.club()!.week === 4));
@@ -387,12 +397,12 @@ try {
   // Plantel: trocar dois jogadores muda os titulares e fica guardado.
   await coach.click('#officeBtn');
   await coach.click('[data-squad="office"]');
-  await coach.screenshot({ path: `${OUT}/plantel.png` });
+  await shot(coach, `${OUT}/plantel.png`);
   const rosterBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
   await coach.click('[data-player="0"]');
   await coach.click('[data-act="swap"]');
   await coach.click('[data-player="6"]');
-  await coach.screenshot({ path: `${OUT}/plantel-trocado.png` });
+  await shot(coach, `${OUT}/plantel-trocado.png`);
   await coach.click('.back');
   await reloadClub(coach);
   await coach.waitForSelector('#arenaChip');
@@ -409,37 +419,37 @@ try {
   // Federação a meio da época, semana livre e fim de época.
   await coach.evaluate(() => window.__pocket.fastForward(7));
   await coach.click('#federationBtn');
-  await coach.screenshot({ path: `${OUT}/federacao-tabela.png` });
+  await shot(coach, `${OUT}/federacao-tabela.png`);
   await coach.click('[data-fed-tab="calendar"]');
-  await coach.screenshot({ path: `${OUT}/federacao-calendario.png` });
+  await shot(coach, `${OUT}/federacao-calendario.png`);
   await coach.click('[data-fed-tab="round"]');
   await coach.click('[data-fed-round="-1"]');
   await coach.click('[data-fed-round="1"]');
   await coach.click('[data-fed-round="1"]');
-  await coach.screenshot({ path: `${OUT}/federacao-jornada.png` });
+  await shot(coach, `${OUT}/federacao-jornada.png`);
   await coach.click('[data-fed-tab="cup"]');
-  await coach.screenshot({ path: `${OUT}/federacao-taca.png` });
+  await shot(coach, `${OUT}/federacao-taca.png`);
   await coach.click('[data-cup-view="continental"]');
-  await coach.screenshot({ path: `${OUT}/federacao-continental.png` });
+  await shot(coach, `${OUT}/federacao-continental.png`);
   await coach.click('[data-cup-view="world"]');
   await coach.click('[data-cup-view="federation"]');
   await coach.click('.back');
   await coach.evaluate(() => window.__pocket.fastForward(3));
   check('A semana 14 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 14 && !document.getElementById('practiceBtn')));
-  await coach.screenshot({ path: `${OUT}/semana-livre.png` });
+  await shot(coach, `${OUT}/semana-livre.png`);
   await coach.click('#arenaChip');
   await coach.waitForSelector('[data-offer]');
-  await coach.screenshot({ path: `${OUT}/propostas.png` });
+  await shot(coach, `${OUT}/propostas.png`);
   await coach.click('[data-offer-kind="friendly"]');
   await coach.click('.back');
   await coach.click('#skipWeekBtn');
   check('Na semana livre pode-se passar à frente', await coach.evaluate(() => window.__pocket.club()!.week === 15));
-  await coach.screenshot({ path: `${OUT}/cidade-painel.png` });
+  await shot(coach, `${OUT}/cidade-painel.png`);
   // Sem treino, um clube pode ser despedido antes do fim da época; aqui interessa ver o balanço.
   await coach.evaluate(() => window.__pocket.setConfidence(90));
   await coach.evaluate(() => window.__pocket.fastForward(17));
   await coach.waitForSelector('#seasonContinue');
-  await coach.screenshot({ path: `${OUT}/fim-epoca.png` });
+  await shot(coach, `${OUT}/fim-epoca.png`);
   await reloadClub(coach);
   await coach.waitForSelector('#seasonContinue');
   check('O balanço da época continua lá depois de recarregar', true);
@@ -447,11 +457,11 @@ try {
   // Quando alguém chega ao fim do Potencial, há primeiro a despedida.
   await coach.waitForSelector('#farewellContinue, #renewalsConfirm');
   if (await coach.$('#farewellContinue')) {
-    await coach.screenshot({ path: `${OUT}/despedida.png` });
+    await shot(coach, `${OUT}/despedida.png`);
     await coach.click('#farewellContinue');
   }
   await coach.waitForSelector('#renewalsConfirm');
-  await coach.screenshot({ path: `${OUT}/renovacoes.png` });
+  await shot(coach, `${OUT}/renovacoes.png`);
   const squadBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.length);
   check('As renovações ficam guardadas a meio', await coach.evaluate(() => window.__pocket.club()!.pendingRenewals !== null));
   await coach.click('[data-renew]:nth-child(2)');
@@ -464,7 +474,7 @@ try {
   // Despedimento. A regra em si é testada em Node; aqui confirma-se o ecrã e que fica guardado.
   await coach.evaluate(() => window.__pocket.fire());
   await coach.waitForSelector('#firedNewClub');
-  await coach.screenshot({ path: `${OUT}/despedido.png` });
+  await shot(coach, `${OUT}/despedido.png`);
   await reloadClub(coach);
   await coach.waitForSelector('#firedNewClub');
   check('O despedimento fica guardado', true);
@@ -495,14 +505,14 @@ try {
   const inPlayoffs = await playoffs.evaluate((first: number) => window.__pocket.club()?.playoffs !== null && window.__pocket.club()!.week === first, SEASON_WEEKS + 1);
   if (inPlayoffs) {
     check('A Pro Liga 1 entra nos playoffs a seguir à última jornada', ((await playoffs.locator('.citydetail').first().textContent()) ?? '').includes('Playoffs'));
-    await playoffs.screenshot({ path: `${OUT}/playoffs-cidade.png` });
+    await shot(playoffs, `${OUT}/playoffs-cidade.png`);
     await playoffs.click('#federationBtn');
     await playoffs.click('[data-fed-tab="playoffs"]');
-    await playoffs.screenshot({ path: `${OUT}/playoffs-quadro.png` });
+    await shot(playoffs, `${OUT}/playoffs-quadro.png`);
     await playoffs.click('.back');
     await kick(playoffs);
     await playToEnd(playoffs);
-    await playoffs.screenshot({ path: `${OUT}/playoffs-jogo.png` });
+    await shot(playoffs, `${OUT}/playoffs-jogo.png`);
     const after = await playoffs.evaluate(() => ({ week: window.__pocket.club()!.week, games: window.__pocket.club()!.playoffs?.rounds[0]?.find(s => s.top === 0 || s.bottom === 0)?.games.length ?? 0, report: window.__pocket.club()!.seasonReport !== null }));
     check('O primeiro jogo da série fica registado e a semana só fecha com a série decidida', after.games === 1 || after.report || after.week === SEASON_WEEKS + 2, JSON.stringify(after));
   } else {
@@ -520,21 +530,21 @@ try {
   await practice.click('#arenaChip');
   check('Na pré-época o pavilhão abre as propostas, com particulares', await practice.locator('[data-offer-kind="friendly"]').isEnabled());
   await practice.click('[data-offer="2"]');
-  await practice.screenshot({ path: `${OUT}/jogo-treino-proposta.png` });
+  await shot(practice, `${OUT}/jogo-treino-proposta.png`);
   await practice.click('[data-pre="practice"]');
   await practice.waitForTimeout(200);
-  await practice.screenshot({ path: `${OUT}/jogo-treino-pavilhao.png` });
+  await shot(practice, `${OUT}/jogo-treino-pavilhao.png`);
   await practice.click('#kickoffBtn');
   await skipIntro(practice);
   await practice.waitForTimeout(800);
   await practice.locator('.screen').screenshot({ path: `${OUT}/jogo-treino-campo.png` });
   await practice.evaluate(() => window.__pocket.setSpeedRaw(40));
   await waitThrough(practice, isFinished(practice));
-  await practice.screenshot({ path: `${OUT}/jogo-treino-fim.png` });
+  await shot(practice, `${OUT}/jogo-treino-fim.png`);
   const afterPractice = await practice.evaluate(() => ({ club: window.__pocket.club()!, state: window.__pocket.state() }));
   await practice.click('#againBtn');
   await practice.waitForSelector('#arenaChip');
-  await practice.screenshot({ path: `${OUT}/jogo-treino-depois.png` });
+  await shot(practice, `${OUT}/jogo-treino-depois.png`);
   check('O jogo-treino acaba ao fim de dois períodos', afterPractice.state.period === 2, `período ${afterPractice.state.period}`);
   check('O jogo-treino não mexe na confiança nem no recorde', afterPractice.club.confidence === beforePractice.confidence && afterPractice.club.wins + afterPractice.club.losses === beforePractice.wins + beforePractice.losses);
   check('O jogo-treino gasta a semana livre', afterPractice.club.week === beforePractice.week + 1);
@@ -568,7 +578,7 @@ try {
   await kick(moments);
   await moments.click('#timeoutBtn');
   await moments.waitForSelector('.subs-title', { timeout: 30_000 });
-  await moments.screenshot({ path: `${OUT}/desconto.png` });
+  await shot(moments, `${OUT}/desconto.png`);
   const before = await moments.evaluate(() => window.__pocket.onCourtNames());
   await moments.click('.srow[data-pick="2"]');
   await moments.click('.srow.bench[data-pick]:not([disabled])');
@@ -583,7 +593,7 @@ try {
   await moments.click('.srow[data-pick="0"]');
   await moments.click('.srow.bench[data-pick]:not([disabled])');
   await moments.waitForSelector('.arrow.in');
-  await moments.screenshot({ path: `${OUT}/substituir.png` });
+  await shot(moments, `${OUT}/substituir.png`);
   await moments.click('[data-subs-close]');
   await playToEnd(moments);
   check('O jogo com decisões do treinador reproduz-se igual', await moments.evaluate(() => window.__pocket.replayMatchesCurrent()));
@@ -664,13 +674,13 @@ try {
   await kick(moments);
   await moments.click('.row[data-player]');
   await moments.waitForSelector('.card');
-  await moments.screenshot({ path: `${OUT}/ficha-1.png` });
+  await shot(moments, `${OUT}/ficha-1.png`);
   const seenNames: string[] = [];
   const seenPortraits = new Set<string>();
   for (let i = 0; i < 12; i++) {
     seenNames.push((await moments.locator('.card-head b').textContent()) ?? '');
     seenPortraits.add((await moments.locator('.portrait').getAttribute('src')) ?? '');
-    if (i < 6) await moments.locator('.portrait').screenshot({ path: `${OUT}/retrato-${i}.png` });
+    if (i < 6) await moments.locator('.portrait').screenshot({ animations: 'disabled', path: `${OUT}/retrato-${i}.png` });
     await moments.click('[data-card="next"]');
     await moments.waitForTimeout(350);
   }
@@ -690,7 +700,7 @@ try {
     await wide.goto(`${url}?semente=11&divisao=2`);
     await wide.waitForFunction(() => window.__pocket !== undefined);
     await wide.waitForTimeout(300);
-    await wide.screenshot({ path: `${OUT}/landscape-${name}-inicio.png` });
+    await shot(wide, `${OUT}/landscape-${name}-inicio.png`);
     const wideChips = await wide.evaluate(() => {
       const box = document.getElementById('screen')!.getBoundingClientRect();
       return [...document.querySelectorAll('.town-chip')].every(chip => {
@@ -701,24 +711,24 @@ try {
     check(`Em ${name}, as etiquetas dos edifícios cabem na janela`, wideChips);
     await wide.click('#trainBtn');
     await wide.waitForTimeout(100);
-    await wide.screenshot({ path: `${OUT}/landscape-${name}-treino-lista.png` });
+    await shot(wide, `${OUT}/landscape-${name}-treino-lista.png`);
     await wide.click('[data-player="1"]');
     await wide.click('[data-act="openCards"]');
     await wide.click('[data-card="shooting"]');
     await wide.waitForTimeout(100);
-    await wide.screenshot({ path: `${OUT}/landscape-${name}-treino.png` });
+    await shot(wide, `${OUT}/landscape-${name}-treino.png`);
     check(`Em ${name}, os menus cabem na janela`, await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight));
     await wide.click('.back');
     await wide.click('.back');
     await wide.click('#arenaChip');
     await wide.waitForTimeout(150);
-    await wide.screenshot({ path: `${OUT}/landscape-${name}-balneario.png` });
+    await shot(wide, `${OUT}/landscape-${name}-balneario.png`);
     await wide.click('#kickoffBtn');
     await skipIntro(wide);
     await wide.waitForTimeout(600);
     await wide.evaluate(() => window.__pocket.pauseAt('made', 2));
     await wide.waitForTimeout(200);
-    await wide.screenshot({ path: `${OUT}/landscape-${name}.png` });
+    await shot(wide, `${OUT}/landscape-${name}.png`);
     const layout = await wide.evaluate(() => {
       const screen = document.getElementById('screen')!.getBoundingClientRect();
       const panel = document.getElementById('panel')!.getBoundingClientRect();
@@ -735,6 +745,40 @@ try {
     await context.close();
   }
 
+  // O tamanho de referência, 360×640: os ecrãs principais cabem na largura e não dão erros.
+  const reference = await browser.newContext({ viewport: { width: 360, height: 640 }, hasTouch: true });
+  const small = await reference.newPage();
+  const smallProblems: string[] = [];
+  small.on('pageerror', error => smallProblems.push(error.message));
+  const fitsWidth = (): Promise<boolean> => small.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  const smallFits: string[] = [];
+  const visit = async (name: string): Promise<void> => {
+    await small.waitForTimeout(150);
+    await shot(small, `${OUT}/ref-360-${name}.png`);
+    if (!(await fitsWidth())) smallFits.push(name);
+  };
+  await small.goto(`${url}?semente=11&divisao=2`);
+  await small.waitForFunction(() => window.__pocket !== undefined);
+  await visit('cidade');
+  await small.click('#trainBtn');
+  await visit('treino');
+  await small.click('.back');
+  await small.click('#officeBtn');
+  await visit('escritorio');
+  await small.click('.back');
+  await small.click('#arenaChip');
+  await visit('balneario');
+  await small.click('[data-go="rival"]');
+  await visit('adversario');
+  await small.click('.back');
+  await small.click('#kickoffBtn');
+  await skipIntro(small);
+  await small.waitForTimeout(600);
+  await visit('jogo');
+  check('Em 360x640, os ecrãs principais cabem na largura', smallFits.length === 0, smallFits.join(', '));
+  check('Em 360x640, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
+  await reference.close();
+
   // As outras divisões.
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const big = await desktop.newPage();
@@ -744,7 +788,7 @@ try {
     await kick(big);
     await big.evaluate(() => window.__pocket.pauseAt('shot', 6));
     await big.waitForTimeout(200);
-    await big.screenshot({ path: `${OUT}/divisao-${division}.png` });
+    await shot(big, `${OUT}/divisao-${division}.png`);
   }
 
   // Mudar o tamanho da janela a meio do jogo não pode partir nada.

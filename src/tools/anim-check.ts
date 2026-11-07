@@ -9,7 +9,12 @@ mkdirSync(OUT, { recursive: true });
 const server = await createServer({ server: { port: 4176, strictPort: false }, logLevel: 'warn' });
 await server.listen();
 const url = server.resolvedUrls!.local[0]!;
-const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL ?? 'msedge', headless: true });
+// No Windows usa o Edge instalado; noutra máquina o Chromium do Playwright, ou o browser em BROWSER_PATH, ou o canal em BROWSER_CHANNEL.
+const browser = await chromium.launch({
+  channel: process.env.BROWSER_CHANNEL ?? (process.env.BROWSER_PATH || process.platform !== 'win32' ? undefined : 'msedge'),
+  executablePath: process.env.BROWSER_PATH || undefined,
+  headless: true,
+});
 const save = (name: string, dataUrl: string): void => {
   writeFileSync(`${OUT}/${name}.png`, Buffer.from(dataUrl.split(',')[1]!, 'base64'));
   console.log(`${OUT}/${name}.png`);

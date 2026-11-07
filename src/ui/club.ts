@@ -1122,19 +1122,20 @@ function migrateV11(old: ClubState): ClubState {
 /** A altura passou de centímetros a três níveis, com o mesmo corte das estrelas. */
 function migrateV12(old: ClubState): ClubState {
   const next = { ...old, version: 13 };
-  const walk = (value: unknown): void => {
-    if (Array.isArray(value)) value.forEach(walk);
-    else if (value && typeof value === 'object') {
-      const record = value as Record<string, unknown>;
-      if ('attributes' in record && typeof record.heightCm === 'number') {
-        record.height = levelOfHeight(record.heightCm);
-        delete record.heightCm;
-      }
-      for (const key of Object.keys(record)) walk(record[key]);
-    }
-  };
-  walk(next);
+  heightLevels(next);
   return next;
+}
+
+function heightLevels(value: unknown): void {
+  if (Array.isArray(value)) value.forEach(heightLevels);
+  else if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if ('attributes' in record && typeof record.heightCm === 'number') {
+      record.height = levelOfHeight(record.heightCm);
+      delete record.heightCm;
+    }
+    for (const key of Object.keys(record)) heightLevels(record[key]);
+  }
 }
 
 /** Antes dos playoffs, a época acabava na fase regular. */
@@ -1153,6 +1154,12 @@ function migrateV3(old: ClubState): ClubState {
 
 /** Um clube guardado antes de haver época entra numa liga nova, com tudo o que já tinha treinado. */
 function migrateV1(old: ClubState): ClubState {
+  // Salta logo para a versão 13, por isso os jogadores têm de passar pelas mudanças das versões 8, 11 e 12.
+  const team = JSON.parse(JSON.stringify(old.team)) as Team;
+  stripField(team, 'position');
+  stripField(team, 'weightKg');
+  heightLevels(team);
+  old = { ...old, team };
   const world = createWorld(old.seed, old.division, old.team.name);
   return {
     ...old,
