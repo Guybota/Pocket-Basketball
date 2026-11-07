@@ -37,8 +37,8 @@ describe('mapa da cidade', () => {
     expect(weatherFor(18).snow).toBe(true);
     // A chuva volta (G7): algumas semanas, nunca com neve nem em dezembro; o sol forte é sempre de dia.
     const season = Array.from({ length: 29 }, (_, n) => weatherFor(n + 1));
-    expect(season.filter(w => w.rain).length).toBeGreaterThanOrEqual(2);
-    expect(season.some(w => w.rain && (w.snow || w.lights))).toBe(false);
+    // O dono do projeto tirou a chuva (3 e 7 de novembro de 2026).
+    expect(season.some(w => w.rain)).toBe(false);
     expect(season.some(w => w.sun && (w.rain || w.hour !== 'day'))).toBe(false);
     expect(weatherFor(8)).toEqual(weatherFor(8));
   });

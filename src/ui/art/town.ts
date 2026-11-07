@@ -121,8 +121,8 @@ export function weatherFor(week: number): Weather {
   const first = week <= 1;
   // Em dezembro joga-se sempre à noite; nas outras semanas, um jogo em quatro é ao fim da tarde e outro à noite.
   const hour: Sky['hour'] = first ? 'day' : month === 3 || (h >>> 8) % 4 === 3 ? 'night' : (h >>> 8) % 4 === 2 ? 'evening' : 'day';
-  // Chove numa semana em quatro, nunca com neve nem em dezembro; sol forte de dia, no princípio e no fim da época.
-  const rain = !first && !season.snow && month !== 3 && h % 12 < 3;
+  // Não chove: o dono do projeto tirou a chuva (3 e 7 de novembro de 2026). Sol forte de dia, no princípio e no fim da época.
+  const rain = false;
   const sun = !first && !rain && hour === 'day' && (month <= 1 || month >= 6) && (h >>> 16) % 3 === 0;
   return { ...season, rain, sun, hour };
 }
