@@ -8,5 +8,7 @@ export default defineConfig({
     hookTimeout: 120_000,
     // As cópias de trabalho dos agentes vivem em .claude/ e não são testes deste projeto.
     exclude: [...configDefaults.exclude, '.claude/**'],
+    // Os testes que simulam centenas ou milhares de jogos: `npm run balance`. O `npm run check` salta-os.
+    tags: [{ name: 'slow', description: 'Simula muitos jogos; corre com npm run balance' }],
   },
 });

@@ -134,7 +134,7 @@ describe('decisões do treinador', () => {
     expect(replay.score).toEqual(s.score);
   });
 
-  it('a equipa da simulação pede descontos, e a do jogador nunca sozinha', () => {
+  it('a equipa da simulação pede descontos, e a do jogador nunca sozinha', { tags: ['slow'] }, () => {
     let rival = 0;
     let player = 0;
     for (let i = 0; i < 100; i++) {
@@ -148,7 +148,7 @@ describe('decisões do treinador', () => {
     expect(rival).toBeGreaterThan(0);
   });
 
-  it('a violação de posse acontece, mas é rara, e passa a bola ao adversário', () => {
+  it('a violação de posse acontece, mas é rara, e passa a bola ao adversário', { tags: ['slow'] }, () => {
     let violations = 0;
     for (let i = 0; i < 200; i++) {
       const s = simulateMatch(generateTeam(i, 'A', 55), generateTeam(i + 300, 'B', 55), i + 1);
@@ -213,15 +213,15 @@ describe('táticas', () => {
   };
   const share = (t: { threes: number; twos: number }): number => t.threes / (t.threes + t.twos);
 
-  it('abrir o campo dá mais lançamentos de 3', () => {
+  it('abrir o campo dá mais lançamentos de 3', { tags: ['slow'] }, () => {
     expect(share(totals({ spacing: 1 }))).toBeGreaterThan(share(totals({ spacing: -1 })) + 0.05);
   });
 
-  it('o ritmo rápido dá mais posses de bola', () => {
+  it('o ritmo rápido dá mais posses de bola', { tags: ['slow'] }, () => {
     expect(totals({ pace: 1 }).possessions).toBeGreaterThan(totals({ pace: -1 }).possessions);
   });
 
-  it('a pressão rouba mais bolas, faz mais faltas e cansa mais', () => {
+  it('a pressão rouba mais bolas, faz mais faltas e cansa mais', { tags: ['slow'] }, () => {
     const high = totals({ pressure: 1 });
     const low = totals({ pressure: -1 });
     expect(high.steals).toBeGreaterThan(low.steals);
@@ -229,7 +229,7 @@ describe('táticas', () => {
     expect(high.fatigue).toBeGreaterThan(low.fatigue);
   });
 
-  it('a zona deixa lançar mais de 3, e a pressão em todo o campo perde mais bolas', () => {
+  it('a zona deixa lançar mais de 3, e a pressão em todo o campo perde mais bolas', { tags: ['slow'] }, () => {
     const against = (tactics: Partial<Tactics>): { threes: number; twos: number; turnovers: number } => {
       const out = { threes: 0, twos: 0, turnovers: 0 };
       for (let i = 0; i < 100; i++) {
@@ -246,7 +246,7 @@ describe('táticas', () => {
     expect(against({ pressure: 1 }).turnovers).toBeGreaterThan(against({ pressure: -1 }).turnovers);
   });
 
-  it('a primeira opção de ataque marca mais, e uma opção inválida é recusada', () => {
+  it('a primeira opção de ataque marca mais, e uma opção inválida é recusada', { tags: ['slow'] }, () => {
     const N = 120;
     const points = (withOption: boolean): number => {
       let total = 0;
@@ -264,7 +264,7 @@ describe('táticas', () => {
     expect(() => validateTactics({ ...NEUTRAL_TACTICS, options: ['A', 'B', 'C'] }, 'x')).toThrow();
   });
 
-  it('um organizador como opção dá mais assistências', () => {
+  it('um organizador como opção dá mais assistências', { tags: ['slow'] }, () => {
     const N = 120;
     const assists = (withOption: boolean): number => {
       let total = 0;
@@ -282,7 +282,7 @@ describe('táticas', () => {
 
   });
 
-  it('nenhuma tática ganha sempre', () => {
+  it('nenhuma tática ganha sempre', { tags: ['slow'] }, () => {
     const rate = (tactics: Tactics): number => {
       let wins = 0;
       for (let i = 0; i < 200; i++) {
@@ -301,7 +301,7 @@ describe('táticas', () => {
     }
   });
 
-  it('um alvo marca menos pontos, sem isso decidir o jogo', () => {
+  it('um alvo marca menos pontos, sem isso decidir o jogo', { tags: ['slow'] }, () => {
     // Com 300 jogos o ruído chegava aos 6%: são precisos mais para a diferença de vitórias dizer alguma coisa.
     const N = 500;
     const best = (team: ReturnType<typeof generateTeam>): number[] =>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { courtTextures } from './court.ts';
 
 describe('pavilhão', () => {
-  it('veste as cores do clube da casa, e guarda cada versão', () => {
+  it('veste as cores do clube da casa, e guarda cada versão', { tags: ['slow'] }, () => {
     const plain = courtTextures(2);
     const red = courtTextures(2, '#cf3a2c');
     expect(red).not.toBe(plain);

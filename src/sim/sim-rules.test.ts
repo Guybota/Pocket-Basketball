@@ -167,7 +167,7 @@ describe('coerência de um jogo', () => {
     expect(lastEvent.team).toBe(s.score[0] > s.score[1] ? 0 : 1);
   });
 
-  it('a bola nunca sai disparada: fica sempre perto do campo e abaixo dos 9 m', () => {
+  it('a bola nunca sai disparada: fica sempre perto do campo e abaixo dos 9 m', { tags: ['slow'] }, () => {
     // Uma bola perdida que ficava guardada depois da reposição punha a bola a voar no lance livre seguinte.
     const problems: string[] = [];
     for (let i = 0; i < 30; i++) {

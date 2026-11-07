@@ -39,7 +39,7 @@ describe('ressaltos', () => {
     return found;
   };
 
-  it('depois de bater no aro, a bola umas vezes sobe e outras cai logo', () => {
+  it('depois de bater no aro, a bola umas vezes sobe e outras cai logo', { tags: ['slow'] }, () => {
     const rim = rebounds(40).filter(r => !r.blocked);
     expect(rim.length).toBeGreaterThan(100);
     for (const r of rim) expect(r.startZ).toBeCloseTo(3.05, 1);
@@ -57,7 +57,7 @@ describe('ressaltos', () => {
     for (const r of caught) expect(Math.abs(r.endX - r.toX)).toBeLessThan(1);
   });
 
-  it('quem ganha o ressalto só fica com a bola quando chega ao pé dela, e quem afunda chega ao aro', () => {
+  it('quem ganha o ressalto só fica com a bola quando chega ao pé dela, e quem afunda chega ao aro', { tags: ['slow'] }, () => {
     let rebounds = 0;
     let close = 0;
     let dunks = 0;
@@ -100,7 +100,7 @@ describe('ressaltos', () => {
     expect(layupsAtRim / layups).toBeGreaterThan(0.9);
   });
 
-  it('a bola nunca sai para fora do campo depois de um desarme', () => {
+  it('a bola nunca sai para fora do campo depois de um desarme', { tags: ['slow'] }, () => {
     for (const r of rebounds(40).filter(r => r.blocked)) {
       expect(r.toX).toBeGreaterThanOrEqual(0);
       expect(r.toX).toBeLessThanOrEqual(28);
@@ -124,7 +124,7 @@ describe('linha de 3', () => {
     expect(COURT_HALF_WIDTH - THREE_CORNER_V).toBeGreaterThan(1.5);
   });
 
-  it('quase ninguém lança com os pés em cima da linha', () => {
+  it('quase ninguém lança com os pés em cima da linha', { tags: ['slow'] }, () => {
     let shots = 0;
     let onTheLine = 0;
     for (let seed = 1; seed <= 60; seed++) {

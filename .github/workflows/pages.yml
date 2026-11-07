@@ -27,6 +27,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Tipos e testes rápidos antes de publicar: uma versão partida não chega ao site.
+      - run: npm run check
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -9,7 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc",
-    "check": "tsc && vitest run",
+    "check": "tsc && vitest run --tagsFilter '!slow'",
     "sim": "node src/tools/simulate.ts",
     "watch-match": "node src/tools/watch.ts",
     "dev": "vite",
@@ -18,7 +18,9 @@
     "anim-check": "node src/tools/anim-check.ts",
     "build-page": "node src/tools/build-page.ts",
     "build-mock": "node src/tools/build-mock.ts",
-    "build-icon": "node src/tools/build-icon.ts"
+    "build-icon": "node src/tools/build-icon.ts",
+    "balance": "vitest run --tagsFilter slow",
+    "check-all": "tsc && vitest run"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

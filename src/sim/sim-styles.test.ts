@@ -22,12 +22,12 @@ describe('movimentos especiais', () => {
     return seen;
   };
 
-  it('cada movimento acontece em jogo', () => {
+  it('cada movimento acontece em jogo', { tags: ['slow'] }, () => {
     const seen = countMoves(MOVES);
     for (const move of MOVES) expect(seen[move] ?? 0, move).toBeGreaterThan(0);
   });
 
-  it('quem não tem movimentos não os faz', () => {
+  it('quem não tem movimentos não os faz', { tags: ['slow'] }, () => {
     expect(countMoves([])).toEqual({});
   });
 
@@ -43,7 +43,7 @@ describe('movimentos especiais', () => {
     expect(simulateMatch(team, away, 8).events).toEqual(simulateMatch(team, away, 8).events);
   });
 
-  it('um movimento ajuda sem decidir o jogo', () => {
+  it('um movimento ajuda sem decidir o jogo', { tags: ['slow'] }, () => {
     for (const move of MOVES) {
       const rate = movesWinRate([move], 300);
       expect(rate, move).toBeGreaterThan(0.45);
@@ -76,7 +76,7 @@ describe('comportamentos', () => {
     return total / samples;
   }
 
-  it('sem bola, cada comportamento muda mesmo o posicionamento', () => {
+  it('sem bola, cada comportamento muda mesmo o posicionamento', { tags: ['slow'] }, () => {
     const lowPost = averageDistance('lowPost');
     const cutter = averageDistance('cutter');
     const spotUp = averageDistance('spotUp');
@@ -99,11 +99,11 @@ describe('comportamentos', () => {
   }
   const threeShare = (t: { threes: number; twos: number }): number => t.threes / (t.threes + t.twos);
 
-  it('com bola, os lançadores lançam mais de 3 do que os penetradores', () => {
+  it('com bola, os lançadores lançam mais de 3 do que os penetradores', { tags: ['slow'] }, () => {
     expect(threeShare(homeTotals({ onBall: 'shooter' }))).toBeGreaterThan(threeShare(homeTotals({ onBall: 'slasher' })) + 0.1);
   });
 
-  it('os organizadores fazem mais assistências do que os solistas', () => {
+  it('os organizadores fazem mais assistências do que os solistas', { tags: ['slow'] }, () => {
     // Mede o próprio jogador: cinco organizadores na mesma equipa passam até acabar o tempo de posse.
     const baseAssists = (onBall: OnBallStyle): number => {
       let total = 0;
@@ -117,7 +117,7 @@ describe('comportamentos', () => {
     expect(baseAssists('playmaker')).toBeGreaterThan(baseAssists('scorer'));
   });
 
-  it('o guarda do aro desarma mais, o dínamo rouba mais, e o sexto homem recupera mais no banco', () => {
+  it('o guarda do aro desarma mais, o dínamo rouba mais, e o sexto homem recupera mais no banco', { tags: ['slow'] }, () => {
     const totals = (offBall: OffBallStyle): { blocks: number; steals: number; benchRecovery: number } => {
       let blocks = 0;
       let steals = 0;
@@ -150,12 +150,12 @@ describe('comportamentos', () => {
     expect(totals('sixthMan').benchRecovery).toBeGreaterThan(base.benchRecovery * 1.3);
   });
 
-  it('os ressaltadores ganham mais ressaltos ofensivos', () => {
+  it('os ressaltadores ganham mais ressaltos ofensivos', { tags: ['slow'] }, () => {
     const rate = (t: { offensive: number; defensive: number }): number => t.offensive / (t.offensive + t.defensive);
     expect(rate(homeTotals({ offBall: 'crasher' }))).toBeGreaterThan(rate(homeTotals({ offBall: 'balanced' })));
   });
 
-  it('nenhum comportamento decide o jogo sozinho', () => {
+  it('nenhum comportamento decide o jogo sozinho', { tags: ['slow'] }, () => {
     for (const offBall of OFF_BALL_STYLES) {
       const rate = styleWinRate({ offBall }, 150);
       expect(rate, offBall).toBeGreaterThan(0.3);

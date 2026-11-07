@@ -162,7 +162,7 @@ describe('cartas ganhas nos jogos', () => {
     return s.events.flatMap(e => cardFromEvent(e, team, rng) ?? []);
   };
 
-  it('um jogo dá um número razoável de cartas, variadas', () => {
+  it('um jogo dá um número razoável de cartas, variadas', { tags: ['slow'] }, () => {
     let total = 0;
     const kinds = new Set<CardId>();
     const N = 100;
@@ -245,7 +245,7 @@ describe('clube', () => {
     }
   });
 
-  it('o cansaço não dispara ao longo de uma época inteira', () => {
+  it('o cansaço não dispara ao longo de uma época inteira', { tags: ['slow'] }, () => {
     let c = club();
     for (let i = 0; i < 30; i++) c = playWeek(c);
     for (const player of c.team.roster) expect(player.fatigue).toBeLessThan(0.5);
@@ -361,7 +361,7 @@ describe('clube', () => {
 
 // O critério da Fase 2: treinar tem de se notar em campo.
 describe('critério da Fase 2', () => {
-  it('10 semanas de treino com combos fazem a equipa ganhar à mesma equipa sem treino', () => {
+  it('10 semanas de treino com combos fazem a equipa ganhar à mesma equipa sem treino', { tags: ['slow'] }, () => {
     let wins = 0;
     const N = 300;
     for (let i = 0; i < N; i++) {
@@ -451,7 +451,7 @@ describe('época', () => {
     expect(skipWeek(hurt).recentTraining[name]).toEqual([-(c.season * 100 + c.week)]);
   });
 
-  it('os números da época de um rival somam os pontos reais da equipa', () => {
+  it('os números da época de um rival somam os pontos reais da equipa', { tags: ['slow'] }, () => {
     let c = newClub(23);
     for (let i = 0; i < 6; i++) c = week(c);
     const row = leagueTable(c).find(r => r.club !== PLAYER_CLUB && r.played > 0)!;
@@ -461,7 +461,7 @@ describe('época', () => {
     expect(clubSeasons(c, -1)).toEqual([]);
   });
 
-  it('a ficha de um clube mostra três épocas, e o fim da época fica lá escrito', () => {
+  it('a ficha de um clube mostra três épocas, e o fim da época fica lá escrito', { tags: ['slow'] }, () => {
     const c = newClub(23);
     // Antes da primeira jornada ninguém tem lugar nesta época, nem o nosso clube, que ganharia o desempate a 0-0.
     expect(clubSeasons(c, PLAYER_CLUB).map(e => e.position === null)).toEqual([true, true, true]);
@@ -496,7 +496,7 @@ describe('época', () => {
     expect(simulateMatch(clubTeam(c), opponentOf(c), 3, [true, false], 0).visitor).toBe(0);
   });
 
-  it('a semana livre tem particular, não conta para a liga, e pode-se saltar', () => {
+  it('a semana livre tem particular, não conta para a liga, e pode-se saltar', { tags: ['slow'] }, () => {
     let c = newClub(19);
     for (let i = 1; i < 4 + PRESEASON_WEEKS; i++) c = week(c);
     expect(c.week).toBe(4 + PRESEASON_WEEKS);
@@ -534,7 +534,7 @@ describe('época', () => {
     expect(parseClub(JSON.stringify(result.club))).toEqual(result.club);
   });
 
-  it('a taça acaba com um vencedor mesmo sem nós, e o balanço diz até onde chegámos', () => {
+  it('a taça acaba com um vencedor mesmo sem nós, e o balanço diz até onde chegámos', { tags: ['slow'] }, () => {
     let c = newClub(23);
     // Quer joguemos quer não, os outros jogam na mesma e cada ronda fecha-se com metade dos clubes.
     for (let i = 0; i < SEASON_WEEKS - 1; i++) {
@@ -553,7 +553,7 @@ describe('época', () => {
     expect(after.cups.federation.alive).toHaveLength(40);
   });
 
-  it('um clube com tudo a 100 ganha a taça, e isso dá cartas, confiança e fica na carreira', () => {
+  it('um clube com tudo a 100 ganha a taça, e isso dá cartas, confiança e fica na carreira', { tags: ['slow'] }, () => {
     const perfect = (seed: number): ClubState => {
       const start = newClub(seed);
       return { ...start, team: { ...start.team, roster: start.team.roster.map(p => ({ ...p, attributes: Object.fromEntries(Object.keys(p.attributes).map(k => [k, 100])) as unknown as typeof p.attributes })) } };
@@ -580,7 +580,7 @@ describe('época', () => {
     expect(skipWeek(newClub(1)).week).toBe(2);
   });
 
-  it('uma época inteira acaba com tudo jogado, balanço e calendário novo', () => {
+  it('uma época inteira acaba com tudo jogado, balanço e calendário novo', { tags: ['slow'] }, () => {
     const start = newClub(23);
     const after = season(start);
     const record = after.seasonReport!;
@@ -599,7 +599,7 @@ describe('época', () => {
     expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
 
-  it('a Taça Continental joga-se com os 4 da Pro Liga 1 e os 12 de fora, e o Mundial a seguir', () => {
+  it('a Taça Continental joga-se com os 4 da Pro Liga 1 e os 12 de fora, e o Mundial a seguir', { tags: ['slow'] }, () => {
     let c = newClub(23);
     expect(c.continentalQualified).toHaveLength(4);
     expect(c.continentalQualified.every(id => c.divisions[3]!.includes(id))).toBe(true);
@@ -623,7 +623,7 @@ describe('época', () => {
     expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
 
-  it('o campeão da Pro Liga 1 entra na Taça Continental na época seguinte', () => {
+  it('o campeão da Pro Liga 1 entra na Taça Continental na época seguinte', { tags: ['slow'] }, () => {
     const first = season(stronger(newClub(91, 3), 30));
     expect(first.history[0]!.outcome).toBe('champion');
     expect(first.continentalQualified).toContain(PLAYER_CLUB);
@@ -636,7 +636,7 @@ describe('época', () => {
     expect(record.cups.includes('continental')).toBe(record.continentalExit === CUP_ROUNDS.continental.length);
   });
 
-  it('o tempo passa: o potencial desce no fim da época, e quem o esgota sai e é substituído', () => {
+  it('o tempo passa: o potencial desce no fim da época, e quem o esgota sai e é substituído', { tags: ['slow'] }, () => {
     const start = newClub(101);
     const doomed = start.team.roster[11]!.name;
     const c = { ...start, team: { ...start.team, roster: start.team.roster.map((p, i) => (i === 11 ? { ...p, potential: 1 } : p)) } };
@@ -661,7 +661,7 @@ describe('época', () => {
     expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
 
-  it('um veterano com o potencial no fim perde velocidade, salto e resistência', () => {
+  it('um veterano com o potencial no fim perde velocidade, salto e resistência', { tags: ['slow'] }, () => {
     const start = newClub(103);
     const c = { ...start, team: { ...start.team, roster: start.team.roster.map((p, i) => (i === 0 ? { ...p, potential: 12 } : p)) } };
     const after = season(c);
@@ -670,7 +670,7 @@ describe('época', () => {
     expect(veteran.attributes.shooting).toBeGreaterThanOrEqual(c.team.roster[0]!.attributes.shooting - 2);
   });
 
-  it('no fim da época toda a gente pede um salário novo, e só se continua dentro do orçamento', () => {
+  it('no fim da época toda a gente pede um salário novo, e só se continua dentro do orçamento', { tags: ['slow'] }, () => {
     const after = season(newClub(105));
     expect(after.pendingRenewals).not.toBeNull();
     expect(after.pendingRenewals!.length).toBe(after.team.roster.length - after.history[0]!.arrivals.length);
@@ -765,13 +765,13 @@ describe('época', () => {
     expect(() => sellPlayer(small, small.team.roster[9]!.name)).toThrow();
   });
 
-  it('nas divisões de baixo a época acaba na fase regular, sem playoffs', () => {
+  it('nas divisões de baixo a época acaba na fase regular, sem playoffs', { tags: ['slow'] }, () => {
     const after = season(newClub(23));
     expect(after.history[0]!.playoffExit).toBeNull();
     expect(after.playoffs).toBeNull();
   });
 
-  it('na Pro Liga 1 o campeão sai dos playoffs, com os jogos da série na mesma semana', () => {
+  it('na Pro Liga 1 o campeão sai dos playoffs, com os jogos da série na mesma semana', { tags: ['slow'] }, () => {
     let c = stronger(newClub(81, 3), 20);
     for (let i = 0; i < SEASON_WEEKS; i++) c = week(c);
     expect(c.week).toBe(SEASON_WEEKS + 1);
@@ -796,7 +796,7 @@ describe('época', () => {
     expect(record.outcome === 'champion').toBe(record.playoffExit === PLAYOFF_FORMATS[3]!.bestOf.length);
   });
 
-  it('na Pro Liga 2 sobem o 1.º da fase regular e o vencedor do playoff', () => {
+  it('na Pro Liga 2 sobem o 1.º da fase regular e o vencedor do playoff', { tags: ['slow'] }, () => {
     const results = [83, 84, 85].map(seed => season(stronger(newClub(seed, 2), 25)));
     for (const after of results) {
       const record = after.history[0]!;
@@ -812,7 +812,7 @@ describe('época', () => {
     expect(results.some(after => after.history[0]!.outcome !== 'stayed')).toBe(true);
   });
 
-  it('quem acaba em cima sobe, e quem acaba em baixo desce', () => {
+  it('quem acaba em cima sobe, e quem acaba em baixo desce', { tags: ['slow'] }, () => {
     for (const seed of [31, 37, 41, 43, 47, 53]) {
       const start = newClub(seed, 1);
       const after = season(start);

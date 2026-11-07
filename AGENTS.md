@@ -12,7 +12,9 @@ Lê antes de começar:
 ## Comandos
 
 ```bash
-npm run check          # verifica os tipos e corre os testes
+npm run check          # verifica os tipos e corre os testes rápidos (menos de 1 minuto)
+npm run balance        # corre os testes lentos, que simulam muitos jogos (vários minutos)
+npm run check-all      # os dois juntos
 npm run sim            # simula jogos em massa e mostra o relatório de equilíbrio
 npm run watch-match    # mostra um jogo em texto: npm run watch-match -- 42
 npm run dev            # abre o jogo no browser, em http://localhost:5173
@@ -23,7 +25,7 @@ npm run build-page     # junta o jogo numa só página, em dist/pocket-basketbal
 
 Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. No Windows usa o Edge; noutra máquina usa o Chromium do Playwright, ou o browser que indicares em `BROWSER_PATH` (caminho) ou `BROWSER_CHANNEL` (por exemplo `chrome`).
 
-Corre `npm run check` antes de dares uma tarefa por terminada. Confirma o equilíbrio com milhares de jogos; os testes da simulação estão divididos em ficheiros `src/sim/sim-*.test.ts` para correrem em paralelo, e num computador com vários processadores demoram uns minutos. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
+Corre `npm run check` antes de dares uma tarefa por terminada. Se mudares `src/sim/` ou `src/ui/club.ts`, corre também `npm run balance`, que confirma o equilíbrio com milhares de jogos; os testes da simulação estão divididos em ficheiros `src/sim/sim-*.test.ts` para correrem em paralelo, e num computador com vários processadores demoram uns minutos. Um teste novo que demore mais de um segundo leva `{ tags: ['slow'] }`, para o `check` continuar rápido. Se mudares números em `src/sim/balance.ts`, corre também `npm run sim`.
 
 ## Regras da simulação (`src/sim/`)
 

@@ -67,7 +67,7 @@ describe('colisões e encontrões', () => {
     expect(pushPower(a)).toBeLessThan(base);
   });
 
-  it('quanto mais forte o adversário, mais vezes se vai ao chão, e toda a gente se levanta', () => {
+  it('quanto mais forte o adversário, mais vezes se vai ao chão, e toda a gente se levanta', { tags: ['slow'] }, () => {
     const withStrength = (team: Team, strength: number): Team => ({ ...team, roster: team.roster.map(p => ({ ...p, attributes: { ...p.attributes, strength } })) });
     const falls = (strength: number): number => {
       let total = 0;
@@ -134,7 +134,7 @@ describe('colisões e encontrões', () => {
 
   const bumps = (seed: number, a = home, b = away): MatchState => simulateMatch(a, b, seed);
 
-  it('há encontrões, e o mais forte ganha a maior parte', () => {
+  it('há encontrões, e o mais forte ganha a maior parte', { tags: ['slow'] }, () => {
     let won = 0;
     let lost = 0;
     let visible = 0;
@@ -155,7 +155,7 @@ describe('colisões e encontrões', () => {
     expect(won / (won + lost)).toBeGreaterThan(0.6);
   });
 
-  it('jogadores mais fortes ganham posição e mais ressaltos', () => {
+  it('jogadores mais fortes ganham posição e mais ressaltos', { tags: ['slow'] }, () => {
     let strongRebounds = 0;
     let baseRebounds = 0;
     for (let seed = 1; seed <= 150; seed++) {
@@ -170,7 +170,7 @@ describe('colisões e encontrões', () => {
     expect(strongRebounds).toBeGreaterThan(baseRebounds * 1.03);
   });
 
-  it('jogar de costas: quem é forte ganha terreno, e quem é fraco é aguentado', () => {
+  it('jogar de costas: quem é forte ganha terreno, e quem é fraco é aguentado', { tags: ['slow'] }, () => {
     const count = (attacker: number, defender: number): { gained: number; held: number } => {
       let gained = 0;
       let held = 0;
@@ -258,7 +258,7 @@ describe('início do jogo', () => {
     expect(s.phase).toBe('dead');
   });
 
-  it('o prolongamento começa com bola ao alto', () => {
+  it('o prolongamento começa com bola ao alto', { tags: ['slow'] }, () => {
     for (let seed = 1; seed <= 300; seed++) {
       const s = simulateMatch(home, away, seed);
       if (s.period <= 4) continue;
@@ -294,7 +294,7 @@ describe('reposições', () => {
     return found;
   };
 
-  it('quem repõe fica fora de campo, assenta os pés e passa a outro', () => {
+  it('quem repõe fica fora de campo, assenta os pés e passa a outro', { tags: ['slow'] }, () => {
     const all = inbounds(20);
     expect(all.length).toBeGreaterThan(300);
     expect(all.every(i => !i.receiverIsPasser)).toBe(true);
@@ -304,7 +304,7 @@ describe('reposições', () => {
     expect(all.some(i => !i.baseline)).toBe(true);
   });
 
-  it('às vezes vêm dois receber, e contra pressão vêm sempre dois', () => {
+  it('às vezes vêm dois receber, e contra pressão vêm sempre dois', { tags: ['slow'] }, () => {
     const normal = inbounds(10);
     const two = normal.filter(i => i.receivers === 2).length / normal.length;
     expect(two).toBeGreaterThan(0.2);
@@ -350,7 +350,7 @@ describe('papéis no ressalto', () => {
     return { near, samples, base, rebounds: {} };
   };
 
-  it('nem toda a gente vai ao ressalto', () => {
+  it('nem toda a gente vai ao ressalto', { tags: ['slow'] }, () => {
     const { near, samples, base } = crowd(30);
     expect(samples).toBeGreaterThan(500);
     expect(near / samples).toBeLessThan(5.5);
@@ -358,7 +358,7 @@ describe('papéis no ressalto', () => {
     expect(base / samples).toBeLessThan(0.2);
   });
 
-  it('quem gosta de ir ao ressalto ganha mais do que quem espera lá fora', () => {
+  it('quem gosta de ir ao ressalto ganha mais do que quem espera lá fora', { tags: ['slow'] }, () => {
     let crashers = 0;
     let waiters = 0;
     for (let seed = 1; seed <= 100; seed++) {
@@ -370,7 +370,7 @@ describe('papéis no ressalto', () => {
     expect(crashers).toBeGreaterThan(waiters * 1.2);
   });
 
-  it('sem pressão, a defesa espera o ataque perto do meio-campo', () => {
+  it('sem pressão, a defesa espera o ataque perto do meio-campo', { tags: ['slow'] }, () => {
     const backcourt = (pressure: number): number => {
       let total = 0;
       for (let seed = 1; seed <= 10; seed++) {

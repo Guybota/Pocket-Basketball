@@ -27,7 +27,7 @@ describe('critérios da Fase 0', () => {
     expect(summary.pointsInRange).toBeGreaterThanOrEqual(0.6);
   });
 
-  it('todas as divisões têm uma média dentro do intervalo', () => {
+  it('todas as divisões têm uma média dentro do intervalo', { tags: ['slow'] }, () => {
     for (const { level } of DIVISIONS) {
       const { meanPoints } = summarize(league(level), 200);
       expect(meanPoints).toBeGreaterThanOrEqual(35);
@@ -55,19 +55,19 @@ describe('critérios da Fase 0', () => {
     expect(summary.blocksPerTeam).toBeLessThan(3);
   });
 
-  it('a melhor equipa do campeonato ganha cerca de 70% das vezes', () => {
+  it('a melhor equipa do campeonato ganha cerca de 70% das vezes', { tags: ['slow'] }, () => {
     const rate = betterTeamWinRate(55, 600);
     expect(rate).toBeGreaterThanOrEqual(0.65);
     expect(rate).toBeLessThanOrEqual(0.76);
   });
 
-  it('uma nota acima em tudo ganha quase sempre, mas não sempre', () => {
+  it('uma nota acima em tudo ganha quase sempre, mas não sempre', { tags: ['slow'] }, () => {
     const rate = fullBonusWinRate(17, 400);
     expect(rate).toBeGreaterThan(0.8);
     expect(rate).toBeLessThan(0.99);
   });
 
-  it('todos os atributos contam, e nenhum domina', () => {
+  it('todos os atributos contam, e nenhum domina', { tags: ['slow'] }, () => {
     for (const key of ATTRIBUTE_KEYS) {
       const rate = attributeWinRate(key, 17, 600);
       expect(rate, key).toBeGreaterThan(0.52);
@@ -96,13 +96,13 @@ describe('critérios da Fase 0', () => {
     expect(postes).toBeGreaterThan(bases + 100 * 1.5);
   });
 
-  it('a altura ajuda sem decidir tudo', () => {
+  it('a altura ajuda sem decidir tudo', { tags: ['slow'] }, () => {
     const rate = bodyWinRate(1, 500);
     expect(rate).toBeGreaterThan(0.53);
     expect(rate).toBeLessThan(0.75);
   });
 
-  it('uma equipa mais alta ganha mais ressaltos', () => {
+  it('uma equipa mais alta ganha mais ressaltos', { tags: ['slow'] }, () => {
     let tall = 0;
     let base = 0;
     for (let i = 0; i < 100; i++) {
