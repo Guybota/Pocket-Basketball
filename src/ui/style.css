@@ -230,9 +230,7 @@ button.primary:hover { background: #f07238; }
 /* A barra do treinador durante o jogo: cinco botões só com ícones, numa fila. */
 .coachbar { flex: none; display: flex; gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); border-top: 3px solid var(--ink); }
 .coachbar .icon { flex: 1; min-width: 0; height: 46px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 1px; position: relative; }
-.coachbar .icon { flex-direction: column; height: 52px; }
-.coachbar .icon img { width: 28px; height: 28px; image-rendering: pixelated; }
-.coachbar .icon small { font: 400 13px/1 var(--ui-sm); white-space: nowrap; }
+.coachbar .icon img { width: 32px; height: 32px; image-rendering: pixelated; }
 .coachbar .icon[aria-pressed="true"] img.ink { filter: invert(1); }
 .coachbar .icon:disabled img { opacity: .4; }
 
