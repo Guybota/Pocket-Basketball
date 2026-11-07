@@ -240,3 +240,20 @@ O determinismo está bem: gerador exato, só funções matemáticas exatas, orde
 4. **E1, E2, E5, E6** (toque, fonte e contraste) e **I1, I2** (desempenho no telemóvel).
 5. **F1, F2, F12, F17** e **G2, G3, H1, H2**.
 6. O resto, conforme as tuas respostas.
+
+---
+
+## Decisões (7 de novembro de 2026)
+
+| Grupo | Aprovado | Recusado ou adiado | Escolhas |
+|---|---|---|---|
+| A | Todos (feitos) | — | A7: o particular mexe na confiança e o texto di-lo. A15: tirar a palavra «objetivos». |
+| B | Todos | — | B3: `check` rápido abaixo de 60 s. |
+| C | — | Todo o grupo (não mexer no equilíbrio) | — |
+| D | D1, D2, D4, D5, D6, D8, D10, D11 | D3 (descontos ficam), D7 (repetir jogo fica), D9, D12–D17 | D4: a troca manual desliga a rotação toda, mas com aviso e botão à vista para voltar a ligar. D5: táticas mudadas a meio valem só para esse jogo. |
+| E | E1–E12, E14, E15 | E13 (sem tutorial) | E5: acrescentar acentos e «%» à fonte bitmap. E4: só confirmação (sem anular, para não mudar o contrato). |
+| F | F1, F2, F3, F4, F5, F15, F17 | F6–F14, F16 | F3/F4: ginásio (treino), médico (lesões), olheiros (mercado). F15: o Aeroporto serve para jogar contra uma equipa exportada. |
+| G | Todos | — | — |
+| H | Todos | — | — |
+| I | Todos, incluindo os refactors I8–I10 | — | — |
+| J | — | Adiado | — |
