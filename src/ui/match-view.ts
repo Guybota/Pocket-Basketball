@@ -127,8 +127,8 @@ export interface ViewCallbacks {
 }
 
 /** Liga a simulação ao ecrã. A simulação não sabe que esta classe existe. */
-// A lotação de cada pavilhão, da Liga Iniciados à Pro Liga 1: o campo do bairro leva umas dezenas, a arena alguns milhares.
-const CAPACITY = [120, 650, 2400, 7500] as const;
+// O lado da câmara nunca se vê, mas também tem gente: conta como mais 40 % de quem se vê.
+const HIDDEN_SIDE = 1.4;
 
 export class MatchView {
   readonly s: MatchState;
@@ -170,8 +170,10 @@ export class MatchView {
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
   private forecast: { ours: number; confident: boolean } | null = null;
-  /** Quantas pessoas vieram ver o jogo, para o prognóstico. */
-  readonly spectators: number;
+  /** Quantas pessoas vieram ver o jogo: as que se veem nas bancadas, mais as do lado da câmara, que nunca aparece. */
+  get spectators(): number {
+    return Math.round((this.fans.length + this.outsiders.length) * HIDDEN_SIDE);
+  }
   /** O emblema do nosso clube, para os painéis. Os outros têm o emblema fixo. */
   readonly ownEmblem?: Emblem;
   private coachUpsetUntil: [number, number] = [0, 0];
@@ -240,11 +242,9 @@ export class MatchView {
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
-    const fill = 0.3 + 0.9 * Math.max(0, Math.min(1, attendance));
-    // Quantos vieram: a lotação do pavilhão vezes a enchente, mais gente contra um adversário forte para a divisão
-    // e menos contra um fraco (uma divisão de diferença vale ±50 %), e uma pequena variação de jogo para jogo.
+    // E um adversário forte para a divisão traz mais gente, um fraco menos (uma divisão de diferença vale ±50 %).
     const draw = division >= DIVISIONS.length ? 1 : Math.max(0.75, Math.min(1.3, 1 + (teamRating(away) - DIVISIONS[division]!.level) / 22));
-    this.spectators = division >= CAPACITY.length ? 0 : Math.round((CAPACITY[division]! * Math.min(1, fill * draw) * (0.92 + (Math.abs(seed) % 17) / 100)) / 10) * 10;
+    const fill = (0.3 + 0.9 * Math.max(0, Math.min(1, attendance))) * draw;
     if (this.street) {
       // Dois bancos de dois degraus atrás de cada cesto, longe dos bancos das equipas, com pouca gente: o degrau alto fica atrás.
       let n = 1;
