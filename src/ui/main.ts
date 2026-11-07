@@ -847,7 +847,9 @@ function frame(now: number): void {
       showMatch();
     }
     const resume = document.querySelector('[data-subs-close]');
-    if (resume) resume.textContent = holdTouched ? 'Continuar jogo' : `Continuar jogo (${Math.ceil(current.s.timer / TICKS_PER_SECOND)} s)`;
+    const label = holdTouched ? 'Continuar jogo' : `Continuar jogo (${Math.ceil(current.s.timer / TICKS_PER_SECOND)} s)`;
+    // Só quando o número muda: reescrever o botão a cada imagem impedia-o de ficar estável para ser tocado.
+    if (resume && resume.textContent !== label) resume.textContent = label;
   } else if (timeoutHandled) {
     timeoutHandled = false;
     holdTouched = false;
