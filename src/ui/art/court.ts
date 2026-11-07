@@ -847,19 +847,32 @@ function groundOutside(x: number, y: number): number {
   return Math.floor((x + y) / 4) % 2 === 0 ? GRASS : GRASS_DARK;
 }
 
+/**
+ * Pinta os píxeis cujo centro fica dentro do polígono. Duas faces com uma aresta comum dividem-na sem buracos nem
+ * sobreposições, e uma aresta isométrica (2:1) avança sempre dois píxeis por linha, seja qual for a fração dos vértices.
+ */
 export function fillPolygon(g: CanvasRenderingContext2D, points: readonly (readonly [number, number])[], color: string): void {
   g.fillStyle = color;
+  const xs0 = points.map(p => p[0]);
   const ys = points.map(p => p[1]);
-  const y0 = Math.max(0, Math.ceil(Math.min(...ys)));
-  const y1 = Math.min(g.canvas.height, Math.floor(Math.max(...ys)));
+  // Uma risca mais estreita do que um píxel não tem centros dentro: fica com um píxel por linha, para não sair tracejada.
+  const thin = Math.max(...xs0) - Math.min(...xs0) < 1;
+  const y0 = Math.max(0, Math.ceil(Math.min(...ys) - 0.5));
+  const y1 = Math.min(g.canvas.height - 1, Math.ceil(Math.max(...ys) - 0.5) - 1);
   for (let y = y0; y <= y1; y++) {
+    const yc = y + 0.5;
     const xs: number[] = [];
     points.forEach((a, i) => {
       const b = points[(i + 1) % points.length]!;
-      if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) xs.push(a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      if ((a[1] <= yc && b[1] > yc) || (b[1] <= yc && a[1] > yc)) xs.push(a[0] + ((yc - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
     });
     xs.sort((a, b) => a - b);
-    for (let i = 0; i + 1 < xs.length; i += 2) g.fillRect(Math.round(xs[i]!), y, Math.max(1, Math.round(xs[i + 1]! - xs[i]!)), 1);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const left = Math.ceil(xs[i]! - 0.5);
+      const right = Math.ceil(xs[i + 1]! - 0.5);
+      if (right > left) g.fillRect(left, y, right - left, 1);
+      else if (thin) g.fillRect(Math.floor((xs[i]! + xs[i + 1]!) / 2), y, 1, 1);
+    }
   }
 }
 
