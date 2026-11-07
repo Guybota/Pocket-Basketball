@@ -106,7 +106,7 @@ function statsTab(view: MatchView): string {
   return `<div class="cmp head"><span>${crest(view, 0)}</span><span></span><span>${crest(view, 1)}</span></div>${body}${playerRows(0)}${playerRows(1)}`;
 }
 
-const minutesText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
+const minutesText = (seconds: number): string => `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
 
 /** A aba da liga: os outros jogos da jornada no mesmo ponto do relógio, e a classificação como vai neste momento. */
 function leagueTab(view: MatchView, live: LiveLeague | null): string {
@@ -154,7 +154,7 @@ export const slotCode = (slot: number): string => SLOT_CODES[slot] ?? 'SUP';
 /** A parte da ficha que muda durante o jogo. É a única que se redesenha, para os botões nunca serem substituídos. */
 export function playerCardLive(b: Body): string {
   const l = b.line;
-  const stats: [string, number][] = [['Pts', l.points], ['Res', l.rebounds], ['Ass', l.assists], ['Rou', l.steals], ['Fal', l.fouls], ['Seg', Math.round(l.secondsPlayed)]];
+  const stats: [string, number | string][] = [['Pts', l.points], ['Res', l.rebounds], ['Ass', l.assists], ['Rou', l.steals], ['Fal', l.fouls], ['Min', minutesText(l.secondsPlayed)]];
   const energy = 1 - b.fatigue;
   return `<span class="card-state">${b.slot >= 0 ? 'Em campo' : 'No banco'}</span>
     <span class="card-label">Energia</span>
@@ -209,7 +209,7 @@ const BOARD_LINES = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" 
 export function boardPlayer(look: Look, name: string, energy: number | null, slot: number, attribute: string, picked: boolean): string {
   const [u, v] = SPOTS[slot]![0]!;
   const tone = energy === null ? '' : energy > 0.65 ? ' good' : energy > 0.35 ? ' mid' : ' low';
-  return `<button type="button" class="bpl${picked ? ' picked' : ''}" style="left:${(50 + (v / 7.5) * 46).toFixed(1)}%;top:${((u / 14) * 100 + 8).toFixed(1)}%" ${attribute} aria-pressed="${picked}"><img alt="" src="${spriteImage(look)}"><span class="tag${tone}">${escapeHtml(name)}</span></button>`;
+  return `<button type="button" class="bpl" style="left:${(50 + (v / 7.5) * 46).toFixed(1)}%;top:${((u / 14) * 100 + 8).toFixed(1)}%" ${attribute} aria-pressed="${picked}"><img alt="" src="${spriteImage(look)}"><span class="tag${tone}">${escapeHtml(name)}</span></button>`;
 }
 
 export const board = (players: string, away = false): string => `<div class="board${away ? ' away' : ''}" style="background-image:url('data:image/svg+xml,${BOARD_LINES}')">${players}</div>`;
@@ -266,7 +266,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
     const mark = marks.get(b);
     const fit = pickedBody && pickedBody !== b ? (slot >= 0 && pickedSlot < 0 ? fitClass(pickedBody.player, slot) : slot < 0 && pickedSlot >= 0 ? fitClass(b.player, pickedSlot) : '') : '';
     const code = slot >= 0 ? slotCode(slot) : fit ? slotCode(pickedSlot) : '';
-    return `<button type="button" class="srow${slot < 0 ? ' bench' : ''}${index === picked ? ' has-ball' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${slot < 0 && b.line.fouls >= 5 ? 'disabled' : ''}>
+    return `<button type="button" class="srow${slot < 0 ? ' bench' : ''}" data-pick="${index}" aria-pressed="${index === picked}" ${slot < 0 && b.line.fouls >= 5 ? 'disabled' : ''}>
       <span class="face-wrap"><img class="face team-${team}" alt="" src="${faceImage(view.lookFor(b))}">${mark ? `<i class="arrow ${mark}"></i>` : ''}</span>
       <span class="pos${fit ? ` ${fit}` : ''}">${code}</span>
       <span class="name">${escapeHtml(b.player.name)}${optionMark(s.tactics[b.team].options, b.player.name)}</span>

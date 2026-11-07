@@ -933,7 +933,8 @@ initMenus({
 addEventListener('resize', fit);
 // No telemóvel, a área visível muda sem aviso de 'resize' quando o teclado abre ou fecha; e ao sair de um campo de texto
 // volta-se a medir depois de o teclado ter fechado.
-window.visualViewport?.addEventListener('resize', fit);
+// Com zoom de dois dedos a área visível também muda, mas aí não se volta a medir: o jogo encolhia para caber no bocado ampliado.
+window.visualViewport?.addEventListener('resize', () => { if (window.visualViewport!.scale < 1.01) fit(); });
 addEventListener('focusout', () => window.setTimeout(fit, 400));
 fit();
 // O clube de ensaio começa já na primeira jornada, a não ser que a morada diga a semana.

@@ -1,4 +1,4 @@
-// Os toques no telemóvel e no tablet: sem zoom do sistema, e segurar o dedo mostra o nome do que se está a tocar.
+// Os toques no telemóvel e no tablet: segurar o dedo mostra o nome do que se está a tocar.
 
 export function initTouch(): void {
   // Num tablet, segurar o dedo numa imagem abria o menu do sistema. Aqui segura-se para ler o que é.
@@ -11,18 +11,7 @@ export function initTouch(): void {
     clearTimeout(tipTimer);
     tip.hidden = true;
   };
-  // O Safari do iPhone e do iPad ignora o user-scalable: os gestos de zoom têm de ser travados aqui.
-  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, event => event.preventDefault(), { passive: false });
-  document.addEventListener('touchmove', event => {
-    if (event.touches.length > 1) event.preventDefault();
-  }, { passive: false });
-  let lastTouchEnd = 0;
-  document.addEventListener('touchend', event => {
-    // Dois toques seguidos não fazem zoom; o segundo toque continua a contar como clique.
-    const now = Date.now();
-    if (now - lastTouchEnd < 300 && (event.target as HTMLElement).closest('button, canvas, a') === null) event.preventDefault();
-    lastTouchEnd = now;
-  }, { passive: false });
+  // O zoom com dois dedos fica livre. Os dois toques seguidos num botão não fazem zoom por causa do touch-action: manipulation do style.css.
   document.addEventListener('contextmenu', event => {
     if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
   });

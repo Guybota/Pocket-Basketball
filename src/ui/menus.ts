@@ -856,7 +856,7 @@ function officeScreen(): Rendered {
   const details: Record<Exclude<OfficeItem, 'trophies'>, string> = {
     board: `<div class="note"><header><b>Direção do clube</b><span>${Math.round(club.confidence)}%</span></header><div class="inner">
       <div>Confiança no treinador</div><div class="gauge"><i style="width:${club.confidence}%;background:${club.confidence < 15 ? 'var(--bad)' : club.confidence < 40 ? 'var(--gold)' : 'var(--good)'}"></i></div>
-      <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>Orçamento ${club.money}</span><span>Salários ${totalSalaries(club)}</span><span>Sobra ${surplus(club)}</span></div>
+      <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>Orçamento ${club.money} mil</span><span>Salários ${totalSalaries(club)} mil</span><span>Sobra ${surplus(club)} mil</span></div>
       ${say('president', ...presidentBoard(club))}
       <div>Abaixo de ${B.confidenceFired}% de confiança, a direção despede-te.</div>
     </div></div>`,
@@ -865,7 +865,7 @@ function officeScreen(): Rendered {
       : '<div class="quote">Ainda não acabou nenhuma época. Aqui ficam as épocas acabadas e os títulos do clube.</div>'}</div></div>`,
     reset: `<div class="note"><header><b>Treinar outro clube</b></header><div class="inner"><div class="quote">Perdes o ${esc(club.team.name)}, na semana ${club.week}, assim que criares o novo clube. Os teus troféus vão contigo.</div><button type="button" id="resetYes" data-act="newClub">Escolher novo clube</button><button type="button" id="resetNo" data-office="board">Ficar com este clube</button></div></div>`,
   };
-  const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}" style="grid-template-columns:1fr auto;${officeItem === id ? 'background:var(--gold);color:var(--ink)' : ''}"><span>${label}</span><small>${note}</small></button>`;
+  const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}" style="grid-template-columns:1fr auto"><span>${label}</span><small>${note}</small></button>`;
   const items: [OfficeItem, string, string][] = [
     ['board', 'Direção', 'A confiança no treinador'],
     ['trophies', 'Troféus e prémios', `${trophyList(club).filter(t => t.won).length} na vitrina`],

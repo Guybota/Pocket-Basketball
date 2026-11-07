@@ -41,15 +41,14 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 
 html, body { height: 100%; }
 
-/* Sem zoom no telemóvel e no tablet: nem com dois dedos nem com dois toques. Deslizar continua a funcionar nas listas. */
+/* O zoom com dois dedos fica livre, para quem precisa de letra maior. Só os dois toques seguidos não fazem zoom: nos botões e no campo são cliques. */
 :root { --safe-top: env(safe-area-inset-top, 0px); --top-extra: 0px; }
-html { touch-action: pan-x pan-y; }
 /* Ao alto, a página começa abaixo da barra de estado do telemóvel, e essa faixa fica pintada de escuro: o iOS desfoca o que
  * lhe passa por baixo, e sobre uma cor lisa o desfoque não se vê. Instalado no ecrã inicial, a faixa desfocada é mais alta
  * do que a barra, por isso há um extra (--top-extra, posto pelo jogo). */
 body:not(.landscape) { padding-top: calc(var(--safe-top) + var(--top-extra)); }
 body:not(.landscape)::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: calc(var(--safe-top) + var(--top-extra)); background: #1b2230; z-index: 60; }
-button, canvas, a { touch-action: manipulation; }
+button, canvas, a, [role="tab"], input { touch-action: manipulation; }
 
 body {
   margin: 0;
@@ -209,7 +208,10 @@ button:hover { background: var(--paper-2); }
 
 button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--ink); }
 
-button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+/* Selecionado: um só estilo em todo o jogo, fundo ouro, letra tinta e um filete tinta por dentro. O !important ganha às cores
+ * de cada lista (banco, reservas, giz); onde o fundo já diz alguma coisa (cores, cartas, bonecos), o selecionado é um contorno ouro. */
+button[aria-pressed="true"]:not(.gcard, .swatch, .bpl), [role="tab"][aria-selected="true"] { background: var(--gold) !important; color: var(--ink) !important; box-shadow: inset 0 0 0 2px var(--ink) !important; }
+.gcard[aria-pressed="true"], .swatch[aria-pressed="true"], .bpl[aria-pressed="true"] .tag { outline: 3px solid var(--gold); outline-offset: 1px; box-shadow: 0 0 0 5px var(--ink); }
 
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
 
@@ -219,11 +221,10 @@ button.primary:hover { background: #f07238; }
 
 .tabs { display: flex; gap: 2px; padding: 4px 4px 0; background: var(--ink); flex: none; }
 
-.tabs button { flex: 1; border: 0; box-shadow: none; background: var(--ink-2); color: var(--paper); min-height: 40px; }
+.tabs button { flex: 1; border: 0; box-shadow: none; background: var(--ink-2); color: var(--paper); min-height: 44px; }
 
 .tabs button:hover { background: #3a4560; }
 
-.tabs button[aria-selected="true"] { background: var(--paper); color: var(--ball); }
 
 .content { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
 
@@ -231,7 +232,6 @@ button.primary:hover { background: #f07238; }
 .coachbar { flex: none; display: flex; gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); border-top: 3px solid var(--ink); }
 .coachbar .icon { flex: 1; min-width: 0; height: 46px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 1px; position: relative; }
 .coachbar .icon img { width: 32px; height: 32px; image-rendering: pixelated; }
-.coachbar .icon[aria-pressed="true"] img.ink { filter: invert(1); }
 .coachbar .icon:disabled img { opacity: .4; }
 
 button:disabled { opacity: 0.45; cursor: default; }
@@ -263,9 +263,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .bpl .tag.low { background: var(--bad); color: #fff; }
 
-.bpl.picked .tag { outline: 2px solid var(--ball); }
-
-.board.away .bpl.picked .tag { background: var(--away); color: #fff; outline-color: #fff; }
 
 .rivalhead { display: grid; gap: 2px; padding: 4px 6px; border-bottom: 2px solid var(--ink); font: 400 15px/1.15 var(--ui-sm); }
 
@@ -280,7 +277,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   align-items: center;
   gap: 2px;
   width: 100%;
-  min-height: 24px;
+  min-height: 44px;
   line-height: 1;
   padding: 1px 2px;
   border: 0;
@@ -293,7 +290,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .srow:active { transform: none; box-shadow: none; }
 
-.srow.has-ball { background: rgba(242, 194, 48, 0.42); box-shadow: inset 3px 0 0 var(--ball); }
 
 .srow .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -330,9 +326,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .pending { display: grid; grid-template-columns: 1fr 36px; gap: 6px; align-items: center; font: 400 15px/1 var(--ui-sm); }
 
-.pending button { min-height: 28px; padding: 0; }
+.pending button { padding: 0; }
 
-.rotation { min-height: 34px; margin-top: 3px; }
+.rotation { margin-top: 3px; }
 
 /* Com 12 jogadores a lista pode ser maior do que o ecrã, mas sair das trocas tem de estar sempre à vista. */
 .subs [data-subs-close] { position: sticky; bottom: 0; flex: none; }
@@ -368,7 +364,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   align-items: center;
   gap: 5px;
   width: 100%;
-  min-height: 24px;
+  min-height: 44px;
   line-height: 1;
   padding: 1px 2px;
   border: 0;
@@ -454,14 +450,16 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .attr-bar i { display: block; height: 100%; background: var(--grade); }
 
-.grade { min-height: 20px; text-align: center; font-weight: 400; color: #fff; background: var(--grade); border: 2px solid var(--ink); line-height: 16px; }
+.grade { min-height: 20px; text-align: center; font-weight: 400; color: var(--grade-ink); background: var(--grade); border: 2px solid var(--ink); line-height: 16px; }
 
-.grade-S { --grade: #d9a400; }
-.grade-A { --grade: #cf3a2c; }
-.grade-B { --grade: #e8622a; }
-.grade-C { --grade: #3f9d58; }
-.grade-D { --grade: #2b7fb8; }
-.grade-E { --grade: #7a7a7a; }
+/* As notas numa escala só, do escuro (S) ao claro (E): lê-se pela claridade mesmo sem ver cores, e A (letra branca) e B (letra tinta)
+ * nunca se confundem. Letra com contraste de pelo menos 4,5:1 em todas. */
+.grade-S, .gr-S { --grade: #440154; --grade-ink: #fff; }
+.grade-A, .gr-A { --grade: #2c4f8c; --grade-ink: #fff; }
+.grade-B, .gr-B { --grade: #2a9d8f; --grade-ink: var(--ink); }
+.grade-C, .gr-C { --grade: #7cc864; --grade-ink: var(--ink); }
+.grade-D, .gr-D { --grade: #c4d97c; --grade-ink: var(--ink); }
+.grade-E, .gr-E { --grade: #f2f0ea; --grade-ink: var(--ink); }
 
 /* Fechar e as setas ficam sempre à vista, presos ao fundo do painel enquanto a ficha rola. */
 .card-nav { display: grid; grid-template-columns: 56px 1fr 56px; gap: 6px; position: sticky; bottom: -6px; padding: 6px 0; background: var(--paper); }
@@ -558,7 +556,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .club-week span { font: 400 15px/1 var(--ui-sm); color: var(--muted); }
 
-button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; background: transparent; box-shadow: none; border-color: var(--line); color: var(--muted); font: 400 15px/1 var(--ui-sm); }
+button.quiet { align-self: center; padding: 2px 12px; background: transparent; box-shadow: none; border-color: var(--line); color: var(--muted); font: 400 15px/1 var(--ui-sm); }
 
 .hint.warn { color: var(--bad); }
 
@@ -572,7 +570,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .tactic-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 
-.tactic-options button { min-height: 36px; padding: 2px; }
+.tactic-options button { padding: 2px; }
 
 .tactic-note { font: 400 15px/1.05 var(--ui-sm); }
 
@@ -673,6 +671,10 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
   box-shadow: 1px 2px 0 var(--ink);
 }
 
+/* As etiquetas da cidade e o «Passar a semana» ficam pequenas no desenho, mas o dedo acerta numa faixa de 44 px. */
+.town-chip::before, .town-bar #skipWeekBtn::before { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; transform: translateY(-50%); }
+.town-bar #skipWeekBtn { position: relative; }
+
 .town-chip:active { transform: translate(-50%, -50%) translate(1px, 1px); }
 
 .town-chip:disabled { opacity: 1; background: var(--paper-3); color: var(--muted); }
@@ -686,13 +688,13 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 /* Barra de baixo: sempre no mesmo sítio, com voltar à esquerda. */
 .actions { flex: none; display: flex; gap: 5px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--paint-dk); border-top: 3px solid var(--ink); }
-.actions button { flex: 1; min-height: 38px; padding: 2px 4px; font-size: 18px; }
+.actions button { flex: 1; min-height: 44px; padding: 2px 4px; font-size: 18px; }
 .actions button.back { flex: 0 0 74px; background: var(--ink); color: var(--paper); }
 /* Barra só com ícones (treino): a arte a 2×, o voltar e o carregado invertidos, e a contagem dos combos num selo. */
 .actions button.icon { display: flex; align-items: center; justify-content: center; position: relative; min-height: 44px; padding: 0; }
 .actions button.icon.back { flex: 0 0 64px; }
 .actions button.icon img { width: 32px; height: 32px; image-rendering: pixelated; }
-.actions button.icon.back img.ink, .actions button.icon[aria-pressed="true"] img.ink, .actions button.icon.primary img.ink { filter: invert(1); }
+.actions button.icon.back img.ink, .actions button.icon.primary img.ink { filter: invert(1); }
 .actions button.icon:disabled img { opacity: .4; }
 .actions button.icon .badge { position: absolute; right: 3px; bottom: 2px; padding: 0 3px; font: 700 11px/1.3 var(--ui); color: var(--paper); background: var(--ink); border-radius: 3px; }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; }
@@ -708,8 +710,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .pshirt { width: 42px; height: 40px; display: grid; place-items: center; color: var(--home-ink); font: 400 24px/1 var(--display); background: var(--home); clip-path: polygon(14% 0, 34% 0, 50% 16%, 66% 0, 86% 0, 94% 8%, 82% 40%, 82% 100%, 18% 100%, 18% 40%, 6% 8%); }
 .grades { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .grades img { display: block; width: 100%; image-rendering: pixelated; }
-.gr { display: block; text-align: center; font: 400 15px/15px var(--small); color: #fff; background: #7a7a7a; border: 1px solid var(--ink); min-width: 0; }
-.gr-S { background: #d9a400; } .gr-A { background: var(--bad); } .gr-B { background: var(--ball); } .gr-C { background: var(--good); } .gr-D { background: #2b7fb8; } .gr-E { background: #7a7a7a; }
+.gr { display: block; text-align: center; font: 400 15px/15px var(--small); color: var(--grade-ink); background: var(--grade); border: 1px solid var(--ink); min-width: 0; }
 .kv { display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 3px; margin-top: 2px; padding: 1px 4px; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 17px; }
 .kv b { font-weight: 400; color: var(--ball); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
@@ -748,7 +749,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px); align-items: center; gap: 2px; padding: 1px 4px; }
 .thead { flex: none; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 21px; }
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
-.prow { width: 100%; min-height: 22px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
+.prow { width: 100%; min-height: 44px; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 17px/1 var(--ui); text-align: left; position: relative; }
 .prow.bench { background: rgba(203, 185, 142, .22); }
 /* O encaixe de um jogador escolhido em cada lugar, no menu de trocas. */
 .srow .pos.fit-good { color: #2f9b6a; }
@@ -757,11 +758,12 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 /* Os reservas, fora da ficha de jogo, ficam mais apagados. */
 .prow.reserve { background: rgba(120, 110, 90, .16); }
 .prow.reserve .name, .prow.reserve .pnum { opacity: .7; }
+/* Uma linha que não se pode escolher (no adversário, quando os alvos já estão todos) continua legível. */
+.prow:disabled { opacity: .7; }
 /* A estrela das opções de ataque, ao lado do nome. */
 .ostar { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; image-rendering: pixelated; }
 .prow:active { transform: none; box-shadow: none; }
-.prow[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
-.prow.swapfrom { background: var(--ball); color: #fff; }
+.prow.swapfrom { background: var(--ball) !important; color: #fff !important; }
 .prow .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ppos { display: block; font: 400 15px/16px var(--small); text-align: center; color: #fff; border: 1px solid var(--ink); }
 .ppos-BAS, .ppos-ESC { background: #2b7fb8; } .ppos-EXT { background: var(--good); } .ppos-EXP { background: #7246c4; } .ppos-POS { background: var(--bad); } .ppos-SUP { background: var(--muted); }
@@ -778,7 +780,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .gcard > img { display: block; width: 46px; height: 38px; object-fit: cover; object-position: center 78%; image-rendering: pixelated; }
 .gcard > em { position: absolute; right: 0; bottom: 0; background: var(--ink); color: var(--paper); font: 400 12px/12px var(--display); padding: 0 2px; font-style: normal; }
 .gcard:disabled { opacity: .35; }
-.gcard[aria-pressed="true"] { outline: 3px solid var(--gold); opacity: 1; }
+.gcard[aria-pressed="true"] { opacity: 1; }
 .info { flex: none; padding: 2px 6px; font: 400 15px/1.05 var(--small); background: var(--paper-2); border-top: 2px solid var(--ink); min-height: 34px; }
 .info b { font-weight: 400; color: var(--ball); }
 .slots { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 58px; gap: 4px; padding: 3px 5px 5px; flex: 1; min-height: 0; align-content: center; }
@@ -791,16 +793,14 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .chalk h2 { margin: 0; flex: none; padding: 3px 4px 2px; text-align: center; font: 400 21px/1 var(--display); }
 .chalk .scroll { padding: 0 3px; }
 .chalktabs { flex: none; display: flex; gap: 2px; padding: 0 3px 3px; }
-.chalktabs button { flex: 1; min-height: 26px; padding: 1px; font: 400 15px/1 var(--small); color: var(--chalk); background: transparent; border: 1px solid var(--chalk-2); box-shadow: none; }
-.chalktabs button[aria-pressed="true"] { background: var(--chalk); color: var(--board-2); }
-.crow { width: 100%; display: grid; grid-template-columns: 18px 1fr 22px 22px 34px; gap: 4px; align-items: center; min-height: 22px; padding: 1px 4px; color: var(--chalk); background: transparent; border: 0; border-bottom: 1px solid rgba(244, 241, 228, .45); box-shadow: none; font: 400 18px/1 var(--ui); text-align: right; }
+.chalktabs button { flex: 1; padding: 1px; font: 400 15px/1 var(--small); color: var(--chalk); background: transparent; border: 1px solid var(--chalk-2); box-shadow: none; }
+.crow { width: 100%; display: grid; grid-template-columns: 18px 1fr 22px 22px 34px; gap: 4px; align-items: center; min-height: 44px; padding: 1px 4px; color: var(--chalk); background: transparent; border: 0; border-bottom: 1px solid rgba(244, 241, 228, .45); box-shadow: none; font: 400 18px/1 var(--ui); text-align: right; }
 .crow:active { transform: none; box-shadow: none; }
 .crow .name { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crow.mine { color: var(--gold); }
 .crow.up { box-shadow: inset 3px 0 0 var(--good); } .crow.down { box-shadow: inset 3px 0 0 var(--bad); }
-.crow[aria-pressed="true"] { background: rgba(242, 194, 48, .3); }
 .crow.head { min-height: 18px; font: 400 15px/1 var(--small); color: var(--chalk-2); border-bottom-color: var(--chalk); }
-.offer { grid-template-columns: 1fr 26px 62px; min-height: 26px; }
+.offer { grid-template-columns: 1fr 26px 62px; }
 .offer img { display: block; width: 24px; height: 24px; image-rendering: pixelated; }
 .offer small { font: 400 15px/1 var(--small); color: var(--gold); text-align: center; }
 .cal { grid-template-columns: 24px 34px 1fr 50px; }
@@ -845,7 +845,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .lastcombo img { width: 64px; height: 64px; image-rendering: pixelated; }
 /* Uma lista curta não deixa meio painel vazio: as linhas crescem até 40 px quando há espaço, e ficam mais fáceis de tocar. */
 .scroll.growrows { display: flex; flex-direction: column; }
-.scroll.growrows > .prow, .scroll.growrows > .crow { flex: 1 1 auto; max-height: 40px; }
+.scroll.growrows > .prow, .scroll.growrows > .crow { flex: 1 1 auto; max-height: 48px; }
 .scroll.growrows > .starters { flex: none; }
 /* Os botões crescem até 62 px quando o painel tem espaço, em vez de ficarem num monte ao meio com faixas vazias à volta. */
 .menu { flex: 1; min-height: 0; display: grid; grid-auto-rows: minmax(46px, 62px); align-content: center; align-content: safe center; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); overflow-y: auto; }
@@ -888,7 +888,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 /* Táticas e equipamento */
 .tacrow { padding: 4px 6px; background: var(--paper-2); border: 2px solid var(--ink); display: grid; gap: 3px; font: 400 15px/1 var(--small); }
 .tacrow > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.tacrow button { min-height: 32px; padding: 1px; font: 400 18px/1 var(--ui); }
+.tacrow button { padding: 1px; font: 400 18px/1 var(--ui); }
 .stack { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding: 6px; }
 /* O ecrã do equipamento do jogo: as duas equipas, cada uma com a sua fila de camisolas; o nome fica sempre por baixo do boneco. */
 .kitpick { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
@@ -899,14 +899,12 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .kitgrid.two { grid-template-columns: repeat(2, 1fr); }
 .kitbtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px 4px; min-height: 0; }
 .kitbtn canvas { display: block; width: 60px; height: 108px; image-rendering: pixelated; }
-.kitbtn[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
 @media (max-height: 520px) { .kitbtn canvas { width: 40px; height: 72px; } }
 .kitpick.compact .kitbtn canvas { width: 40px; height: 72px; }
 .kitbtn span { font: 400 13px/1 var(--ui-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .kits { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; overflow-y: auto; }
 .kit { display: grid; grid-template-columns: 68px 1fr; gap: 6px; align-items: center; text-align: left; min-height: 66px; padding: 4px; }
 .kit canvas { display: block; width: 68px; height: 92px; image-rendering: pixelated; }
-.kit[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
 .mwarn { flex: none; padding: 3px 6px; background: var(--bad); color: #fff; font: 400 15px/1 var(--small); }
 
 /* Cidade e combo */
@@ -923,7 +921,6 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .citydetail { text-align: center; font: 400 15px/1 var(--small); color: var(--muted); }
 .cityp p b { font-weight: 400; color: var(--ball); }
 .cityp .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.cityp button { min-height: 40px; }
 .prow.trained { box-shadow: inset 4px 0 0 var(--good); }
 .prow.trained .name { color: var(--good); }
 .prow.trained[aria-pressed="true"] .name { color: var(--ink); }
@@ -1026,11 +1023,9 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .town-bar #skipWeekBtn { min-height: 26px; padding: 0 8px; font: 400 15px/1 var(--ui-sm); background: var(--gold); color: var(--ink); border: 2px solid var(--ink); box-shadow: 1px 1px 0 var(--ink); }
 
-.chip { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: center; min-height: 32px; padding: 2px 4px; font: 400 14px/1 var(--small); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: 1px 1px 0 var(--ink); }
+.chip { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: center; padding: 2px 4px; font: 400 14px/1 var(--small); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: 1px 1px 0 var(--ink); }
 
 .chip i { display: block; width: 18px; height: 18px; border: 1px solid var(--ink); }
-
-.chip[aria-pressed="true"] { background: var(--gold); }
 
 .patterns { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
 
@@ -1038,32 +1033,28 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 
 .patterns img { width: 36px; height: 80px; image-rendering: pixelated; display: block; }
 
-.patterns button[aria-pressed="true"] { background: var(--gold); }
-
 .pager { display: grid; grid-template-columns: 24px 1fr 24px; gap: 3px; align-items: center; }
 
 .pager > button { min-height: 72px; padding: 0; font-size: 24px; }
 
 .designs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
 
-.designs button, .symbols button { padding: 2px; min-height: 0; aspect-ratio: 1; box-shadow: 1px 1px 0 var(--ink); }
+.designs button, .symbols button { padding: 2px; min-height: 44px; aspect-ratio: 1; box-shadow: 1px 1px 0 var(--ink); }
 
 .designs img, .symbols img { width: 100%; image-rendering: pixelated; display: block; }
 
-.designs button[aria-pressed="true"], .symbols button[aria-pressed="true"] { background: var(--gold); }
-
 .symbols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-.editor input { width: 90px; min-height: 36px; padding: 2px 6px; font: 400 24px/1 var(--ui); letter-spacing: .1em; color: var(--ink); background: #fff; border: 2px solid var(--ink); text-transform: uppercase; }
+.editor input { width: 90px; min-height: 44px; padding: 2px 6px; font: 400 24px/1 var(--ui); letter-spacing: .1em; color: var(--ink); background: #fff; border: 2px solid var(--ink); text-transform: uppercase; }
 .editor input:focus-visible { outline: 3px solid var(--gold); }
 /* Criar clube: o nome e, ao lado, a abreviatura de três letras. */
 .editor .namerow { grid-template-columns: 1fr 74px; gap: 6px; align-items: end; }
 .editor .namerow > div { display: grid; gap: 3px; }
 .editor .namerow #clubShort { width: 100%; }
 .choices { flex: none; display: flex; flex-wrap: wrap; gap: 3px; }
-.choices button { flex: 1 1 auto; min-height: 32px; padding: 1px 5px; font: 400 15px/1 var(--small); box-shadow: 1px 1px 0 var(--ink); }
+.choices button { flex: 1 1 auto; padding: 1px 5px; font: 400 15px/1 var(--small); box-shadow: 1px 1px 0 var(--ink); }
 .swatches { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
-.swatch { min-height: 30px; padding: 0; box-shadow: none; border: 2px solid var(--ink); }
-.swatch[aria-pressed="true"] { outline: 3px solid var(--ball); outline-offset: 1px; position: relative; }
+.swatch { padding: 0; box-shadow: none; border: 2px solid var(--ink); }
+.swatch[aria-pressed="true"] { position: relative; }
 /* Criar clube: o emblema e a camisola lado a lado, e três jogadores já equipados por baixo. */
 .note .createstage { align-items: center; justify-content: center; gap: 12px; }
 .createtop { display: flex; align-items: center; justify-content: center; gap: 22px; }
@@ -1079,28 +1070,23 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .note .kitstage { gap: 4px; }
 .kitstage canvas.big { width: 68px; height: 92px; }
 .kitside { display: grid; justify-items: center; gap: 6px; max-width: 110px; text-align: center; }
-.menu.tight { gap: 4px; padding: 5px 8px; grid-auto-rows: minmax(38px, 50px); }
-.menu.tight .mbar { min-height: 38px; }
+.menu.tight { gap: 4px; padding: 5px 8px; grid-auto-rows: minmax(44px, 50px); }
+.menu.tight .mbar { min-height: 44px; }
 
 /* A vitrina de troféus */
 .tnote { position: absolute; left: 8px; right: 8px; top: 8px; display: grid; gap: 1px; padding: 3px 6px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); font: 400 15px/1.05 var(--small); }
 .tnote b { font: 400 18px/1 var(--ui); color: var(--ball); }
-.trow { width: 100%; display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: center; min-height: 24px; padding: 1px 6px; text-align: left; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 18px/1 var(--ui); }
+.trow { width: 100%; display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: center; min-height: 44px; padding: 1px 6px; text-align: left; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 18px/1 var(--ui); }
 .trow:active { transform: none; box-shadow: none; }
 .trow i { display: block; width: 12px; height: 12px; background: var(--ink-2); border: 1px solid var(--ink); }
 .trow i.yes { background: var(--gold); }
 .trow small { font: 400 15px/1 var(--small); color: var(--muted); }
-.trow[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
 
 /* O passar do rato não pode apagar o texto dos botões coloridos. */
 .chalk button:hover { background: rgba(244, 241, 228, .14); }
-.chalktabs button[aria-pressed="true"]:hover { background: var(--chalk); }
 .mbar.go:hover { background: #f07238; }
 .prow:hover, .trow:hover { background: var(--paper-2); }
-.prow[aria-pressed="true"]:hover, .trow[aria-pressed="true"]:hover { background: var(--gold); }
-.prow.swapfrom:hover { background: var(--ball); }
 .combofx:hover { background: #241a45; }
-.kit[aria-pressed="true"]:hover { background: var(--gold); }
 .clubbadge { flex: 1; display: grid; justify-items: center; align-content: center; gap: 6px; font: 400 24px/1 var(--ui); }
 .clubbadge img { width: 96px; height: 96px; }
 
@@ -1111,7 +1097,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 #game.landscape .frame { grid-template-columns: repeat(5, 1fr); gap: 4px; }
 #game.landscape .gcard { width: 100%; max-width: 62px; }
 #game.landscape .gcard > img { width: 100%; height: auto; aspect-ratio: 46 / 38; }
-.chalkarrow { min-height: 22px; padding: 0; font: 400 20px/1 var(--ui); color: var(--chalk); background: transparent; border: 1px solid var(--chalk-2); box-shadow: none; }
+.chalkarrow { padding: 0; font: 400 20px/1 var(--ui); color: var(--chalk); background: transparent; border: 1px solid var(--chalk-2); box-shadow: none; }
 .chalkarrow:disabled { opacity: .3; }
 .edot.target { background: var(--away); border-radius: 0; transform: rotate(45deg); }
 
@@ -1148,7 +1134,6 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px); }
 .statcols .num { text-align: right; font: 400 15px/1 var(--small); }
 .rivalview button { color: var(--ink); background: var(--paper-2); }
-.rivalview button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 
 /* As opções de ataque: dois botões com o jogador escolhido por baixo, e a lista do plantel para escolher. */
 .tacrow .optbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -1158,7 +1143,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .optwho img { width: 24px; height: 24px; image-rendering: pixelated; border: 1px solid var(--ink); }
 .optwho.empty { color: var(--muted); }
 .tacrow .optlist { display: grid; grid-template-columns: 1fr; gap: 2px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
-.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px); align-items: center; gap: 3px; min-height: 28px; padding: 2px 4px; text-align: left; }
+.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px); align-items: center; gap: 3px; min-height: 44px; padding: 2px 4px; text-align: left; }
 .optpick span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .optpick.head { min-height: 18px; padding-top: 0; padding-bottom: 0; }
 .optpick.head img { width: 16px; height: 16px; }

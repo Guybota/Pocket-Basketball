@@ -752,10 +752,33 @@ try {
   small.on('pageerror', error => smallProblems.push(error.message));
   const fitsWidth = (): Promise<boolean> => small.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   const smallFits: string[] = [];
+  // A altura que o dedo pode tocar em cada botão: sobe e desce a partir do centro enquanto o toque ainda lhe cai em cima, por isso conta a área alargada (::before) e desconta o que outro alvo tapa.
+  const shortTargets = (): Promise<string[]> => small.evaluate(() => {
+    const short: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('button, [role="tab"], a[href], input, select')) {
+      if ((el as HTMLButtonElement).disabled || el.getClientRects().length === 0) continue;
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const box = el.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = Math.round(box.top + box.height / 2);
+      const hits = (py: number): boolean => { const hit = document.elementFromPoint(x, py); return hit !== null && el.contains(hit); };
+      if (!hits(y)) continue;
+      let top = y;
+      let bottom = y;
+      while (top > 0 && hits(top - 1)) top--;
+      while (bottom < innerHeight - 1 && hits(bottom + 1)) bottom++;
+      const height = bottom - top + 1;
+      if (height < 44) short.push(`${el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.className.split(' ')[0]}`} "${(el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 14) || el.getAttribute('aria-label') || ''}" ${height}px`);
+    }
+    return [...new Set(short)];
+  });
+  const smallTaps: string[] = [];
   const visit = async (name: string): Promise<void> => {
     await small.waitForTimeout(150);
     await shot(small, `${OUT}/ref-360-${name}.png`);
     if (!(await fitsWidth())) smallFits.push(name);
+    const short = await shortTargets();
+    if (short.length) smallTaps.push(`${name}: ${short.join(', ')}`);
   };
   await small.goto(`${url}?semente=11&divisao=2`);
   await small.waitForFunction(() => window.__pocket !== undefined);
@@ -768,6 +791,9 @@ try {
   await small.click('.back');
   await small.click('#arenaChip');
   await visit('balneario');
+  await small.click('[data-squad="pre"]');
+  await visit('plantel');
+  await small.click('.back');
   await small.click('[data-go="rival"]');
   await visit('adversario');
   await small.click('.back');
@@ -776,6 +802,7 @@ try {
   await small.waitForTimeout(600);
   await visit('jogo');
   check('Em 360x640, os ecrãs principais cabem na largura', smallFits.length === 0, smallFits.join(', '));
+  check('Em 360x640, os alvos de toque têm pelo menos 44 px de altura', smallTaps.length === 0, smallTaps.join(' | '));
   check('Em 360x640, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
   await reference.close();
 
