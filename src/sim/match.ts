@@ -946,7 +946,8 @@ function endPeriod(s: MatchState): void {
     return;
   }
   s.phase = 'break';
-  s.timer = seconds(holdSeconds(s, B.periodBreakSeconds));
+  // Ao intervalo a interface espera pelo treinador no balneário: a saída das equipas não pode ser uma paragem de 30 s.
+  s.timer = seconds(s.period === 2 ? B.periodBreakSeconds : holdSeconds(s, B.periodBreakSeconds));
   for (const b of s.bodies) b.fatigue = Math.max(0, b.fatigue - B.periodBreakRecovery);
   rotate(s, 0);
   rotate(s, 1);
