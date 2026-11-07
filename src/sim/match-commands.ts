@@ -72,26 +72,30 @@ export function setTactics(s: MatchState, team: TeamIndex, tactics: Tactics): vo
 }
 
 /**
- * A equipa da IA lê o jogo nas paragens (fim de período e descontos) e muda de tática por regras simples, que o adjunto
- * consegue explicar: a perder por muito acelera (e no fim pressiona), a ganhar no fim abranda, contra zona abre o campo
- * para o triplo, e contra quem ataca por dentro fecha-se em zona.
+ * A equipa da IA lê o jogo e muda de tática por regras simples, que o adjunto consegue explicar: a perder por muito acelera
+ * (e no fim pressiona), a ganhar no fim abranda, contra zona abre o campo para o triplo, e contra quem ataca por dentro
+ * fecha-se em zona. Nas paragens (fim de período e descontos) pode mudar tudo; com a bola a correr (tempoOnly), de tempos
+ * a tempos, só a pressão e o ritmo.
  */
-export function aiAdjustTactics(s: MatchState): void {
+export function aiAdjustTactics(s: MatchState, tempoOnly = false): void {
   for (const team of [0, 1] as const) {
     if (s.controlled[team]) continue;
     const rival = s.tactics[team === 0 ? 1 : 0];
     const base = s.teams[team].tactics ?? NEUTRAL_TACTICS;
-    const t: Tactics = { ...s.tactics[team], pressure: base.pressure, spacing: base.spacing, pace: base.pace, defense: base.defense ?? 'man' };
+    const now = s.tactics[team];
+    // Com a bola a correr só mudam a pressão e o ritmo; a defesa e o ataque mudam-se nas paragens, com a equipa reunida.
+    const t: Tactics = { ...now, pressure: base.pressure, pace: base.pace, ...(tempoOnly ? {} : { spacing: base.spacing, defense: base.defense ?? 'man' }) };
     const margin = s.score[team] - s.score[team === 0 ? 1 : 0];
     const late = s.period >= 4 || (s.period === 3 && s.phase === 'break');
     if (margin <= -B.aiChaseMargin) {
       t.pace = 1;
       if (late) t.pressure = 1;
     } else if (late && margin >= B.aiProtectMargin) t.pace = -1;
-    if (rival.defense === 'zone') t.spacing = 1;
-    if (rival.spacing <= -B.aiReadSpacing) t.defense = 'zone';
-    else if (rival.spacing >= B.aiReadSpacing) t.defense = 'man';
-    const now = s.tactics[team];
+    if (!tempoOnly) {
+      if (rival.defense === 'zone') t.spacing = 1;
+      if (rival.spacing <= -B.aiReadSpacing) t.defense = 'zone';
+      else if (rival.spacing >= B.aiReadSpacing) t.defense = 'man';
+    }
     if (t.pressure !== now.pressure || t.spacing !== now.spacing || t.pace !== now.pace || t.defense !== (now.defense ?? 'man')) setTactics(s, team, t);
   }
 }

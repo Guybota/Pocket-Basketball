@@ -50,7 +50,7 @@ describe('determinismo', () => {
   // Muda quando a simulação muda. Se mudou de propósito (equilíbrio, regras), atualiza o valor e di-lo na entrega:
   // os jogos guardados e os Match ID antigos deixam de se repetir iguais.
   it('um jogo fixo tem sempre o mesmo hash', () => {
-    expect(matchHash(simulateMatch(generateTeam(1, 'Casa', 55), generateTeam(2, 'Fora', 55), 42))).toBe('87ff4ac7');
+    expect(matchHash(simulateMatch(generateTeam(1, 'Casa', 55), generateTeam(2, 'Fora', 55), 42))).toBe('9075cd6a');
   });
 
   it('a mesma semente dá exatamente o mesmo jogo', () => {

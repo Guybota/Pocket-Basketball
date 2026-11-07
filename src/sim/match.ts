@@ -3,7 +3,7 @@ import { COURT_HALF_WIDTH, COURT_LENGTH, distance, seconds } from './court.ts';
 import { makeRng, next } from './rng.ts';
 import { NEUTRAL_TACTICS, validateTeam, type Team } from './types.ts';
 import { resolveShot, reach, pickRebounder, resolveRebound, resolvePass, updateBall } from './match-ball.ts';
-import { applyCommand } from './match-commands.ts';
+import { aiAdjustTactics, applyCommand } from './match-commands.ts';
 import { resolveContacts } from './match-contact.ts';
 import { other, clamp01, emit, lowest } from './match-core.ts';
 import { decide } from './match-decide.ts';
@@ -86,7 +86,11 @@ export function step(s: MatchState): void {
     if (s.clock === 0 && s.phase !== 'freeThrow') endPeriod(s);
     return;
   }
-  if (s.clock > 0 && !s.clockStopped) s.clock--;
+  if (s.clock > 0 && !s.clockStopped) {
+    s.clock--;
+    // A pressão e o ritmo da IA podem mudar a qualquer altura: lê o marcador de tantos em tantos segundos de jogo.
+    if (s.clock % seconds(B.aiTempoCheckSeconds) === 0) aiAdjustTactics(s, true);
+  }
   if (s.phase === 'live' || s.phase === 'pass') s.shotClock--;
   updateFatigue(s);
   updateTargets(s);

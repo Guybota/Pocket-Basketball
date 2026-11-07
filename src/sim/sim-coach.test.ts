@@ -360,6 +360,28 @@ describe('táticas', () => {
     expect(s.tactics[1]).toMatchObject({ pace: 1, pressure: 1 });
   });
 
+  it('com a bola a correr a IA só muda a pressão e o ritmo; a defesa e o ataque só nas paragens', { tags: ['slow'] }, () => {
+    let tempoChanges = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = createMatch(generateTeam(seed, 'Fortes', 70), generateTeam(seed + 100, 'Fracos', 45), seed);
+      while (s.phase !== 'end') {
+        const before = s.tactics.map(t => ({ ...t }));
+        const stopped = s.phase === 'break' || s.phase === 'timeout';
+        step(s);
+        for (const team of [0, 1] as const) {
+          const was = before[team]!, now = s.tactics[team];
+          if (!stopped && s.phase !== 'break' && s.phase !== 'timeout') {
+            expect(now.spacing).toBe(was.spacing);
+            expect(now.defense ?? 'man').toBe(was.defense ?? 'man');
+            if (now.pace !== was.pace || now.pressure !== was.pressure) tempoChanges++;
+          }
+        }
+      }
+    }
+    // Com uma equipa muito mais fraca, a que perde acelera a meio de algum período, sem esperar pela paragem.
+    expect(tempoChanges).toBeGreaterThan(0);
+  });
+
   it('um jogador cansado começa o jogo cansado, e menos se tiver resistência', () => {
     const tired = (stamina: number): Team => ({ ...home, roster: home.roster.map(p => ({ ...p, fatigue: 0.5, attributes: { ...p.attributes, stamina } })) });
     expect(createMatch(tired(50), away, 1).bodies[0]!.fatigue).toBeCloseTo(0.5);

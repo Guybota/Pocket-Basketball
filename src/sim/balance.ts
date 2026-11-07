@@ -438,6 +438,8 @@ export const BALANCE = {
   aiTimeoutRun: 8,
   // A IA muda de tática nas paragens: a perder por isto acelera, a ganhar por isto no último período abranda.
   aiChaseMargin: 8,
+  /** De quantos em quantos segundos de jogo a IA revê a pressão e o ritmo com a bola a correr. */
+  aiTempoCheckSeconds: 10,
   aiProtectMargin: 8,
   /** A partir deste ataque do adversário (2 pontos ou 3 pontos), a IA passa a zona ou volta ao homem a homem. */
   aiReadSpacing: 0.5,
