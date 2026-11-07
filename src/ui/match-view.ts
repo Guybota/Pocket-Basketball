@@ -261,8 +261,12 @@ export class MatchView {
         }
       }
       // E quem vê do lado de fora da rede, encostado a ela.
-      for (const [x, y, i] of [[2.2, STAND.y - 0.9, 3], [3.4, STAND.y - 0.7, 4], [9.5, STAND.y - 0.8, 5], [18.8, STAND.y - 0.9, 6], [20.1, STAND.y - 0.7, 7], [26, STAND.y - 0.8, 8], [STAND.nearX - 0.9, 1.2, 9], [STAND.farX + 0.9, -0.6, 10]] as const) {
-        if ((i - 3) / 8 > fill - 0.3) continue;
+      // Pela ordem em que chegam: com pouca gente só os primeiros, com casa cheia todos.
+      const spots = [[2.2, STAND.y - 0.9], [3.4, STAND.y - 0.7], [9.5, STAND.y - 0.8], [18.8, STAND.y - 0.9], [20.1, STAND.y - 0.7], [26, STAND.y - 0.8], [STAND.nearX - 0.9, 1.2], [STAND.farX + 0.9, -0.6],
+        [7, STAND.y - 0.8], [14.2, STAND.y - 0.9], [23.2, STAND.y - 0.7], [0.6, STAND.y - 0.8], [11.6, STAND.y - 0.7], [29.4, STAND.y - 0.9], [STAND.nearX - 0.9, -2.2], [STAND.farX + 0.9, 2.4], [5.6, STAND.y - 0.8], [16.6, STAND.y - 0.8]] as const;
+      for (const [k, [x, y]] of spots.entries()) {
+        const i = k + 3;
+        if (k / spots.length > fill - 0.3) continue;
         this.outsiders.push({ x, y, look: looks[i % looks.length]!, phase: i, flip: x > 14 });
       }
       this.fence = this.fenceLayer();
