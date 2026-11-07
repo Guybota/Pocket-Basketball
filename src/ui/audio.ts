@@ -6,6 +6,12 @@ export type { MusicTheme };
 
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar.
 // Não há som contínuo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos.
+//
+// Encaminhamento (criado em unlock):
+//   efeitos → effectsBus ───────────────────────────┐
+//   tema    → musicGain → musicBus → duck ───────────┴→ master → compressor → destination
+// Os temas novos (H3) entregam as notas a scheduleSection, que já escreve em musicGain.
+// O ambiente por pavilhão (H4) liga-se a effectsBus, pelo mesmo caminho de tone() e noise().
 export class GameAudio {
   private context: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
@@ -14,7 +20,13 @@ export class GameAudio {
   private nextAmbience = 0;
   private theme: MusicTheme = 'none';
   private musicTimer = 0;
+  /** Ganho de cada tema, só para o desvanecer ao trocar; o volume está em musicBus. */
   private musicGain: GainNode | null = null;
+  private master: GainNode | null = null;
+  private effectsBus: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private duck: GainNode | null = null;
+  private volumes = { master: 1, effects: 1, music: 1 };
   muted = false;
 
   /** Os browsers só deixam tocar som depois de um gesto do jogador. */
@@ -31,6 +43,23 @@ export class GameAudio {
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     this.noiseBuffer = buffer;
+    // Valores suaves: só apanha os picos de vários sons ao mesmo tempo, sem esmagar a dinâmica.
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -14;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.005;
+    compressor.release.value = 0.2;
+    this.master = ctx.createGain();
+    this.master.gain.value = this.masterLevel();
+    this.effectsBus = ctx.createGain();
+    this.effectsBus.gain.value = this.volumes.effects;
+    this.musicBus = ctx.createGain();
+    this.musicBus.gain.value = this.volumes.music;
+    this.duck = ctx.createGain();
+    this.musicBus.connect(this.duck).connect(this.master);
+    this.effectsBus.connect(this.master);
+    this.master.connect(compressor).connect(ctx.destination);
     // A música pedida antes do primeiro toque começa agora.
     const pending = this.theme;
     this.theme = 'none';
@@ -50,8 +79,7 @@ export class GameAudio {
     this.stopMusic();
     if (!this.context || theme === 'none') return;
     this.musicGain = this.context.createGain();
-    this.musicGain.gain.value = this.muted ? 0 : 1;
-    this.musicGain.connect(this.context.destination);
+    this.musicGain.connect(this.musicBus!);
     this.playSection(theme, 0, this.context.currentTime + 0.05, 0);
   }
 
@@ -85,7 +113,50 @@ export class GameAudio {
   /** Calar ou destapar tudo, incluindo a música a tocar. */
   setMuted(muted: boolean): void {
     this.muted = muted;
-    if (this.musicGain) this.musicGain.gain.value = muted ? 0 : 1;
+    this.glide(this.master, this.masterLevel());
+  }
+
+  /** Volume geral, de 0 a 1. Pode ser chamado antes de unlock. */
+  setMasterVolume(volume: number): void {
+    this.volumes.master = clamp01(volume);
+    this.glide(this.master, this.masterLevel());
+  }
+
+  /** Volume dos efeitos e do ambiente, de 0 a 1. */
+  setEffectsVolume(volume: number): void {
+    this.volumes.effects = clamp01(volume);
+    this.glide(this.effectsBus, this.volumes.effects);
+  }
+
+  /** Volume da música, de 0 a 1. */
+  setMusicVolume(volume: number): void {
+    this.volumes.music = clamp01(volume);
+    this.glide(this.musicBus, this.volumes.music);
+  }
+
+  /** Os volumes atuais, para o ecrã de Definições. */
+  getVolumes(): { master: number; effects: number; music: number } {
+    return { ...this.volumes };
+  }
+
+  private masterLevel(): number {
+    return this.muted ? 0 : this.volumes.master;
+  }
+
+  /** Muda um ganho em poucos milissegundos, para não estalar. */
+  private glide(node: GainNode | null, value: number): void {
+    if (!node || !this.context) return;
+    node.gain.cancelScheduledValues(this.context.currentTime);
+    node.gain.setTargetAtTime(value, this.context.currentTime, 0.02);
+  }
+
+  /** Baixa a música um instante para um efeito forte se ouvir, e devolve-a devagar. */
+  private duckMusic(): void {
+    const gain = this.duck!.gain;
+    const now = this.context!.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(0.45, now, 0.03);
+    gain.setTargetAtTime(1, now + 0.45, 0.25);
   }
 
   setVenue(division: number): void {
@@ -102,7 +173,7 @@ export class GameAudio {
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + seconds);
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(this.effectsBus!);
     osc.start(start);
     osc.stop(start + seconds);
   }
@@ -119,7 +190,7 @@ export class GameAudio {
     const start = ctx.currentTime + delay;
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.connect(filter).connect(gain).connect(this.effectsBus!);
     source.start(start, Math.random() * 0.8);
     source.stop(start + seconds);
   }
@@ -141,7 +212,7 @@ export class GameAudio {
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.015);
     gain.gain.setValueAtTime(volume, start + seconds - 0.05);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(this.effectsBus!);
     osc.start(start);
     trill.start(start);
     osc.stop(start + seconds);
@@ -158,7 +229,7 @@ export class GameAudio {
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.02);
     gain.gain.setValueAtTime(volume, start + seconds - 0.04);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    gain.connect(ctx.destination);
+    gain.connect(this.effectsBus!);
     for (const detune of [0, 7]) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
@@ -184,12 +255,12 @@ export class GameAudio {
     if (!this.context || this.muted) return;
     switch (sound) {
       case 'bounce': this.tone('sine', 130, 70, 0.07, 0.1); break;
-      case 'swish': this.noise(5200, 0.14, 0.09); break;
+      case 'swish': this.duckMusic(); this.noise(5200, 0.14, 0.09); break;
       case 'rim':
         this.tone('square', 520, 380, 0.08, 0.05);
         this.tone('triangle', 1250, 900, 0.1, 0.03);
         break;
-      case 'whistle': this.whistle(0.34, 0.09); break;
+      case 'whistle': this.duckMusic(); this.whistle(0.34, 0.09); break;
       case 'buzzer': this.horn(150, 1, 0.08); break;
       case 'shotClockBuzzer': this.horn(310, 0.55, 0.07); break;
       case 'horn': this.horn(205, 0.35, 0.05); break;
@@ -204,6 +275,7 @@ export class GameAudio {
         if (this.crowdLevel > 0) this.applause(0.8, 26, 0.1 * this.crowdLevel);
         break;
       case 'bigCheer':
+        this.duckMusic();
         if (this.crowdLevel > 0) this.applause(1.8, 38, 0.15 * this.crowdLevel);
         // Um pequeno toque de metais do pavilhão, nos momentos altos.
         this.tone('square', 523, 523, 0.09, 0.025);
@@ -226,4 +298,8 @@ export class GameAudio {
     const pitch = 1500 + Math.random() * 1400;
     this.tone('sine', pitch, pitch * 1.4, 0.06 + Math.random() * 0.05, 0.012 + Math.random() * 0.012);
   }
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1));
 }
