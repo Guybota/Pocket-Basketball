@@ -1,4 +1,5 @@
 import { PLAYER_POOL } from '../sim/teamgen.ts';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { simulateMatch } from '../sim/match.ts';
 import { generateTeam, teamRating } from '../sim/teamgen.ts';
@@ -264,10 +265,35 @@ describe('clube', () => {
     expect(JSON.stringify(old)).not.toContain('"height":');
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(13);
+    expect(migrated.version).toBe(14);
     expect(migrated.team.name).toBe(c.team.name);
     expect(migrated.team.roster.map(p => p.name)).toEqual(c.team.roster.map(p => p.name));
     for (const player of migrated.team.roster) expect([1, 2, 3]).toContain(player.height);
+  });
+
+  it('lê um clube guardado na versão 13, com os campos novos vazios e os roubos e desarmes a zero', () => {
+    const text = readFileSync(new URL('./saves/v13.json', import.meta.url), 'utf8');
+    const old = JSON.parse(text) as ClubState;
+    const migrated = parseClub(text)!;
+    expect(migrated.version).toBe(14);
+    expect(migrated.objective).toBeNull();
+    expect(migrated.facilities).toEqual({ gym: 0, medical: 0, scouts: 0 });
+    expect(migrated.records).toEqual({ biggestWin: null, mostPoints: null, streak: 0, bestStreak: null });
+    expect(migrated.comboHints).toEqual([]);
+    expect(Object.keys(migrated.stats)).toEqual(Object.keys(old.stats));
+    for (const [name, line] of Object.entries(migrated.stats)) expect(line).toEqual({ ...old.stats[name], steals: 0, blocks: 0 });
+    expect(migrated.history).toEqual(old.history);
+  });
+
+  it('não aceita objetivos, instalações, recordes ou pistas estragados', () => {
+    const c = club();
+    expect(c.facilities).toEqual({ gym: 0, medical: 0, scouts: 0 });
+    expect(parseClub(JSON.stringify({ ...c, objective: { kind: 'league', target: 4, confidence: 10, money: 50 } }))).not.toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, objective: { kind: 'ganhar tudo', target: 1, confidence: 10, money: 50 } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, facilities: { gym: 1, medical: -1, scouts: 0 } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, facilities: { gym: 1 } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, records: { ...c.records, streak: 'muitas' } }))).toBeNull();
+    expect(parseClub(JSON.stringify({ ...c, comboHints: [3] }))).toBeNull();
   });
 
   it('guarda e lê um clube sem perder nada', () => {
@@ -469,8 +495,19 @@ describe('época', () => {
     while (leagueTable(first).every(r => r.played === 0)) first = week(first);
     expect(clubSeasons(first, PLAYER_CLUB)[0]!.position).not.toBeNull();
     expect(clubSeasons(c, 11).slice(1).every(e => e.position !== null && e.position >= 0 && e.position < LEAGUE_SIZE)).toBe(true);
-    const after = season(c);
+    const after = season({ ...c, objective: { kind: 'league', target: 10, confidence: 5, money: 20 } });
     expect(after.clubs[11]!.past).toHaveLength(1);
+    // O fim da época avalia o objetivo, dá os prémios e deixa a direção escolher o seguinte.
+    const record = after.history.at(-1)!;
+    expect(record.objective).toEqual({ kind: 'league', target: 10, confidence: 5, money: 20, met: true });
+    expect(after.objective).toBeNull();
+    expect(record.awards!.mvp).not.toBeNull();
+    expect(record.awards!.defender).not.toBeNull();
+    expect(record.awards!.rookie).not.toBe(record.awards!.mvp);
+    // Os recordes enchem-se nos jogos oficiais.
+    expect(after.records.mostPoints!.points).toBeGreaterThan(0);
+    expect(after.records.biggestWin === null || after.records.biggestWin.margin > 0).toBe(true);
+    expect(after.records.streak).toBeLessThanOrEqual(after.records.bestStreak?.wins ?? 0);
     expect(clubSeasons(after, PLAYER_CLUB)[1]!.position).not.toBeNull();
     expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
@@ -861,7 +898,7 @@ describe('época', () => {
     };
     const migrated = parseClub(JSON.stringify(old))!;
     expect(migrated).not.toBeNull();
-    expect(migrated.version).toBe(13);
+    expect(migrated.version).toBe(14);
     expect(migrated.trainedThisWeek).toEqual([]);
     expect(migrated.week).toBe(1);
     expect(migrated.season).toBe(1);
@@ -878,7 +915,7 @@ describe('época', () => {
     const c = trainOne(newClub(72), 0, ['shooting']).club;
     const { emblem: _e, kits: _k, kitChoice: _c, shirts: _s, recentTraining: _r, career: _a, ...rest } = c;
     const migrated = parseClub(JSON.stringify({ ...rest, version: 2, trainedThisWeek: true }))!;
-    expect(migrated.version).toBe(13);
+    expect(migrated.version).toBe(14);
     expect(migrated.team).toEqual(c.team);
     expect(migrated.trainedThisWeek).toHaveLength(c.team.roster.length);
     expect(activeKit(migrated).id).toBe('home');

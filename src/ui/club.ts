@@ -11,7 +11,7 @@ import { DEFAULT_KITS, defaultEmblem, emblemLetters, validEmblem, validKit, type
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
-const SAVE_VERSION = 13;
+const SAVE_VERSION = 14;
 export const CLUB_NAME_MAX = 24;
 const STARTING_CARDS: readonly CardId[] = ['shooting', 'dribble', 'sprints', 'readDefense', 'weights', 'nap'];
 /** O clube do jogador é sempre o número 0 da lista de clubes. */
@@ -32,7 +32,44 @@ export interface PlayerSeason {
   points: number;
   rebounds: number;
   assists: number;
+  /** Para o prémio de Melhor Defensor. */
+  steals: number;
+  blocks: number;
 }
+
+const emptyLine = (): PlayerSeason => ({ games: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 });
+
+/** O que a direção pede para a época: acabar a liga até ao lugar `target` (1 é o primeiro), ou chegar à ronda `target` da Taça da Federação (como em `federationExit`). */
+export interface Objective {
+  kind: 'league' | 'federation';
+  target: number;
+  /** O que está em jogo: a confiança e o dinheiro, em milhares, que se ganham se for cumprido e se perdem se não for. */
+  confidence: number;
+  money: number;
+}
+
+/** Os prémios da época, entre os nossos jogadores. Null se ninguém os pode receber. */
+export interface SeasonAwards {
+  mvp: string | null;
+  /** O melhor dos que chegaram nesta época, sem contar o MVP. */
+  rookie: string | null;
+  defender: string | null;
+}
+
+/** As instalações do clube, por nível: 0 é não ter. */
+export const FACILITY_IDS = ['gym', 'medical', 'scouts'] as const;
+export type FacilityId = (typeof FACILITY_IDS)[number];
+
+/** Os recordes dos jogos oficiais. Os da época inteira (mais vitórias, melhor marcador) tiram-se do `history`. */
+export interface ClubRecords {
+  biggestWin: { margin: number; score: [number, number]; rival: string; season: number } | null;
+  mostPoints: { player: string; points: number; rival: string; season: number } | null;
+  /** As vitórias seguidas de agora, e a melhor série de sempre. */
+  streak: number;
+  bestStreak: { wins: number; season: number } | null;
+}
+
+const emptyRecords = (): ClubRecords => ({ biggestWin: null, mostPoints: null, streak: 0, bestStreak: null });
 
 export interface SeasonRecord {
   season: number;
@@ -63,7 +100,11 @@ export interface SeasonRecord {
   /** O dinheiro ganho em prémios nesta época, em milhares. */
   prizeMoney: number;
   /** Quem saiu, com o que fez no clube, para a despedida. Os clubes guardados antes disto não o têm. */
-  farewells?: { player: Player; games: number; points: number; seasons: number }[];
+  farewells?: { player: Player; games: number; points: number; seasons: number; shirt?: number }[];
+  /** O objetivo da direção para esta época e se foi cumprido. Falta nas épocas sem objetivo. */
+  objective?: Objective & { met: boolean };
+  /** Falta nas épocas guardadas antes dos prémios. */
+  awards?: SeasonAwards;
 }
 
 /** Um jogador à venda esta semana: livre, ou de outro clube, com o que custa. */
@@ -110,6 +151,8 @@ export interface ClubState {
   cards: Partial<Record<CardId, number>>;
   /** Combos já descobertos, para os mostrar na lista. */
   knownCombos: string[];
+  /** Combos por descobrir de que o caderno já deu uma pista. */
+  comboHints: string[];
   /** Quem já treinou esta semana: cada jogador treina uma vez entre jogos. */
   trainedThisWeek: string[];
   /** Um jogo-treino por semana, antes do jogo oficial ou numa semana livre. */
@@ -135,6 +178,10 @@ export interface ClubState {
   /** De 0 a 100. Abaixo do limite, o treinador é despedido. */
   confidence: number;
   fired: boolean;
+  /** O objetivo desta época, ou null se a direção ainda não o deu. */
+  objective: Objective | null;
+  facilities: Record<FacilityId, number>;
+  records: ClubRecords;
   clubs: LeagueClub[];
   divisions: number[][];
   rounds: Fixture[][];
@@ -199,8 +246,12 @@ export const salaryFor = (player: Player): number => Math.round(B.salaryBase + B
 const salariesFor = (team: Team): Record<string, number> => Object.fromEntries(team.roster.map(player => [player.name, salaryFor(player)]));
 
 /** O que um clube guarda além da liga, com os valores de quem acabou de chegar. */
-const clubExtras = (team: Team, division = 0, season = 1): Pick<ClubState, 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice' | 'joined' | 'money' | 'salaries' | 'pendingRenewals' | 'offers'> => ({
+const clubExtras = (team: Team, division = 0, season = 1): Pick<ClubState, 'recentTraining' | 'shirts' | 'emblem' | 'kits' | 'kitChoice' | 'joined' | 'money' | 'salaries' | 'pendingRenewals' | 'offers' | 'objective' | 'facilities' | 'records' | 'comboHints'> => ({
   offers: [],
+  objective: null,
+  facilities: { gym: 0, medical: 0, scouts: 0 },
+  records: emptyRecords(),
+  comboHints: [],
   joined: Object.fromEntries(team.roster.map(player => [player.name, season])),
   money: B.budgetByDivision[division]!,
   salaries: salariesFor(team),
@@ -369,7 +420,7 @@ const shareOfMinutes = (index: number): number => (index < 5 ? 1 : index < 10 ? 
 
 /** Os números da época de cada jogador de um clube, pela ordem do plantel. */
 export function seasonLines(club: ClubState, id: number, team: Team): SeasonLine[] {
-  if (id === PLAYER_CLUB) return team.roster.map(p => club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0 });
+  if (id === PLAYER_CLUB) return team.roster.map(p => club.stats[p.name] ?? emptyLine());
   // shortcut: dos jogos dos outros só se guarda o resultado, por isso os pontos reais da equipa repartem-se pelas notas; para números reais seria preciso simular jogador a jogador.
   const played = club.rounds.flat().filter(f => f.score && (f.home === id || f.away === id));
   const points = played.reduce((sum, f) => sum + (f.home === id ? f.score![0] : f.score![1]), 0);
@@ -832,7 +883,7 @@ function endSeason(club: ClubState): ClubState {
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
   const own = table[position]!;
   const scorers = Object.entries(club.stats).sort((a, b) => b[1].points - a[1].points);
-  const perGame = (line: PlayerSeason): number => (line.games > 0 ? line.points / line.games : 0);
+  const perGame = (line: SeasonLine): number => (line.games > 0 ? line.points / line.games : 0);
   const divisionBest = Math.max(0, ...club.divisions[club.division]!.filter(id => id !== PLAYER_CLUB).flatMap(id => seasonLines(club, id, aiTeam(club.clubs[id]!)).map(perGame)));
   // O tempo passa: o potencial desce, quem o esgota sai, e quem fica pede um salário novo.
   const aged = club.team.roster.map(player => {
@@ -867,7 +918,9 @@ function endSeason(club: ClubState): ClubState {
     departures,
     arrivals: [],
     prizeMoney,
-    farewells: aged.filter(player => player.potential <= 0).map(player => ({ player, games: club.stats[player.name]?.games ?? 0, points: club.stats[player.name]?.points ?? 0, seasons: yearsAtClub(club, player.name) })),
+    farewells: aged.filter(player => player.potential <= 0).map(player => ({ player, games: club.stats[player.name]?.games ?? 0, points: club.stats[player.name]?.points ?? 0, seasons: yearsAtClub(club, player.name), shirt: club.shirts[player.name] })),
+    ...(club.objective ? { objective: { ...club.objective, met: club.objective.kind === 'league' ? position + 1 <= club.objective.target : federationExit >= club.objective.target } } : {}),
+    awards: seasonAwards(club),
   };
   const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup));
   const qualified = orders[DIVISIONS.length - 1]!.slice(0, CONTINENTAL_PLACES);
@@ -897,6 +950,8 @@ function endSeason(club: ClubState): ClubState {
     cards: owned,
     confidence,
     fired: club.fired || confidence < B.confidenceFired,
+    // O objetivo é de uma época: a direção dá outro para a seguinte.
+    objective: null,
     stats: {},
     // Só a última tabela interessa ao ecrã, e as antigas ocupariam o save para nada.
     history: [...club.history.map(past => ({ ...past, table: [] })), record],
@@ -916,6 +971,35 @@ export interface MatchResult {
   confidenceDelta: number;
 }
 
+/** Os recordes depois de um jogo oficial: o nosso lado é sempre o 0. */
+function updateRecords(club: ClubState, s: MatchState): ClubRecords {
+  const { biggestWin, mostPoints, streak, bestStreak } = club.records;
+  const rival = club.clubs[opponentId(club)]!.name;
+  const margin = s.score[0] - s.score[1];
+  const top = s.bodies.filter(b => b.team === 0).reduce<MatchState['bodies'][number] | null>((best, b) => (!best || b.line.points > best.line.points ? b : best), null);
+  const wins = margin > 0 ? streak + 1 : 0;
+  return {
+    biggestWin: margin > (biggestWin?.margin ?? 0) ? { margin, score: [s.score[0], s.score[1]], rival, season: club.season } : biggestWin,
+    mostPoints: top && top.line.points > (mostPoints?.points ?? 0) ? { player: top.player.name, points: top.line.points, rival, season: club.season } : mostPoints,
+    streak: wins,
+    bestStreak: wins > (bestStreak?.wins ?? 0) ? { wins, season: club.season } : bestStreak,
+  };
+}
+
+/** Os prémios da época entre os nossos jogadores, só para quem jogou pelo menos metade dos jogos do que mais jogou. */
+export function seasonAwards(club: ClubState): SeasonAwards {
+  const most = Math.max(0, ...Object.values(club.stats).map(line => line.games));
+  const eligible = Object.entries(club.stats).filter(([name, line]) => line.games > 0 && line.games * 2 >= most && club.team.roster.some(p => p.name === name));
+  const best = (lines: [string, PlayerSeason][], score: (line: PlayerSeason) => number): string | null =>
+    lines.reduce<[string, number] | null>((top, [name, line]) => (score(line) > (top?.[1] ?? 0) ? [name, score(line)] : top), null)?.[0] ?? null;
+  const mvp = best(eligible, line => (line.points + line.rebounds + line.assists + line.steals + line.blocks) / line.games);
+  return {
+    mvp,
+    rookie: best(eligible.filter(([name]) => name !== mvp && club.joined[name] === club.season), line => (line.points + line.rebounds + line.assists + line.steals + line.blocks) / line.games),
+    defender: best(eligible, line => (line.steals + line.blocks) / line.games),
+  };
+}
+
 /** Um jogo de uma série de playoffs. Enquanto a série não estiver decidida, a semana não fecha. */
 function finishPlayoffGame(club: ClubState, s: MatchState, found: readonly CardId[], game: OfficialGame): MatchResult {
   const won = s.score[0] > s.score[1];
@@ -925,8 +1009,8 @@ function finishPlayoffGame(club: ClubState, s: MatchState, found: readonly CardI
   const bodies = s.bodies.filter(b => b.team === 0);
   const stats = { ...club.stats };
   for (const body of bodies) {
-    const past = stats[body.player.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0 };
-    if (body.line.secondsPlayed > 0) stats[body.player.name] = { games: past.games + 1, points: past.points + body.line.points, rebounds: past.rebounds + body.line.rebounds, assists: past.assists + body.line.assists };
+    const past = stats[body.player.name] ?? emptyLine();
+    if (body.line.secondsPlayed > 0) stats[body.player.name] = { games: past.games + 1, points: past.points + body.line.points, rebounds: past.rebounds + body.line.rebounds, assists: past.assists + body.line.assists, steals: past.steals + body.line.steals, blocks: past.blocks + body.line.blocks };
   }
   const played = game.fixture.home === PLAYER_CLUB ? [s.score[0], s.score[1]] as [number, number] : [s.score[1], s.score[0]] as [number, number];
   const rounds = club.playoffs!.rounds.map((round, i) => (i !== game.round ? round : round.map(series => (inSeries(series) ? { ...series, games: [...series.games, { ...game.fixture, score: played }] } : series))));
@@ -937,7 +1021,7 @@ function finishPlayoffGame(club: ClubState, s: MatchState, found: readonly CardI
   const decided = seriesWinner(series) !== null;
   const delta = confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), true);
   const confidence = Math.max(0, Math.min(100, club.confidence + delta));
-  const updated: ClubState = { ...club, cards: owned, stats, confidence, fired: confidence < B.confidenceFired, wins: club.wins + (won ? 1 : 0), losses: club.losses + (won ? 0 : 1), playoffs };
+  const updated: ClubState = { ...club, cards: owned, stats, confidence, fired: confidence < B.confidenceFired, wins: club.wins + (won ? 1 : 0), losses: club.losses + (won ? 0 : 1), playoffs, records: updateRecords(club, s) };
   const secondsOf = secondsPlayedBy(club, s);
   if (decided) {
     const settled = { ...updated, playoffs: settlePlayoffRound(updated, playoffs, game.round) };
@@ -971,13 +1055,15 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
   const bodies = s.bodies.filter(b => b.team === 0);
   const stats = { ...club.stats };
   for (const body of bodies) {
-    const past = stats[body.player.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0 };
+    const past = stats[body.player.name] ?? emptyLine();
     if (game && body.line.secondsPlayed > 0) {
       stats[body.player.name] = {
         games: past.games + 1,
         points: past.points + body.line.points,
         rebounds: past.rebounds + body.line.rebounds,
         assists: past.assists + body.line.assists,
+        steals: past.steals + body.line.steals,
+        blocks: past.blocks + body.line.blocks,
       };
     }
   }
@@ -996,6 +1082,7 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
     fired: confidence < B.confidenceFired,
     wins: club.wins + (won ? 1 : 0),
     losses: club.losses + (won ? 0 : 1),
+    records: game ? updateRecords(club, s) : club.records,
   };
   return { club: closeWeek(updated, secondsPlayedBy(club, s)), cards, round, cup: game?.cup ?? null, series: null, confidenceDelta: delta };
 }
@@ -1126,6 +1213,12 @@ function migrateV12(old: ClubState): ClubState {
   return next;
 }
 
+/** Antes dos objetivos, das instalações, dos recordes, das pistas e dos roubos e desarmes na época. */
+function migrateV13(old: ClubState): ClubState {
+  const stats = Object.fromEntries(Object.entries(old.stats).map(([name, line]) => [name, { ...emptyLine(), ...line }]));
+  return { ...old, version: 14, stats, objective: null, facilities: { gym: 0, medical: 0, scouts: 0 }, records: emptyRecords(), comboHints: [] };
+}
+
 function heightLevels(value: unknown): void {
   if (Array.isArray(value)) value.forEach(heightLevels);
   else if (value && typeof value === 'object') {
@@ -1154,7 +1247,7 @@ function migrateV3(old: ClubState): ClubState {
 
 /** Um clube guardado antes de haver época entra numa liga nova, com tudo o que já tinha treinado. */
 function migrateV1(old: ClubState): ClubState {
-  // Salta logo para a versão 13, por isso os jogadores têm de passar pelas mudanças das versões 8, 11 e 12.
+  // Salta logo para a versão 13 (a 14 vem a seguir), por isso os jogadores têm de passar pelas mudanças das versões 8, 11 e 12.
   const team = JSON.parse(JSON.stringify(old.team)) as Team;
   stripField(team, 'position');
   stripField(team, 'weightKg');
@@ -1191,15 +1284,22 @@ function migrateV2(old: ClubState): ClubState {
 function validExtras(club: ClubState): boolean {
   const isRecord = (value: unknown): boolean => typeof value === 'object' && value !== null;
   const playoffs = club.playoffs === null || (isRecord(club.playoffs) && Array.isArray(club.playoffs.seeds) && Array.isArray(club.playoffs.rounds) && PLAYOFF_FORMATS[club.playoffs.division] !== undefined);
+  const count = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0;
+  const objective = club.objective === null || (isRecord(club.objective) && (club.objective.kind === 'league' || club.objective.kind === 'federation') && count(club.objective.target) && Number.isFinite(club.objective.confidence) && Number.isFinite(club.objective.money));
+  const facilities = isRecord(club.facilities) && FACILITY_IDS.every(id => count(club.facilities[id]));
+  const r = club.records;
+  const records = isRecord(r) && count(r.streak) && (r.biggestWin === null || (isRecord(r.biggestWin) && count(r.biggestWin.margin) && typeof r.biggestWin.rival === 'string'))
+    && (r.mostPoints === null || (isRecord(r.mostPoints) && count(r.mostPoints.points) && typeof r.mostPoints.player === 'string')) && (r.bestStreak === null || (isRecord(r.bestStreak) && count(r.bestStreak.wins)));
+  const extras = objective && facilities && records && Array.isArray(club.comboHints) && club.comboHints.every(id => typeof id === 'string');
   const money = Number.isFinite(club.money) && isRecord(club.salaries) && isRecord(club.joined) && (club.pendingRenewals === null || (Array.isArray(club.pendingRenewals) && club.pendingRenewals.every(r => typeof r.name === 'string' && Number.isFinite(r.asked))))
     && Array.isArray(club.offers) && club.offers.every(o => isRecord(o.player) && Number.isFinite(o.fee) && Number.isFinite(o.weeksLeft));
-  return playoffs && money && Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
+  return playoffs && money && extras && Array.isArray(club.trainedThisWeek) && isRecord(club.recentTraining) && isRecord(club.shirts) && Array.isArray(club.career)
     && validEmblem(club.emblem) && Array.isArray(club.kits) && club.kits.length > 0 && club.kits.every(validKit)
     && club.kits.some(kit => kit.id === club.kitChoice);
 }
 
 const MIGRATIONS: Record<number, (old: ClubState) => ClubState> = {
-  1: migrateV1, 2: migrateV2, 3: migrateV3, 4: migrateV4, 5: migrateV5, 6: migrateV6, 7: migrateV7, 8: migrateV8, 9: migrateV9, 10: migrateV10, 11: migrateV11, 12: migrateV12,
+  1: migrateV1, 2: migrateV2, 3: migrateV3, 4: migrateV4, 5: migrateV5, 6: migrateV6, 7: migrateV7, 8: migrateV8, 9: migrateV9, 10: migrateV10, 11: migrateV11, 12: migrateV12, 13: migrateV13,
 };
 
 /** Lê um clube guardado. Devolve null se estiver estragado ou for de outra versão, sem deitar nada fora. */
@@ -1217,7 +1317,7 @@ export function parseClub(text: string | null): ClubState | null {
     }
     if (!Array.isArray(parsed.knownCombos)) return null;
     // A equipa só se verifica depois de convertida: um save antigo tem campos que a versão atual já não aceita.
-    // Cada migração sobe uma versão (a 1, de antes das épocas, salta logo para a 13); todas acabam na validação de baixo.
+    // Cada migração sobe uma versão (a 1, de antes das épocas, salta logo para a 13 e segue); todas acabam na validação de baixo.
     while (Number.isInteger(parsed.version) && parsed.version < SAVE_VERSION) {
       const migrate = MIGRATIONS[parsed.version];
       if (!migrate) return null;
