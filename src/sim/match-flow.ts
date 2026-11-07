@@ -7,6 +7,7 @@ import { freeThrowChance } from './shot.ts';
 import { startRebound } from './match-ball.ts';
 import { other, attackDirection, fromU, emit, lowest, nearestDefender } from './match-core.ts';
 import { applyPendingSubs, rotate } from './match-rotation.ts';
+import { aiAdjustTactics } from './match-commands.ts';
 import type { TeamIndex, Body, Play, MatchState } from './match-types.ts';
 
 /** Um contra-ataque: dura uns segundos, mais com o ritmo rápido. */
@@ -156,6 +157,7 @@ export function grantTimeout(s: MatchState, team: TeamIndex): void {
   s.driving = false;
   for (const side of s.court) for (const b of side) b.fatigue = Math.max(0, b.fatigue - B.timeoutRecovery);
   emit(s, 'timeout', team);
+  aiAdjustTactics(s);
   applyPendingSubs(s);
   rotate(s, 0);
   rotate(s, 1);
@@ -315,6 +317,7 @@ export function endPeriod(s: MatchState): void {
   s.phase = 'break';
   s.timer = seconds(holdSeconds(s, B.periodBreakSeconds));
   for (const b of s.bodies) b.fatigue = Math.max(0, b.fatigue - B.periodBreakRecovery);
+  aiAdjustTactics(s);
   rotate(s, 0);
   rotate(s, 1);
 }

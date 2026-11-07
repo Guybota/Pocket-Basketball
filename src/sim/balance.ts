@@ -436,6 +436,11 @@ export const BALANCE = {
   afterTimeoutSeconds: 2.5,
   timeoutRecovery: 0.12,
   aiTimeoutRun: 8,
+  // A IA muda de tática nas paragens: a perder por isto acelera, a ganhar por isto no último período abranda.
+  aiChaseMargin: 8,
+  aiProtectMargin: 8,
+  /** A partir deste ataque do adversário (2 pontos ou 3 pontos), a IA passa a zona ou volta ao homem a homem. */
+  aiReadSpacing: 0.5,
 
   // Colisões. O corpo ocupa este raio, e quem tem mais físico e peso é empurrado menos.
   bodyRadius: 0.41,

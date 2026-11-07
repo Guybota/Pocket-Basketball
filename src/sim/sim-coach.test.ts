@@ -9,6 +9,7 @@ import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
 import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Player, type Tactics, type Team, NEUTRAL_TACTICS, validateTactics } from './types.ts';
 import { away, flat, home } from './test-teams.ts';
+import { aiAdjustTactics } from './match-commands.ts';
 
 describe('decisões do treinador', () => {
   const start = (seed = 1): MatchState => createMatch(home, away, seed, [true, false]);
@@ -342,7 +343,21 @@ describe('táticas', () => {
     for (let i = 0; i < 300; i++) step(s);
     setTactics(s, 0, { pressure: 1, spacing: -1, pace: 1 });
     while (s.phase !== 'end') step(s);
-    expect(replayMatch(home, away, 3, [true, false], s.commands).events).toEqual(s.events);
+    const replay = replayMatch(home, away, 3, [true, false], s.commands);
+    expect(replay.events).toEqual(s.events);
+    expect(replay.commands).toEqual(s.commands);
+    // A IA viu o ataque por dentro e fechou-se em zona; fica registado como comando dela.
+    expect(s.commands.some(c => c.kind === 'tactics' && c.team === 1 && c.tactics.defense === 'zone')).toBe(true);
+  });
+
+  it('a IA a perder por muito no fim acelera e pressiona; a ganhar, abranda', () => {
+    const s = createMatch(home, away, 3);
+    s.period = 3;
+    s.phase = 'break';
+    s.score = [30, 18];
+    aiAdjustTactics(s);
+    expect(s.tactics[0].pace).toBe(-1);
+    expect(s.tactics[1]).toMatchObject({ pace: 1, pressure: 1 });
   });
 
   it('um jogador cansado começa o jogo cansado, e menos se tiver resistência', () => {
