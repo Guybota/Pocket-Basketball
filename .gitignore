@@ -4,3 +4,4 @@ dist-check/
 dist-mock/
 *.log
 dist-page
+.claude/

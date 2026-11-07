@@ -993,7 +993,7 @@ function showResult(): void {
   finished = true;
   banner.hidden = true;
   drop.hidden = true;
-  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found);
+  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? []);
   const wasHurt = new Set(club!.team.roster.filter(p => p.injuryWeeks).map(p => p.name));
   club = result.club;
   saveClub();

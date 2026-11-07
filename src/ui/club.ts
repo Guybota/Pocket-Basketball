@@ -292,6 +292,8 @@ export const cupRoundName = (cup: CupName, round: number): string => CUP_ROUNDS[
 
 /** A semente do jogo desta semana. */
 export const weekSeed = (club: ClubState): number => (club.seed + club.season * 10007 + club.week * 97) & 0x7fffffff;
+/** A semente do jogo de dois outros clubes, pelo lugar dele na ronda: igual ao vê-lo a decorrer e ao fechar a semana. */
+const otherGameSeed = (club: ClubState, index: number): number => (weekSeed(club) + (index + 1) * 257) & 0x7fffffff;
 
 /** O jogo oficial desta semana, ou null numa semana livre. */
 export const currentFixture = (club: ClubState): Fixture | null => currentGame(club)?.fixture ?? null;
@@ -522,7 +524,7 @@ export function liveOtherGames(club: ClubState): OtherGame[] {
   if (!fixtures) return [];
   return fixtures.flatMap((fixture, i) => {
     if (fixture.home === PLAYER_CLUB || fixture.away === PLAYER_CLUB || fixture.score) return [];
-    return [{ home: fixture.home, away: fixture.away, s: simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), (weekSeed(club) + (i + 1) * 257) & 0x7fffffff) }];
+    return [{ home: fixture.home, away: fixture.away, s: simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), otherGameSeed(club, i)) }];
   });
 }
 
@@ -776,7 +778,7 @@ function settlePendingCup(club: ClubState): ClubState {
   if (!fixtures || fixtures.every(f => f.score)) return club;
   const played = fixtures.map((fixture, i) => {
     if (fixture.score) return fixture;
-    const other = simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), (weekSeed(club) + (i + 1) * 257) & 0x7fffffff);
+    const other = simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), otherGameSeed(club, i));
     return { ...fixture, score: [other.score[0], other.score[1]] as [number, number] };
   });
   return { ...club, cups: { ...club.cups, [cup.cup]: settleCupRound(state, cup.round, played) } };
@@ -947,19 +949,19 @@ function finishPlayoffGame(club: ClubState, s: MatchState, found: readonly CardI
 }
 
 /** Os outros jogos da mesma ronda, simulados a sério, e o nosso com o resultado visto. */
-function playRound(club: ClubState, fixtures: readonly Fixture[], s: MatchState): Fixture[] {
+function playRound(club: ClubState, fixtures: readonly Fixture[], s: MatchState, live: readonly OtherGame[]): Fixture[] {
   return fixtures.map((fixture, i) => {
     if (fixture.home === PLAYER_CLUB) return { ...fixture, score: [s.score[0], s.score[1]] };
     if (fixture.away === PLAYER_CLUB) return { ...fixture, score: [s.score[1], s.score[0]] };
-    const home = club.clubs[fixture.home]!;
-    const away = club.clubs[fixture.away]!;
-    const other = simulateMatch(aiTeam(home), aiTeam(away), (weekSeed(club) + (i + 1) * 257) & 0x7fffffff);
+    // Os que se viram a decorrer já estão simulados, com a mesma semente: não se simulam outra vez.
+    const seen = live.find(g => g.home === fixture.home && g.away === fixture.away && g.s.phase === 'end');
+    const other = seen?.s ?? simulateMatch(aiTeam(club.clubs[fixture.home]!), aiTeam(club.clubs[fixture.away]!), otherGameSeed(club, i));
     return { ...fixture, score: [other.score[0], other.score[1]] };
   });
 }
 
 /** Fecha a semana: resultado, cartas encontradas, confiança, os outros jogos e o cansaço de quem jogou. */
-export function finishMatch(club: ClubState, s: MatchState, found: readonly CardId[]): MatchResult {
+export function finishMatch(club: ClubState, s: MatchState, found: readonly CardId[], live: readonly OtherGame[] = []): MatchResult {
   const won = s.score[0] > s.score[1];
   const game = currentGame(club);
   if (game?.playoff) return finishPlayoffGame(club, s, found, game);
@@ -979,7 +981,7 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
       };
     }
   }
-  const round = game === null ? null : playRound(club, game.cup ? club.cups[game.cup]!.rounds[game.round]! : club.rounds[game.round]!, s);
+  const round = game === null ? null : playRound(club, game.cup ? club.cups[game.cup]!.rounds[game.round]! : club.rounds[game.round]!, s, live);
   const rounds = round === null || game!.cup ? club.rounds : club.rounds.map((r, i) => (i === game!.round ? round : r));
   const cups = round === null || !game!.cup ? club.cups : { ...club.cups, [game!.cup]: settleCupRound(club.cups[game!.cup]!, game!.round, round) };
   const delta = confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), game !== null);
@@ -1070,17 +1072,17 @@ function validCups(club: ClubState): boolean {
 function migrateV5(old: ClubState): ClubState {
   const clubs = [...old.clubs.slice(0, FOREIGN_START), ...foreignClubs(old.seed, makeRng(old.seed ^ 0x77a1c3))];
   const qualified = firstQualified(clubs, old.divisions, old.seed);
-  return migrateV6({ ...old, version: 6, clubs, continentalQualified: qualified, cups: { ...old.cups, continental: continentalCup(qualified) } });
+  return { ...old, version: 6, clubs, continentalQualified: qualified, cups: { ...old.cups, continental: continentalCup(qualified) } };
 }
 
 /** Antes do dinheiro e do tempo: toda a gente chegou na época 1 e ganha o que vale. */
 function migrateV6(old: ClubState): ClubState {
-  return migrateV7({ ...old, version: 7, joined: Object.fromEntries(old.team.roster.map(player => [player.name, 1])), money: B.budgetByDivision[old.division]!, salaries: salariesFor(old.team), pendingRenewals: null });
+  return { ...old, version: 7, joined: Object.fromEntries(old.team.roster.map(player => [player.name, 1])), money: B.budgetByDivision[old.division]!, salaries: salariesFor(old.team), pendingRenewals: null };
 }
 
 /** Antes do mercado não havia propostas. */
 function migrateV7(old: ClubState): ClubState {
-  return migrateV8({ ...old, version: 8, offers: [] });
+  return { ...old, version: 8, offers: [] };
 }
 
 /** Até à versão 8 cada jogador tinha uma posição fixa. Agora o lugar na lista é que manda, e o campo desaparece de todo o lado. */
@@ -1096,30 +1098,30 @@ function stripField(value: unknown, field: string): void {
 function migrateV8(old: ClubState): ClubState {
   const next = { ...old, version: 9 };
   stripField(next, 'position');
-  return migrateV9(next);
+  return next;
 }
 
 /** A época ganhou duas semanas de pré-época: o calendário todo andou duas semanas para a frente. */
 function migrateV9(old: ClubState): ClubState {
-  return migrateV10({ ...old, version: 10, week: old.week + PRESEASON_WEEKS });
+  return { ...old, version: 10, week: old.week + PRESEASON_WEEKS };
 }
 
 /** Os jogadores passaram a vir de um pool fixo: os clubes guardados sem jogadores recebem os deles. O nosso plantel já está guardado. */
 function migrateV10(old: ClubState): ClubState {
   const deal = dealPool(makeRng(old.seed ^ 0x77a1c3), FOREIGN_START);
-  return migrateV11({ ...old, version: 11, clubs: old.clubs.map((club, i) => (i < FOREIGN_START && !club.players ? { ...club, players: deal[i] } : club)) });
+  return { ...old, version: 11, clubs: old.clubs.map((club, i) => (i < FOREIGN_START && !club.players ? { ...club, players: deal[i] } : club)) };
 }
 
 /** Os jogadores deixaram de ter peso. */
 function migrateV11(old: ClubState): ClubState {
   const next = { ...old, version: 12 };
   stripField(next, 'weightKg');
-  return migrateV12(next);
+  return next;
 }
 
 /** A altura passou de centímetros a três níveis, com o mesmo corte das estrelas. */
 function migrateV12(old: ClubState): ClubState {
-  const next = { ...old, version: SAVE_VERSION };
+  const next = { ...old, version: 13 };
   const walk = (value: unknown): void => {
     if (Array.isArray(value)) value.forEach(walk);
     else if (value && typeof value === 'object') {
@@ -1137,7 +1139,7 @@ function migrateV12(old: ClubState): ClubState {
 
 /** Antes dos playoffs, a época acabava na fase regular. */
 function migrateV4(old: ClubState): ClubState {
-  return migrateV5({ ...old, version: 5, playoffs: null });
+  return { ...old, version: 5, playoffs: null };
 }
 
 /** Antes das taças, a época tinha 19 semanas. O clube entra na taça desta época só se ela ainda não começou. */
@@ -1146,7 +1148,7 @@ function migrateV3(old: ClubState): ClubState {
   // No calendário dessa altura a pré-eliminatória era na semana 2.
   const started = old.week > 2;
   // Nesta versão ainda não havia Taça Continental: a migração seguinte acrescenta-a.
-  return migrateV4(drawCups({ ...old, version: 4, cups: { federation: started ? { ...cup, alive: cup.alive.filter(id => id !== PLAYER_CLUB) } : cup } as ClubState['cups'] }));
+  return drawCups({ ...old, version: 4, cups: { federation: started ? { ...cup, alive: cup.alive.filter(id => id !== PLAYER_CLUB) } : cup } as ClubState['cups'] });
 }
 
 /** Um clube guardado antes de haver época entra numa liga nova, com tudo o que já tinha treinado. */
@@ -1154,7 +1156,7 @@ function migrateV1(old: ClubState): ClubState {
   const world = createWorld(old.seed, old.division, old.team.name);
   return {
     ...old,
-    version: SAVE_VERSION,
+    version: 13,
     season: 1,
     week: 1,
     trainedThisWeek: [],
@@ -1189,6 +1191,10 @@ function validExtras(club: ClubState): boolean {
     && club.kits.some(kit => kit.id === club.kitChoice);
 }
 
+const MIGRATIONS: Record<number, (old: ClubState) => ClubState> = {
+  1: migrateV1, 2: migrateV2, 3: migrateV3, 4: migrateV4, 5: migrateV5, 6: migrateV6, 7: migrateV7, 8: migrateV8, 9: migrateV9, 10: migrateV10, 11: migrateV11, 12: migrateV12,
+};
+
 /** Lê um clube guardado. Devolve null se estiver estragado ou for de outra versão, sem deitar nada fora. */
 export function parseClub(text: string | null): ClubState | null {
   if (!text) return null;
@@ -1204,22 +1210,12 @@ export function parseClub(text: string | null): ClubState | null {
     }
     if (!Array.isArray(parsed.knownCombos)) return null;
     // A equipa só se verifica depois de convertida: um save antigo tem campos que a versão atual já não aceita.
-    if (parsed.version === 1) {
-      const migrated = migrateV1(parsed);
-      validateTeam(migrated.team);
-      return migrated;
+    // Cada migração sobe uma versão (a 1, de antes das épocas, salta logo para a 13); todas acabam na validação de baixo.
+    while (Number.isInteger(parsed.version) && parsed.version < SAVE_VERSION) {
+      const migrate = MIGRATIONS[parsed.version];
+      if (!migrate) return null;
+      parsed = migrate(parsed);
     }
-    if (parsed.version === 2) parsed = migrateV2(parsed);
-    if (parsed.version === 3) parsed = migrateV3(parsed);
-    if (parsed.version === 4) parsed = migrateV4(parsed);
-    if (parsed.version === 5) parsed = migrateV5(parsed);
-    if (parsed.version === 6) parsed = migrateV6(parsed);
-    if (parsed.version === 7) parsed = migrateV7(parsed);
-    if (parsed.version === 8) parsed = migrateV8(parsed);
-    if (parsed.version === 9) parsed = migrateV9(parsed);
-    if (parsed.version === 10) parsed = migrateV10(parsed);
-    if (parsed.version === 11) parsed = migrateV11(parsed);
-    if (parsed.version === 12) parsed = migrateV12(parsed);
     validateTeam(parsed.team);
     if (parsed.version !== SAVE_VERSION || !validExtras(parsed)) return null;
     if (!Number.isInteger(parsed.season) || parsed.week > SEASON_WEEKS + (parsed.playoffs ? PLAYOFF_WEEKS : 0) || !Number.isFinite(parsed.confidence)) return null;

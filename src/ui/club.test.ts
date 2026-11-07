@@ -10,7 +10,7 @@ import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, liveOtherGames, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
@@ -478,6 +478,14 @@ describe('época', () => {
   it('os resultados dos outros jogos repetem-se com o mesmo clube', () => {
     const play = (): unknown => finishMatch(newClub(13), simulateMatch(clubTeam(newClub(13)), opponentOf(newClub(13)), 1), []).round;
     expect(play()).toEqual(play());
+  });
+
+  it('os outros jogos vistos a decorrer fecham a ronda com o mesmo resultado', () => {
+    const c = { ...newClub(13), week: PRESEASON_WEEKS + 1 };
+    const s = simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c));
+    const live = liveOtherGames(c);
+    expect(live.length).toBeGreaterThan(0);
+    expect(finishMatch(c, s, [], live).round).toEqual(finishMatch(c, s, []).round);
   });
 
   it('a Vontade conta para quem joga fora, seja que equipa for', () => {

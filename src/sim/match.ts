@@ -395,6 +395,20 @@ function hasOpenLane(s: MatchState, h: Body): boolean {
 }
 
 /** Pressão de 0 a 1, conforme a distância e a qualidade do defensor mais próximo. */
+/** O primeiro com a pontuação mais baixa, sem criar listas: o mesmo que uma ordenação estável seguida de [0]. */
+function lowest<T>(items: readonly T[], score: (item: T) => number): T | undefined {
+  let best: T | undefined;
+  let bestScore = Infinity;
+  for (const item of items) {
+    const value = score(item);
+    if (best === undefined || value < bestScore) {
+      best = item;
+      bestScore = value;
+    }
+  }
+  return best;
+}
+
 function pressureOn(s: MatchState, b: Body): number {
   let best = 0;
   for (const d of s.court[other(b.team)]) {
@@ -581,7 +595,7 @@ function setupInbound(s: MatchState, kind: 'baseline' | 'side'): void {
   const y = kind === 'baseline' ? (Math.abs(s.ball.y) < 2.4 ? side * 2.4 : Math.max(-COURT_HALF_WIDTH + 1, Math.min(COURT_HALF_WIDTH - 1, s.ball.y))) : side * (COURT_HALF_WIDTH + B.inboundOutside);
   const team = s.court[offense];
   // Repõe quem está mais perto. O base vem sempre receber, porque é quem conduz o ataque.
-  const passer = team.filter(b => b.slot !== 0).sort((a, b) => distance(a.x, a.y, x, y) - distance(b.x, b.y, x, y))[0]!;
+  const passer = lowest(team.filter(b => b.slot !== 0), b => distance(b.x, b.y, x, y))!;
   const near = kind === 'baseline'
     ? { x: endX + inward * 3.8, y: -side * 3 }
     : { x: x + attack * 2.2, y: side * (COURT_HALF_WIDTH - 2.5) };
@@ -601,7 +615,7 @@ function setupInbound(s: MatchState, kind: 'baseline' | 'side'): void {
 function throwInbound(s: MatchState): void {
   const { passer, receivers } = s.inbound!;
   const openness = (b: Body): number => distance(b.x, b.y, nearestDefender(s, b).x, nearestDefender(s, b).y);
-  const target = receivers.map(r => r.body).sort((a, b) => openness(b) - openness(a))[0]!;
+  const target = lowest(receivers.map(r => r.body), b => -openness(b))!;
   const dist = distance(passer.x, passer.y, target.x, target.y);
   s.inbound = null;
   s.flight = {
@@ -838,7 +852,7 @@ function jumpSpots(s: MatchState, team: TeamIndex, jumper: Body): Map<Body, [num
 
 /** Salta quem chega mais alto de cada equipa. */
 const bestJumper = (s: MatchState, team: TeamIndex): Body =>
-  [...s.court[team]].sort((a, b) => jumpReach(b) - jumpReach(a))[0]!;
+  lowest(s.court[team], b => -jumpReach(b))!;
 
 const jumpReach = (b: Body): number => b.player.attributes.jumping + (heightCmOf(b.player) - B.referenceHeight) * B.jumpPerCm;
 
@@ -1302,7 +1316,7 @@ function decide(s: MatchState): void {
       const o = shotOdds(s, b, pressureOn(s, b));
       return { b, value: o.chance * o.points };
     });
-    const best = mates.sort((x, y) => y.value - x.value)[0]!;
+    const best = lowest(mates, m => -m.value)!;
     if (best.value > own.chance * own.points) pass(s, h, best.b);
     else shoot(s, h);
     return;
@@ -1332,7 +1346,7 @@ function decide(s: MatchState): void {
     if (pressure >= B.pressBreakPressure && chance(s.rng, B.pressBreakPassChance)) {
       const ahead = teammates.filter(b => toU(s, b.team, b.x) < u - 1);
       const openness = (b: Body): number => distance(b.x, b.y, nearestDefender(s, b).x, nearestDefender(s, b).y);
-      const target = ahead.sort((x, y) => openness(y) - openness(x))[0];
+      const target = lowest(ahead, b => -openness(b));
       if (target && openness(target) > 1.2) pass(s, h, target);
     }
     return;
@@ -1387,14 +1401,14 @@ function decide(s: MatchState): void {
   const freeMates = teammates.map(b => pressureOn(s, b) < B.wideOpenPressure || hasOpenLane(s, b));
   // A ajuda fechou o corredor do drive: quem ela deixou está livre e recebe a bola.
   if (s.driving && dist > B.openLaneFinish) {
-    const open = teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free).sort((x, y) => y.value - x.value)[0];
+    const open = lowest(teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free), m => -m.value);
     if (open && chance(s.rng, B.driveKickChance)) {
       pass(s, h, open.b);
       return;
     }
   }
   if (h.slot === 0 || h.player.onBall === 'playmaker') {
-    const open = teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free && m.value >= shootValue * B.guardOpenPassValue).sort((x, y) => y.value - x.value)[0];
+    const open = lowest(teammates.map((b, i) => ({ b, value: passValues[i]!, free: freeMates[i]! })).filter(m => m.free && m.value >= shootValue * B.guardOpenPassValue), m => -m.value);
     if (open && chance(s.rng, B.guardOpenPassChance)) {
       pass(s, h, open.b);
       return;
@@ -1603,7 +1617,7 @@ function updateTargets(s: MatchState): void {
     const hu = toU(s, offense, h.x);
     if (hu > B.halfCourtPickUpU && pressureOn(s, h) >= B.pressBreakPressure) {
       // Saída contra pressão: o colega mais perto vem para a frente do portador, do lado contrário ao defensor, dar linha de passe.
-      const helper = [...s.court[offense]].filter(b => b !== h).sort((a, b) => distance(a.x, a.y, h.x, h.y) - distance(b.x, b.y, h.x, h.y))[0]!;
+      const helper = lowest(s.court[offense].filter(b => b !== h), b => distance(b.x, b.y, h.x, h.y))!;
       const defender = nearestDefender(s, h);
       helper.targetX = fromU(s, offense, hu - B.pressHelpDistance);
       helper.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, h.y + (defender.y > h.y ? -2.5 : 2.5)));
@@ -1612,7 +1626,7 @@ function updateTargets(s: MatchState): void {
       if (s.playFor && s.playFor.slot < 0) s.playFor = null;
       const pf = s.playFor;
       // O grande de serviço para os bloqueios: o mais alto que não seja quem tem a bola nem a opção.
-      const biggest = (except: readonly Body[]): Body => [...s.court[offense]].filter(b => !except.includes(b)).sort((a, b) => b.player.height - a.player.height)[0]!;
+      const biggest = (except: readonly Body[]): Body => lowest(s.court[offense].filter(b => !except.includes(b)), b => -b.player.height)!;
       if ((s.play === 'pickRoll' && (!pf || pf === h)) || (s.play === 'pickPop' && pf && pf !== h)) {
         // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola para o cesto; no pick-and-pop abre para o arco.
         const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 4 ? 3 : 4]!;
@@ -1675,7 +1689,7 @@ function updateTargets(s: MatchState): void {
   const pickUp = defenseTactics.pressure >= 1 ? Infinity : defenseTactics.pressure >= 0 ? B.halfCourtPickUpU : B.defensePickUpU;
   const ballU = toU(s, offense, s.ball.x);
   const zone = defenseTactics.defense === 'zone' && ballU <= pickUp && s.phase !== 'dead';
-  const ballHolder = s.holder ?? [...s.court[offense]].sort((a, b) => distance(a.x, a.y, s.ball.x, s.ball.y) - distance(b.x, b.y, s.ball.x, s.ball.y))[0]!;
+  const ballHolder = s.holder ?? lowest(s.court[offense], b => distance(b.x, b.y, s.ball.x, s.ball.y))!;
   // Na zona, cada um guarda a sua área: a zona desliza em bloco conforme onde a bola está, e só um fecha sobre ela.
   const zonePlan = zone ? ZONE_PLAN[zoneRegion(toU(s, offense, ballHolder.x), ballHolder.y)] : null;
   const zoneSide: 1 | -1 = ballHolder.y >= 0 ? 1 : -1;
@@ -1684,7 +1698,7 @@ function updateTargets(s: MatchState): void {
   const transition = s.tick < s.breakUntil && (s.phase === 'live' || s.phase === 'pass');
   const ownHoopX = fromU(s, offense, HOOP_U);
   const protectors = transition ? [...s.court[defense]].sort((p, q) => distance(p.x, p.y, ownHoopX, 0) - distance(q.x, q.y, ownHoopX, 0)).slice(0, 2) : [];
-  const stopper = transition ? [...s.court[defense]].filter(d => !protectors.includes(d)).sort((p, q) => distance(p.x, p.y, ballHolder.x, ballHolder.y) - distance(q.x, q.y, ballHolder.x, ballHolder.y))[0] ?? null : null;
+  const stopper = transition ? lowest(s.court[defense].filter(d => !protectors.includes(d)), d => distance(d.x, d.y, ballHolder.x, ballHolder.y)) ?? null : null;
   // Ajuda ao drive, na defesa individual: com o portador já a passar o seu defensor, o defensor mais perto do corredor cujo
   // homem está longe do cesto larga-o e vem fechar; é esse que deixa alguém livre para o passe para fora.
   let helper: Body | null = null;
@@ -1693,9 +1707,9 @@ function updateTargets(s: MatchState): void {
     const marker = nearestDefender(s, h);
     const hoopX = fromU(s, offense, HOOP_U);
     if (!inFrontOf(s, marker, h) || distance(h.x, h.y, marker.x, marker.y) > B.stanceRange) {
-      helper = s.court[defense]
-        .filter(d => d !== marker && d.stunnedUntil <= s.tick && hoopDistance(toU(s, offense, s.court[offense][d.slot]!.x), s.court[offense][d.slot]!.y) > B.helpManMinDistance)
-        .sort((p, q) => segmentDistance(p.x, p.y, h.x, h.y, hoopX, 0) - segmentDistance(q.x, q.y, h.x, h.y, hoopX, 0))[0] ?? null;
+      const helpers = s.court[defense]
+        .filter(d => d !== marker && d.stunnedUntil <= s.tick && hoopDistance(toU(s, offense, s.court[offense][d.slot]!.x), s.court[offense][d.slot]!.y) > B.helpManMinDistance);
+      helper = lowest(helpers, d => segmentDistance(d.x, d.y, h.x, h.y, hoopX, 0)) ?? null;
     }
   }
   for (const b of s.court[defense]) {
@@ -1828,7 +1842,7 @@ function applyLaneLimits(s: MatchState): void {
       if (!inLane(toU(s, s.offense, b.targetX), b.targetY)) continue;
       // O defensor cola-se ao atacante mais perto que esteja na área; se não houver nenhum, sai para a beira da área.
       const hoopX = fromU(s, s.offense, HOOP_U);
-      const near = s.court[s.offense].filter(a => inLane(toU(s, s.offense, a.x), a.y)).sort((p, q) => distance(p.x, p.y, b.x, b.y) - distance(q.x, q.y, b.x, b.y))[0];
+      const near = lowest(s.court[s.offense].filter(a => inLane(toU(s, s.offense, a.x), a.y)), a => distance(a.x, a.y, b.x, b.y));
       if (near) {
         const d = distance(near.x, near.y, hoopX, 0) || 1;
         b.targetX = near.x + ((hoopX - near.x) / d) * B.laneGuardGap;
@@ -2394,7 +2408,7 @@ export function step(s: MatchState): void {
         // Com a bola no chão e quem a ganhou ainda longe, fica com ela quem chegar primeiro, seja quem for: antes outro
         // podia ficar ao lado dela sem a apanhar. Com o vencedor perto, a altura e o salto continuam a decidir.
         const onFloor = s.ball.z <= B.ballRestHeight + 0.01 && distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) > reach(loose.winner) * 2;
-        const first = onFloor ? [...s.court[0], ...s.court[1]].filter(b => b.stunnedUntil <= s.tick && distance(b.x, b.y, s.ball.x, s.ball.y) <= reach(b)).sort((p, q) => distance(p.x, p.y, s.ball.x, s.ball.y) - distance(q.x, q.y, s.ball.x, s.ball.y))[0] : undefined;
+        const first = onFloor ? lowest([...s.court[0], ...s.court[1]].filter(b => b.stunnedUntil <= s.tick && distance(b.x, b.y, s.ball.x, s.ball.y) <= reach(b)), b => distance(b.x, b.y, s.ball.x, s.ball.y)) : undefined;
         if (first) loose.winner = first;
         if (first || distance(loose.winner.x, loose.winner.y, s.ball.x, s.ball.y) <= reach(loose.winner) || --s.timer <= -seconds(B.reboundMaxWaitSeconds)) resolveRebound(s);
       }
