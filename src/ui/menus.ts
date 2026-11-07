@@ -105,6 +105,7 @@ const lookFor = (p: Player): Look => ({ ...lookOf(p, 'blue'), custom: activeKit(
 const kitById = (id: string): ClubKit => club.kits.find(kit => kit.id === id)!;
 const shirtOf = (p: Player): number => club.shirts[p.name] ?? club.team.roster.indexOf(p) + 4;
 
+// Só para a grelha do treino, onde a carta tem 50 px; ao tocar nela aparece o nome inteiro, que é o de todos os outros ecrãs.
 const SHORT_NAMES: Record<CardId, string> = {
   readDefense: 'Ler Defesa', pickRoll: 'Pick&Roll', whiteboard: 'Quadro', video: 'Vídeo', transition: 'Transição',
   shooting: 'Lançar', dribble: 'Drible', bouncePass: 'Passe', freeThrows: 'Livres', hookShot: 'Gancho',
@@ -218,7 +219,7 @@ function trainSlots(): string {
   return `<div class="slots">${Array.from({ length: MAX_CARDS_PER_PLAYER }, (_, n) => {
     const id = picked[n];
     return id
-      ? `<button type="button" class="slot" data-remove="${id}" aria-label="Tirar ${CARDS[id].name}"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${SHORT_NAMES[id]}</span></button>`
+      ? `<button type="button" class="slot" data-remove="${id}" aria-label="Tirar ${CARDS[id].name}"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></button>`
       : '<div class="slot empty">Vazio</div>';
   }).join('')}</div>`;
 }
@@ -266,7 +267,7 @@ function lastCombo(): string {
 function combosScreen(): Rendered {
   const rows = COMBOS.map(combo => {
     const known = club.knownCombos.includes(combo.id);
-    return `<tr><td>${known ? esc(combo.name) : '???'}</td><td>${known ? combo.cards.map(id => SHORT_NAMES[id]).join(' + ') : '???'}</td></tr>`;
+    return `<tr><td>${known ? esc(combo.name) : '???'}</td><td>${known ? combo.cards.map(id => CARDS[id].name).join(' + ') : '???'}</td></tr>`;
   }).join('');
   return {
     top: inside(`<div class="note"><header><b>Caderno de combos</b><span>${club.knownCombos.length} de ${COMBOS.length}</span></header><div class="inner">
@@ -298,13 +299,15 @@ function reportScreen(): Rendered {
     const [article, name] = ATTRIBUTE_PHRASES[key];
     const how = gain < 0 ? 'desceu' : 'subiu';
     const much = gainSize(gain) === 1 ? ' ligeiramente' : gainSize(gain) === 3 ? ' bastante' : '';
-    return `<div>${article} <b style="color:${ATTRIBUTE_COLORS[key]}">${name}</b> ${how}${much}.</div>`;
+    // O fundo é escuro: a cor do atributo clareada, para a técnica e o lançamento se lerem.
+    return `<div>${article} <b style="color:color-mix(in srgb, ${ATTRIBUTE_COLORS[key]} 60%, #fff)">${name}</b> ${how}${much}.</div>`;
   }).join('')}</div>`;
   const learned = [
     result.newMove ? `Aprendeu ${MOVE_INFO[result.newMove].name}` : '',
     result.moveBlocked ? 'Já sabe 2 movimentos: não aprendeu mais nenhum' : '',
     combo?.offBall ? `Sem bola passa a ${OFF_BALL_INFO[combo.offBall].name}` : '',
     combo?.onBall ? `Com bola passa a ${ON_BALL_INFO[combo.onBall].name}` : '',
+    combo && !combo.move && !combo.offBall && !combo.onBall ? `${combo.name}: estas cartas juntas valem mais do que separadas` : '',
   ].filter(Boolean).map(line => `<div class="learned">${line}</div>`).join('');
   const heroCards = cards.map((id, n) => `<img class="fx-card" style="--x:${place[cards.length === 2 ? n * 2 : n]! * (cards.length === 1 ? 0 : 1)}px" alt="${CARDS[id].name}" src="${cardImage(id, CARDS[id].category)}">`).join('');
   const sparks = Array.from({ length: 12 }, (_, n) => `<i class="fx-spark" style="--dx:${Math.round(Math.cos((n / 12) * Math.PI * 2) * 150)}px;--dy:${Math.round(Math.sin((n / 12) * Math.PI * 2) * 110)}px"></i>`).join('');
@@ -318,7 +321,7 @@ function reportScreen(): Rendered {
           <span class="fx-flash"></span>
           <span class="fx-text"><span class="k">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</span><span class="n">${esc(combo.name)}</span><span class="cs">${cards.map(id => `<img alt="" src="${cardImage(id, CARDS[id].category)}">`).join('')}</span></span>
         </button>`
-      : inside(playerCard(index, `<div class="slots">${cards.map(id => `<div class="slot"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${SHORT_NAMES[id]}</span></div>`).join('')}</div>`)),
+      : inside(playerCard(index, `<div class="slots">${cards.map(id => `<div class="slot"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></div>`).join('')}</div>`)),
     bottom: `<div class="trainpop after${combo ? ' delayed' : ''}"><div class="box"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>${combo ? esc(combo.name) : 'Sem combo'}</b></div><div class="gains">${rows}${learned}</div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}</div></div>`,
     // As barras sobem depois de o ecrã aparecer, senão não havia nada a subir.
     // As barras precisam de ter o estilo inicial calculado antes de receberem a classe final, senão saltam sem transição:
@@ -505,7 +508,7 @@ function rivalScreen(): Rendered {
       ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}${optionMark(rival.tactics?.options, p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
     </button>`).join('');
   // Os cinco do adversário na prancheta, como a ficha de equipa do original. Toca-se num boneco para o marcar.
-  const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}"`, focus.includes(index))).join(''), true);
+  const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}`, focus.includes(index))).join(''), true);
   return {
     top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${five}${clubSheet(id, rival)}</div></div>`),
     bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(clubIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
@@ -761,7 +764,7 @@ function federationScreen(): Rendered {
     </button>`).join('');
   const top = federationPlayer >= 0
     ? inside(federationClub === PLAYER_CLUB ? playerCard(player) : clubPlayerCard(team, player))
-    : inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(crestOf)}"> ${esc(team.name)}</b><span>${own ? `Lugar ${position + 1}` : `Lugar ${position + 1}`}</span></header><div class="inner">
+    : inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(crestOf)}"> ${esc(team.name)}</b><span>${own && table.every(r => r.played === 0) ? 'Sem jogos' : `Lugar ${position + 1}`}</span></header><div class="inner">
     ${sheet}
     <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>${row.wins} V</span><span>${row.losses} D</span><span>${row.pointsFor} pts</span></div>
     ${form ? `<table class="mini-table"><tr><th>Últimos jogos</th><th></th></tr>${form}</table>` : ''}
@@ -864,7 +867,7 @@ function officeScreen(): Rendered {
   };
   const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}" style="grid-template-columns:1fr auto;${officeItem === id ? 'background:var(--gold);color:var(--ink)' : ''}"><span>${label}</span><small>${note}</small></button>`;
   const items: [OfficeItem, string, string][] = [
-    ['board', 'Direção', 'Confiança e objetivos'],
+    ['board', 'Direção', 'A confiança no treinador'],
     ['trophies', 'Troféus e prémios', `${trophyList(club).filter(t => t.won).length} na vitrina`],
     ['history', 'Historial', 'Épocas e títulos'],
     ['reset', 'Novo clube', 'Começar de novo'],

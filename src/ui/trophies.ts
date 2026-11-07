@@ -29,7 +29,7 @@ export function trophyList(club: ClubState): Trophy[] {
   });
   const rises = career.filter(r => (r.outcome === 'champion' || r.outcome === 'promoted') && r.division < last);
   const bestYear = career.find(r => r.wins >= COACH_OF_THE_YEAR_WINS);
-  const scorer = [...career].sort((a, b) => b.topScorerPoints - a.topScorerPoints)[0];
+  const scorer = career.filter(r => r.topScorerOfDivision).sort((a, b) => b.topScorerPoints - a.topScorerPoints)[0];
   const federationWins = career.filter(r => (r.cups ?? []).includes('federation')).length;
   const federation = career.filter(r => (r.cups ?? []).includes('federation')).at(-1);
   const continental = career.filter(r => (r.cups ?? []).includes('continental')).at(-1);
@@ -39,7 +39,7 @@ export function trophyList(club: ClubState): Trophy[] {
     ...cups,
     { name: 'Subida de divisão', kind: 'medal', won: rises.length > 0, detail: rises.length > 0 ? `${rises.length === 1 ? 'Uma subida' : `${rises.length} subidas`}. A última na ${when(rises.at(-1)!).toLowerCase()}.` : 'Sobe de divisão pela primeira vez.' },
     { name: 'Treinador do Ano', kind: 'plate', won: bestYear !== undefined, detail: bestYear ? `${when(bestYear)}. ${bestYear.wins} vitórias numa só época.` : `Ganha ${COACH_OF_THE_YEAR_WINS} jogos na mesma época.` },
-    { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'O melhor marcador de uma época fica aqui.' },
+    { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'Tem o melhor marcador da divisão numa época, em pontos por jogo.' },
     { name: 'Coleção de combos', kind: 'plate', won: club.knownCombos.length === COMBOS.length, detail: `Descobre todos os combos secretos. Já tens ${club.knownCombos.length} de ${COMBOS.length}.` },
     { name: 'Taça da Federação', kind: 'cup', won: federation !== undefined, detail: federation ? `${when(federation)}. ${federationWins > 1 ? `Ganha ${federationWins} vezes.` : 'A taça de todos os clubes.'}` : 'Seis rondas a um jogo, contra qualquer clube do país.' },
     { name: 'Taça Continental', kind: 'cup', won: continental !== undefined, detail: continental ? `${when(continental)}. Contra os melhores do continente.` : 'Entram os 4 primeiros da Pro Liga 1. Quatro rondas contra clubes de fora, mais fortes do que os de cá.' },
@@ -65,7 +65,8 @@ export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]
     rect('#a06a2c', 8, y, W - 16, 3);
     rect('rgba(242,194,48,.08)', 8, y - 90, W - 16, 90);
   }
-  trophies.forEach((t, n) => drawTrophy(g, Math.round((W / 5) * (n % 5 + 0.5)), rowY[n < 5 ? 0 : 1]!, t.kind, t.won));
+  const perRow = Math.ceil(trophies.length / rowY.length);
+  trophies.forEach((t, n) => drawTrophy(g, Math.round((W / perRow) * (n % perRow + 0.5)), rowY[Math.floor(n / perRow)]!, t.kind, t.won));
 }
 
 /** Um troféu, com a base em (x, y). O que falta fica em sombra. */

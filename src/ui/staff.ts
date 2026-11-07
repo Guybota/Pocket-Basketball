@@ -45,13 +45,15 @@ export function assistantHalf(ours: number, theirs: number): [Mood, string] {
   if (lead > 0) return ['neutral', 'Estamos a ganhar. Mudar agora é dar-lhes ideias.'];
   if (lead === 0) return ['neutral', 'Tudo em aberto. É para isto que se treina.'];
   if (lead > -10) return ['worried', 'Está mal, mas não está perdido. Uma pressão mais alta?'];
-  return ['sad', 'Não está tão mau como parece.'];
+  // A cara diz o contrário da frase (docs/05); a dica é a sério, para quem não sabe porque está a perder.
+  return ['sad', 'Não está tão mau como parece. Vê quem está cansado e quem anda a falhar.'];
 }
 
 /** No fim do jogo. */
 export function assistantResult(won: boolean, diff: number, practice: boolean): [Mood, string] {
   if (practice) return ['neutral', 'Foi um treino. Ninguém se lembra de treinos, mas as pernas lembram-se.'];
   if (won && diff >= 12) return ['happy', 'Isto foi um passeio. Amanhã treina-se na mesma.'];
+  if (won && diff >= 6) return ['happy', 'Ganhámos com tempo para respirar. Pouco, mas algum.'];
   if (won) return ['happy', 'Sofremos, mas ganhámos. É a única coisa que conta à segunda-feira.'];
   if (diff > -6) return ['worried', 'Perdemos por um fio. Fio é o que nos falta, não é talento.'];
   return ['sad', 'Não foi tão mau como pareceu.'];
@@ -60,7 +62,7 @@ export function assistantResult(won: boolean, diff: number, practice: boolean): 
 export function presidentBoard(club: ClubState): [Mood, string] {
   if (club.confidence < 15) return ['sad', 'Vamos ser francos: ou isto muda já, ou muda o treinador.'];
   if (club.confidence < 40) return ['worried', 'Estamos a ver alguns sinais. Acabe no meio da tabela e ninguém faz perguntas.'];
-  if (club.confidence < 70) return ['neutral', 'Bom trabalho. Mantenha a equipa a subir e eu fico contente.'];
+  if (club.confidence < 70) return ['neutral', 'Bom trabalho. Continue a dar-me razões para confiar em si.'];
   return ['happy', 'Já ando a falar de si aos meus amigos. Continue assim.'];
 }
 

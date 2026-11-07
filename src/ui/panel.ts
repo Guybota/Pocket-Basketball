@@ -40,8 +40,8 @@ export const crest = (view: MatchView, team: 0 | 1, size = 24): string =>
 
 function periodTable(view: MatchView): string {
   const { s, periodScores } = view;
-  const periods = Math.max(4, periodScores[0].length);
-  const head = Array.from({ length: periods }, (_, i) => `<span>${i < 4 ? i + 1 : 'P'}</span>`).join('');
+  const periods = Math.max(view.periods, periodScores[0].length);
+  const head = Array.from({ length: periods }, (_, i) => `<span>${i < view.periods ? i + 1 : 'P'}</span>`).join('');
   const row = (team: 0 | 1): string => {
     const cells = Array.from({ length: periods }, (_, i) => `<span>${periodScores[team][i] ?? '-'}</span>`).join('');
     return `<span class="team"><i class="dot team-${team}"></i>${escapeHtml(s.teams[team].name)}</span>${cells}<span class="tot">${s.score[team]}</span>`;

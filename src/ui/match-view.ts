@@ -6,7 +6,7 @@ import { BENCH_SPACING, BENCH_START_X, BENCH_Y, HUDDLE_CENTRE, huddleSpot, secon
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
-import { Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures } from './art/court.ts';
+import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import {
   drawBall,
@@ -107,6 +107,8 @@ export interface ViewCallbacks {
 export class MatchView {
   readonly s: MatchState;
   readonly periodScores: [number[], number[]] = [[], []];
+  /** Os períodos do tempo regulamentar: o jogo-treino, à porta fechada, só tem dois. */
+  readonly periods: number;
   private readonly camera = new Camera();
   private readonly textures: CourtTextures;
   private image: ImageData;
@@ -194,6 +196,7 @@ export class MatchView {
 
   constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem) {
     this.ownEmblem = ownEmblem;
+    this.periods = division === CLOSED_GYM ? 2 : 4;
     this.g = g;
     this.callbacks = callbacks;
     this.s = state ?? createMatch(home, away, seed, controlled, visitor);

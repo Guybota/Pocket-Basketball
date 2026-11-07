@@ -847,7 +847,7 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 .scroll.growrows > .prow, .scroll.growrows > .crow { flex: 1 1 auto; max-height: 40px; }
 .scroll.growrows > .starters { flex: none; }
 /* Os botões crescem até 62 px quando o painel tem espaço, em vez de ficarem num monte ao meio com faixas vazias à volta. */
-.menu { flex: 1; min-height: 0; display: grid; grid-auto-rows: minmax(46px, 62px); align-content: center; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); overflow-y: auto; }
+.menu { flex: 1; min-height: 0; display: grid; grid-auto-rows: minmax(46px, 62px); align-content: center; align-content: safe center; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); overflow-y: auto; }
 .mbar { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; min-height: 46px; padding: 3px 10px 3px 6px; text-align: left; background: var(--paper); border-radius: 6px; box-shadow: 2px 3px 0 var(--ink); }
 .mbar img { display: block; width: 28px; height: 28px; image-rendering: pixelated; }
 .mbar small { font: 400 15px/1 var(--small); color: var(--muted); }
@@ -1117,6 +1117,8 @@ button.quiet { min-height: 32px; align-self: center; padding: 2px 12px; backgrou
 /* O resultado do treino: uma janela ao centro do ecrã, por cima da ficha e das cartas. */
 .trainpop { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 8px; background: rgba(27, 34, 48, .45); }
 .trainpop .box { width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 4px 4px 0 var(--ink); }
+/* Num combo, a caixa fica em baixo para o nome do combo continuar à vista por cima dela. */
+.trainpop.delayed { align-items: flex-end; }
 .trainpop.delayed:not(.done) { animation: fx-after .3s 1.4s both, fx-pop-wait 1.7s both; }
 .trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 1.7s; }
 @keyframes fx-pop-wait { from, 99% { pointer-events: none; } to { pointer-events: auto; } }

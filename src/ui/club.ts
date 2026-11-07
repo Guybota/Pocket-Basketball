@@ -57,6 +57,8 @@ export interface SeasonRecord {
   outcome: SeasonOutcome;
   topScorer: string;
   topScorerPoints: number;
+  /** Se marcou mais pontos por jogo do que qualquer jogador dos outros clubes da divisão. Falta nas épocas antigas. */
+  topScorerOfDivision?: boolean;
   cards: CardId[];
   /** A tabela final, para o ecrã de fim de época. */
   table: Standing[];
@@ -399,8 +401,10 @@ export function clubSeasons(club: ClubState, id: number): { label: string; divis
   const division = club.divisions.findIndex(ids => ids.includes(id));
   // Os clubes de fora e os adversários especiais não têm épocas nas nossas ligas.
   if (division < 0) return [];
+  // Antes da primeira jornada todos estão a 0-0, e o desempate pelo número poria sempre o nosso clube em 1.º.
+  const table = leagueTable(club);
   const now = division === club.division
-    ? leagueTable(club).findIndex(row => row.club === id)
+    ? (table.some(row => row.played > 0) ? table.findIndex(row => row.club === id) : null)
     : [...club.divisions[division]!].sort((a, b) => club.clubs[b]!.level - club.clubs[a]!.level).indexOf(id);
   const info = club.clubs[id]!;
   const earlier = (n: number): { division: number; position: number | null } => {
@@ -848,6 +852,8 @@ function endSeason(club: ClubState): ClubState {
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
   const own = table[position]!;
   const scorers = Object.entries(club.stats).sort((a, b) => b[1].points - a[1].points);
+  const perGame = (line: PlayerSeason): number => (line.games > 0 ? line.points / line.games : 0);
+  const divisionBest = Math.max(0, ...club.divisions[club.division]!.filter(id => id !== PLAYER_CLUB).flatMap(id => seasonLines(club, id, aiTeam(club.clubs[id]!)).map(perGame)));
   // O tempo passa: o potencial desce, quem o esgota sai, e quem fica pede um salário novo.
   const aged = club.team.roster.map(player => {
     const decay = B.potentialDecayBase + B.potentialDecayPerYear * yearsAtClub(club, player.name) + B.potentialDecayPerGame * (club.stats[player.name]?.games ?? 0) + between(rng, -B.potentialDecayLuck, B.potentialDecayLuck);
@@ -870,6 +876,7 @@ function endSeason(club: ClubState): ClubState {
     outcome,
     topScorer: scorers[0]?.[0] ?? '',
     topScorerPoints: scorers[0]?.[1].points ?? 0,
+    topScorerOfDivision: scorers[0] !== undefined && perGame(scorers[0][1]) > divisionBest,
     cards,
     table,
     cups,

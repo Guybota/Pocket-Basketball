@@ -463,8 +463,12 @@ describe('época', () => {
 
   it('a ficha de um clube mostra três épocas, e o fim da época fica lá escrito', () => {
     const c = newClub(23);
-    expect(clubSeasons(c, PLAYER_CLUB).map(e => e.position === null)).toEqual([false, true, true]);
-    expect(clubSeasons(c, 11).every(e => e.position !== null && e.position >= 0 && e.position < LEAGUE_SIZE)).toBe(true);
+    // Antes da primeira jornada ninguém tem lugar nesta época, nem o nosso clube, que ganharia o desempate a 0-0.
+    expect(clubSeasons(c, PLAYER_CLUB).map(e => e.position === null)).toEqual([true, true, true]);
+    let first = c;
+    while (leagueTable(first).every(r => r.played === 0)) first = week(first);
+    expect(clubSeasons(first, PLAYER_CLUB)[0]!.position).not.toBeNull();
+    expect(clubSeasons(c, 11).slice(1).every(e => e.position !== null && e.position >= 0 && e.position < LEAGUE_SIZE)).toBe(true);
     const after = season(c);
     expect(after.clubs[11]!.past).toHaveLength(1);
     expect(clubSeasons(after, PLAYER_CLUB)[1]!.position).not.toBeNull();
@@ -583,6 +587,7 @@ describe('época', () => {
     expect(new Set(after.divisions.flat()).size).toBe(40);
     expect(Object.keys(after.stats)).toHaveLength(0);
     expect(record.topScorerPoints).toBeGreaterThan(0);
+    expect(typeof record.topScorerOfDivision).toBe('boolean');
     expect(parseClub(JSON.stringify(after))).toEqual(after);
   });
 

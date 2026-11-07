@@ -515,6 +515,11 @@ function showNewClub(): void {
   element('importBtn').addEventListener('click', importClub);
   element('newClubBtn').addEventListener('click', () => {
     audio.unlock();
+    // Depois de um despedimento o clube já está perdido: não há nada a confirmar.
+    const question = club && !club.fired
+      ? `Criar um clube novo apaga ${club.team.name}, época ${club.season}. Exporta-o primeiro na Torre se o quiseres guardar. Continuar?`
+      : saveUnreadable ? 'O clube guardado que não se consegue ler vai ser apagado. Continuar?' : null;
+    if (question && !confirm(question)) return;
     // Os troféus são do treinador, por isso acompanham-no para o clube novo.
     club = newClub(newSeed(), 0, club ? careerOf(club) : []);
     saveUnreadable = false;
@@ -989,11 +994,14 @@ function showResult(): void {
   banner.hidden = true;
   drop.hidden = true;
   const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found);
+  const wasHurt = new Set(club!.team.roster.filter(p => p.injuryWeeks).map(p => p.name));
   club = result.club;
   saveClub();
+  const injuries = club.team.roster.filter(p => p.injuryWeeks && !wasHurt.has(p.name))
+    .map(p => `<p class="hint warn">Lesão: ${escapeHtml(p.name)} fica ${p.injuryWeeks} ${p.injuryWeeks === 1 ? 'semana' : 'semanas'} de fora.</p>`).join('');
   const { score } = view!.s;
   audio.music(score[0] > score[1] ? 'win' : 'loss');
-  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${matchLeagueSummary(result, gameKind === 'practice')}`);
+  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice')}`);
   showResultPanel();
 }
 
@@ -1021,6 +1029,8 @@ function updateHud(): void {
 }
 
 function frame(now: number): void {
+  // Pedida antes de tudo: um erro a meio de uma imagem não pode parar o jogo de vez.
+  requestAnimationFrame(frame);
   const rawElapsed = (now - lastFrame) / 1000;
   const elapsed = Math.min(0.1, rawElapsed);
   lastFrame = now;
@@ -1125,7 +1135,6 @@ function frame(now: number): void {
     lastPanelUpdate = now;
     refreshContent();
   }
-  requestAnimationFrame(frame);
 }
 
 initMenus({
