@@ -945,9 +945,82 @@ try {
       };
     });
     check(`Em ${name}, o campo e o painel ocupam a janela toda`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
+    if (name !== 'telemovel-deitado') {
+      const benchFits = await wide.evaluate(() => {
+        const content = document.getElementById('tabContent')!.getBoundingClientRect();
+        const rows = [...document.querySelectorAll('#tabContent .row')];
+        return rows.length === 10 && rows.every(row => row.getBoundingClientRect().bottom <= content.bottom + 1);
+      });
+      check(`Em ${name}, os dez jogadores em campo cabem no painel sem rolar`, benchFits);
+    }
     check(`Em ${name}, sem erros`, wideProblems.length === 0, wideProblems.join(' | '));
     await context.close();
   }
+
+  // Os atalhos de teclado no computador.
+  const keysContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const keys = await keysContext.newPage();
+  const keyProblems: string[] = [];
+  keys.on('pageerror', error => keyProblems.push(error.message));
+  await keys.goto(url);
+  await keys.click('#newClubBtn');
+  await keys.locator('#clubName').click();
+  await keys.keyboard.type('Pateas');
+  await keys.keyboard.press('Escape');
+  check('A escrever no nome do clube, as letras não são atalhos', (await keys.locator('#clubName').inputValue()).includes('Pateas') && (await keys.locator('#startClubBtn').count()) === 1);
+  await keys.goto(`${url}?semente=11&divisao=2`);
+  await keys.waitForSelector('#arenaChip');
+  const visible = (selector: string): Promise<boolean> => keys.locator(selector).first().isVisible();
+  check('Os edifícios mostram a tecla na dica', (await keys.getAttribute('#arenaChip', 'title'))?.endsWith('(P)') === true);
+  await keys.keyboard.press('e');
+  await keys.waitForTimeout(100);
+  const office = !(await visible('#arenaChip')) && (await visible('.back'));
+  await keys.keyboard.press('Escape');
+  await keys.waitForTimeout(100);
+  check('E abre o escritório e Esc volta à cidade', office && (await visible('#arenaChip')));
+  await keys.keyboard.press('t');
+  await keys.locator('.prow').first().focus();
+  await keys.keyboard.press('ArrowDown');
+  check('Na lista do treino, a seta passa para a linha seguinte', (await keys.evaluate(() => (document.activeElement as HTMLElement).dataset.player)) === '1');
+  await keys.keyboard.press('Escape');
+  await keys.waitForSelector('#arenaChip');
+  await keys.keyboard.press('p');
+  await keys.waitForSelector('#kickoffBtn');
+  await keys.keyboard.press('Enter');
+  await keys.waitForSelector('#introSkip');
+  await keys.keyboard.press('Enter');
+  await keys.waitForSelector('#pauseBtn');
+  check('A dica da pausa mostra a tecla', (await keys.getAttribute('#pauseBtn', 'title'))?.endsWith('(Espaço)') === true);
+  await keys.keyboard.press(' ');
+  await keys.waitForFunction(() => document.getElementById('pauseBtn')?.getAttribute('aria-label') === 'Continuar', undefined, { timeout: 15_000 });
+  const timeouts = (): Promise<number> => keys.evaluate(() => window.__pocket.state().commands.filter(c => c.startsWith('timeout@')).length);
+  const timeoutsBefore = await timeouts();
+  await keys.keyboard.press('d');
+  const armed = (await keys.getAttribute('#timeoutBtn', 'data-armed')) !== null && (await timeouts()) === timeoutsBefore;
+  await keys.keyboard.press('d');
+  check('D arma o desconto e o segundo D pede-o', armed && (await timeouts()) === timeoutsBefore + 1);
+  await keys.keyboard.press('t');
+  const subs = await keys.locator('[data-subs-close]').count();
+  await keys.keyboard.press('Escape');
+  check('T abre as trocas e Esc fecha', subs === 1 && (await keys.locator('[data-subs-close]').count()) === 0);
+  await keys.keyboard.press('a');
+  const tactics = await keys.locator('#matchTacticsClose').count();
+  await keys.keyboard.press('Escape');
+  check('A abre as táticas e Esc fecha', tactics === 1 && (await keys.locator('#matchTacticsClose').count()) === 0);
+  await keys.keyboard.press('2');
+  check('2 escolhe o segundo separador', (await keys.getAttribute('[data-tab="stats"]', 'aria-selected')) === 'true');
+  const muted = await keys.getAttribute('#muteBtn', 'aria-pressed');
+  await keys.keyboard.press('s');
+  check('S liga e desliga o som', (await keys.getAttribute('#muteBtn', 'aria-pressed')) !== muted);
+  await keys.keyboard.press('?');
+  const help = await keys.locator('#keysHelp[open]').count();
+  await shot(keys, `${OUT}/atalhos.png`);
+  await keys.keyboard.press('Escape');
+  check('? abre a lista dos atalhos e Esc fecha-a', help === 1 && (await keys.locator('#keysHelp').count()) === 0);
+  await keys.keyboard.press(' ');
+  check('Espaço continua o jogo', (await keys.getAttribute('#pauseBtn', 'aria-label')) !== 'Continuar');
+  check('Sem erros com os atalhos', keyProblems.length === 0, keyProblems.join(' | '));
+  await keysContext.close();
 
   // O tamanho de referência, 360×640: os ecrãs principais cabem na largura e não dão erros.
   const reference = await browser.newContext({ viewport: { width: 360, height: 640 }, hasTouch: true });

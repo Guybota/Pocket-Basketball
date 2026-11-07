@@ -34,6 +34,7 @@ import { createLayout, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
 import { exportClub, importClub, lastExportNote, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
 import { initTouch } from './touch.ts';
+import { initKeys } from './keys.ts';
 
 const DROP_TICKS = 50;
 const MAX_STEPS_PER_FRAME = 40;
@@ -1174,6 +1175,7 @@ Object.assign(window, {
 });
 
 initTouch();
+initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
