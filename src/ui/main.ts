@@ -14,11 +14,11 @@ import { GameAudio, MUSIC_THEMES } from './audio.ts';
 import { applySettings, openSettings, reducedMotion, updateSettings, watchSystemMotion } from './settings.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
 import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
-import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
+import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, showTopScene, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
 import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
-import { AIRPORT_NOTE, TOWER_NOTE, careerTopStats, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
+import { AIRPORT_NOTE, TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
 import { MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
@@ -385,7 +385,8 @@ function showSeasonReport(): void {
   closeMenus();
   setStage('menu');
   const festive = current.seasonReport!.outcome === 'champion' || current.seasonReport!.cups.length > 0;
-  showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current)}${seasonTopStats(current.seasonReport!)}`);
+  if (current.seasonReport!.outcome === 'relegated') showTopScene('relegated', `Fim da época ${current.seasonReport!.season}`, `${escapeHtml(current.team.short)} · Desceram de divisão`);
+  else showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current)}${seasonTopStats(current.seasonReport!)}`);
   audio.music(festive ? 'anthem' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
   const report = current.seasonReport!;
@@ -417,7 +418,7 @@ function showFarewell(report: SeasonRecord): void {
 function showFired(): void {
   closeMenus();
   setStage('menu');
-  showTopNote('Despedido', `${Math.round(club!.confidence)}%`, `${clubBadge(club!)}${careerTopStats(club!)}<div class="quote">Os troféus ganhos vão contigo para o próximo clube.</div>`);
+  showTopScene('fired', `Despedido · ${Math.round(club!.confidence)}%`, `${club!.season} ${club!.season === 1 ? 'época' : 'épocas'} · ${club!.wins} V · ${club!.losses} D · Os troféus vão contigo`);
   panel.innerHTML = firedHtml(club!);
   element('firedNewClub').addEventListener('click', showNewClub);
 }

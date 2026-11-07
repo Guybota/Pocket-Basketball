@@ -200,9 +200,9 @@ interface Rendered {
   after?: () => void;
 }
 
-const fullCanvas = (id: string): string => {
+const fullCanvas = (id: string, kind?: SceneKind): string => {
   const [width, height] = host.topSize();
-  return `<canvas class="full" id="${id}" width="${width}" height="${height}"></canvas>`;
+  return `<canvas class="full" id="${id}" width="${width}" height="${height}"${kind ? ` data-kind="${kind}"` : ''}></canvas>`;
 };
 const inside = (html: string): string => `<div class="patterned">${html}</div>`;
 
@@ -852,6 +852,9 @@ function trophyScreen(): Rendered {
 
 const OUTCOME_LABEL = { champion: 'Campeões', promoted: 'Subiram', stayed: 'Ficaram', relegated: 'Desceram' } as const;
 
+/** A direção, por cima da cena do escritório: o vaso ao lado da secretária mostra a confiança. */
+const officeScene = (): string => `${fullCanvas('scene', 'office')}<div class="tnote"><b>Direção do clube · ${Math.round(club.confidence)}%</b>${say('president', ...presidentBoard(club))}<span>Orçamento ${club.money} mil · Salários ${totalSalaries(club)} mil · Abaixo de ${B.confidenceFired}% despedem-te</span></div>`;
+
 function officeScreen(): Rendered {
   if (officeItem === 'trophies') return trophyScreen();
   const titles = club.history.filter(record => record.outcome === 'champion').length;
@@ -876,7 +879,7 @@ function officeScreen(): Rendered {
     ['reset', 'Novo clube', 'Começar de novo'],
   ];
   return {
-    top: inside(details[officeItem]),
+    top: officeItem === 'board' ? officeScene() : inside(details[officeItem]),
     bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-squad="office" style="grid-template-columns:1fr auto"><span>Plantel</span><small>Titulares, banco e vendas</small></button><button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market" style="grid-template-columns:1fr auto"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
   };
 }
@@ -1253,6 +1256,13 @@ export function openHalf(kind: GameKind, rival: number): void {
   go('pre');
 }
 
+/** Uma cena no ecrã de cima, com uma etiqueta, para os ecrãs que não vivem aqui: o despedimento e a descida. */
+export function showTopScene(kind: SceneKind, title: string, side: string): void {
+  active = false;
+  club = host.club();
+  host.top.innerHTML = `${fullCanvas('scene', kind)}<div class="tnote"><b>${title}</b><span>${side}</span></div>`;
+}
+
 /** Uma ficha no ecrã de cima, para os ecrãs que não vivem aqui, como o balanço da época. */
 export function showTopNote(title: string, side: string, inner: string): void {
   active = false;
@@ -1323,7 +1333,7 @@ export function menuFrame(now: number): void {
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
   if (!canvas) return;
   const view = host.match();
-  const kind: SceneKind = half ? 'lockerHalf' : gameKind === 'practice' ? 'gym' : 'lockerPre';
+  const kind = (canvas.dataset.kind as SceneKind | undefined) ?? (half ? 'lockerHalf' : gameKind === 'practice' ? 'gym' : 'lockerPre');
   const score = half && view ? `${view.s.score[0]} - ${view.s.score[1]}` : '';
-  drawSceneFrame(canvas, kind, club.team.roster, activeKit(club), currentRival(), score, reducedMotion() ? 0 : now);
+  drawSceneFrame(canvas, kind, club.team.roster, activeKit(club), currentRival(), score, reducedMotion() ? 0 : now, club.confidence);
 }

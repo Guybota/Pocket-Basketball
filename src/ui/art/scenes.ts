@@ -1,19 +1,22 @@
 // O que se vê no ecrã de cima antes do jogo e no intervalo: o balneário, o pavilhão fechado e o quadro de táticas.
+// E fora dos jogos: o escritório, o despedimento e o balneário vazio depois de uma descida.
 import type { Player, Tactics, Team } from '../../sim/types.ts';
 import { fillPolygon } from './court.ts';
 import { text } from './font.ts';
 import { kitKey, shadeOf, type ClubKit } from './kit.ts';
 import { INK, drawBall, drawShadow, drawSprite, lookOf, type Look, type PoseName } from './sprites.ts';
 import { remember } from './cache.ts';
+import { STAFF } from '../staff.ts';
 
 function projector(ox: number, oy: number, th: number): (i: number, j: number, k?: number) => [number, number] {
   return (i, j, k = 0) => [ox + (i - j) * th * 2, oy + (i + j) * th - k * th * 2];
 }
 
-export type SceneKind = 'lockerPre' | 'lockerHalf' | 'gym';
+export type SceneKind = 'lockerPre' | 'lockerHalf' | 'gym' | 'office' | 'fired' | 'relegated';
 
-function iso(g: CanvasRenderingContext2D, H: number, W: number) {
-  const P = projector(W / 2 - 6, 18 + Math.max(0, H - 270) / 2, 6);
+/** `lower` desce a sala no ecrã, para uma etiqueta por cima não tapar as paredes. */
+function iso(g: CanvasRenderingContext2D, H: number, W: number, lower = 0) {
+  const P = projector(W / 2 - 6, 18 + lower + Math.max(0, H - 270) / 2, 6);
   const poly = (pts: [number, number][], color: string): void => fillPolygon(g, pts, color);
   return {
     P,
@@ -246,6 +249,301 @@ function paintGym(g: CanvasRenderingContext2D, W: number, H: number): void {
   for (const [i, j] of [[8, 25], [12, 25], [16, 25], [20, 25]] as const) box(i, j, 0.5, 0.5, 0.5, '#e8622a', '#c9622f', '#a44b22');
 }
 
+/** Mistura duas cores em hexadecimal: t = 0 dá a primeira, t = 1 a segunda. */
+function mix(a: string, b: string, t: number): string {
+  const ch = (hex: string, n: number): number => parseInt(hex.slice(1 + n * 2, 3 + n * 2), 16);
+  const out = [0, 1, 2].map(n => Math.round(ch(a, n) + (ch(b, n) - ch(a, n)) * t).toString(16).padStart(2, '0'));
+  return `#${out.join('')}`;
+}
+
+const OFFICE_LOWER = 56;
+
+/** O escritório: paredes de papel de parede, soalho, a janela, a estante e a porta. A porta abre-se no despedimento. */
+function paintOffice(g: CanvasRenderingContext2D, W: number, H: number, kit: ClubKit, doorOpen: boolean): void {
+  const { flat, box, onJ, onI } = iso(g, H, W, OFFICE_LOWER);
+  g.fillStyle = '#231a16';
+  g.fillRect(0, 0, W, H);
+  const size = 46;
+  onJ(0, 0, size, 0, 7, '#d9c9a2');
+  onI(0, 0, size, 0, 7, '#c0ae86');
+  // Riscas do papel de parede e um lambrim de madeira até meio.
+  for (let n = 0.6; n < size; n += 1.2) {
+    onJ(n, 0, 0.12, 2.2, 4.8, '#cfbd94');
+    onI(0, n, 0.12, 2.2, 4.8, '#b4a27a');
+  }
+  onJ(0, 0, size, 0, 2.2, '#8a6440');
+  onI(0, 0, size, 0, 2.2, '#76553a');
+  onJ(0, 0, size, 2.1, 0.2, '#5e4128');
+  onI(0, 0, size, 2.1, 0.2, '#4f3622');
+  for (let i = 0; i < size; i += 1) flat(i, 0, 1, size, i % 2 ? '#a8774a' : '#9c6d43');
+  for (let i = 0; i < size; i += 1) for (let j = (i * 7) % 5; j < size; j += 5) flat(i, j, 1, 0.08, '#7f5634');
+  // O tapete por baixo da secretária, nas cores do clube.
+  flat(6, 3.6, 11, 9, shadeOf(kit.jersey));
+  flat(6.5, 4.1, 10, 8, kit.jersey);
+  flat(7.3, 4.9, 8.4, 6.4, shadeOf(kit.jersey));
+  // A janela, com a cidade lá fora.
+  onJ(3.6, 0, 6.2, 2.6, 3.8, INK);
+  onJ(3.9, 0, 5.6, 2.9, 3.2, '#8fd0e6');
+  onJ(3.9, 0, 5.6, 2.9, 0.9, '#6f8fa6');
+  for (const [u, h] of [[4.2, 1.5], [5.4, 1.1], [6.6, 1.8], [7.9, 1.2], [8.8, 1.6]] as const) onJ(u, 0, 0.9, 2.9, h, '#5b6f86');
+  onJ(5.2, 0, 1.4, 5.2, 0.4, '#f4f4f4');
+  onJ(6.65, 0, 0.15, 2.9, 3.2, INK);
+  onJ(3.9, 0, 5.6, 4.45, 0.12, INK);
+  // A fotografia de equipa e o relógio.
+  onJ(10.6, 0, 2.6, 4.1, 1.8, INK);
+  onJ(10.75, 0, 2.3, 4.25, 1.5, '#e8dcc0');
+  for (let n = 0; n < 5; n++) onJ(11 + n * 0.42, 0, 0.26, 4.4, 0.7, kit.jersey);
+  onJ(10.75, 0, 2.3, 4.25, 0.25, '#7a8a6a');
+  onJ(1.4, 0, 1.2, 5.2, 1.2, INK);
+  onJ(1.55, 0, 0.9, 5.35, 0.9, '#f4efe0');
+  onJ(1.95, 0, 0.12, 5.75, 0.4, INK);
+  onJ(1.95, 0, 0.4, 5.75, 0.1, INK);
+  // A estante, de livros e dossiês.
+  box(0.1, 2.4, 1.4, 5.6, 5, '#6b4a2e', '#5a3d25', '#7d5836');
+  const spines = ['#cf3a2c', '#2b5fd9', '#f2c230', '#3d8a3a', '#e8dcc0', '#7246c4', '#e8622a'];
+  for (let row = 0; row < 3; row++) {
+    onI(1.5, 2.5, 5.4, 0.3 + row * 1.6, 0.12, '#3e2a19');
+    for (let n = 0; n < 11; n++) {
+      if ((n + row * 3) % 7 === 6) continue;
+      onI(1.5, 2.65 + n * 0.47, 0.36, 0.42 + row * 1.6, 0.9 + ((n * 5 + row) % 3) * 0.15, spines[(n * 3 + row * 2) % spines.length]!);
+    }
+  }
+  // A porta para o corredor, com a placa.
+  onI(0, 9.4, 3.4, 0, 5.6, '#5e4128');
+  if (doorOpen) {
+    onI(0, 9.7, 2.8, 0, 5.2, '#1b1410');
+    onI(0, 9.7, 2.8, 0, 0.3, '#3a2a20');
+  } else {
+    onI(0, 9.7, 2.8, 0, 5.2, '#8a5a32');
+    onI(0, 10, 2.2, 3, 1.8, '#9c6a3c');
+    onI(0, 10, 2.2, 0.5, 2.1, '#9c6a3c');
+    onI(0, 12.05, 0.3, 2.4, 0.3, '#f2c230');
+  }
+  onI(0, 10.3, 1.6, 5.9, 0.6, '#e8dcc0');
+  // O arquivo, ao canto.
+  box(12, 0.1, 2, 1.6, 3.2, '#8f9aa0', '#7a858b', '#a7b1b6');
+  for (const k of [0.4, 1.4, 2.4]) onJ(12.15, 1.7, 1.7, k, 0.7, '#9aa5ab');
+  for (const k of [0.65, 1.65, 2.65]) onJ(12.75, 1.7, 0.5, k, 0.15, INK);
+}
+
+/** O vaso ao lado da secretária. Com a confiança alta está direito e com flor; a descer, as folhas caem e o caule dobra. */
+function drawPlant(g: CanvasRenderingContext2D, x: number, y: number, confidence: number, now: number): void {
+  const d = Math.max(0, Math.min(1, 1 - confidence / 100));
+  const px = (cx: number, cy: number, w: number, h: number, c: string): void => {
+    g.fillStyle = c;
+    g.fillRect(Math.round(cx), Math.round(cy), w, h);
+  };
+  // Folhas caídas no chão, mais quanto mais murcho.
+  const fallen = d > 0.45 ? Math.floor((d - 0.45) * 9) : 0;
+  for (let n = 0; n < fallen; n++) px(x - 14 + ((n * 11) % 28), y - 1 + (n % 2) * 2, 4, 2, mix('#6f8a3a', '#8a6a3a', d));
+  // O vaso de barro.
+  px(x - 8, y - 15, 16, 4, INK);
+  px(x - 7, y - 14, 14, 1, '#d97a46');
+  px(x - 7, y - 13, 14, 1, '#b0552e');
+  for (let n = 0; n < 11; n++) {
+    const half = 6 - Math.floor(n / 4);
+    px(x - half - 1, y - 11 + n, half * 2 + 2, 1, INK);
+    px(x - half, y - 11 + n, half * 2, 1, '#c8673a');
+    px(x + half - 3, y - 11 + n, 3, 1, '#a84d28');
+  }
+  px(x - 6, y - 15, 12, 1, '#4a3020');
+  // O caule: onze bocados, cada um mais dobrado do que o anterior.
+  const sway = d < 0.4 ? Math.sin(now / 900) * 0.06 : 0;
+  const stem = mix('#3d8a3a', '#7a5a2e', d);
+  const leaf = mix('#5cbf4a', '#9a7a3a', d);
+  const vein = mix('#3d8a3a', '#6b4a2a', d);
+  let sx = x;
+  let sy = y - 15;
+  let angle = sway;
+  for (let k = 1; k <= 11; k++) {
+    angle += d * d * 0.2 + sway * 0.2;
+    sx += Math.sin(angle) * 3;
+    sy -= Math.cos(angle) * 3;
+    px(sx - 1, sy - 1, 2, 3, stem);
+    if (k % 2 === 0 && k < 11 && !(d > 0.7 && k === 2)) {
+      const side = k % 4 === 0 ? 1 : -1;
+      const tilt = angle + side * (1.0 + d * 1.2);
+      for (let n = 1; n <= 5; n++) {
+        const thick = n >= 2 && n <= 4 ? 3 : 2;
+        px(sx + Math.sin(tilt) * n * 1.4 - 1, sy - Math.cos(tilt) * n * 1.4 - 1, 2, thick, n === 3 ? vein : leaf);
+      }
+    }
+  }
+  if (d < 0.55) {
+    // A flor, amarela, com o miolo laranja.
+    for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 3], [-2, -2], [2, -2], [-2, 2], [2, 2]] as const) px(sx + ox - 1, sy + oy - 1, 2, 2, '#f2c230');
+    px(sx - 1, sy - 1, 3, 3, '#e8622a');
+  } else {
+    px(sx - 2, sy, 4, 3, '#6b4a2a');
+    px(sx - 1, sy + 3, 2, 1, '#6b4a2a');
+  }
+  // Murcho, de vez em quando cai mais uma folha.
+  if (d > 0.6 && now > 0) {
+    const t = (now % 5000) / 1400;
+    if (t < 1) px(x + 5 + Math.sin(t * 9) * 3, y - 26 + t * 25, 3, 1, leaf);
+  }
+}
+
+/** A caixa de cartão com o que o treinador leva: o vaso murcho e a fotografia. `x`, `y` é o fundo da caixa. */
+function drawBoxCarried(g: CanvasRenderingContext2D, x: number, y: number): void {
+  const px = (cx: number, cy: number, w: number, h: number, c: string): void => {
+    g.fillStyle = c;
+    g.fillRect(cx, cy, w, h);
+  };
+  px(x - 3, y - 15, 2, 6, '#7a5a2e');
+  px(x - 1, y - 15, 3, 1, '#9a7a3a');
+  px(x + 1, y - 14, 2, 1, '#9a7a3a');
+  px(x + 2, y - 13, 1, 2, '#6b4a2a');
+  px(x + 3, y - 14, 4, 5, INK);
+  px(x + 4, y - 13, 2, 3, '#e8dcc0');
+  px(x - 7, y - 10, 14, 10, INK);
+  px(x - 6, y - 9, 12, 8, '#c8955a');
+  px(x - 6, y - 9, 12, 2, '#a87840');
+  px(x - 1, y - 6, 2, 3, '#a87840');
+}
+
+/** O escritório: o treinador à secretária e a secretária ao arquivo. No despedimento, o treinador sai de caixa na mão
+ * e entrega as chaves ao presidente, que fica à porta. */
+function drawOffice(g: CanvasRenderingContext2D, W: number, H: number, fired: boolean, roster: readonly Player[], kit: ClubKit, now: number, confidence: number): void {
+  const { P, box, onJ } = iso(g, H, W, OFFICE_LOWER);
+  const coach: Look = { ...lookOf(roster[0]!, 'coach'), style: 0, legs: 6, torso: 6, build: 'athletic' };
+  const beat = (period: number, offset = 0): boolean => Math.floor(now / period + offset) % 2 === 0;
+  const item = (i0: number, a: number, j0: number, b: number, z: number, draw: () => void): SceneItem => ({ i0, i1: i0 + a, j0, j1: j0 + b, z, draw });
+  const at = (i: number, j: number, k: number): [number, number] => {
+    const [x, y] = P(i, j, k);
+    return [Math.round(x), Math.round(y)];
+  };
+  const items: SceneItem[] = [
+    // A cadeira, de costas altas.
+    item(9.8, 1.6, 4.9, 1.8, 0, () => {
+      onJ(9.8, 4.9, 1.6, 0.5, 2.5, '#2a3347');
+      box(9.8, 5.1, 1.6, 1.6, 0.5, '#3a4252', '#2a3347', '#1f2838');
+    }),
+    // A secretária, com o telefone e uma pilha de papéis que cresce com os maus resultados.
+    item(8.8, 5.4, 7, 2.4, 0, () => {
+      box(8.8, 7, 5.4, 2.4, 1.6, '#8a5a32', '#6b4426', '#5a3820');
+      onJ(9.1, 9.4, 4.8, 0.2, 1.2, '#5e3c22');
+      if (fired) return;
+      const pile = Math.round(2 + (1 - confidence / 100) * 12);
+      const [qx, qy] = at(9.4, 8.2, 1.6);
+      for (let n = 0; n < pile; n++) {
+        g.fillStyle = n % 3 === 2 ? '#d8d2c0' : '#f4f1e4';
+        g.fillRect(qx - 5 + (n % 2), qy - 1 - n, 10, 1);
+      }
+      g.fillStyle = INK;
+      g.fillRect(qx - 6, qy - 1 - pile, 1, pile);
+      const [tx, ty] = at(13.2, 8.4, 1.6);
+      g.fillStyle = INK;
+      g.fillRect(tx - 4, ty - 4, 8, 4);
+      g.fillStyle = '#cf3a2c';
+      g.fillRect(tx - 3, ty - 3, 6, 2);
+      g.fillStyle = INK;
+      g.fillRect(tx - 4, ty - 6, 8, 2);
+    }),
+  ];
+  const actors: Actor[] = [];
+  const secretary = STAFF.secretary.look;
+  const president = STAFF.president.look;
+  if (!fired) {
+    items.push(item(15.1, 1, 8.1, 1, 0, () => {
+      const [x, y] = at(15.6, 8.6, 0);
+      drawShadow(g, x, y, 6);
+      drawPlant(g, x, y, confidence, now);
+    }));
+    actors.push({ i: 10.6, j: 5.9, z: 0.5, pose: 'sit', look: coach, flip: false, back: false, ball: false });
+    const filing = beat(2400);
+    actors.push({ i: 13, j: 3.2, z: 0, pose: filing ? 'idle' : 'pass', look: secretary, flip: !filing, back: filing, ball: false });
+  } else {
+    // Dez segundos: vai até ao presidente, entrega as chaves, sai pela porta. A sala fica vazia, só com o presidente.
+    const t = (now / 1000) % 10;
+    const start: [number, number] = [11.5, 11.6];
+    const stop: [number, number] = [4.6, 11.6];
+    const door: [number, number] = [0.6, 11];
+    const walk = (['holdRun0', 'holdRun1', 'holdRun2', 'holdRun3'] as const)[Math.floor(now / 170) % 4]!;
+    let pos: [number, number] | null = null;
+    let pose: PoseName = 'hold';
+    if (t < 4) {
+      const u = t / 4;
+      pos = [start[0] + (stop[0] - start[0]) * u, start[1] + (stop[1] - start[1]) * u];
+      pose = now === 0 ? 'hold' : walk;
+    } else if (t < 6) {
+      pos = stop;
+    } else if (t < 7.6) {
+      const u = (t - 6) / 1.6;
+      pos = [stop[0] + (door[0] - stop[0]) * u, stop[1] + (door[1] - stop[1]) * u];
+      pose = walk;
+      if (pos[0] < 1.4) pos = null;
+    }
+    const handing = t >= 4.3 && t < 5.6;
+    actors.push({ i: 3, j: 8.6, z: 0, pose: handing ? 'pass' : 'idle', look: president, flip: false, back: false, ball: false });
+    if (pos) {
+      const [ci, cj] = pos;
+      items.push({
+        i0: ci - 0.35, i1: ci + 0.35, j0: cj - 0.35, j1: cj + 0.35, z: 0,
+        draw: () => {
+          const [x, y] = at(ci, cj, 0);
+          drawShadow(g, x, y, 6);
+          drawSprite(g, pose, coach, x, y, true, false, false);
+          drawBoxCarried(g, x - 3, y - 9);
+        },
+      });
+    }
+    // As chaves passam de uma mão para a outra num arco, e ficam com o presidente.
+    if (t >= 4.6) {
+      const u = Math.min(1, (t - 4.6) / 0.7);
+      const [ax, ay] = at(stop[0], stop[1], 0);
+      const [bx, by] = at(3, 8.6, 0);
+      const kx = Math.round(ax - 8 + (bx + 6 - (ax - 8)) * u);
+      const ky = Math.round(ay - 16 + (by - 15 - (ay - 16)) * u - Math.sin(u * Math.PI) * 6);
+      items.push({ i0: 50, i1: 51, j0: 50, j1: 51, z: 9, draw: () => {
+        g.fillStyle = INK;
+        g.fillRect(kx - 1, ky - 1, 6, 4);
+        g.fillStyle = '#f2c230';
+        g.fillRect(kx, ky, 2, 2);
+        g.fillRect(kx + 2, ky + 1, 3, 1);
+        g.fillRect(kx + 4, ky + 1, 1, 2);
+      } });
+    }
+  }
+  for (const it of depthOrder([...items, ...actors.map(a => actorItem(g, P, a))])) it.draw();
+}
+
+/** O balneário depois da descida: ninguém, a luz a falhar, o duche a pingar e uma bola esquecida a rolar. */
+function drawEmptyLocker(g: CanvasRenderingContext2D, W: number, H: number, kit: ClubKit, now: number): void {
+  const { P, flat, disc } = iso(g, H, W);
+  const items = lockerFurniture(g, W, H, true, '???');
+  // A camisola de alguém que já não volta, deixada no banco.
+  items.push({ i0: 7.6, i1: 9.2, j0: 4.4, j1: 5.4, z: BENCH_HEIGHT, draw: () => {
+    flat(7.7, 4.45, 1.5, 0.9, kit.jersey, BENCH_HEIGHT + 0.05);
+    flat(7.7, 4.45, 1.5, 0.15, kit.trim, BENCH_HEIGHT + 0.06);
+  } });
+  const t = (now / 1000) % 14;
+  const roll = t < 7 ? 1 - (1 - t / 7) * (1 - t / 7) : 1;
+  const bj = 8.5 + roll * 8;
+  items.push({ i0: 11.6, i1: 12.4, j0: bj - 0.4, j1: bj + 0.4, z: 0, draw: () => {
+    const [x, y] = P(12, bj, 0);
+    drawShadow(g, Math.round(x), Math.round(y), 5);
+    drawBall(g, Math.round(x), Math.round(y) - 3);
+  } });
+  for (const it of depthOrder(items)) it.draw();
+  // O duche que ninguém fechou bem.
+  const drip = (now % 1400) / 1400;
+  const [dx, dy] = P(13.8, 0.4, 4.2 - drip * 4.2);
+  g.fillStyle = '#bfe6ee';
+  g.fillRect(Math.round(dx), Math.round(dy), 1, 2);
+  // A luz: uma lâmpada só, que de vez em quando falha.
+  const phase = now % 5200;
+  const flicker = now > 0 && (phase < 110 || (phase > 240 && phase < 300));
+  g.fillStyle = `rgba(10,14,32,${flicker ? 0.7 : 0.5})`;
+  g.fillRect(0, 0, W, H);
+  if (!flicker) disc(13, 12, 6, 'rgba(255,232,160,0.12)');
+  const [lx, ly] = P(13, 12, 7.5);
+  g.fillStyle = INK;
+  g.fillRect(Math.round(lx), 0, 1, Math.max(0, Math.round(ly)));
+  g.fillStyle = flicker ? '#6b6450' : '#ffe9a0';
+  g.fillRect(Math.round(lx) - 2, Math.round(ly), 5, 4);
+}
+
 const sceneCache = new Map<string, HTMLCanvasElement>();
 
 interface Actor {
@@ -318,7 +616,22 @@ function sceneActors(kind: SceneKind, roster: readonly Player[], kit: ClubKit, r
   return actors;
 }
 
-export function drawSceneFrame(canvas: HTMLCanvasElement, kind: SceneKind, roster: readonly Player[], kit: ClubKit, rival: Team, score: string, now: number): void {
+/** Uma pessoa em cena, com a sombra no chão. */
+function actorItem(g: CanvasRenderingContext2D, P: (i: number, j: number, k?: number) => [number, number], a: Actor): SceneItem {
+  return {
+    i0: a.i - 0.35, i1: a.i + 0.35, j0: a.j - 0.35, j1: a.j + 0.35, z: a.z,
+    draw: () => {
+      const [fx, fy] = P(a.i, a.j, a.z);
+      const x = Math.round(fx);
+      const y = Math.round(fy);
+      if (a.z === 0) drawShadow(g, x, y, 6);
+      drawSprite(g, a.pose, a.look, x, y, a.flip, a.back, a.ball);
+    },
+  };
+}
+
+/** `confidence`, de 0 a 100, só conta no escritório: é dela que depende o vaso. */
+export function drawSceneFrame(canvas: HTMLCanvasElement, kind: SceneKind, roster: readonly Player[], kit: ClubKit, rival: Team, score: string, now: number, confidence = 50): void {
   const g = canvas.getContext('2d')!;
   const { width: W, height: H } = canvas;
   const key = `${kind}|${W}x${H}|${kitKey(kit)}`;
@@ -329,22 +642,22 @@ export function drawSceneFrame(canvas: HTMLCanvasElement, kind: SceneKind, roste
     base.height = H;
     const b = base.getContext('2d')!;
     if (kind === 'gym') paintGym(b, W, H);
+    else if (kind === 'office' || kind === 'fired') paintOffice(b, W, H, kit, kind === 'fired');
     else paintLocker(b, W, H, kit);
     remember(sceneCache, key, base, 6);
   }
   g.imageSmoothingEnabled = false;
   g.drawImage(base, 0, 0);
+  if (kind === 'office' || kind === 'fired') {
+    drawOffice(g, W, H, kind === 'fired', roster, kit, now, confidence);
+    return;
+  }
+  if (kind === 'relegated') {
+    drawEmptyLocker(g, W, H, kit, now);
+    return;
+  }
   const { P } = iso(g, H, W);
-  const person = (a: Actor): SceneItem => ({
-    i0: a.i - 0.35, i1: a.i + 0.35, j0: a.j - 0.35, j1: a.j + 0.35, z: a.z,
-    draw: () => {
-      const [fx, fy] = P(a.i, a.j, a.z);
-      const x = Math.round(fx);
-      const y = Math.round(fy);
-      if (a.z === 0) drawShadow(g, x, y, 6);
-      drawSprite(g, a.pose, a.look, x, y, a.flip, a.back, a.ball);
-    },
-  });
+  const person = (a: Actor): SceneItem => actorItem(g, P, a);
   const furniture = kind === 'gym' ? [] : lockerFurniture(g, W, H, kind === 'lockerHalf', score);
   for (const item of depthOrder([...furniture, ...sceneActors(kind, roster, kit, rival, now).map(person)])) item.draw();
   if (kind !== 'gym') {
