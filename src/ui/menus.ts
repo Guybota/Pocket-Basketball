@@ -857,7 +857,7 @@ function trophyScreen(): Rendered {
 const OUTCOME_LABEL = { champion: 'Campeões', promoted: 'Subiram', stayed: 'Ficaram', relegated: 'Desceram' } as const;
 
 /** A direção, por cima da cena do escritório: o vaso ao lado da secretária mostra a confiança. */
-const officeScene = (): string => `${fullCanvas('scene', 'office')}<div class="tnote"><b>Direção do clube · ${Math.round(club.confidence)}%</b>${say('president', ...presidentBoard(club))}<span>Orçamento ${club.money} mil · Salários ${totalSalaries(club)} mil · Abaixo de ${B.confidenceFired}% despedem-te</span></div>`;
+const officeScene = (): string => `${fullCanvas('scene', 'office')}<div class="tnote"><b>Direção do clube · ${Math.round(club.confidence)}%</b>${club.objective ? objectiveHtml(club) : say('president', ...presidentBoard(club))}<span>Orçamento ${club.money} mil · Salários ${totalSalaries(club)} mil · Abaixo de ${B.confidenceFired}% despedem-te</span></div>`;
 
 function officeScreen(): Rendered {
   if (officeItem === 'trophies') return trophyScreen();

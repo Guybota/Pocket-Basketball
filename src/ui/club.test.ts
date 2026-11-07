@@ -677,7 +677,7 @@ describe('época', () => {
   });
 
   it('o campeão da Pro Liga 1 entra na Taça Continental na época seguinte', { tags: ['slow'] }, () => {
-    const first = season(stronger(newClub(91, 3), 30));
+    const first = season(stronger(newClub(91, 3), 45));
     expect(first.history[0]!.outcome).toBe('champion');
     expect(first.continentalQualified).toContain(PLAYER_CLUB);
     expect(cupStatus(first, 'continental').entered).toBe(true);
