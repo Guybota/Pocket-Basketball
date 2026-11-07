@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameAudio } from './audio.ts';
+import { MUSIC_THEMES, scheduleSection, sectionLengths, songShape } from './music.ts';
 
 // Um AudioContext falso que só regista que nó liga a que nó.
 class FakeParam {
@@ -13,9 +14,9 @@ class FakeParam {
 
 class FakeNode {
   outputs: FakeNode[] = [];
-  gain = new FakeParam(); frequency = new FakeParam(); Q = new FakeParam();
+  gain = new FakeParam(); frequency = new FakeParam(); Q = new FakeParam(); delayTime = new FakeParam();
   threshold = new FakeParam(); knee = new FakeParam(); ratio = new FakeParam(); attack = new FakeParam(); release = new FakeParam();
-  type = ''; buffer: unknown = null;
+  type = ''; buffer: unknown = null; loop = false;
   readonly kind: string;
   constructor(kind: string, ctx: FakeContext) { this.kind = kind; ctx.nodes.push(this); }
   connect<T>(target: T): T { if (target instanceof FakeNode) this.outputs.push(target); return target; }
@@ -33,6 +34,7 @@ class FakeContext {
   createOscillator() { return new FakeNode('osc', this); }
   createBufferSource() { return new FakeNode('source', this); }
   createBiquadFilter() { return new FakeNode('filter', this); }
+  createDelay() { return new FakeNode('delay', this); }
   createPeriodicWave() { return {}; }
   createBuffer() { return { getChannelData: () => new Float32Array(100) }; }
   resume() { return Promise.resolve(); }
@@ -85,5 +87,58 @@ describe('o encaminhamento do som', () => {
     expect(master.gain.value).toBe(0);
     audio.setMuted(false);
     expect(master.gain.value).toBe(1);
+  });
+});
+
+describe('os temas', () => {
+  it('cada secção tem notas válidas, e nos temas que dão a volta a melodia enche os compassos dos acordes', () => {
+    expect(MUSIC_THEMES).toEqual(expect.arrayContaining(['town', 'locker', 'entrance', 'combo', 'anthem']));
+    for (const theme of MUSIC_THEMES) {
+      const shape = songShape(theme);
+      expect(shape.parts).toBeGreaterThan(0);
+      for (let i = 0; i < shape.parts; i++) {
+        const ctx = new FakeContext();
+        const seconds = scheduleSection(ctx as unknown as BaseAudioContext, ctx.destination as unknown as AudioNode, {} as AudioBuffer, theme, i, 0, 0);
+        expect(seconds, `${theme} ${i}`).toBeGreaterThan(0);
+        const notes = ctx.nodes.filter(n => n.kind === 'osc').map(n => n.frequency.value);
+        expect(notes.length).toBeGreaterThan(0);
+        // Entre um baixo grave e um apito agudo: nada de notas mal escritas a sair do ouvido.
+        for (const f of notes) expect(f).toBeGreaterThan(40), expect(f).toBeLessThan(3000);
+      }
+      if (shape.loop) for (const { melody, chords } of sectionLengths(theme)) expect(melody, theme).toBe(chords);
+    }
+  });
+
+  it('a vinheta do combo devolve o tema que tocava antes', () => {
+    const timers: (() => void)[] = [];
+    let ctx!: FakeContext;
+    vi.stubGlobal('window', { AudioContext: class { constructor() { ctx = new FakeContext(); return ctx; } }, setTimeout: (f: () => void) => timers.push(f) });
+    const audio = new GameAudio();
+    audio.unlock();
+    audio.music('town');
+    audio.music('combo');
+    const before = ctx.nodes.length;
+    timers.at(-1)!();
+    expect(ctx.nodes.length).toBeGreaterThan(before);
+    // A cidade voltou: pedir 'town' outra vez não recomeça nada.
+    const after = ctx.nodes.length;
+    audio.music('town');
+    expect(ctx.nodes.length).toBe(after);
+  });
+
+  it('o ambiente toca em todos os pavilhões, e o eco só existe dentro de portas', () => {
+    const { audio, ctx } = setup();
+    const echo = ctx.nodes.find(n => n.kind === 'delay')!;
+    // atraso → filtro → (realimentação, retorno do eco)
+    const wet = echo.outputs[0]!.outputs[1]!;
+    for (let venue = 0; venue <= 4; venue++) {
+      audio.setVenue(venue);
+      expect(echo.delayTime.value).toBeGreaterThan(0);
+      if (venue === 0) expect(wet.gain.value).toBe(0);
+      else expect(wet.gain.value).toBeGreaterThan(0);
+      const before = ctx.nodes.length;
+      for (let i = 0; i < 20; i++) audio.ambience(1e12 + (venue * 20 + i) * 1e5);
+      expect(ctx.nodes.length).toBeGreaterThan(before);
+    }
   });
 });

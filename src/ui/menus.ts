@@ -22,6 +22,7 @@ import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, 
 import { officialLabel } from './season-screens.ts';
 import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
 import type { MatchView, Sound } from './match-view.ts';
+import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, SLOT_NAMES, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
@@ -50,6 +51,7 @@ export interface MenuHost {
   halfSubs(): void;
   newClub(): void;
   sound(name: Sound): void;
+  music(theme: MusicTheme): void;
 }
 
 let host: MenuHost;
@@ -921,6 +923,8 @@ function go(next: GoTo): void {
     return;
   }
   if (next === 'tactics') tacticsBack = screen === 'tactics' ? tacticsBack : screen;
+  // O balneário, antes do jogo e ao intervalo, tem o seu tema.
+  if (next === 'pre') host.music('locker');
   screen = next;
   swapping = null;
   selling = false;
@@ -938,6 +942,7 @@ function trainNow(): void {
   picked = [];
   focusCard = null;
   host.sound(isNewCombo ? 'bigCheer' : 'cheer');
+  if (isNewCombo) host.music('combo');
   go('report');
 }
 

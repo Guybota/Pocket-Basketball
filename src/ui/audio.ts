@@ -1,29 +1,40 @@
 import type { Sound } from './match-view.ts';
 
-import { scheduleSection, songShape, type MusicTheme } from './music.ts';
+import { MUSIC_THEMES, scheduleSection, songShape, type MusicTheme } from './music.ts';
 
-export type { MusicTheme };
+export { MUSIC_THEMES, type MusicTheme };
+
+/** Os pavilhões pela ordem de art/court.ts: as quatro divisões e, no fim, CLOSED_GYM (o do jogo-treino, vazio). */
+type Venue = 'street' | 'school' | 'hall' | 'arena' | 'closed';
+const VENUES: readonly Venue[] = ['street', 'school', 'hall', 'arena', 'closed'];
 
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar.
-// Não há som contínuo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos.
+// Não há um ruído fixo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos, que na arena
+// se sobrepõem até formar um burburinho contínuo.
 //
 // Encaminhamento (criado em unlock):
-//   efeitos → effectsBus ───────────────────────────┐
-//   tema    → musicGain → musicBus → duck ───────────┴→ master → compressor → destination
-// Os temas novos (H3) entregam as notas a scheduleSection, que já escreve em musicGain.
-// O ambiente por pavilhão (H4) liga-se a effectsBus, pelo mesmo caminho de tone() e noise().
+//   efeitos → room ──────────→ effectsBus ──────────────┐
+//              └→ eco (atraso com realimentação) ─┘      │
+//   tema    → musicGain → musicBus → duck ──────────────┴→ master → compressor → destination
+// O eco depende do pavilhão: nenhum na rua, muito no pavilhão vazio.
 export class GameAudio {
   private context: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   /** De 0 (campo de rua, sem público) a 1 (arena cheia). */
   private crowdLevel = 0.6;
+  private venue: Venue = 'hall';
   private nextAmbience = 0;
   private theme: MusicTheme = 'none';
+  /** O tema a retomar quando acaba uma vinheta com `resume`. */
+  private resumeTheme: MusicTheme = 'none';
   private musicTimer = 0;
   /** Ganho de cada tema, só para o desvanecer ao trocar; o volume está em musicBus. */
   private musicGain: GainNode | null = null;
   private master: GainNode | null = null;
   private effectsBus: GainNode | null = null;
+  private room: GainNode | null = null;
+  private echo: DelayNode | null = null;
+  private echoReturn: GainNode | null = null;
   private musicBus: GainNode | null = null;
   private duck: GainNode | null = null;
   private volumes = { master: 1, effects: 1, music: 1 };
@@ -59,6 +70,19 @@ export class GameAudio {
     this.duck = ctx.createGain();
     this.musicBus.connect(this.duck).connect(this.master);
     this.effectsBus.connect(this.master);
+    this.room = ctx.createGain();
+    this.room.connect(this.effectsBus);
+    // O eco: um atraso que volta a si próprio, cada vez mais baixo e mais abafado.
+    this.echo = ctx.createDelay(1);
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.35;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 2200;
+    this.echoReturn = ctx.createGain();
+    this.room.connect(this.echo).connect(damp).connect(feedback).connect(this.echo);
+    damp.connect(this.echoReturn).connect(this.effectsBus);
+    this.applyVenue();
     this.master.connect(compressor).connect(ctx.destination);
     // A música pedida antes do primeiro toque começa agora.
     const pending = this.theme;
@@ -75,6 +99,7 @@ export class GameAudio {
   /** Muda de tema. O mesmo tema não recomeça; 'none' cala tudo. */
   music(theme: MusicTheme): void {
     if (theme === this.theme) return;
+    if (theme !== 'none' && songShape(theme).resume) this.resumeTheme = this.theme;
     this.theme = theme;
     this.stopMusic();
     if (!this.context || theme === 'none') return;
@@ -107,7 +132,10 @@ export class GameAudio {
     const wait = Math.max(0, (end - ctx.currentTime - 0.3) * 1000);
     if (index + 1 < shape.parts) this.musicTimer = window.setTimeout(() => this.playSection(theme, index + 1, end, pass), wait);
     else if (shape.loop) this.musicTimer = window.setTimeout(() => this.playSection(theme, shape.loopFrom, end, pass + 1), wait);
-    else this.musicTimer = window.setTimeout(() => { this.theme = 'none'; }, wait + 300);
+    else this.musicTimer = window.setTimeout(() => {
+      this.theme = 'none';
+      if (shape.resume) this.music(this.resumeTheme);
+    }, wait + 300);
   }
 
   /** Calar ou destapar tudo, incluindo a música a tocar. */
@@ -159,8 +187,19 @@ export class GameAudio {
     gain.setTargetAtTime(1, now + 0.45, 0.25);
   }
 
-  setVenue(division: number): void {
-    this.crowdLevel = [0, 0.35, 0.7, 1][division] ?? 0.6;
+  /** O pavilhão do jogo: a divisão, ou CLOSED_GYM no jogo-treino. */
+  setVenue(venue: number): void {
+    this.venue = VENUES[venue] ?? 'hall';
+    this.crowdLevel = { street: 0, school: 0.35, hall: 0.7, arena: 1, closed: 0 }[this.venue];
+    this.applyVenue();
+  }
+
+  private applyVenue(): void {
+    if (!this.echo || !this.echoReturn) return;
+    // Atraso em segundos e volume do eco: paredes perto no pavilhão pequeno, longe e abafadas pela multidão na arena.
+    const [delay, wet] = ({ street: [0.05, 0], school: [0.12, 0.3], hall: [0.17, 0.18], arena: [0.24, 0.1], closed: [0.13, 0.42] } as const)[this.venue];
+    this.echo.delayTime.value = delay;
+    this.echoReturn.gain.value = wet;
   }
 
   private tone(type: OscillatorType, from: number, to: number, seconds: number, volume: number, delay = 0): void {
@@ -173,7 +212,7 @@ export class GameAudio {
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + seconds);
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    osc.connect(gain).connect(this.effectsBus!);
+    osc.connect(gain).connect(this.room!);
     osc.start(start);
     osc.stop(start + seconds);
   }
@@ -190,7 +229,7 @@ export class GameAudio {
     const start = ctx.currentTime + delay;
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    source.connect(filter).connect(gain).connect(this.effectsBus!);
+    source.connect(filter).connect(gain).connect(this.room!);
     source.start(start, Math.random() * 0.8);
     source.stop(start + seconds);
   }
@@ -212,7 +251,7 @@ export class GameAudio {
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.015);
     gain.gain.setValueAtTime(volume, start + seconds - 0.05);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    osc.connect(gain).connect(this.effectsBus!);
+    osc.connect(gain).connect(this.room!);
     osc.start(start);
     trill.start(start);
     osc.stop(start + seconds);
@@ -229,7 +268,7 @@ export class GameAudio {
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.02);
     gain.gain.setValueAtTime(volume, start + seconds - 0.04);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    gain.connect(this.effectsBus!);
+    gain.connect(this.room!);
     for (const detune of [0, 7]) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
@@ -285,18 +324,101 @@ export class GameAudio {
     }
   }
 
-  /** Ambiente de pavilhão: guinchos de sapatilhas e, onde há público, palmas ritmadas de vez em quando. */
+  /** Um sopro de ruído que cresce e se desfaz devagar, com o filtro a deslizar: vento, trânsito, burburinho. */
+  private swell(type: BiquadFilterType, from: number, to: number, seconds: number, volume: number, q = 0.8, delay = 0): void {
+    const ctx = this.context!;
+    const source = ctx.createBufferSource();
+    source.buffer = this.noiseBuffer;
+    source.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.Q.value = q;
+    const start = ctx.currentTime + delay;
+    filter.frequency.setValueAtTime(from, start);
+    filter.frequency.exponentialRampToValueAtTime(to, start + seconds);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + seconds * 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
+    source.connect(filter).connect(gain).connect(this.room!);
+    source.start(start, Math.random() * 0.8);
+    source.stop(start + seconds);
+  }
+
+  /** Uma voz ao longe: um dente de serra grave, abafado, que sobe ou desce um pouco, como um «ei!» ou um «boa!». */
+  private voice(volume: number, delay = 0): void {
+    const ctx = this.context!;
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    const start = ctx.currentTime + delay;
+    const seconds = 0.18 + Math.random() * 0.3;
+    const pitch = 130 + Math.random() * 150;
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(pitch, start);
+    osc.frequency.exponentialRampToValueAtTime(pitch * (Math.random() < 0.5 ? 0.8 : 1.25), start + seconds);
+    filter.type = 'bandpass';
+    filter.frequency.value = 600 + Math.random() * 600;
+    filter.Q.value = 3;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
+    osc.connect(filter).connect(gain).connect(this.room!);
+    osc.start(start);
+    osc.stop(start + seconds + 0.01);
+  }
+
+  /** O chiar de uma sapatilha a travar. */
+  private squeak(volume: number): void {
+    const pitch = 1500 + Math.random() * 1400;
+    this.tone('sine', pitch, pitch * 1.4, 0.06 + Math.random() * 0.05, volume * (0.5 + Math.random() * 0.5));
+  }
+
+  /** Ambiente do pavilhão, chamado a cada frame com o relógio em ms. Cada sítio soa diferente:
+   * a rua tem vento, trânsito ao longe e uma voz de vez em quando; o pavilhão pequeno e o vazio têm eco e ténis a chiar;
+   * a arena tem um burburinho que nunca pára. */
   ambience(now: number): void {
     if (!this.context || this.muted || now < this.nextAmbience) return;
-    this.nextAmbience = now + 900 + Math.random() * 2600;
-    if (Math.random() < 0.12 && this.crowdLevel > 0.3) {
-      for (const beat of [0, 0.32, 0.64]) {
-        for (let i = 0; i < 8; i++) this.noise(1500 + Math.random() * 2000, 0.03, 0.05 * this.crowdLevel * Math.random(), beat + Math.random() * 0.03);
-      }
-      return;
+    const crowd = this.crowdLevel;
+    const roll = Math.random();
+    switch (this.venue) {
+      case 'street':
+        this.nextAmbience = now + 700 + Math.random() * 1500;
+        if (roll < 0.35) this.swell('bandpass', 300 + Math.random() * 300, 700 + Math.random() * 500, 2 + Math.random() * 2.5, 0.025, 0.6);
+        else if (roll < 0.6) this.swell('lowpass', 160, 260, 2.5 + Math.random() * 2, 0.04);
+        else if (roll < 0.64) for (const [k, f] of [[0, 392], [0.28, 330]] as const) this.tone('square', f, f, 0.22, 0.005, k);
+        else if (roll < 0.78) this.voice(0.012);
+        else this.squeak(0.012);
+        return;
+      case 'school':
+      case 'closed':
+        this.nextAmbience = now + 600 + Math.random() * 1600;
+        if (this.venue === 'school' && roll < 0.1) this.rhythmicClaps();
+        else if (roll < 0.25) this.voice(this.venue === 'closed' ? 0.016 : 0.01);
+        else this.squeak(0.024);
+        return;
+      case 'hall':
+        this.nextAmbience = now + 700 + Math.random() * 1800;
+        if (roll < 0.12) this.rhythmicClaps();
+        else if (roll < 0.45) for (let i = 0; i < 4; i++) this.voice(0.006, Math.random() * 0.6);
+        else this.squeak(0.02);
+        return;
+      case 'arena':
+        // Pouco espaço entre vagas, e cada uma dura mais do que o espaço: o burburinho nunca tem buracos.
+        this.nextAmbience = now + 250 + Math.random() * 200;
+        for (let i = 0; i < 3; i++) this.swell('bandpass', 450 + Math.random() * 500, 500 + Math.random() * 600, 0.6 + Math.random() * 0.6, 0.012 * crowd, 2, Math.random() * 0.25);
+        if (roll < 0.5) this.voice(0.005, Math.random() * 0.3);
+        if (roll < 0.04) this.rhythmicClaps();
+        else if (roll < 0.2) this.squeak(0.014);
+        return;
     }
-    const pitch = 1500 + Math.random() * 1400;
-    this.tone('sine', pitch, pitch * 1.4, 0.06 + Math.random() * 0.05, 0.012 + Math.random() * 0.012);
+  }
+
+  /** Três batidas de palmas certas, como uma claque a puxar pela equipa. */
+  private rhythmicClaps(): void {
+    for (const beat of [0, 0.32, 0.64]) {
+      for (let i = 0; i < 8; i++) this.noise(1500 + Math.random() * 2000, 0.03, 0.05 * this.crowdLevel * Math.random() + 0.0002, beat + Math.random() * 0.03);
+    }
   }
 }
 

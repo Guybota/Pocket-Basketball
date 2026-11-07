@@ -2,7 +2,7 @@
 // o mesmo material volta noutro contexto e não cansa. Dentro de cada secção, uma frase curta repete-se com o fim mudado.
 // Quatro vozes, como numa consola antiga: melodia (pulso), arpejo (pulso fino), baixo (triângulo) e bateria (ruído).
 
-export type MusicTheme = 'none' | 'town' | 'win' | 'loss' | 'farewell';
+export type MusicTheme = 'none' | 'town' | 'win' | 'loss' | 'farewell' | 'locker' | 'entrance' | 'combo' | 'anthem';
 
 /** Uma nota: o semitom MIDI (0 é pausa) e a duração em colcheias. */
 type Note = readonly [number, number];
@@ -37,9 +37,16 @@ interface Song {
   loop: boolean;
   /** Ao dar a volta, recomeça aqui, para não repetir a introdução. */
   loopFrom?: number;
+  /** Uma vinheta que, ao acabar, devolve o tema que tocava antes dela. */
+  resume?: boolean;
 }
 
 const BAR = 8;
+
+// O hino toca a mesma frase em três sítios: em si bemol, com arpejo, e um tom acima.
+const ANTHEM_A = 'bb4:3 bb4 d5:2 f5:2 | g5:3 f5 eb5:2 g5:2 | f5:3 d5 bb4:2 d5:2 | c5:6 r:2 | d5:3 d5 g5:2 bb5:2 | bb5:3 g5 eb5:2 g5:2 | f5:2 eb5:2 d5:2 c5:2 | bb4:6 r:2';
+const ANTHEM_CHORDS = 'Bb Eb Bb F Gm Eb Cm,F Bb';
+const LOCKER_A = 'd5 r d5 r f5 r e5 r | d5 r d5 r bb4:2 r:2 | g4 r bb4 r d5:2 c#5:2';
 
 const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
   // A cidade: alegre e saltitante, em dó maior. Introdução, A, B, B', C (ponte calma), A com arpejo, D (A a subir para fá), C.
@@ -101,6 +108,47 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
       B: { chords: 'F G Em Am F G E E', melody: 'a5:3 c6 f6:4 | g6:3 f6 d6:4 | e6:3 d6 b5:4 | c6:2 b5:2 a5:4 | a5:3 c6 f6:4 | g6:3 f6 e6:2 d6:2 | e6:4 d6:2 b5:2 | g#5:6 r:2', lead: 'pulse25', bass: 'long' },
       A2: { chords: 'Am F C G Am F Dm,E Am', melody: 'e5:4 a5:2 c6:2 | c6:3 b5 a5:4 | g5:4 e5:2 g5:2 | d5:6 r:2 | e5:4 a5:2 c6:2 | f6:3 e6 c6:4 | d6:2 c6:2 b5:2 g#5:2 | a5:8', lead: 'triangle', bass: 'walk', arp: true },
       B2: { chords: 'F G Em Am F G Am Am', melody: 'a5:3 c6 f6:4 | g6:3 f6 d6:4 | e6:3 d6 b5:4 | c6:2 b5:2 a5:4 | a5:3 c6 f6:4 | g6:3 f6 e6:2 d6:2 | c6:4 b5:2 g#5:2 | a5:6 r:2', lead: 'pulse25', bass: 'long', arp: true },
+    },
+  },
+  // O balneário, antes do jogo e ao intervalo: tenso, em ré menor, sem balanço. Notas soltas e repetidas por cima de um baixo
+  // a martelar oitavas e palmas no 2 e no 4; a ponte (B) abre num triângulo mais longo, com arpejo, e volta à tensão.
+  locker: {
+    bpm: 96,
+    swing: 0,
+    volume: 0.8,
+    loop: true,
+    order: ['A', 'A2', 'B', 'A2'],
+    parts: {
+      A: { chords: 'Dm Bb Gm A', melody: `${LOCKER_A} | e5:3 c#5 a4:4`, lead: 'pulse25', bass: 'bounce', drums: 'groove' },
+      A2: { chords: 'Dm Bb Gm A', melody: `${LOCKER_A} | e5:2 f5:2 g5:2 a5:2`, lead: 'pulse25', bass: 'bounce', drums: 'groove', fill: true },
+      B: { chords: 'Gm Dm Eb A7', melody: 'g5:4 f5:2 d5:2 | f5:4 e5:2 d5:2 | eb5:4 d5:2 c5:2 | c#5:6 r:2', lead: 'triangle', bass: 'walk', drums: 'light', arp: true, fill: true },
+    },
+  },
+  // A entrada das equipas: três compassos de chamada de metais, em ré maior, rápida, com rufo de tarola no acorde final.
+  entrance: {
+    bpm: 150, swing: 0, volume: 1, loop: false, order: ['A'],
+    parts: { A: { chords: 'D G,A D', melody: 'd5 d5 r d5 f#5:2 a5:2 | g5 g5 r b5 a5:2 c#6:2 | d6:6 r:2', lead: 'pulse50', bass: 'bounce', arp: true, drums: 'full', fill: true } },
+  },
+  // O combo descoberto: um arpejo de sol maior a subir duas oitavas até um sol agudo, com rufo; depois volta o tema de antes.
+  combo: {
+    bpm: 160, swing: 0, volume: 1.1, loop: false, resume: true, order: ['A'],
+    parts: { A: { chords: 'G D,G', melody: 'd4 g4 b4 d5 g5 b5 d6:2 | a5 c6 d6 f#6 g6:4', bassNotes: 'g2:2 b2:2 d3:2 g3:2 d3:4 g2:4', lead: 'pulse25', arp: true, drums: 'light', fill: true } },
+  },
+  // O título e o fim de época com troféu: uma marcha em si bemol, direita, com ritmo pontuado. Chamada, A, B (sobe pelo
+  // relativo menor até um fá com sétima), A com arpejo e A um tom acima, a fechar em glória; dá a volta a partir do A.
+  anthem: {
+    bpm: 92,
+    swing: 0,
+    volume: 0.8,
+    loop: true,
+    loopFrom: 1,
+    order: ['intro', 'A', 'B', 'A2', 'A3'],
+    parts: {
+      intro: { chords: 'Bb F', melody: 'f4 f4 bb4:2 f4 bb4 d5:2 | c5:3 d5 c5:2 a4:2', lead: 'pulse50', bass: 'long', drums: 'light', fill: true },
+      A: { chords: ANTHEM_CHORDS, melody: ANTHEM_A, lead: 'pulse50', bass: 'walk', drums: 'full', fill: true },
+      B: { chords: 'Eb F Dm Gm Eb F Cm F7', melody: 'g5:4 bb5:4 | a5:4 c6:4 | f5:3 a5 d6:4 | bb5:6 r:2 | g5:3 bb5 eb6:4 | f6:3 eb6 d6:2 c6:2 | eb6:2 d6:2 c6:2 bb5:2 | a5:4 c6:2 eb6:2', lead: 'pulse25', bass: 'long', drums: 'groove', arp: true, fill: true },
+      A2: { chords: ANTHEM_CHORDS, melody: ANTHEM_A, lead: 'pulse25', bass: 'walk', drums: 'full', arp: true },
+      A3: { chords: ANTHEM_CHORDS, melody: ANTHEM_A, lead: 'pulse50', bass: 'bounce', drums: 'full', arp: true, transpose: 2, fill: true },
     },
   },
   // As vinhetas da vitória e da derrota: curtas e sem volta.
@@ -259,8 +307,19 @@ export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, noise: Au
   return total * eighth;
 }
 
-/** Quantas secções o tema tem, se dá a volta, e onde recomeça. */
-export function songShape(theme: Exclude<MusicTheme, 'none'>): { parts: number; loop: boolean; loopFrom: number } {
+/** Quantas secções o tema tem, se dá a volta, onde recomeça, e se devolve o tema de antes. */
+export function songShape(theme: Exclude<MusicTheme, 'none'>): { parts: number; loop: boolean; loopFrom: number; resume: boolean } {
   const song = SONGS[theme];
-  return { parts: song.order.length, loop: song.loop, loopFrom: song.loopFrom ?? 0 };
+  return { parts: song.order.length, loop: song.loop, loopFrom: song.loopFrom ?? 0, resume: song.resume ?? false };
+}
+
+export const MUSIC_THEMES = Object.keys(SONGS) as Exclude<MusicTheme, 'none'>[];
+
+/** Para os testes: quantas colcheias tem a melodia e quantas os acordes, em cada secção pela ordem do tema. */
+export function sectionLengths(theme: Exclude<MusicTheme, 'none'>): { melody: number; chords: number }[] {
+  const song = SONGS[theme];
+  return song.order.map(name => {
+    const part = song.parts[name]!;
+    return { melody: parseNotes(part.melody).reduce((sum, [, n]) => sum + n, 0), chords: part.chords.split(/\s+/).filter(Boolean).length * BAR };
+  });
 }

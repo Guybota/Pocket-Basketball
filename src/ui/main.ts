@@ -10,7 +10,7 @@ import { CLOSED_GYM } from './art/court.ts';
 import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
 import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
-import { GameAudio } from './audio.ts';
+import { GameAudio, MUSIC_THEMES } from './audio.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
 import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, type GameKind } from './menus.ts';
@@ -159,7 +159,8 @@ function setStage(next: Stage): void {
   resultOpen = false;
   if (next !== 'match' && next !== 'menu') idle.clear();
   if (next !== 'title') demo.stop();
-  if (next === 'town' || next === 'title') audio.music('town');
+  if (next === 'town') audio.music('town');
+  else if (next === 'title') audio.music('anthem');
   // Durante o jogo não há música: ouve-se o pavilhão.
   else if (next === 'match') audio.music('none');
   // Uma cortina curta entre ecrãs, em vez de uma troca seca.
@@ -272,7 +273,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   tacticsOpen = false;
   timeoutHandled = false;
   breakAnnounced = 0;
-  audio.setVenue(kind === 'practice' ? 0 : current.division);
+  audio.setVenue(kind === 'practice' ? CLOSED_GYM : current.division);
   banner.hidden = true;
   hud.reset();
   endAt = 0;
@@ -379,7 +380,7 @@ function showSeasonReport(): void {
   setStage('menu');
   const festive = current.seasonReport!.outcome === 'champion' || current.seasonReport!.cups.length > 0;
   showTopNote(`Fim da época ${current.seasonReport!.season}`, escapeHtml(current.team.short), `${festive ? '<canvas id="confetti" class="confetti" width="115" height="75"></canvas>' : clubBadge(current)}${seasonTopStats(current.seasonReport!)}`);
-  audio.music(festive ? 'win' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
+  audio.music(festive ? 'anthem' : current.seasonReport!.outcome === 'relegated' ? 'loss' : 'town');
   panel.innerHTML = seasonReportHtml(current, current.seasonReport!);
   const report = current.seasonReport!;
   element('seasonContinue').addEventListener('click', () => {
@@ -679,6 +680,7 @@ function showIntro(): void {
   const current = club!;
   const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : 'Particular';
   panel.innerHTML = introScreen(view!, label);
+  audio.music('entrance');
   element('introSkip').addEventListener('click', beginPlay);
   clearTimeout(introTimer);
   introTimer = window.setTimeout(beginPlay, 3500);
@@ -929,6 +931,7 @@ initMenus({
   halfSubs: showHalfSubs,
   newClub: showNewClub,
   sound: name => audio.play(name),
+  music: theme => audio.music(theme),
 });
 addEventListener('resize', fit);
 // No telemóvel, a área visível muda sem aviso de 'resize' quando o teclado abre ou fecha; e ao sair de um campo de texto
@@ -1005,7 +1008,12 @@ Object.assign(window, {
     playAllSounds: () => {
       audio.unlock();
       for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'steal', 'block', 'cheer', 'bigCheer', 'card', 'bump'] as const) audio.play(name);
-      for (let i = 0; i < 30; i++) audio.ambience(1e12 + i * 1e6);
+      for (let v = 0; v <= CLOSED_GYM; v++) {
+        audio.setVenue(v);
+        for (let i = 0; i < 30; i++) audio.ambience(1e12 + (v * 30 + i) * 1e6);
+      }
+      for (const theme of MUSIC_THEMES) audio.music(theme);
+      audio.music('none');
     },
     onCourtNames: () => view!.s.court[0].map(b => b.player.name),
     frontBackFlips: () => {
