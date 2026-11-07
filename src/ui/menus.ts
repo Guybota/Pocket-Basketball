@@ -961,8 +961,22 @@ const pattern = (): string => {
   return patternUrl;
 };
 
+/** Um seletor que volta a achar o mesmo botão depois de o ecrã se redesenhar: pelo id e pelos data-*. */
+const focusKey = (el: Element | null): string => (el && el !== document.body && (host.top.contains(el) || host.panel.contains(el))
+  ? el.getAttributeNames().filter(n => n === 'id' || n.startsWith('data-')).map(n => `[${n}="${CSS.escape(el.getAttribute(n)!)}"]`).join('') : '');
+// O botão que tinha o foco em cada ecrã, para o devolver quando se volta a ele.
+const focusBack: Partial<Record<Screen, string>> = {};
+const FOCUSABLE = 'button:not([disabled]), input, select, a[href], [tabindex="0"]';
+function focusIn(key: string | undefined): void {
+  const visible = (el: HTMLElement | null): el is HTMLElement => !!el && (el.checkVisibility?.({ visibilityProperty: true }) ?? el.offsetParent !== null);
+  const keyed = key ? document.querySelector<HTMLElement>(key) : null;
+  const target = visible(keyed) ? keyed : [...host.top.querySelectorAll<HTMLElement>(FOCUSABLE), ...host.panel.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
+  target?.focus({ preventScroll: true });
+}
+
 function render(): void {
   const { top: top_, panel } = host;
+  const focused = focusKey(document.activeElement);
   const scroll = panel.querySelector('.scroll')?.scrollTop ?? 0;
   host.tallTop(screen === 'kit' ? 450 : screen === 'kitEdit' ? 450 : screen === 'create' ? 290 : screen === 'pre' ? 470 : 0);
   const { top, bottom, after } = SCREENS[screen]();
@@ -971,6 +985,8 @@ function render(): void {
   panel.innerHTML = bottom;
   const nextScroll = panel.querySelector('.scroll');
   if (nextScroll) nextScroll.scrollTop = scroll;
+  // Redesenhar não pode atirar o foco do teclado ou do leitor de ecrã para o início da página.
+  if (focused) document.querySelector<HTMLElement>(focused)?.focus({ preventScroll: true });
   after?.();
 }
 
@@ -982,12 +998,17 @@ function go(next: GoTo): void {
   if (next === 'tactics') tacticsBack = screen === 'tactics' ? tacticsBack : screen;
   // O balneário, antes do jogo e ao intervalo, tem o seu tema.
   if (next === 'pre') host.music('locker');
+  // Mudar de ecrã leva o foco para dentro do novo; voltar a um ecrã devolve-o ao botão de onde se saiu.
+  const changed = !active || screen !== next;
+  if (!active) for (const key of Object.keys(focusBack)) delete focusBack[key as Screen];
+  if (active && changed) focusBack[screen] = focusKey(document.activeElement);
   screen = next;
   swapping = null;
   selling = false;
   active = true;
   host.showMenus();
   render();
+  if (changed) focusIn(focusBack[next]);
 }
 
 function trainNow(): void {

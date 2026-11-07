@@ -94,7 +94,19 @@ const createClub = async (p: Page, name = ''): Promise<void> => {
 const shot = async (p: Page, path: string): Promise<void> => {
   if (await p.locator('.final-score').count()) await p.waitForTimeout(800);
   await p.screenshot({ path, animations: 'disabled' });
+  for (const problem of await a11yProblems(p)) a11y.add(`${path.replace(`${OUT}/`, '')}: ${problem}`);
 };
+/** Em cada ecrã fotografado: botões sem nome para o leitor de ecrã, e imagens sem alt. */
+const a11y = new Set<string>();
+const a11yProblems = (p: Page): Promise<string[]> => p.evaluate(() => {
+  const text = (el: Element | null): string => el?.textContent?.trim() ?? '';
+  const named = (el: Element): boolean => Boolean(text(el) || el.getAttribute('aria-label')?.trim() || el.getAttribute('title')?.trim()
+    || [...el.querySelectorAll('img')].some(img => img.alt.trim()) || (el.getAttribute('aria-labelledby') ?? '').split(' ').some(id => text(document.getElementById(id))));
+  return [
+    ...[...document.querySelectorAll('button, [role="tab"], a[href]')].filter(el => !named(el)).map(el => `sem nome: ${el.outerHTML.slice(0, 90)}`),
+    ...[...document.querySelectorAll('img:not([alt])')].map(img => `imagem sem alt: ${img.outerHTML.slice(0, 90)}`),
+  ];
+});
 const check = (name: string, ok: boolean, detail = ''): void => {
   console.log(`${ok ? 'OK    ' : 'FALHOU'} ${name}${detail ? `: ${detail}` : ''}`);
   if (!ok) failures.push(name);
@@ -129,6 +141,13 @@ try {
   }
 
   await shot(page, `${OUT}/inicio.png`);
+  // Tudo o que a região do leitor de ecrã recebe durante o jogo.
+  await page.evaluate(() => {
+    const live = document.getElementById('live')!;
+    const log: string[] = [];
+    (window as unknown as { liveLog: string[] }).liveLog = log;
+    new MutationObserver(() => log.push(live.textContent ?? '')).observe(live, { childList: true, characterData: true, subtree: true });
+  });
   await kick(page);
   await page.waitForFunction(() => window.__pocket.state().tick > 5);
   check('O jogo começa ao carregar no botão', (await page.evaluate(() => window.__pocket.state().started)));
@@ -152,6 +171,16 @@ try {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   check('Desenhar um frame demora menos de 16 ms com CPU 4× mais lento', stats.meanMs < 16, `${stats.meanMs.toFixed(1)} ms em ${stats.frames} frames`);
 
+  check('O campo diz o resultado e o tempo ao leitor de ecrã', /^Jogo: \S+ \d+ – \d+ \S+, (\d\.º período|prolongamento), \d+:\d\d$/.test(await page.locator('#court').getAttribute('aria-label') ?? ''), await page.locator('#court').getAttribute('aria-label') ?? '');
+  // Separadores: as setas passam de um ao outro, e o conteúdo é o painel do separador escolhido.
+  await page.focus('[data-tab="bench"]');
+  await page.keyboard.press('ArrowRight');
+  check('As setas mudam de separador e levam o foco', await page.evaluate(() => {
+    const at = document.activeElement as HTMLElement;
+    const panelOf = document.getElementById(at.getAttribute('aria-controls')!);
+    return at.dataset.tab === 'stats' && at.getAttribute('aria-selected') === 'true' && panelOf?.getAttribute('role') === 'tabpanel' && panelOf.getAttribute('aria-labelledby') === at.id;
+  }));
+  await page.keyboard.press('ArrowLeft');
   // Separadores e fim do jogo.
   await page.click('[data-tab="stats"]');
   await shot(page, `${OUT}/stats.png`);
@@ -171,6 +200,8 @@ try {
   for (const name of ['whistle', 'buzzer', 'horn']) check(`Toca o som "${name}" durante o jogo`, heard.includes(name), heard.join(', '));
   await page.evaluate(() => window.__pocket.playAllSounds());
   check('Os avisos de momentos altos aparecem', final.announced.includes('Afundanço!') && final.announced.includes('Intervalo'), final.announced.join(', '));
+  const liveLog = await page.evaluate(() => (window as unknown as { liveLog: string[] }).liveLog);
+  check('O leitor de ecrã ouve os cestos, o intervalo e o fim do jogo', liveLog.some(line => /^Cesto de [23] de .+\. \S+ \d+, \S+ \d+$/.test(line)) && liveLog.some(line => line.startsWith('Intervalo.')) && liveLog.some(line => line.startsWith('Fim do jogo.')), liveLog.slice(-6).join(' | '));
   await page.click('#againBtn');
   await page.waitForSelector('#arenaChip');
   check('Sem erros na página', problems.length === 0, problems.join(' | '));
@@ -1035,6 +1066,8 @@ try {
   await browser.close();
   await server.close();
 }
+
+check('Os botões têm nome para o leitor de ecrã e as imagens têm alt', a11y.size === 0, [...a11y].slice(0, 12).join(' | '));
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} verificação(ões) falhou/falharam.`);

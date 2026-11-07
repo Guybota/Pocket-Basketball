@@ -1,7 +1,7 @@
 import { matchHash } from '../sim/hash.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { clockIcon, controlIcon, subsIcon } from './art/icons.ts';
-import { cancelSubstitution, holdMatch, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchState } from '../sim/match.ts';
+import { cancelSubstitution, holdMatch, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchEvent, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CARDS, MAX_CARDS_PER_MATCH, cardFromEvent, type CardId } from '../sim/training.ts';
@@ -28,6 +28,7 @@ import { portraitImage } from './art/portrait.ts';
 import { TICKS_PER_SECOND } from '../sim/court.ts';
 import { createDemo } from './demo.ts';
 import { createHud } from './hud.ts';
+import { clockText } from './narrate.ts';
 import { createIdleResume } from './idle.ts';
 import { createLayout, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
@@ -160,6 +161,8 @@ function fit(): void {
 
 /** Muda de modo e volta a medir: a cidade, os menus e o campo usam tamanhos diferentes. */
 function setStage(next: Stage): void {
+  // Ao voltar à cidade, o foco regressa ao botão que a deixou (o leitor de ecrã não fica perdido no início da página).
+  if (stage === 'town' && next !== 'town') townFocus = document.activeElement?.id ?? '';
   stage = next;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
@@ -204,9 +207,13 @@ function importFile(): void {
   });
 }
 
+let townFocus = '';
 function placeTownUi(): void {
   const current = club!;
+  const back = townUi.contains(document.activeElement) ? document.activeElement!.id : townFocus;
+  townFocus = '';
   townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveStatus.failed);
+  if (back) document.getElementById(back)?.focus({ preventScroll: true });
   const note = (text: string): void => {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
@@ -250,6 +257,37 @@ function announce(message: string): void {
   void banner.offsetWidth;
   banner.classList.add('show');
   bannerUntil = view!.s.tick + 36;
+  speak(message, 1);
+}
+
+// Leitor de ecrã: um anúncio de cada vez, no máximo um a cada LIVE_GAP_MS; o mais importante que chegar entretanto ganha.
+const LIVE_GAP_MS = 3000;
+const live = element<HTMLDivElement>('live');
+let livePending = { text: '', rank: 0 };
+let liveAt = -LIVE_GAP_MS;
+function speak(text: string, rank: number): void {
+  if (rank >= livePending.rank) livePending = { text, rank };
+}
+function flushLive(now: number): void {
+  if (!livePending.text || now - liveAt < LIVE_GAP_MS) return;
+  live.textContent = livePending.text;
+  livePending = { text: '', rank: 0 };
+  liveAt = now;
+}
+const scoreLine = (s: MatchState): string => `${s.teams[0].short} ${s.score[0]}, ${s.teams[1].short} ${s.score[1]}`;
+const periodName = (period: number): string => (period > 4 ? 'prolongamento' : `${period}.º período`);
+/** O que o leitor de ecrã diz de um evento do jogo, e com que prioridade: 3 para os fins de período, 2 para os cestos. */
+function liveLine(e: MatchEvent, s: MatchState): [string, number] | null {
+  switch (e.type) {
+    case 'made': return [`Cesto de ${e.points} de ${e.player}. ${scoreLine(s)}`, 2];
+    case 'freeThrowMade': return [`Lance livre de ${e.player}. ${scoreLine(s)}`, 2];
+    case 'timeout': return [`Desconto de tempo: ${s.teams[e.team].name}`, 2];
+    case 'periodEnd':
+      if (e.period === 2) return [`${gameKind === 'practice' ? 'Fim do jogo-treino' : 'Intervalo'}. ${scoreLine(s)}`, 3];
+      return e.period >= 4 && s.score[0] === s.score[1] ? [`Fim do ${periodName(e.period)}, empate: há prolongamento. ${scoreLine(s)}`, 3] : e.period >= 4 ? null : [`Fim do ${periodName(e.period)}. ${scoreLine(s)}`, 3];
+    case 'end': return [`Fim do jogo. ${s.score[0] > s.score[1] ? 'Vitória' : 'Derrota'}. ${scoreLine(s)}`, 3];
+    default: return null;
+  }
 }
 
 /** As cores da interface seguem o equipamento escolhido. */
@@ -274,6 +312,8 @@ function makeView(kind: GameKind, rivalId: number): void {
   view = new MatchView(context, clubTeam(current), rival, seed, kind === 'practice' ? CLOSED_GYM : current.division, {
     announce,
     event: e => {
+      const said = started ? liveLine(e, view!.s) : null;
+      if (said) speak(...said);
       // A vista já recebe o início do jogo ao ser criada, antes de o jogo começar a sério.
       const card = started && found.length < MAX_CARDS_PER_MATCH ? cardFromEvent(e, 0, dropRng) : null;
       if (card) showDrop(card);
@@ -440,14 +480,12 @@ function showFired(): void {
 function matchControls(): string {
   // Com as trocas ou as táticas abertas, nenhum separador fica escolhido: o que se vê não é nenhum deles.
   const overlay = subsOpen || tacticsOpen;
-  return `<div class="tabs" role="tablist">
-      <button type="button" role="tab" data-tab="bench" aria-selected="${!overlay && tab === 'bench'}">Banco</button>
-      <button type="button" role="tab" data-tab="stats" aria-selected="${!overlay && tab === 'stats'}">Stats</button>
-      <button type="button" role="tab" data-tab="league" aria-selected="${!overlay && tab === 'league'}">Liga</button>
-      <button type="button" role="tab" data-tab="feed" aria-selected="${!overlay && tab === 'feed'}">Relato</button>
-      <button type="button" role="tab" data-tab="cards" aria-selected="${!overlay && tab === 'cards'}">Cartas</button>
+  // Só o separador escolhido entra na ordem do Tab; as setas passam aos outros.
+  const tabButton = (id: PanelTab, label: string): string => `<button type="button" role="tab" id="tab-${id}" data-tab="${id}" aria-controls="tabContent" aria-selected="${!overlay && tab === id}" tabindex="${tab === id ? 0 : -1}">${label}</button>`;
+  return `<div class="tabs" role="tablist" aria-label="Painel do jogo">
+      ${tabButton('bench', 'Banco')}${tabButton('stats', 'Stats')}${tabButton('league', 'Liga')}${tabButton('feed', 'Relato')}${tabButton('cards', 'Cartas')}
     </div>
-    <div id="tabContent" class="content"></div>
+    <div id="tabContent" class="content" role="tabpanel" aria-labelledby="tab-${tab}"></div>
     <div class="coachbar">
       <button type="button" id="pauseBtn" class="icon" aria-pressed="${paused || pauseRequested}" aria-label="${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}" title="${paused ? 'Continuar' : 'Pausa'}"><img class="ink" alt="" src="${controlIcon(paused ? 'play' : 'pause')}"></button>
       <button type="button" id="muteBtn" class="icon" aria-pressed="${audio.muted}" aria-label="${audio.muted ? 'Ligar o som' : 'Desligar o som'}" title="Som"><img class="ink" alt="" src="${controlIcon(audio.muted ? 'muted' : 'sound')}"></button>
@@ -458,6 +496,18 @@ function matchControls(): string {
 }
 
 function bindControls(): void {
+  panel.querySelector('[role="tablist"]')!.addEventListener('keydown', event => {
+    const { key } = event as KeyboardEvent;
+    const tabs = [...panel.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    const next = key === 'ArrowRight' ? at + 1 : key === 'ArrowLeft' ? at - 1 : key === 'Home' ? 0 : key === 'End' ? tabs.length - 1 : null;
+    if (next === null || at < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = tabs[(next + tabs.length) % tabs.length]!.dataset.tab!;
+    tabs.find(t => t.dataset.tab === id)!.click();
+    panel.querySelector<HTMLElement>(`[data-tab="${id}"]`)?.focus();
+  });
   panel.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => {
     button.addEventListener('click', () => {
       tab = button.dataset.tab as PanelTab;
@@ -831,8 +881,10 @@ function showResult(): void {
   const wasHurt = new Set(club!.team.roster.filter(p => p.injuryWeeks).map(p => p.name));
   club = result.club;
   saveClub();
-  const injuries = club.team.roster.filter(p => p.injuryWeeks && !wasHurt.has(p.name))
-    .map(p => `<p class="hint warn">Lesão: ${escapeHtml(p.name)} fica ${p.injuryWeeks} ${p.injuryWeeks === 1 ? 'semana' : 'semanas'} de fora.</p>`).join('');
+  const hurt = club.team.roster.filter(p => p.injuryWeeks && !wasHurt.has(p.name))
+    .map(p => `Lesão: ${p.name} fica ${p.injuryWeeks} ${p.injuryWeeks === 1 ? 'semana' : 'semanas'} de fora.`);
+  const injuries = hurt.map(line => `<p class="hint warn">${escapeHtml(line)}</p>`).join('');
+  if (hurt.length) speak(hurt.join(' '), 3);
   const { score } = view!.s;
   audio.music(score[0] > score[1] ? 'win' : 'loss');
   resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice', rivalOf === GUEST_RIVAL)}`);
@@ -902,6 +954,9 @@ function frame(now: number): void {
     }
   }
   if (started && !paused && !finished && stage === 'match') audio.ambience(now);
+  flushLive(now);
+  const courtLabel = stage === 'match' && current ? `Jogo: ${current.s.teams[0].short} ${current.s.score[0]} – ${current.s.score[1]} ${current.s.teams[1].short}, ${periodName(current.s.period)}, ${clockText(current.s.clock)}` : stage === 'town' ? 'Mapa da cidade' : 'Pocket Basketball';
+  if (canvas.getAttribute('aria-label') !== courtLabel) canvas.setAttribute('aria-label', courtLabel);
   if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
   if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();

@@ -22,12 +22,13 @@
   <body>
     <div id="game">
       <div class="screen" id="screen">
-        <canvas id="court" width="360" height="216" aria-label="Campo de basquetebol com o jogo a decorrer"></canvas>
+        <canvas id="court" width="360" height="216" role="img" aria-label="Pocket Basketball"></canvas>
         <div id="hud"></div>
         <div id="banner" hidden></div>
       </div>
       <div id="panel"></div>
     </div>
+    <div id="live" class="sr-only" aria-live="polite"></div>
     <script type="module" src="/src/ui/main.ts"></script>
   </body>
 </html>
