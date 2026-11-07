@@ -230,7 +230,12 @@ export function updateBall(s: MatchState): void {
       s.ball.x = f.fromX + ((f.cutX ?? f.target.x) - f.fromX) * t;
       s.ball.y = f.fromY + ((f.cutY ?? f.target.y) - f.fromY) * t;
       if (f.fromZ !== null) s.ball.z = f.fromZ + (1.3 - f.fromZ) * t;
-      else s.ball.z = f.lob ? 1.5 + 1.7 * t + 2.5 * t * (1 - t) : 1.3;
+      else if (f.lob) s.ball.z = 1.5 + 1.7 * t + 2.5 * t * (1 - t);
+      else {
+        // O arco é o do passe inteiro: cortado a meio, a bola chega alta ao intercetador, que tem de saltar.
+        const u = t * (f.cut ?? 1);
+        s.ball.z = 1.3 + (f.arc ?? 0) * 4 * u * (1 - u);
+      }
     } else {
       placeShotBall(s, f, t);
     }

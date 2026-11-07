@@ -438,6 +438,9 @@ export const BALANCE = {
   aiTimeoutRun: 8,
   // A IA muda de tática nas paragens: a perder por isto acelera, a ganhar por isto no último período abranda.
   aiChaseMargin: 8,
+  /** Os passes a partir desta distância vão em arco, e sobem tanto mais quanto mais compridos (metros a meio por metro). */
+  passArcFromMeters: 5,
+  passArcPerMeter: 0.12,
   /** De quantos em quantos segundos de jogo a IA revê a pressão e o ritmo com a bola a correr. */
   aiTempoCheckSeconds: 10,
   aiProtectMargin: 8,

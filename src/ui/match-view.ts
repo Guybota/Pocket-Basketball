@@ -40,6 +40,8 @@ const STANCE_RANGE = 2.5;
 // O treinador anda a passo, em metros por segundo.
 const COACH_SPEED = 2.5;
 const LOCKER_SPEED = 4.5;
+// A partir desta altura da bola (m), quem corta um passe tem de saltar.
+const INTERCEPT_JUMP_HEIGHT = 1.9;
 const SWISH_TICKS = 10;
 const TRAIL_LENGTH = 6;
 const HOOP_FRONT_OFFSET = 0.5;
@@ -497,7 +499,12 @@ export class MatchView {
           callbacks.sound('steal');
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           // O braço estendido a cortar a bola, tanto num roubo como numa interceção.
-          if (body) this.view(body).override = { pose: 'snatch', until: s.tick + 8, withBall: true };
+          if (body) {
+            // Um passe comprido cortado a meio chega alto: o intercetador salta e apanha-o lá em cima, como num ressalto.
+            const high = s.ball.z > INTERCEPT_JUMP_HEIGHT;
+            if (high && this.view(body).reboundJump === undefined) this.view(body).reboundJump = s.tick - 4;
+            this.view(body).override = { pose: high ? 'grab' : 'snatch', until: s.tick + 8, withBall: true };
+          }
           break;
         case 'tipOff':
           callbacks.sound('whistle');

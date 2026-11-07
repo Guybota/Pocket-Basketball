@@ -180,6 +180,8 @@ export function pass(s: MatchState, passer: Body, target: Body, lob = false): vo
     target,
     interceptedBy,
     ...(interceptedBy ? { cutX: passer.x + (target.x - passer.x) * cut, cutY: passer.y + (target.y - passer.y) * cut } : {}),
+    arc: lob ? 0 : Math.max(0, dist - B.passArcFromMeters) * B.passArcPerMeter,
+    cut,
     bad: !lob && !interceptedBy && chance(s.rng, badChance),
     lob,
     restart: false,
@@ -280,7 +282,8 @@ export function decide(s: MatchState): void {
 
   const u = toU(s, h.team, h.x);
   const teammates = s.court[h.team].filter(b => b !== h);
-  const shotSeconds = s.shotClock / seconds(1);
+  // Conta o que acabar primeiro, a posse ou o período: no fim do período lança-se antes do apito, mesmo de longe.
+  const shotSeconds = Math.min(s.shotClock, s.clock) / seconds(1);
 
   if (u > B.shootingRangeU) {
     const runners = teammates.filter(b => toU(s, b.team, b.x) <= B.aheadPassRangeU && pressureOn(s, b) < 0.2);

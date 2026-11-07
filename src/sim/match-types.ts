@@ -167,6 +167,9 @@ export interface PassFlight {
   /** Onde o intercetador corta a linha do passe: a bola acaba aí, nas mãos dele, e não no destino. */
   cutX?: number;
   cutY?: number;
+  /** Quanto o passe sobe a meio, em metros (um passe comprido vai em arco), e que parte do passe a bola chega a fazer. */
+  arc?: number;
+  cut?: number;
   bad: boolean;
   lob: boolean;
   /** Um passe que recomeça o jogo: não pode ser intercetado nem conta para assistência. */
