@@ -2,7 +2,7 @@ import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { BENCH_SPACING, BENCH_START_X, BENCH_Y, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
+import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
@@ -37,6 +37,7 @@ const CONTEST_RANGE = 1.8;
 const STANCE_RANGE = 2.5;
 // O treinador anda a passo, em metros por segundo.
 const COACH_SPEED = 2.5;
+const LOCKER_SPEED = 4.5;
 const SWISH_TICKS = 10;
 const TRAIL_LENGTH = 6;
 const HOOP_FRONT_OFFSET = 0.5;
@@ -1014,6 +1015,10 @@ export class MatchView {
       const leaving = new Set(this.exits.filter(e => e.body.team === team).map(e => e.body));
       const cheering = s.tick < this.benchCheerUntil[team] || (s.phase === 'end' && s.score[team] > s.score[team === 0 ? 1 : 0]);
       const inHuddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
+      // Ao intervalo, o banco e o treinador também vão para o balneário, pelo túnel, a passo mais rápido; voltam na segunda parte.
+      const toLocker = s.phase === 'break' && s.period === 2;
+      const tunnel = (k: number): Point => ({ x: (team === 0 ? 13.4 : 14.6) + (k % 2) * 0.2, y: -COURT_HALF_WIDTH - 3.8 - k * 0.4 });
+      const speed = toLocker ? LOCKER_SPEED : COACH_SPEED;
       benchers.forEach((b, i) => {
         if (leaving.has(b)) return;
         const seat: Point = { x: startX + i * 0.95, y: BENCH_Y };
@@ -1021,11 +1026,11 @@ export class MatchView {
         const ringSpot = inHuddle && i < 3 ? huddleSpot(team, [1, 3, 5][i]!) : null;
         const pos = this.view(b).huddle ?? { ...seat };
         this.view(b).huddle = pos;
-        const target = ringSpot ? { x: ringSpot[0], y: ringSpot[1] } : seat;
+        const target = toLocker ? tunnel(i + 1) : ringSpot ? { x: ringSpot[0], y: ringSpot[1] } : seat;
         const dx = target.x - pos.x;
         const dy = target.y - pos.y;
         const dist = Math.hypot(dx, dy);
-        const step = Math.min(dist, COACH_SPEED * this.frameSeconds);
+        const step = Math.min(dist, speed * this.frameSeconds);
         if (dist > 0.001) {
           pos.x += (dx / dist) * step;
           pos.y += (dy / dist) * step;
@@ -1042,12 +1047,12 @@ export class MatchView {
       const huddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
       const coachBase = team === 0 ? 8 : 23.7;
       // O alvo é a roda da equipa, ou um passeio em frente ao banco; o treinador vai lá a andar, ao seu passo.
-      const target: Point = huddle ? { x: HUDDLE_CENTRE[team][0], y: HUDDLE_CENTRE[team][1] } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
+      const target: Point = toLocker ? tunnel(0) : huddle ? { x: HUDDLE_CENTRE[team][0], y: HUDDLE_CENTRE[team][1] } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
       const pos = this.coachPos[team] ?? (this.coachPos[team] = { ...target });
       const dx = target.x - pos.x;
       const dy = target.y - pos.y;
       const dist = Math.hypot(dx, dy);
-      const step = Math.min(dist, COACH_SPEED * this.frameSeconds);
+      const step = Math.min(dist, speed * this.frameSeconds);
       if (dist > 0.001) {
         pos.x += (dx / dist) * step;
         pos.y += (dy / dist) * step;

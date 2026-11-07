@@ -13,6 +13,7 @@ import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
 import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, liveOtherGames, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
+import { seconds } from '../sim/court.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
 
 const base = generateTeam(1, 'A', 50).roster[0]!;
@@ -335,6 +336,17 @@ describe('clube', () => {
     const c = club();
     const swapped = swapPlayers(c, 0, 6);
     expect(swapped.shirts[swapped.team.roster[6]!.name]).toBe(4);
+  });
+
+  it('o intervalo chega quando os jogadores entram no túnel, sem esperar pela paragem do treinador', () => {
+    const c = club();
+    const s = createMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false]);
+    while (!(s.period === 2 && s.phase === 'break')) step(s);
+    const start = s.tick;
+    while (!firstHalfOver(s)) step(s);
+    // A paragem do treinador dura 30 s; ir para o túnel leva poucos.
+    expect(s.tick - start).toBeLessThan(seconds(8));
+    expect(s.phase).toBe('break');
   });
 
   it('um jogo-treino acaba ao fim de dois períodos, só conta para as cartas e não fecha a semana', () => {

@@ -2,6 +2,7 @@ import { BALANCE as B } from '../sim/balance.ts';
 import { PLAYOFF_FORMATS, PLAYOFF_WEEKS, createPlayoffs, drawNextRound, nextGame, playoffExit, playoffWinner, seriesWinner, seriesWins, type PlayoffState, type Series } from '../sim/playoff.ts';
 import { CUP_ROUNDS, CUP_WEEKS, FEDERATION_ROUNDS, createFederationCup, createKnockoutCup, cupExit, cupWinner, drawCupRound, settleCupRound, type CupName, type CupState } from '../sim/cup.ts';
 import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_CONFIDENCE, SEASON_WEEKS, confidenceChange, moveDivisions, orderByLevel, roundRobin, seasonOutcome, shuffled, standings, weekCup, weekRound, type Fixture, type LeagueClub, type SeasonOutcome, type Standing } from '../sim/league.ts';
+import { COURT_HALF_WIDTH } from '../sim/court.ts';
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
@@ -1088,7 +1089,9 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
 }
 
 /** Um jogo-treino são os dois primeiros períodos. No resto dos jogos, é a hora do intervalo: depois de as equipas saírem para o balneário. */
-export const firstHalfOver = (s: MatchState): boolean => s.period >= 3 || (s.period === 2 && s.phase === 'break' && s.timer <= 1);
+/** A primeira parte acaba quando os dez em campo entram no túnel: o intervalo não espera pelos 30 s de paragem do treinador. */
+export const firstHalfOver = (s: MatchState): boolean => s.period >= 3
+  || (s.period === 2 && s.phase === 'break' && (s.timer <= 1 || s.court.every(team => team.every(b => b.y < -COURT_HALF_WIDTH - 3))));
 
 /** O fim de um jogo-treino: dá menos cartas, cansa menos e não fecha a semana. Só conta para as cartas e para o cansaço. */
 export function finishPractice(club: ClubState, s: MatchState, found: readonly CardId[]): MatchResult {
