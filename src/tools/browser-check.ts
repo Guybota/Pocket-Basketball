@@ -10,7 +10,7 @@ import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } fr
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
-  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[] };
+  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[]; tactics: { pressure: number; spacing: number; pace: number } | null };
   setSpeedRaw(value: number): void;
   townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
@@ -336,8 +336,9 @@ try {
   await coach.screenshot({ path: `${OUT}/taticas-jogo.png` });
   check('A tática escolhida fica marcada', (await coach.locator('[data-tactic="pressure"][data-tactic-value="1"]').getAttribute('aria-pressed')) === 'true');
   await coach.click('#matchTacticsClose');
-  const checkedTactics = await coach.evaluate(() => window.__pocket.club()!.tactics);
+  const checkedTactics = await coach.evaluate(() => window.__pocket.state().tactics!);
   check('As táticas mudam-se durante o jogo', checkedTactics.pressure === 1 && checkedTactics.spacing === 1);
+  check('As táticas mudadas a meio do jogo não ficam no clube', await coach.evaluate(() => window.__pocket.club()!.tactics.pressure !== 1));
   await coach.click('[data-tab="cards"]');
   await coach.evaluate(() => window.__pocket.setSpeedRaw(8));
   await coach.waitForFunction(() => window.__pocket.found().length > 0, undefined, { timeout: 60_000 });

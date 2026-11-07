@@ -16,7 +16,7 @@ if (!body) throw new Error('Não encontrei o corpo da página em dist-page/index
 const page = `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Pocket Basketball</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&display=swap" media="print" onload="this.media='all'">
 <style>${read('.css')}</style>
 ${body.replace(/<script[\s\S]*?<\/script>/g, '')}
 <script type="module">${read('.js').replace(/<\/script/g, '<\\/script')}</script>

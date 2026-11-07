@@ -403,13 +403,19 @@ export const BALANCE = {
   tacticThree: 0.6,
   tacticInsideDrive: 0.35,
   tacticSpacingSpot: 0.1,
-  tacticPaceShoot: 0.25,
+  tacticPaceShoot: 0.12,
   tacticPaceHold: 0.4,
   tacticPacePass: 0.15,
   tacticPaceDecision: 0.2,
-  tacticPaceFatigue: 0.15,
+  tacticPaceFatigue: 0.08,
   tacticPressureGap: 0.4,
   tacticPressureSteal: 0.6,
+  /** A pressão também corta passes, não só tira a bola a quem dribla. */
+  tacticPressureIntercept: 0.6,
+  /** Atacar por dentro (spacing -1) dá lançamentos melhores perto do cesto, com mais gente a fechar e a ajudar. */
+  tacticInsideFinish: 0.03,
+  /** O ritmo rápido (pace +1) apanha a defesa por arrumar: lançamentos melhores no contra-ataque. */
+  tacticPaceBreakFinish: 0.12,
   tacticPressureFoul: 0.6,
   tacticPressureFatigue: 0.2,
   // Alvos: quem marca um alvo cola-se a ele e contesta-lhe cada lançamento. Os outros dez encontram um nadinha mais de espaço:
@@ -512,4 +518,20 @@ export const BALANCE = {
   clubLevelDrift: 1.5,
   otherDivisionLuck: 6,
   playerClubLevelOffset: -2,
+
+  // Condição física entre semanas.
+  /** Um jogo inteiro (480 s em campo) tira 10 % de condição; quem joga e treina todas as semanas fica à volta dos 70 %. */
+  matchFatigue: 0.1,
+  /** Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio. */
+  playoffGameFatigue: 0.6,
+  /** Dois períodos sem público cansam metade de um jogo a sério. */
+  practiceFatigue: 0.5,
+  weeklyRecovery: 0.4,
+  /** A resistência faz recuperar mais de semana para semana: com 90, fica 0,38 do cansaço; com 20, 0,59. */
+  staminaRecovery: 0.3,
+  /** Lesões, como no original: quem joga cansado arrisca-se. O risco é por jogo inteiro, e desce com menos minutos. */
+  injuryBase: 0.02,
+  injuryPerFatigue: 8,
+  injuryMinWeeks: 1,
+  injuryMaxWeeks: 4,
 } as const;

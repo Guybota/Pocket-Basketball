@@ -280,12 +280,15 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
   const onCourt = lineup.map((b, slot) => row(b, slot)).join('');
   const benchRows = bench.map(b => row(b)).join('');
   const onBoard = board(lineup.map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));
+  // Desligada, fica no cimo: com ela desligada os mesmos cinco jogam até rebentar, e o treinador tem de o ver.
+  const rotation = `<button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada · tocar para ligar'}</button>`;
   return `<div class="subs">
     ${inTimeout ? `<div class="subs-title">${s.phase === 'timeout' ? 'Desconto de tempo' : 'Fim do período'}</div>` : ''}
+    ${s.autoRotation[team] ? '' : rotation}
     ${onBoard}
     ${head('Em campo', 'team-0')}${onCourt}
     ${head('No banco', 'plain')}${benchRows}
-    <button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada'}</button>
+    ${s.autoRotation[team] ? rotation : ''}
     <button type="button" class="primary" data-subs-close>${inTimeout ? (s.timer > B.coachPauseSeconds * TICKS_PER_SECOND ? 'Continuar jogo' : `Continuar jogo (${Math.ceil(s.timer / TICKS_PER_SECOND)} s)`) : 'Fechar'}</button>
   </div>`;
 }

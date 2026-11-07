@@ -37,6 +37,12 @@ export class GameAudio {
     this.music(pending);
   }
 
+  /** Com a página escondida, o som pára todo, para não gastar bateria; volta ao regressar. */
+  setHidden(hidden: boolean): void {
+    if (!this.context) return;
+    void (hidden ? this.context.suspend() : this.context.resume());
+  }
+
   /** Muda de tema. O mesmo tema não recomeça; 'none' cala tudo. */
   music(theme: MusicTheme): void {
     if (theme === this.theme) return;

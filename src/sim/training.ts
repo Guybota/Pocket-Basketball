@@ -195,6 +195,20 @@ export function independentPractice(player: Player, rng: Rng): Player {
   return { ...player, attributes: { ...player.attributes, [key]: Math.min(ATTRIBUTE_MAX, value) } };
 }
 
+/** Fecho da semana para um jogador: recupera condição, cansa-se pelos segundos que jogou e pode lesionar-se. */
+export function weeklyFitness(player: Player, before: Player, playedSeconds: number, rng: Rng): Player {
+  const injured = (before.injuryWeeks ?? 0) > 0;
+  const recovery = B.weeklyRecovery - ((player.attributes.stamina - 50) / 100) * B.staminaRecovery;
+  const fatigue = player.fatigue * recovery + (playedSeconds / 480) * B.matchFatigue;
+  const next: Player = { ...player, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
+  // Quem está lesionado conta mais uma semana de recuperação; o risco de lesão cresce com os minutos e com o cansaço.
+  let injuryWeeks = Math.max(0, (before.injuryWeeks ?? 0) - 1);
+  if (!injured && playedSeconds > 0 && chance(rng, B.injuryBase * Math.min(1, playedSeconds / 480) * (1 + B.injuryPerFatigue * before.fatigue))) injuryWeeks = Math.round(between(rng, B.injuryMinWeeks, B.injuryMaxWeeks));
+  if (injuryWeeks > 0) next.injuryWeeks = injuryWeeks;
+  else delete next.injuryWeeks;
+  return next;
+}
+
 // Que carta pode aparecer em cada acontecimento do jogo, e com que probabilidade.
 const DROPS: Partial<Record<MatchEvent['type'], readonly (readonly [CardId, number])[]>> = {
   made: [['shooting', 0.05], ['hookShot', 0.03], ['bouncePass', 0.03]],

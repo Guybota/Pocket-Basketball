@@ -6,6 +6,7 @@ import { attributeWinRate, betterTeamWinRate, bodyWinRate, fullBonusWinRate, mov
 import { ARC_SPOTS, COURT_HALF_WIDTH, COURT_LENGTH, CUT_SPOTS, LOW_POST_SPOTS, SPOTS, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS, hoopDistance, isThree, segmentDistance, threeLineGap } from './court.ts';
 import { cancelSubstitution, createMatch, pushPower, queueSubstitution, replayMatch, requestTimeout, resolveContacts, setAutoRotation, setTactics, simulateMatch, step, type Body, type MatchState } from './match.ts';
 import { makeRng, next, weightedIndex } from './rng.ts';
+import { weeklyFitness } from './training.ts';
 import { baseChance, freeThrowChance, shotChance } from './shot.ts';
 import { DIVISIONS, generateLeagueTeam, generateTeam, teamRating, withBody, withBonus, withMoves, withStyles, withTactics } from './teamgen.ts';
 import { ATTRIBUTE_KEYS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, gradeOf, validateTeam, type Attributes, type MoveId, type OffBallStyle, type OnBallStyle, type Tactics, NEUTRAL_TACTICS, validateTactics } from './types.ts';
@@ -221,5 +222,19 @@ describe('ficha de jogo', () => {
     const s = simulateMatch(big, generateTeam(3, 'C', 55), 5);
     expect(s.bodies.filter(b => b.team === 0)).toHaveLength(B.matchSquad);
     expect(s.bodies.some(b => extra.some(p => p.name === b.player.name))).toBe(false);
+  });
+});
+
+describe('condição entre semanas', () => {
+  it('quem não joga não se lesiona, e menos minutos dão menos lesões', () => {
+    const player = { ...generateTeam(5, 'Teste', 55).roster[0]!, fatigue: 0.4 };
+    const injuries = (seconds: number): number => {
+      const rng = makeRng(9);
+      let hurt = 0;
+      for (let i = 0; i < 4000; i++) if (weeklyFitness(player, player, seconds, rng).injuryWeeks) hurt++;
+      return hurt;
+    };
+    expect(injuries(0)).toBe(0);
+    expect(injuries(120)).toBeLessThan(injuries(480));
   });
 });

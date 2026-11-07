@@ -88,6 +88,8 @@ let dropRng: Rng = makeRng(0);
 let found: CardId[] = [];
 let dropUntil = 0;
 let speed = 1;
+const STILL_FRAME_MS = 1000 / 30 - 2;
+let lastStillDraw = 0;
 let paused = false;
 let pauseRequested = false;
 /** Uma paragem em que o jogo espera pelo treinador: desconto, ou fim de período sem ser o intervalo. */
@@ -771,20 +773,16 @@ panel.addEventListener('click', event => {
     return;
   }
   if (target.dataset.optionSet !== undefined || target.dataset.optionClear !== undefined) {
-    const options = target.dataset.optionSet !== undefined ? pickOption(club!.tactics.options ?? [], optionPicking ?? 0, target.dataset.optionSet) : [];
+    // As mudanças a meio do jogo valem só para este jogo: as táticas do clube mudam-se antes do jogo.
+    const current = view!.s.tactics[0];
+    const options = target.dataset.optionSet !== undefined ? pickOption(current.options ?? [], optionPicking ?? 0, target.dataset.optionSet) : [];
     optionPicking = null;
-    const tactics: Tactics = { ...club!.tactics, options };
-    club = { ...club!, tactics };
-    saveClub();
-    setTactics(view!.s, 0, tactics);
+    setTactics(view!.s, 0, { ...current, options });
     refreshContent();
     return;
   }
   if (target.dataset.tactic !== undefined) {
-    const tactics: Tactics = { ...club!.tactics, [target.dataset.tactic]: tacticValue(target.dataset.tactic, target.dataset.tacticValue!) };
-    club = { ...club!, tactics };
-    saveClub();
-    setTactics(view!.s, 0, tactics);
+    setTactics(view!.s, 0, { ...view!.s.tactics[0], [target.dataset.tactic]: tacticValue(target.dataset.tactic, target.dataset.tacticValue!) });
     refreshContent();
     return;
   }
@@ -829,12 +827,14 @@ panel.addEventListener('click', event => {
       subPick = null;
     } else {
       const other = s.bodies[subPick]!;
+      const wasAuto = s.autoRotation[0];
       const marked = s.pendingSubs.find(sub => sub.team === 0 && ((sub.incoming === body && s.court[0][sub.slot] === other) || (sub.incoming === other && s.court[0][sub.slot] === body)));
       if (marked) cancelSubstitution(s, 0, marked.slot);
       else if (shownSlot(body) >= 0) queueSubstitution(s, 0, shownSlot(body), subPick);
       else if (shownSlot(other) >= 0) queueSubstitution(s, 0, shownSlot(other), index);
       else reorderBench(s, 0, subPick, index);
       subPick = null;
+      if (wasAuto && !s.autoRotation[0]) announce('Rotação automática desligada');
     }
     refreshContent();
     return;
@@ -1109,7 +1109,10 @@ function frame(now: number): void {
     }
     if (demo.s.phase === 'end') startDemo();
     else demo.render(Math.min(1, demoAccumulator), elapsed);
+  } else if ((stage === 'town' || stage === 'title' || stage === 'menu') && now - lastStillDraw < STILL_FRAME_MS) {
+    // A cidade e as cenas dos menus mexem-se devagar: 30 imagens por segundo chegam, e poupam a bateria.
   } else if (stage === 'town' || stage === 'title') {
+    lastStillDraw = now;
     // A cidade passeia sempre uma equipa, mesmo antes de haver clube.
     const walkers = club ?? townExtras;
     const kit = activeKit(walkers);
@@ -1123,6 +1126,7 @@ function frame(now: number): void {
       festive: club !== null && club.week <= 2 && (club.history.at(-1)?.outcome === 'champion' || (club.history.at(-1)?.cups.length ?? 0) > 0),
     }, weatherFor(club?.week ?? 1));
   } else if (stage === 'menu') {
+    lastStillDraw = now;
     menuFrame(now);
   } else if (current) {
     // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
@@ -1256,6 +1260,7 @@ Object.assign(window, {
       replay: replay ? { tick: replay.s.tick, until: replayUntil, phase: replay.s.phase } : null,
       demo: demo ? demo.s.tick : null,
       ball: view ? { ...view.s.ball } : null,
+      tactics: view ? { ...view.s.tactics[0] } : null,
     }),
     setSpeedRaw: (value: number) => {
       speed = value;
@@ -1338,6 +1343,8 @@ document.addEventListener('pointerdown', event => {
   }, 450);
 });
 for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);
+
+document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
 // Modo offline: só no jogo publicado, porque no `npm run dev` a cache atrapalhava.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

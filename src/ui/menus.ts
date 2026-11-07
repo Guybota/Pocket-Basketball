@@ -182,7 +182,7 @@ const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.fi
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
   const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= B.matchSquad ? ' reserve' : index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
-      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(club.tactics.options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
+      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(liveTactics().options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
   const rows = club.team.roster.map(row);
   // Para lá da ficha de jogo ficam os reservas: trocam-se para dentro com o ⇄, como os outros.
@@ -488,7 +488,7 @@ function createScreen(): Rendered {
 
 /** Quem está marcado, para a barra do menu. */
 function focusLabel(rival: Team): string {
-  const names = (club.tactics.focus ?? []).map(i => rival.roster[i]?.name).filter((name): name is string => Boolean(name));
+  const names = (liveTactics().focus ?? []).map(i => rival.roster[i]?.name).filter((name): name is string => Boolean(name));
   return names.length ? `Alvos: ${names.map(esc).join(', ')}` : 'Plantel e alvos a marcar';
 }
 
@@ -496,7 +496,7 @@ function focusLabel(rival: Team): string {
 function rivalScreen(): Rendered {
   const rival = currentRival();
   const id = rivalId();
-  const focus = club.tactics.focus ?? [];
+  const focus = liveTactics().focus ?? [];
   const played = [...club.rounds.flat(), ...Object.values(club.cups).flatMap(cup => cup.rounds.flat())].filter(f => f.score && (f.home === id || f.away === id));
   const wins = played.filter(f => (f.home === id ? f.score![0] > f.score![1] : f.score![1] > f.score![0])).length;
   const best = [...rival.roster].sort((a, b) => b.attributes.shooting - a.attributes.shooting)[0]!;
@@ -527,7 +527,7 @@ function halfStatsScreen(): Rendered {
 }
 
 function tacticsScreen(): Rendered {
-  const { tactics } = club;
+  const tactics = liveTactics();
   return {
     top: fullCanvas('tacticsBoard'),
     bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, fallback, options }) => `<div class="tacrow"><span>${label}: ${(options.find(([v]) => v === (tactics[key] ?? fallback)) ?? options[0]!)[2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === (tactics[key] ?? fallback)}">${name}</button>`).join('')}</div></div>`).join('')}${optionsRow()}</div>${bar(backBtn(tacticsBack))}`,
@@ -536,7 +536,7 @@ function tacticsScreen(): Rendered {
 }
 
 function optionsRow(): string {
-  return optionsControls(club.team.roster, club.tactics, optionPicking, p => portraitImage(lookFor(p)));
+  return optionsControls(club.team.roster, liveTactics(), optionPicking, p => portraitImage(lookFor(p)));
 }
 
 /** Parecido demais com o equipamento creme do adversário? */
@@ -941,10 +941,13 @@ function trainNow(): void {
   go('report');
 }
 
-/** As táticas ficam no clube e, ao intervalo, entram no jogo a decorrer como comando do treinador, para a repetição. */
+/** Ao intervalo, as táticas que contam são as do jogo; fora dele, as do clube. */
+const liveTactics = (): ClubState['tactics'] => (half ? host.match()!.s.tactics[0] : club.tactics);
+
+/** Antes do jogo, as táticas ficam no clube. Ao intervalo entram só no jogo a decorrer, como comando do treinador, para a repetição. */
 function applyTactics(tactics: ClubState['tactics']): void {
-  commit({ ...club, tactics });
   if (half) setTactics(host.match()!.s, 0, tactics);
+  else commit({ ...club, tactics });
   render();
 }
 
@@ -1022,25 +1025,25 @@ function onClick(event: Event): void {
     selectedTrophy = Number(data.trophy);
     render();
   } else if (data.tactic) {
-    applyTactics({ ...club.tactics, [data.tactic]: tacticValue(data.tactic, data.tacticValue!) });
+    applyTactics({ ...liveTactics(), [data.tactic]: tacticValue(data.tactic, data.tacticValue!) });
   } else if (data.optionSlot !== undefined) {
     optionPicking = Number(data.optionSlot);
     render();
   } else if (data.optionSet !== undefined) {
-    const options = pickOption(club.tactics.options ?? [], optionPicking ?? 0, data.optionSet);
+    const options = pickOption(liveTactics().options ?? [], optionPicking ?? 0, data.optionSet);
     optionPicking = null;
-    applyTactics({ ...club.tactics, options });
+    applyTactics({ ...liveTactics(), options });
   } else if (data.optionCancel !== undefined) {
     optionPicking = null;
     render();
   } else if (data.optionClear !== undefined) {
-    applyTactics({ ...club.tactics, options: [] });
+    applyTactics({ ...liveTactics(), options: [] });
   } else if (data.target !== undefined) {
     const index = Number(data.target);
-    const focus = club.tactics.focus ?? [];
-    applyTactics({ ...club.tactics, focus: focus.includes(index) ? focus.filter(i => i !== index) : [...focus, index].slice(0, MAX_FOCUS) });
+    const focus = liveTactics().focus ?? [];
+    applyTactics({ ...liveTactics(), focus: focus.includes(index) ? focus.filter(i => i !== index) : [...focus, index].slice(0, MAX_FOCUS) });
   } else if (data.act === 'clearFocus') {
-    applyTactics({ ...club.tactics, focus: [] });
+    applyTactics({ ...liveTactics(), focus: [] });
   } else if (data.kit) {
     commit({ ...club, kitChoice: data.kit });
     render();

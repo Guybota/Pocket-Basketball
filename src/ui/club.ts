@@ -5,28 +5,14 @@ import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_CONFIDENCE, SEASON_WEEKS, confiden
 import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts';
 import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
-import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
+import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, weeklyFitness, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
 import { NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
 import { DEFAULT_KITS, defaultEmblem, emblemLetters, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
 
 const SAVE_VERSION = 13;
-// Nos playoffs, os jogos da série jogam-se na mesma semana, sem descanso pelo meio.
-const PLAYOFF_GAME_FATIGUE = 0.6;
-// Um jogo inteiro tira 10 % de condição; quem joga e treina todas as semanas fica à volta dos 70 %.
-const MATCH_FATIGUE = 0.1;
-// Dois períodos sem público cansam metade de um jogo a sério.
-const PRACTICE_FATIGUE = 0.5;
 export const CLUB_NAME_MAX = 24;
-const WEEKLY_RECOVERY = 0.4;
-// A resistência faz recuperar mais de semana para semana: com 90, fica 0,38 do cansaço; com 20, 0,59.
-const STAMINA_RECOVERY = 0.3;
-// Lesões, como no original: quem joga cansado arrisca-se, e fica de fora umas semanas.
-const INJURY_BASE = 0.02;
-const INJURY_PER_FATIGUE = 8;
-const INJURY_MIN_WEEKS = 1;
-const INJURY_MAX_WEEKS = 4;
 const STARTING_CARDS: readonly CardId[] = ['shooting', 'dribble', 'sprints', 'readDefense', 'weights', 'nap'];
 /** O clube do jogador é sempre o número 0 da lista de clubes. */
 export const PLAYER_CLUB = 0;
@@ -731,15 +717,7 @@ function closeWeek(club: ClubState, played: (index: number) => number): ClubStat
   const roster = club.team.roster.map((player, index) => {
     const injured = (player.injuryWeeks ?? 0) > 0;
     const practiced = injured || club.trainedThisWeek.includes(player.name) ? player : independentPractice(player, rng);
-    const recovery = WEEKLY_RECOVERY - ((practiced.attributes.stamina - 50) / 100) * STAMINA_RECOVERY;
-    const fatigue = practiced.fatigue * recovery + (played(index) / 480) * MATCH_FATIGUE;
-    const next: Player = { ...practiced, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
-    // Quem jogou com a condição em baixo pode lesionar-se; quem está lesionado conta mais uma semana de recuperação.
-    let injuryWeeks = Math.max(0, (player.injuryWeeks ?? 0) - 1);
-    if (!injured && played(index) > 0 && chance(rng, INJURY_BASE * (1 + INJURY_PER_FATIGUE * player.fatigue))) injuryWeeks = Math.round(between(rng, INJURY_MIN_WEEKS, INJURY_MAX_WEEKS));
-    if (injuryWeeks > 0) next.injuryWeeks = injuryWeeks;
-    else delete next.injuryWeeks;
-    return next;
+    return weeklyFitness(practiced, player, played(index), rng);
   });
   // Os alvos são do adversário desta semana, por isso não passam para a seguinte.
   const settled = settleOffers({ ...settlePendingCup(club), team: { ...club.team, roster } }).club;
@@ -964,7 +942,7 @@ function finishPlayoffGame(club: ClubState, s: MatchState, found: readonly CardI
     return { club: closeWeek(settled, secondsOf), cards, round: null, cup: null, series: { wins, decided }, confidenceDelta: delta };
   }
   // Mais um jogo esta semana: só o cansaço deste jogo, sem o descanso da semana.
-  const roster = updated.team.roster.map((player, index) => ({ ...player, fatigue: Math.max(0, Math.min(1, Math.round((player.fatigue + (secondsOf(index) / 480) * MATCH_FATIGUE * PLAYOFF_GAME_FATIGUE) * 100) / 100)) }));
+  const roster = updated.team.roster.map((player, index) => ({ ...player, fatigue: Math.max(0, Math.min(1, Math.round((player.fatigue + (secondsOf(index) / 480) * B.matchFatigue * B.playoffGameFatigue) * 100) / 100)) }));
   return { club: { ...updated, team: { ...updated.team, roster } }, cards, round: null, cup: null, series: { wins, decided }, confidenceDelta: delta };
 }
 
@@ -1031,7 +1009,7 @@ export function finishPractice(club: ClubState, s: MatchState, found: readonly C
   for (const card of cards) owned[card] = (owned[card] ?? 0) + 1;
   // O jogo-treino gasta a semana livre, tal como o particular, por isso nunca há dois na mesma semana.
   const seconds = secondsPlayedBy(club, s);
-  return { club: closeWeek({ ...club, cards: owned }, index => seconds(index) * PRACTICE_FATIGUE), cards, round: null, cup: null, series: null, confidenceDelta: 0 };
+  return { club: closeWeek({ ...club, cards: owned }, index => seconds(index) * B.practiceFatigue), cards, round: null, cup: null, series: null, confidenceDelta: 0 };
 }
 
 /** Os adversários de jogo-treino que não são clubes: números negativos, para não se confundirem com os da liga. */

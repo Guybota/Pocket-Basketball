@@ -432,8 +432,11 @@ function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 0): { c
     : 0;
   const focus = s.tactics[other(b.team)].focus ?? [];
   const marked = focus.length === 0 ? 0 : focus.includes(s.teams[b.team].roster.indexOf(b.player)) ? -B.focusShotPenalty : B.unfocusedShotBonus;
+  const own = s.tactics[b.team];
+  const tactic = (dist <= B.midDistance ? B.tacticInsideFinish * Math.max(0, -own.spacing) : 0)
+    + (s.tick < s.breakUntil ? B.tacticPaceBreakFinish * Math.max(0, own.pace) : 0);
   const probability = shotChance(b.player.attributes, {
-    bonus: physical + extraBonus + marked,
+    bonus: physical + extraBonus + marked + tactic,
     distanceToHoop: dist,
     three,
     pressure,
@@ -1191,7 +1194,7 @@ function pass(s: MatchState, passer: Body, target: Body, lob = false): void {
   for (const d of lob ? [] : s.court[other(passer.team)]) {
     if (segmentDistance(d.x, d.y, passer.x, passer.y, target.x, target.y) > B.interceptDistance) continue;
     const edge = d.player.attributes.speed + d.player.attributes.technique - a.technique * 2;
-    if (chance(s.rng, Math.max(0.005, B.interceptBase + B.interceptSlope * edge) * (d.player.offBall === 'dynamo' ? B.dynamoSteal : 1))) {
+    if (chance(s.rng, Math.max(0.005, B.interceptBase + B.interceptSlope * edge) * (d.player.offBall === 'dynamo' ? B.dynamoSteal : 1) * (1 + B.tacticPressureIntercept * s.tactics[d.team].pressure))) {
       interceptedBy = d;
       // A bola só voa até onde o defensor corta a linha.
       const dx = target.x - passer.x;
