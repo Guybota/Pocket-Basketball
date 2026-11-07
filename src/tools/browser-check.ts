@@ -240,6 +240,21 @@ try {
   check('Desenhar a cidade demora menos de 16 ms com CPU 4× mais lento', townStats.meanMs < 16, `${townStats.meanMs.toFixed(1)} ms em ${townStats.frames} frames`);
   await coach.click('#towerChip');
   check('A torre responde pela secretária', ((await coach.locator('#staffNote').textContent()) ?? '').includes('torre'));
+  const towerCopy = async (): Promise<string> => (await coach.locator('#towerCopy').textContent()) ?? '';
+  check('A Torre diz que ainda não há cópia', (await towerCopy()).includes('Ainda não fizeste'), await towerCopy());
+  const download = coach.waitForEvent('download', { timeout: 5000 }).catch(() => null);
+  await coach.click('#exportBtn');
+  await download;
+  await coach.waitForFunction(() => document.getElementById('towerCopy')?.textContent?.startsWith('Última cópia'), undefined, { timeout: 5000 }).catch(() => {});
+  check('Exportar põe a data da cópia na Torre', /^Última cópia: \d+ \S+, \d\d:\d\d$/.test(await towerCopy()), await towerCopy());
+  await shot(coach, `${OUT}/torre-copia.png`);
+  await coach.evaluate(() => {
+    const last = JSON.parse(localStorage.getItem('pocket-basketball-ultima-copia')!);
+    localStorage.setItem('pocket-basketball-ultima-copia', JSON.stringify({ ...last, at: last.at - 8 * 24 * 3600 * 1000 }));
+  });
+  await coach.click('#towerChip');
+  check('Uma cópia com mais de 7 dias dá aviso na Torre', (await towerCopy()).includes('mais de uma semana') && (await coach.locator('#towerCopy.stale').count()) === 1, await towerCopy());
+  await shot(coach, `${OUT}/torre-copia-velha.png`);
   await coach.click('#trainBtn');
   await coach.waitForSelector('.prow');
   await shot(coach, `${OUT}/treino-lista.png`);
@@ -663,7 +678,16 @@ try {
   await moments.goto(`${url}?semente=21&divisao=2`);
   await moments.waitForFunction(() => window.__pocket !== undefined);
   await kick(moments);
+  const timeoutsAsked = async (): Promise<number> => (await moments.evaluate(() => window.__pocket.state().commands)).filter(c => c.startsWith('timeout@')).length;
   await moments.click('#timeoutBtn');
+  await moments.waitForTimeout(150);
+  await moments.screenshot({ path: `${OUT}/desconto-armado.png` });
+  check('Um toque no relógio só arma o desconto', (await moments.locator('#timeoutBtn[data-armed]').count()) === 1 && (await timeoutsAsked()) === 0);
+  await moments.waitForTimeout(3300);
+  check('O desconto armado desarma sozinho', (await moments.locator('#timeoutBtn[data-armed]').count()) === 0 && (await timeoutsAsked()) === 0);
+  await moments.click('#timeoutBtn');
+  await moments.click('#timeoutBtn');
+  check('Dois toques pedem o desconto', (await timeoutsAsked()) === 1);
   await moments.waitForSelector('.subs-title', { timeout: 30_000 });
   await shot(moments, `${OUT}/desconto.png`);
   const before = await moments.evaluate(() => window.__pocket.onCourtNames());

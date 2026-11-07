@@ -30,11 +30,14 @@ import { createHud } from './hud.ts';
 import { createIdleResume } from './idle.ts';
 import { createLayout, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
-import { exportClub, importClub, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
+import { exportClub, importClub, lastExportNote, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
 import { initTouch } from './touch.ts';
 
 const DROP_TICKS = 50;
 const MAX_STEPS_PER_FRAME = 40;
+/** O primeiro toque no relógio só o arma; desarma sozinho ao fim deste tempo, sem parar o jogo. Igual ao `3s` do style.css. */
+const TIMEOUT_CONFIRM_MS = 3000;
+let timeoutArmed = 0;
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
 const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
 // Quanto o painel do ecrã aberto precisa, na vertical, quando ele pede a parte de cima mais alta (0 é o normal).
@@ -210,9 +213,16 @@ function placeTownUi(): void {
   element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => {
     note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
-    if (document.getElementById('exportBtn')) return;
-    document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button><button type="button" class="quiet" id="settingsBtn">Definições</button></div>');
-    element('exportBtn').addEventListener('click', () => exportClub(club!));
+    const showCopy = (): void => {
+      const { text, stale } = lastExportNote(club!);
+      const line = element('towerCopy');
+      line.textContent = text;
+      line.classList.toggle('stale', stale);
+    };
+    if (document.getElementById('exportBtn')) return showCopy();
+    document.querySelector('.town-note')!.insertAdjacentHTML('beforeend', '<p class="tower-copy" id="towerCopy"></p><div class="tower-actions"><button type="button" class="quiet" id="exportBtn">Exportar clube</button><button type="button" class="quiet" id="importBtn">Importar clube</button><button type="button" class="quiet" id="settingsBtn">Definições</button></div>');
+    showCopy();
+    element('exportBtn').addEventListener('click', () => exportClub(club!, showCopy));
     element('settingsBtn').addEventListener('click', () => openSettings(audio));
     element('importBtn').addEventListener('click', importFile);
   });
@@ -538,6 +548,16 @@ function updateCoachButtons(): void {
   timeoutButton.setAttribute('aria-pressed', String(s.pendingTimeout[0] || s.timeoutTeam === 0));
   timeoutButton.setAttribute('aria-label', s.pendingTimeout[0] ? 'Desconto pedido' : `Desconto de tempo (${s.timeoutsLeft[0]})`);
   timeoutButton.disabled = s.pendingTimeout[0] || s.timeoutsLeft[0] <= 0 || s.timeoutTeam === 0;
+  if (timeoutButton.disabled) disarmTimeout();
+  // O balão vem do atributo, por isso o botão continua só com o ícone.
+  if (timeoutArmed) timeoutButton.dataset.armed = 'Pedir desconto? Toca outra vez';
+  else delete timeoutButton.dataset.armed;
+  if (timeoutArmed) timeoutButton.setAttribute('aria-label', 'Pedir desconto? Toca outra vez');
+}
+
+function disarmTimeout(): void {
+  clearTimeout(timeoutArmed);
+  timeoutArmed = 0;
 }
 
 function closeSubs(): void {
@@ -588,6 +608,15 @@ panel.addEventListener('click', event => {
   }
   const { s } = view!;
   if (target.id === 'timeoutBtn') {
+    if (!timeoutArmed) {
+      timeoutArmed = setTimeout(() => {
+        timeoutArmed = 0;
+        updateCoachButtons();
+      }, TIMEOUT_CONFIRM_MS) as unknown as number;
+      updateCoachButtons();
+      return;
+    }
+    disarmTimeout();
     requestTimeout(s, 0);
     refreshContent();
     return;
