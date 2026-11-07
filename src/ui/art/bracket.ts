@@ -45,7 +45,7 @@ export function drawBracket(canvas: HTMLCanvasElement, rounds: readonly BracketR
   // Giz esbatido, como no quadro da Federação.
   g.fillStyle = 'rgba(244,241,228,.06)';
   for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1);
-  text(g, plain(title), Math.round(W / 2 - textWidth(title, 2) / 2), 5, PAPER, 2);
+  text(g, plain(title), Math.round(W / 2 - textWidth(title, 2) / 2), 7, PAPER, 2);
   const columns = rounds.length;
   const left = 8;
   const top = 32;

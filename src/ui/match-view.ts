@@ -1,4 +1,4 @@
-import { levelOfHeight } from '../sim/teamgen.ts';
+import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import type { ClubKit, Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
@@ -127,6 +127,9 @@ export interface ViewCallbacks {
 }
 
 /** Liga a simulação ao ecrã. A simulação não sabe que esta classe existe. */
+// A lotação de cada pavilhão, da Liga Iniciados à Pro Liga 1: o campo do bairro leva umas dezenas, a arena alguns milhares.
+const CAPACITY = [120, 650, 2400, 7500] as const;
+
 export class MatchView {
   readonly s: MatchState;
   readonly periodScores: [number[], number[]] = [[], []];
@@ -167,6 +170,8 @@ export class MatchView {
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
   private forecast: { ours: number; confident: boolean } | null = null;
+  /** Quantas pessoas vieram ver o jogo, para o prognóstico. */
+  readonly spectators: number;
   /** O emblema do nosso clube, para os painéis. Os outros têm o emblema fixo. */
   readonly ownEmblem?: Emblem;
   private coachUpsetUntil: [number, number] = [0, 0];
@@ -236,6 +241,10 @@ export class MatchView {
     }
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
     const fill = 0.3 + 0.9 * Math.max(0, Math.min(1, attendance));
+    // Quantos vieram: a lotação do pavilhão vezes a enchente, mais gente contra um adversário forte para a divisão
+    // e menos contra um fraco (uma divisão de diferença vale ±50 %), e uma pequena variação de jogo para jogo.
+    const draw = division >= DIVISIONS.length ? 1 : Math.max(0.75, Math.min(1.3, 1 + (teamRating(away) - DIVISIONS[division]!.level) / 22));
+    this.spectators = division >= CAPACITY.length ? 0 : Math.round((CAPACITY[division]! * Math.min(1, fill * draw) * (0.92 + (Math.abs(seed) % 17) / 100)) / 10) * 10;
     if (this.street) {
       // Dois bancos de dois degraus atrás de cada cesto, longe dos bancos das equipas, com pouca gente: o degrau alto fica atrás.
       let n = 1;
@@ -699,27 +708,34 @@ export class MatchView {
   private drawForecast(): void {
     const { g, s, camera, forecast } = this;
     if (!forecast || s.phase !== 'intro' || s.period !== 1) return;
-    const t = Math.min(1, (s.tick + 4) / 24);
+    // A barra começa dividida ao meio e a fronteira desliza, a abrandar, até ao prognóstico; os números acompanham-na.
+    const t = Math.min(1, (s.tick + 4) / 30);
+    const eased = 1 - (1 - t) * (1 - t);
+    const share = 50 + (forecast.ours - 50) * eased;
     const w = Math.min(camera.width - 16, 300);
     const x = (camera.width - w) >> 1;
     // No fundo do campo: no meio tapava o círculo central e o emblema, que são o que a entrada das equipas mostra.
-    const y = camera.height - 50;
+    const y = camera.height - 58;
     g.fillStyle = 'rgba(27,34,48,0.88)';
-    g.fillRect(x, y, w, 44);
+    g.fillRect(x, y, w, 52);
     g.fillStyle = '#f2c230';
     g.fillRect(x, y, w, 2);
-    text(g, 'PROGNÓSTICO', x + ((w - textWidth('PROGNÓSTICO', 1)) >> 1), y + 5, '#f2c230', 1);
-    const ours = Math.round(forecast.ours * t);
-    const theirs = Math.round((100 - forecast.ours) * t);
+    text(g, 'PROGNÓSTICO', x + ((w - textWidth('PROGNÓSTICO', 1)) >> 1), y + 6, '#f2c230', 1);
+    const ours = Math.round(share);
     text(g, `${s.teams[0].short} ${ours}%`, x + 6, y + 14, '#fbf6e2', 2);
-    const right = `${theirs}% ${s.teams[1].short}`;
+    const right = `${100 - ours}% ${s.teams[1].short}`;
     text(g, right, x + w - 6 - textWidth(right, 2), y + 14, '#fbf6e2', 2);
     const barY = y + 32;
     const inner = w - 12;
+    const split = Math.round((inner * share) / 100);
     g.fillStyle = '#2b5fd9';
-    g.fillRect(x + 6, barY, Math.round((inner * forecast.ours * t) / 100), 6);
+    g.fillRect(x + 6, barY, split, 6);
     g.fillStyle = '#cf3a2c';
-    g.fillRect(x + 6 + Math.round((inner * forecast.ours * t) / 100), barY, Math.round((inner * (100 - forecast.ours) * t) / 100), 6);
+    g.fillRect(x + 6 + split, barY, inner - split, 6);
+    if (this.spectators > 0) {
+      const crowd = `${String(this.spectators).replace(/\B(?=(\d{3})+(?!\d))/g, '.')} ESPECTADORES`;
+      text(g, crowd, x + ((w - textWidth(crowd, 1)) >> 1), y + 44, '#c8c2b0', 1);
+    }
   }
 
   /** Afina a câmara e salta logo para o enquadramento novo. Serve para experimentar posições. */
@@ -1380,11 +1396,11 @@ export class MatchView {
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
       const y = Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age);
       g.fillStyle = '#1b2230';
-      // A caixa sobe 4 píxeis acima do texto para caberem os acentos.
-      g.fillRect(x - 1, y - 5, w + 2, 20);
+      // A caixa sobe 6 píxeis acima do texto para caberem os acentos.
+      g.fillRect(x - 1, y - 7, w + 2, 22);
       g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
       g.fillStyle = '#fbf6e2';
-      g.fillRect(x, y - 4, w, 18);
+      g.fillRect(x, y - 6, w, 20);
       g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
       text(g, b.label, x + 4, y + 2, '#1b2230', 2);
     }
@@ -1467,12 +1483,13 @@ export class MatchView {
       const label = b.player.name.toUpperCase();
       const w = textWidth(label, 1) + 4;
       const left = Math.max(1, Math.min(camera.width - w - 1, (x | 0) - (w >> 1)));
-      const top = Math.max(1, (y | 0) - spriteHeight(this.view(b).look) - 12);
+      // A caixa tem espaço por cima das letras para os acentos (Simão, Gonçalves) e por baixo para a cedilha.
+      const top = Math.max(1, (y | 0) - spriteHeight(this.view(b).look) - 14);
       g.fillStyle = b.team === 0 ? '#2b5fd9' : '#cf3a2c';
-      g.fillRect(left, top, w, 9);
+      g.fillRect(left, top, w, 11);
       g.fillStyle = '#1b2230';
-      g.fillRect(left, top + 9, w, 1);
-      text(g, label, left + 2, top + 2, '#fbf6e2', 1);
+      g.fillRect(left, top + 11, w, 1);
+      text(g, label, left + 2, top + 4, '#fbf6e2', 1);
     }
   }
 

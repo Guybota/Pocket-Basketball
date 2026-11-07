@@ -104,7 +104,7 @@ export function drawWardrobe(canvas: HTMLCanvasElement, kits: readonly ClubKit[]
   roster.slice(0, 3).forEach((p, i) => drawSprite(g, i === 1 ? 'run0' : 'idle', { ...lookOf(p, 'blue'), custom: chosen }, panelX + Math.floor(panelW / 2) + (i - 1) * Math.min(22, Math.floor(panelW / 4)), H - 8, i === 2, false, false));
   g.fillStyle = '#1b2230';
   g.fillRect(0, 0, Math.min(W, 118), 20);
-  text(g, 'ADVERSÁRIO', 4, 5, '#f2c230', 2);
+  text(g, 'ADVERSÁRIO', 4, 7, '#f2c230', 2);
   rival.roster.slice(0, 2).forEach((p, i) => drawSprite(g, i === 0 ? 'idle' : 'defend', lookOf(p, 'cream'), 96 + i * 14, 18, i === 1, false, false));
 }
 
@@ -183,7 +183,7 @@ export function drawMatchPoster(canvas: HTMLCanvasElement, title: string, ours: 
   g.fillRect(rx, ry, ribbonW, ribbonH);
   g.fillStyle = '#f08a55';
   g.fillRect(rx, ry, ribbonW, 2);
-  text(g, label, Math.round(W / 2 - (label.length * 4 * scale) / 2 + scale), ry + 4 + scale, '#f6efdc', scale);
+  text(g, label, Math.round(W / 2 - (label.length * 4 * scale) / 2 + scale), ry + 4 + scale * 2, '#f6efdc', scale);
   // As duas colunas: emblema, camisola no cabide e dois jogadores à frente, num estrado.
   const top = ry + ribbonH + 8;
   const columnW = pw / 2;

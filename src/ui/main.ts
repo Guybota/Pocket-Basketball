@@ -950,6 +950,8 @@ requestAnimationFrame(now => {
 // Usado pela verificação automática no browser (npm run browser-check).
 Object.assign(window, {
   __pocket: {
+    /** A vista do jogo, para as verificações desenharem casos difíceis (nomes com acentos, balões, palavras). */
+    matchView: () => view,
     hashFor: (s: number, d: number) => {
       const c = { ...newClub(s, d), week: PRESEASON_WEEKS + 1 };
       return matchHash(simulateMatch(clubTeam(c), opponentOf(c), weekSeed(c), [true, false], visitorOf(c)));

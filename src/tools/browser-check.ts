@@ -27,6 +27,8 @@ interface Pocket {
   setConfidence(value: number): void;
   timeOtherGames(): number;
   pauseAt(eventType: string, extraTicks: number, maxDistance?: number, move?: string): { phase: string; found: boolean };
+  /** A vista do jogo, para desenhar casos difíceis. */
+  matchView(): any;
   tuneCamera(t: { cy?: number; cz?: number; lookY?: number; focal?: number }): void;
   resetRenderStats(): void;
   renderStats(): { meanMs: number; frames: number };
@@ -807,6 +809,31 @@ try {
   check('Em 360x640, os alvos de toque têm pelo menos 44 px de altura (34 px nas linhas de lista)', smallTaps.length === 0, smallTaps.join(' | '));
   check('Em 360x640, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
   await reference.close();
+
+  // Textos com acentos no campo: o nome por cima de um jogador, um balão da bancada e uma palavra a flutuar.
+  // Os acentos sobem 3 linhas acima da letra; as caixas têm de os conter. As capturas são para ver a olho.
+  for (const [name, width, height] of [['360', 360, 640], ['deitado', 1280, 720]] as const) {
+    const context = await browser.newContext({ viewport: { width, height } });
+    const accents = await context.newPage();
+    await accents.goto(`${url}?semente=11&divisao=2`);
+    await accents.waitForFunction(() => window.__pocket !== undefined);
+    await accents.click('#arenaChip');
+    await accents.click('#kickoffBtn');
+    await skipIntro(accents);
+    await accents.evaluate(() => window.__pocket.pauseAt('pass', 2));
+    await accents.waitForTimeout(300);
+    await accents.evaluate(() => {
+      const v = window.__pocket.matchView();
+      const body = v.s.court[0][2];
+      body.player = { ...body.player, name: 'Simão Gonçalves' };
+      v.view(body).nameTag = v.s.tick + 100000;
+      v.crowdSay('OH NÃO... ÁRBITRO!');
+      v.floaters.push({ label: 'MÃO RÁPIDA', x: v.s.court[1][0].x, y: v.s.court[1][0].y, z: 2.6, born: v.s.tick });
+    });
+    await accents.waitForTimeout(200);
+    await accents.locator('.screen').screenshot({ path: `${OUT}/acentos-${name}.png` });
+    await context.close();
+  }
 
   // As outras divisões.
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 720 } });
