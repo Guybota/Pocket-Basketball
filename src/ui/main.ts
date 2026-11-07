@@ -416,20 +416,22 @@ function showFired(): void {
 }
 
 function matchControls(): string {
+  // Com as trocas ou as táticas abertas, nenhum separador fica escolhido: o que se vê não é nenhum deles.
+  const overlay = subsOpen || tacticsOpen;
   return `<div class="tabs" role="tablist">
-      <button type="button" role="tab" data-tab="bench" aria-selected="${tab === 'bench'}">Banco</button>
-      <button type="button" role="tab" data-tab="stats" aria-selected="${tab === 'stats'}">Stats</button>
-      <button type="button" role="tab" data-tab="league" aria-selected="${tab === 'league'}">Liga</button>
-      <button type="button" role="tab" data-tab="feed" aria-selected="${tab === 'feed'}">Relato</button>
-      <button type="button" role="tab" data-tab="cards" aria-selected="${tab === 'cards'}">Cartas</button>
+      <button type="button" role="tab" data-tab="bench" aria-selected="${!overlay && tab === 'bench'}">Banco</button>
+      <button type="button" role="tab" data-tab="stats" aria-selected="${!overlay && tab === 'stats'}">Stats</button>
+      <button type="button" role="tab" data-tab="league" aria-selected="${!overlay && tab === 'league'}">Liga</button>
+      <button type="button" role="tab" data-tab="feed" aria-selected="${!overlay && tab === 'feed'}">Relato</button>
+      <button type="button" role="tab" data-tab="cards" aria-selected="${!overlay && tab === 'cards'}">Cartas</button>
     </div>
     <div id="tabContent" class="content"></div>
     <div class="coachbar">
-      <button type="button" id="pauseBtn" class="icon" aria-pressed="${paused || pauseRequested}" aria-label="${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}" title="${paused ? 'Continuar' : 'Pausa'}"><img class="ink" alt="" src="${controlIcon(paused ? 'play' : 'pause')}"></button>
-      <button type="button" id="muteBtn" class="icon" aria-pressed="${audio.muted}" aria-label="${audio.muted ? 'Ligar o som' : 'Desligar o som'}" title="Som"><img class="ink" alt="" src="${controlIcon(audio.muted ? 'muted' : 'sound')}"></button>
-      <button type="button" id="timeoutBtn" class="icon" aria-label="Desconto de tempo" title="Desconto de tempo"><img class="ink" id="timeoutIcon" alt="" src="${clockIcon(view?.s.timeoutsLeft[0] ?? 0)}"></button>
-      <button type="button" id="subsBtn" class="icon" aria-pressed="${subsOpen}" aria-label="Trocas" title="Trocas"><img alt="" src="${subsIcon()}"></button>
-      <button type="button" id="matchTacticsBtn" class="icon" aria-pressed="${tacticsOpen}" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>
+      <button type="button" id="pauseBtn" class="icon" aria-pressed="${paused || pauseRequested}" aria-label="${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}" title="${paused ? 'Continuar' : 'Pausa'}"><img class="ink" alt="" src="${controlIcon(paused ? 'play' : 'pause')}"><small>${paused ? 'Continuar' : 'Pausa'}</small></button>
+      <button type="button" id="muteBtn" class="icon" aria-pressed="${audio.muted}" aria-label="${audio.muted ? 'Ligar o som' : 'Desligar o som'}" title="Som"><img class="ink" alt="" src="${controlIcon(audio.muted ? 'muted' : 'sound')}"><small>Som</small></button>
+      <button type="button" id="timeoutBtn" class="icon" aria-label="Desconto de tempo" title="Desconto de tempo"><img class="ink" id="timeoutIcon" alt="" src="${clockIcon(view?.s.timeoutsLeft[0] ?? 0)}"><small>Desconto</small></button>
+      <button type="button" id="subsBtn" class="icon" aria-pressed="${subsOpen}" aria-label="Trocas" title="Trocas"><img alt="" src="${subsIcon()}"><small>Trocas</small></button>
+      <button type="button" id="matchTacticsBtn" class="icon" aria-pressed="${tacticsOpen}" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"><small>Táticas</small></button>
     </div>`;
 }
 
