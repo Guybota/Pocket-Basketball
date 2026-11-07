@@ -4,7 +4,8 @@ import { cardImage } from './art/cards.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { FACILITY_IDS, facilityCost, leaguePosition, surplus, type ClubState, type FacilityId, type Objective, type SeasonRecord } from './club.ts';
 import { escapeHtml } from './panel.ts';
-import { assistantFacilities, presidentObjective, say } from './staff.ts';
+import { assistantFacilities, presidentObjective, say, type StaffId } from './staff.ts';
+import type { Mood } from './art/portrait.ts';
 
 const card = (id: CardId): string => cardImage(id, CARDS[id].category);
 
@@ -42,8 +43,13 @@ export function tacticsControls(tactics: Tactics): string {
   }).join('');
 }
 
-export function foundCards(cards: readonly CardId[]): string {
-  if (cards.length === 0) return '<p class="hint">Ainda não há cartas neste jogo. Aparecem com as jogadas da tua equipa.</p>';
+/** Um ecrã ou uma lista sem nada: o que se passa e o que fazer, sempre com o mesmo aspeto. Com quem, a frase sai da boca de alguém do clube. */
+export function emptyState(line: string, who?: StaffId, mood: Mood = 'neutral'): string {
+  return `<div class="empty-state">${who ? say(who, mood, line) : `<p>${escapeHtml(line)}</p>`}</div>`;
+}
+
+export function foundCards(cards: readonly CardId[], empty = 'Ainda nenhuma carta neste jogo. Caem com cestos, roubos, desarmes e descontos da tua equipa, e no fim há sempre mais. Usam-se no Treino.'): string {
+  if (cards.length === 0) return emptyState(empty);
   return `<div class="found">${cards.map(id => `<div class="found-card"><img src="${card(id)}" alt=""><span>${CARDS[id].name}</span></div>`).join('')}</div>`;
 }
 
@@ -112,10 +118,10 @@ export function recordsHtml(club: ClubState): string {
     row('Melhor marcador', bestScorer ? `${escapeHtml(bestScorer.topScorer)}, ${bestScorer.topScorerPoints} pontos na época ${bestScorer.season}` : null),
   ].join('');
   const gallery = legends.length === 0
-    ? '<div class="quote">Ainda ninguém se despediu do clube. Quem acabar a carreira aqui fica nesta galeria.</div>'
+    ? emptyState('Ainda ninguém se despediu do clube. Quem acabar a carreira aqui, ao fim de algumas épocas, fica nesta galeria.')
     : `<table class="mini-table"><tr><th>#</th><th>Lenda</th><th>Épocas</th><th>Jogos</th><th>Pontos</th></tr>${legends.map(l => `<tr><td>${l.shirt ?? ''}</td><td>${escapeHtml(l.player.name)}</td><td>${l.seasons}</td><td>${l.games}</td><td>${l.points}</td></tr>`).join('')}</table>`;
   return `<div class="note"><header><b>Livro de recordes</b><span>Jogos oficiais</span></header><div class="inner">
-    <table class="mini-table">${book}</table>
+    ${r.biggestWin || r.mostPoints || r.bestStreak || bestSeason ? `<table class="mini-table">${book}</table>` : emptyState('O livro ainda está em branco. Enche-se com os jogos oficiais: a primeira vitória já fica cá escrita.', 'secretary')}
     <div class="section-head plain"><span>Galeria de lendas</span><span>${legends.length}</span></div>
     ${gallery}
   </div></div>`;

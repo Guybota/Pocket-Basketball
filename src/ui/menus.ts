@@ -21,7 +21,7 @@ import { drawMatchPoster, drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
 import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, setClubShort, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
-import { TACTIC_ROWS, facilitiesHtml, objectiveHtml, recordsHtml, tacticValue } from './club-screens.ts';
+import { TACTIC_ROWS, emptyState, facilitiesHtml, objectiveHtml, recordsHtml, tacticValue } from './club-screens.ts';
 import { buyFacility, type FacilityId } from './club.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
@@ -243,6 +243,7 @@ function trainScreen(): Rendered {
     top: inside(playerCard(selected)),
     bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}`)}
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
+      ${totalCards(club) === 0 ? emptyState('Não há cartas para treinar. Ganham-se nos jogos: a jornada, um particular ou um jogo-treino.') : ''}
       ${bar(`<button type="button" class="icon back" data-go="town" aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`, `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
   };
 }
@@ -268,7 +269,7 @@ function trainCardsScreen(): Rendered {
 /** O último combo descoberto, com as cartas desenhadas, para o caderno não abrir vazio. */
 function lastCombo(): string {
   const combo = COMBOS.find(c => c.id === club.knownCombos[club.knownCombos.length - 1]);
-  if (!combo) return '<p class="hint">Ainda nenhum. Junta três cartas no treino para descobrires o primeiro.</p>';
+  if (!combo) return emptyState('Ainda nenhum. Junta três cartas no treino para descobrires o primeiro.');
   return `<div class="lastcombo"><span>O último descoberto</span><b>${esc(combo.name)}</b><div>${combo.cards.map(id => `<img alt="${esc(CARDS[id].name)}" src="${cardImage(id, CARDS[id].category)}">`).join('')}</div></div>`;
 }
 
@@ -412,7 +413,7 @@ function airportScreen(): Rendered {
     </div></div>`),
     bottom: `<div class="chalk"><h2>${guest ? esc(guest.name) : 'Sem equipa de fora'}</h2>
       <div class="chalktabs"><button type="button" id="teamExportBtn" data-act="teamExport">Exportar a minha</button><button type="button" id="teamImportBtn" data-act="teamImport">Importar equipa</button></div>
-      <div class="scroll">${games ? `<div class="starters plain"><span>Amigáveis contra equipas de fora</span></div>${games}<div class="starters plain"><span>Plantel de fora</span></div>` : ''}${rows}</div>
+      <div class="scroll">${games ? `<div class="starters plain"><span>Amigáveis contra equipas de fora</span></div>${games}<div class="starters plain"><span>Plantel de fora</span></div>` : ''}${rows || emptyState('Ainda não há equipa de fora. Pede a um amigo o ficheiro da equipa dele e toca em «Importar equipa». A tua sai em «Exportar a minha».', 'secretary')}</div>
       ${why ? `<div class="mwarn">${why}</div>` : ''}
     </div>${bar(backBtn('town'), `<button type="button" class="primary" id="guestPlayBtn" data-act="guestPlay" ${why ? 'disabled' : ''}>Jogar</button>`)}`,
   };
@@ -491,7 +492,7 @@ function marketScreen(): Rendered {
   return {
     top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
     bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}</div>
-      <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows}</div>
+      <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows || emptyState('Esta semana não aparece ninguém. A lista muda todas as semanas: volta na próxima.', 'secretary')}</div>
       ${bar(backBtn('office'), `<button type="button" class="primary" data-act="offer" ${canOffer ? '' : 'disabled'}>${pick === null ? 'Nada' : pick.clubId === null ? 'Contratar' : 'Propor'}</button>`)}`,
   };
 }
@@ -517,7 +518,7 @@ function renewalsScreen(): Rendered {
       <div class="quote">Contratos de um ano. Cada jogador pede o salário que vale agora; quem não ficar sai, e abaixo de 10 jogadores entram livres.</div>
     </div></div>`),
     bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span><span style="grid-column:span 7;text-align:right">Era › Pede</span></div>
-      <div class="scroll">${rows}</div>
+      <div class="scroll">${rows || emptyState('Este ano não há contratos para renovar. Podes começar a época.', 'secretary')}</div>
       ${bar(`<button type="button" class="primary" id="renewalsConfirm" data-act="confirmRenewals" ${left < 0 ? 'disabled' : ''}>${left < 0 ? 'Acima do orçamento' : 'Começar a época'}</button>`)}`,
   };
 }
@@ -570,7 +571,7 @@ function rivalScreen(): Rendered {
     bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
       <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Estatísticas da época</button></div>
       <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}</div>
-      <div class="scroll">${rows}</div>
+      <div class="scroll">${rivalStats && lines.every(l => l.games === 0) ? emptyState('Ainda não jogaram esta época. Os números aparecem depois do primeiro jogo oficial; até lá, vê os atributos.', 'assistant') : ''}${rows}</div>
       ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
   };
 }
@@ -815,15 +816,16 @@ function federationScreen(): Rendered {
     </button>`).join('');
   const top = federationPlayer >= 0
     ? inside(federationClub === PLAYER_CLUB ? playerCard(player) : clubPlayerCard(team, player))
-    : inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(crestOf)}"> ${esc(team.name)}</b><span>${own && table.every(r => r.played === 0) ? 'Sem jogos' : `Lugar ${position + 1}`}</span></header><div class="inner">
+    : inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(crestOf)}"> ${esc(team.name)}</b><span>${!own ? 'Outra divisão' : table.every(r => r.played === 0) ? 'Sem jogos' : `Lugar ${position + 1}`}</span></header><div class="inner">
     ${sheet}
-    <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>${row.wins} V</span><span>${row.losses} D</span><span>${row.pointsFor} pts</span></div>
+    ${!own ? emptyState('Os jogos desta divisão não se seguem daqui. Vês o plantel e como joga; os resultados, só quando estivermos na mesma liga.') : row.played === 0 ? emptyState('Ainda sem jogos esta época. As vitórias e os pontos contam-se a partir da primeira jornada.') : `<div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>${row.wins} V</span><span>${row.losses} D</span><span>${row.pointsFor} pts</span></div>`}
     ${form ? `<table class="mini-table"><tr><th>Últimos jogos</th><th></th></tr>${form}</table>` : ''}
     <div class="fedsquad">${squadRowsHtml}</div>
   </div></div>`);
   let body = '';
   if (federationTab === 'table') {
-    body = `<div class="crow head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>${table.map((r, i) => {
+    const note = !own ? emptyState('Nesta divisão não seguimos os jogos: os clubes estão por ordem de força. Toca num para ver a ficha.') : table.every(r => r.played === 0) ? emptyState('A liga ainda não começou. A tabela mexe depois da primeira jornada.') : '';
+    body = `${note}${own ? '<div class="crow head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>' : ''}${table.map((r, i) => {
       const format = playoffFormat(club);
       const up = format ? format.places.includes(i) : i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
       const down = i >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0;
@@ -892,7 +894,7 @@ function trophyScreen(): Rendered {
   return {
     top: `${fullCanvas('shelf')}<div class="tnote"><b>${esc(t.won ? t.name : `${t.name} (por ganhar)`)}</b><span>${esc(t.detail)}</span></div>`,
     bottom: `<div class="matchhead"><span>Carreira do treinador</span><b>${won} de ${trophies.length} troféus e prémios</b></div>
-      <div class="scroll">${trophies.map((item, n) => `<button type="button" class="trow" data-trophy="${n}" aria-pressed="${selectedTrophy === n}"><i class="${item.won ? 'yes' : ''}"></i><span>${esc(item.won ? item.name : '???')}</span><small>${item.won ? 'Ganho' : 'Por ganhar'}</small></button>`).join('')}</div>
+      <div class="scroll">${won === 0 ? emptyState('A vitrina ainda está vazia. Cada título, taça e prémio que ganhares fica aqui, e vai contigo para outro clube.', 'secretary') : ''}${trophies.map((item, n) => `<button type="button" class="trow" data-trophy="${n}" aria-pressed="${selectedTrophy === n}"><i class="${item.won ? 'yes' : ''}"></i><span>${esc(item.won ? item.name : '???')}</span><small>${item.won ? 'Ganho' : 'Por ganhar'}</small></button>`).join('')}</div>
       ${bar('<button type="button" class="back" data-office="board">‹ Voltar</button>')}`,
     after: () => drawShelf(element<HTMLCanvasElement>('shelf'), trophies),
   };
@@ -917,7 +919,7 @@ function officeScreen(): Rendered {
     </div></div>`,
     history: `<div class="note"><header><b>Historial</b><span>${club.wins} V · ${club.losses} D · ${titles} títulos</span></header><div class="inner">${seasons
       ? `<table class="mini-table"><tr><th>Época</th><th>Divisão</th><th>Lugar</th><th>V-D</th><th></th></tr>${seasons}</table>`
-      : '<div class="quote">Ainda não acabou nenhuma época. Aqui ficam as épocas acabadas e os títulos do clube.</div>'}</div></div>`,
+      : emptyState('Ainda não acabou nenhuma época. Quando acabar, fica aqui escrita, com o lugar e os títulos.', 'secretary')}</div></div>`,
     records: recordsHtml(club),
     facilities: facilitiesHtml(club),
     reset: `<div class="note"><header><b>Treinar outro clube</b></header><div class="inner"><div class="quote">Perdes o ${esc(club.team.name)}, na semana ${club.week}, assim que criares o novo clube. Os teus troféus vão contigo.</div><button type="button" id="resetYes" data-act="newClub">Escolher novo clube</button><button type="button" id="resetNo" data-office="board">Ficar com este clube</button></div></div>`,

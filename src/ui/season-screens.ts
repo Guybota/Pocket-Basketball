@@ -3,7 +3,7 @@ import { LEAGUE_SIZE, MOVING_PLACES, PRESEASON_WEEKS, SEASON_WEEKS, weekCup, wee
 import { DIVISIONS } from '../sim/teamgen.ts';
 import type { TownPlace } from './art/town.ts';
 import { leagueIcon } from './art/leagues.ts';
-import { foundCards, objectiveResult } from './club-screens.ts';
+import { emptyState, foundCards, objectiveResult } from './club-screens.ts';
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord, weeksToNextGame } from './club.ts';
@@ -172,7 +172,7 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       ${objectiveResult(record)}
       ${record.objective ? say('president', ...presidentObjectiveResult(record.objective.met)) : ''}
       ${awardsLines(record)}
-      ${record.prizeMoney > 0 ? `<div class="league-line"><span>Prémios</span><span>${record.prizeMoney} mil</span></div>` : ''}
+      ${record.prizeMoney > 0 ? `<div class="league-line"><span>Prémios</span><span>${record.prizeMoney} mil</span></div>` : emptyState('Este ano não houve prémio em dinheiro. Pagam as taças ganhas e as finais do playoff.')}
       ${record.carriedMoney ? `<div class="league-line"><span>Passa para a próxima época</span><span>${record.carriedMoney} mil</span></div>` : ''}
       ${record.departures.length > 0 ? `<div class="league-line"><span>Saíram, com o potencial no fim</span><span>${record.departures.map(escapeHtml).join(', ')}</span></div>` : ''}
       ${record.arrivals.length > 0 ? `<div class="league-line"><span>Chegaram</span><span>${record.arrivals.map(escapeHtml).join(', ')}</span></div>` : ''}
@@ -180,7 +180,7 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       ${record.continentalExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.continental}</span><span>${record.continentalExit >= CUP_ROUNDS.continental.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('continental', record.continentalExit).toLowerCase()}`}</span></div>`}
       ${record.worldExit === null ? '' : `<div class="league-line"><span>${CUP_NAMES.world}</span><span>${record.worldExit >= CUP_ROUNDS.world.length ? 'Campeões do mundo!' : 'Perdida a final'}</span></div>`}
       <div class="section-head plain"><span>Prémio da época</span><span>${record.cards.length} cartas</span></div>
-      ${foundCards(record.cards)}
+      ${foundCards(record.cards, 'Não houve cartas de prémio nesta época. Dá-as a classificação final e as taças.')}
       ${confidenceBar(club.confidence)}
     </div>
     <div class="end-actions"><button type="button" class="primary" id="seasonContinue">${club.fired ? 'Continuar' : `Começar a época ${club.season}`}</button></div>`;

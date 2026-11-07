@@ -1223,3 +1223,11 @@ html.high-contrast button:focus-visible { outline-color: var(--ink); outline-wid
 html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 .tower-copy { margin: 0; font: 400 15px/1.15 var(--ui-sm); }
 .tower-copy.stale { color: #9a3412; }
+
+/* Estados vazios: um só aspeto para dizer o que falta e o que fazer (emptyState, em club-screens.ts). */
+.empty-state { flex: none; margin: 6px 3px; padding: 8px 10px; border: 2px dashed var(--line); color: var(--muted); font: 400 15px/1.2 var(--small); text-align: center; }
+.empty-state p { margin: 0; }
+.empty-state .say { padding: 0; background: none; border: 0; }
+.chalk .empty-state { color: var(--chalk); border-color: var(--chalk-2); }
+.chalk .empty-state .say { color: var(--chalk); }
+.chalk .empty-state .say b { color: var(--gold); }

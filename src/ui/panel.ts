@@ -8,7 +8,7 @@ import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
 import { faceImage, spriteImage, type Look } from './art/sprites.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { SPOTS, TICKS_PER_SECOND } from '../sim/court.ts';
-import { foundCards } from './club-screens.ts';
+import { emptyState, foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
 import type { MatchView } from './match-view.ts';
 import { assistantReport, say } from './staff.ts';
@@ -111,7 +111,7 @@ const minutesText = (seconds: number): string => `${Math.floor(Math.round(second
 
 /** A aba da liga: os outros jogos da jornada no mesmo ponto do relógio, e a classificação como vai neste momento. */
 function leagueTab(view: MatchView, live: LiveLeague | null): string {
-  if (!live) return '<p class="hint">Os outros jogos só se veem nas semanas de jornada ou de taça.</p>';
+  if (!live) return emptyState('Hoje não há outros jogos a seguir. Os resultados dos outros só aparecem nas semanas de jornada ou de taça.');
   const { s } = view;
   const { club, others } = live;
   const short = (id: number): string => escapeHtml(club.clubs[id]!.short);
@@ -124,7 +124,7 @@ function leagueTab(view: MatchView, live: LiveLeague | null): string {
     const diff = row.pointsFor - row.pointsAgainst;
     return `<div class="lrow${row.club === PLAYER_CLUB ? ' mine' : ''}"><span>${i + 1}</span><span class="name">${short(row.club)}</span><span>${row.played}</span><span>${row.wins}</span><span>${row.losses}</span><span>${diff > 0 ? '+' : ''}${diff}</span></div>`;
   }).join('') ?? '';
-  return `<div class="section-head plain"><span>Outros jogos</span><span>Ao mesmo tempo do nosso</span></div>${games || '<p class="hint">Não há outros jogos a decorrer.</p>'}
+  return `<div class="section-head plain"><span>Outros jogos</span><span>Ao mesmo tempo do nosso</span></div>${games || emptyState('Não há outros jogos a decorrer neste momento.')}
     ${table ? `<div class="section-head plain"><span>Classificação ao vivo</span></div><div class="lrow head"><span>#</span><span class="name"></span><span>J</span><span>V</span><span>D</span><span>Dif</span></div>${rows}` : ''}`;
 }
 
@@ -311,8 +311,13 @@ export function panelContent(view: MatchView, tab: PanelTab, found: readonly Car
     case 'league': return leagueTab(view, live);
     case 'bench': return benchTab(view);
     case 'stats': return statsTab(view);
-    case 'feed': return feedLines(view.s, 30);
-    case 'cards': return foundCards(found);
+    case 'feed': {
+      const lines = feedLines(view.s, 30);
+      // No arranque há uma ou duas linhas: diz-se o que vem, para o resto do separador não parecer avariado.
+      if (!lines) return emptyState('O relato começa com a bola ao alto. As jogadas aparecem aqui, a mais recente em cima.');
+      return view.s.events.length < 6 ? `${lines}<p class="hint">As jogadas seguintes vão aparecendo por cima destas.</p>` : lines;
+    }
+    case 'cards': return found.length ? `${foundCards(found)}<p class="hint">Cartas ganhas neste jogo: ${found.length}. No fim há mais, e usam-se no Treino.</p>` : foundCards(found);
   }
 }
 
