@@ -128,6 +128,8 @@ export class MatchView {
   /** Numa paragem a imagem aproxima-se do banco da casa: 1 é a vista normal, 2 o dobro. */
   private zoom = 1;
   private scene: HTMLCanvasElement | null = null;
+  /** A tela `scene` ficou para trás: a última imagem foi direta para o ecrã. */
+  private sceneStale = true;
   /** Nuvens de poeira deixadas pelos pés de quem sprinta: onde estavam, e em que passo. */
   private readonly puffs: { x: number; y: number; born: number; side: number }[] = [];
   /** Quem lançou e ainda está no ar: o passo em que saltou. */
@@ -1085,34 +1087,40 @@ export class MatchView {
     const excited = s.tick < this.excitedUntil;
     const beat = (this.animTick >> 2) % 2;
     const crowdFrame = excited ? (this.excitement >= 0.5 ? 3 : 1) + beat : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
-    camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
+    let fresh = camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
     if (excited && theme.flashes && !this.reducedMotion) {
-      // Flashes de fotografia nas bancadas.
+      // Flashes de fotografia nas bancadas: sujam os píxeis do chão, que têm de se refazer na imagem seguinte.
       const { width, height } = camera;
       for (let i = 0; i < 6; i++) {
         const y = Math.floor(Math.random() * height * 0.25);
         const x = Math.floor(Math.random() * width);
         this.pixels[y * width + x] = 0xffffffff;
       }
+      camera.forgetScene();
+      fresh = true;
     }
-    // Com a imagem aproximada, o chão passa por uma tela à parte: `putImageData` ignora a aproximação, `drawImage` não.
-    // Sem aproximação vai direto, que é uma cópia a menos por imagem.
-    if (this.zoom > 1.001) {
+    // Com a imagem aproximada, ou com a câmara parada, o chão passa por uma tela à parte: `putImageData` ignora a aproximação,
+    // `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai direto, que é uma cópia a menos.
+    if (this.zoom > 1.001 || !fresh) {
       if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
         this.scene = document.createElement('canvas');
         this.scene.width = camera.width;
         this.scene.height = camera.height;
+        this.sceneStale = true;
       }
-      this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+      if (fresh || this.sceneStale) {
+        this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+        if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
+      }
+      this.sceneStale = false;
       g.drawImage(this.scene, 0, 0);
     } else {
       g.putImageData(this.image, 0, 0);
+      if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
+      this.sceneStale = true;
     }
     this.drawOutsiders();
-    if (this.fence) {
-      this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
-      g.drawImage(this.fence.canvas, 0, 0);
-    }
+    if (this.fence) g.drawImage(this.fence.canvas, 0, 0);
     this.drawFans();
     const drawables: { y: number; draw: () => void }[] = [];
     this.addSideline(drawables, time);

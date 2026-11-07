@@ -1,6 +1,7 @@
 import { HOOP_U, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS } from '../../sim/court.ts';
 import { emblemCanvas, type Emblem } from './kit.ts';
 import { INK } from './sprites.ts';
+import { remember } from './cache.ts';
 
 type Rgb = readonly [number, number, number];
 
@@ -326,24 +327,37 @@ function halve(level: { data: Uint32Array; w: number; h: number; scale: number }
 
 /** Um píxel do chão: ao longe cada linha do ecrã cobre muitos texels na vertical, por isso faz-se a média de `k` ao longo desse troço.
  * Com um só texel por linha saíam traços horizontais que saltavam com a câmara. */
-function floorSample(level: { data: Uint32Array; w: number; h: number; scale: number }, x: number, y: number, stepX: number, stepY: number, k: number): number {
+function floorSample(level: FloorLevel, x: number, y: number, offX: Float64Array, offY: Float64Array, k: number): number {
   // Na horizontal mistura-se entre dois texels vizinhos: sem isso, cada coluna saltava de texel em texel e a textura tremia com a câmara.
+  const { data, w, h, scale } = level;
   let r = 0;
   let g = 0;
   let b = 0;
   for (let i = 0; i < k; i++) {
-    const f = (i + 0.5) / k;
-    const uf = Math.min(level.w - 1.001, Math.max(0, (x + stepX * f - WALL_NEAR_X) * level.scale - 0.5));
+    const uf = Math.min(w - 1.001, Math.max(0, (x + offX[i]! - WALL_NEAR_X) * scale - 0.5));
     const u0 = uf | 0;
     const fx = uf - u0;
-    const v = Math.min(level.h - 1, Math.max(0, ((y + stepY * f - WALL_Y) * level.scale) | 0));
-    const p0 = level.data[v * level.w + u0]!;
-    const p1 = level.data[v * level.w + u0 + 1]!;
+    const v = Math.min(h - 1, Math.max(0, ((y + offY[i]! - WALL_Y) * scale) | 0));
+    const p0 = data[v * w + u0]!;
+    const p1 = data[v * w + u0 + 1]!;
     r += (p0 & 255) * (1 - fx) + (p1 & 255) * fx;
     g += ((p0 >> 8) & 255) * (1 - fx) + ((p1 >> 8) & 255) * fx;
     b += ((p0 >> 16) & 255) * (1 - fx) + ((p1 >> 16) & 255) * fx;
   }
-  return packRgb([r / k, g / k, b / k]);
+  // As médias já ficam entre 0 e 255: dispensa-se o `packRgb`, que corre para cada píxel do chão.
+  return (255 << 24) | (((b / k) & 255) << 16) | (((g / k) & 255) << 8) | ((r / k) & 255);
+}
+
+type FloorLevel = { data: Uint32Array; w: number; h: number; scale: number };
+// Os desvios de cada amostra ao longo do troço: iguais em toda a linha, por isso calculam-se uma vez por linha.
+const sampleOffX = new Float64Array(6);
+const sampleOffY = new Float64Array(6);
+function sampleOffsets(stepX: number, stepY: number, k: number): void {
+  for (let i = 0; i < k; i++) {
+    const f = (i + 0.5) / k;
+    sampleOffX[i] = stepX * f;
+    sampleOffY[i] = stepY * f;
+  }
 }
 
 /** O nível do chão para uma fila: quantos texels cabem num píxel a esta distância. Um píxel vale `floorT` metros. */
@@ -482,8 +496,8 @@ export function courtTextures(division: number, accent?: string, emblem?: Emblem
   const floorLevels: CourtTextures['floorLevels'] = [{ data: floor, w: floorW, h: floorH, scale: FLOOR_SCALE }];
   for (let level = 1; level <= 2; level++) floorLevels.push(halve(floorLevels[level - 1]!));
   const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH };
-  textureCache.set(key, textures);
-  return textures;
+  // Cada pavilhão ocupa uns 12 MB e cada clube da casa tem o seu: só ficam os últimos.
+  return remember(textureCache, key, textures, 3);
 }
 
 export class Camera {
@@ -563,13 +577,14 @@ export class Camera {
     const stepX = floorTN < Infinity && floorT < Infinity ? (cx + (midX - up[0]) * floorTN) - (cx + midX * floorT) : 0;
     const stepY = floorTN < Infinity && floorT < Infinity ? (cy + (midY - up[1]) * floorTN) - (cy + midY * floorT) : 0;
     const samples = Math.min(6, Math.max(1, Math.round(Math.sqrt(stepX * stepX + stepY * stepY) * level.scale)));
+    sampleOffsets(stepX, stepY, samples);
     for (let sx = 0; sx < width; sx++) {
       const dirX = baseX + right[0] * sx;
       const dirY = baseY + right[1] * sx;
       const hitX = cx + dirX * floorT;
       const hitY = cy + dirY * floorT;
       if (rz < 0 && hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
-        pixels[row + sx] = floorSample(level, hitX, hitY, stepX, stepY, samples);
+        pixels[row + sx] = floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
         // A camada da rede também se limpa aqui: senão ficavam os píxeis da frame anterior a arrastar sobre o campo quando a câmara rodava.
         if (fence) fence[row + sx] = 0;
         continue;
@@ -667,11 +682,22 @@ export class Camera {
     ];
   }
 
-  /** Desenha o chão e as paredes, píxel a píxel, como o Modo 7 das consolas antigas. */
-  drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number, fence?: Uint32Array): void {
+  private lastScene: unknown[] = [];
+
+  /** Esquece a última imagem: para quando se pinta por cima dos píxeis que `drawScene` deixou. */
+  forgetScene(): void {
+    this.lastScene = [];
+  }
+
+  /** Desenha o chão e as paredes, píxel a píxel, como o Modo 7 das consolas antigas.
+   * Com a câmara parada e a mesma bancada, os píxeis já lá estão: não se refaz nada e devolve `false`. */
+  drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number, fence?: Uint32Array): boolean {
+    const key = [pixels, t, crowdFrame, fence, this.lookX, this.lookY, this.tuning, this.width, this.height];
+    if (key.every((v, i) => v === this.lastScene[i])) return false;
+    this.lastScene = key;
     if (t.theme.open) {
       this.drawOpenScene(pixels, t, fence);
-      return;
+      return true;
     }
     const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
     const wall = t.walls[crowdFrame]!;
@@ -697,13 +723,14 @@ export class Camera {
       const stepX = floorTN < Infinity && floorT < Infinity ? (cx + (midX - up[0]) * floorTN) - (cx + midX * floorT) : 0;
       const stepY = floorTN < Infinity && floorT < Infinity ? (cy + (midY - up[1]) * floorTN) - (cy + midY * floorT) : 0;
       const samples = Math.min(6, Math.max(1, Math.round(Math.sqrt(stepX * stepX + stepY * stepY) * level.scale)));
+      sampleOffsets(stepX, stepY, samples);
       for (let sx = 0; sx < width; sx++) {
         const dirX = baseX + right[0] * sx;
         const dirY = baseY + right[1] * sx;
         const hitX = cx + dirX * floorT;
         const hitY = cy + dirY * floorT;
         if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
-          pixels[row + sx] = floorSample(level, hitX, hitY, stepX, stepY, samples);
+          pixels[row + sx] = floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
           continue;
         }
         let hit = Infinity;
@@ -740,6 +767,7 @@ export class Camera {
         pixels[row + sx] = wall[wv * t.wallW + wu]!;
       }
     }
+    return true;
   }
 }
 

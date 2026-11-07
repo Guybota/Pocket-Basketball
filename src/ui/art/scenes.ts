@@ -4,6 +4,7 @@ import { fillPolygon } from './court.ts';
 import { text } from './font.ts';
 import { kitKey, shadeOf, type ClubKit } from './kit.ts';
 import { INK, drawBall, drawShadow, drawSprite, lookOf, type Look, type PoseName } from './sprites.ts';
+import { remember } from './cache.ts';
 
 function projector(ox: number, oy: number, th: number): (i: number, j: number, k?: number) => [number, number] {
   return (i, j, k = 0) => [ox + (i - j) * th * 2, oy + (i + j) * th - k * th * 2];
@@ -329,7 +330,7 @@ export function drawSceneFrame(canvas: HTMLCanvasElement, kind: SceneKind, roste
     const b = base.getContext('2d')!;
     if (kind === 'gym') paintGym(b, W, H);
     else paintLocker(b, W, H, kit);
-    sceneCache.set(key, base);
+    remember(sceneCache, key, base, 6);
   }
   g.imageSmoothingEnabled = false;
   g.drawImage(base, 0, 0);

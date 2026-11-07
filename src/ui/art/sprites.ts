@@ -3,6 +3,7 @@ import type { Player } from '../../sim/types.ts';
 import { pixelsForHeight } from './body.ts';
 import { kitKey, shadeOf, usesSecondOnBody, type ClubKit } from './kit.ts';
 import { INK } from './palette.ts';
+import { remember } from './cache.ts';
 
 export { INK };
 
@@ -383,7 +384,7 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
   if (!sprite) {
     const built = buildSprite(pose, look, back, withBall);
     sprite = lean === undefined ? built : leaned(built, lean);
-    cache.set(key, sprite);
+    remember(cache, key, sprite, 3000);
   }
   if (lean !== undefined) {
     // À medida que cai, o corpo fica centrado onde estava e encostado ao chão.
@@ -442,7 +443,7 @@ export function spriteImage(look: Look, pose: PoseName = 'idle'): string {
     const g = canvas.getContext('2d')!;
     drawSprite(g, pose, look, 12, canvas.height - 2, false, false, false);
     url = canvas.toDataURL();
-    spriteCache.set(key, url);
+    remember(spriteCache, key, url, 600);
   }
   return url;
 }
@@ -457,7 +458,7 @@ export function faceImage(look: Look): string {
     const g = canvas.getContext('2d')!;
     drawSprite(g, 'idle', look, 7, look.legs + look.torso + 11, false, false, false);
     url = canvas.toDataURL();
-    faceCache.set(key, url);
+    remember(faceCache, key, url, 600);
   }
   return url;
 }

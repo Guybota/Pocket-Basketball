@@ -5,6 +5,7 @@ import { text } from './font.ts';
 import { kitKey, usesSecond, type ClubKit } from './kit.ts';
 import { INK } from './palette.ts';
 import { drawSprite, lookOf } from './sprites.ts';
+import { remember } from './cache.ts';
 
 const SHIRT_W = 18;
 const KIT_H = 40;
@@ -51,7 +52,7 @@ export function kitImage(kit: ClubKit): string {
     canvas.height = KIT_H;
     drawKitFlat(canvas.getContext('2d')!, kit, 0, 0, 1);
     url = canvas.toDataURL();
-    kitImages.set(key, url);
+    remember(kitImages, key, url, 300);
   }
   return url;
 }

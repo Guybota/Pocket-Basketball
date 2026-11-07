@@ -1,6 +1,7 @@
 // O equipamento e o emblema do clube são dados guardados. Só os desenhos é que precisam de um browser.
 import { text } from './font.ts';
 import { INK } from './palette.ts';
+import { remember } from './cache.ts';
 
 export type KitPattern = 'plain' | 'stripes' | 'band' | 'half' | 'sash' | 'hoops' | 'pin' | 'sides';
 
@@ -189,7 +190,7 @@ export function emblemImage(emblem: Emblem): string {
   const cached = emblemCache.get(key);
   if (cached) return cached;
   const url = emblemCanvas(emblem).toDataURL();
-  emblemCache.set(key, url);
+  remember(emblemCache, key, url, 300);
   return url;
 }
 
@@ -253,6 +254,6 @@ export function emblemCanvas(emblem: Emblem): HTMLCanvasElement {
     g.fillRect(left - 1, top, emblem.letters.length * 4 + 1, 7);
     text(g, emblem.letters, left, top + 1, '#ffffff', 1);
   }
-  emblemCanvases.set(key, canvas);
+  remember(emblemCanvases, key, canvas, 300);
   return canvas;
 }

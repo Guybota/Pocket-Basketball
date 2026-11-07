@@ -1,4 +1,5 @@
 import { BUILDS, INK, hairColor, kitColors, kitId, skinColors, type Look } from './sprites.ts';
+import { remember } from './cache.ts';
 
 // Retrato da ficha de jogador: 28×28 píxeis. Cabeça grande, pele lisa e poucos traços.
 // A sombra fica só no nariz, na orelha e no pescoço: pintar a cara suja o maxilar a esta resolução.
@@ -300,6 +301,6 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
     }
   }
   const url = canvas.toDataURL();
-  cache.set(key, url);
+  remember(cache, key, url, 600);
   return url;
 }
