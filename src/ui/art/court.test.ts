@@ -19,6 +19,16 @@ describe('pavilhão', () => {
     expect(red.floor.some((p, i) => p !== plain.floor[i])).toBe(true);
     expect(red.walls[0]!.every((p, i) => p === plain.walls[0]![i])).toBe(true);
   });
+
+  it('a hora e a chuva mudam a luz; só chove no campo de rua', { tags: ['slow'] }, () => {
+    const day = courtTextures(0, undefined, undefined, { hour: 'day', rain: false, sun: false });
+    const night = courtTextures(0, undefined, undefined, { hour: 'night', rain: false, sun: false });
+    const green = (t: typeof day): number => t.floor.reduce((sum, p) => sum + ((p >> 8) & 255), 0);
+    expect(green(night)).toBeLessThan(green(day));
+    expect(night.sky).not.toBe(day.sky);
+    expect(courtTextures(0, undefined, undefined, { hour: 'day', rain: true, sun: false }).theme.rain).toBe(true);
+    expect(courtTextures(2, undefined, undefined, { hour: 'day', rain: true, sun: false }).theme.rain).toBe(false);
+  });
 });
 
 describe('polígonos', () => {

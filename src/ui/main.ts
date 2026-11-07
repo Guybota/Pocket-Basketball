@@ -282,7 +282,7 @@ function makeView(kind: GameKind, rivalId: number): void {
       soundsPlayed.add(name);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
-  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current), guestOf(rivalId)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem, guestOf(rivalId)?.emblem);
+  }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current), guestOf(rivalId)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem, guestOf(rivalId)?.emblem, weatherFor(current.week));
   accumulator = 0;
   finished = false;
   cardBody = null;
@@ -746,7 +746,7 @@ function startReplay(): void {
     sound: name => {
       if (live) audio.play(name);
     },
-  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!), guestOf(rivalOf)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem, guestOf(rivalOf)?.emblem);
+  }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!), guestOf(rivalOf)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem, guestOf(rivalOf)?.emblem, weatherFor(club!.week));
   live = true;
   replay.snapCamera();
   replayUntil = tick + 30;

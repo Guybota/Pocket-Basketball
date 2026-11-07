@@ -2,8 +2,17 @@ import { HOOP_U, THREE_CORNER_MAX_U, THREE_CORNER_V, THREE_RADIUS } from '../../
 import { emblemCanvas, type Emblem } from './kit.ts';
 import { INK } from './sprites.ts';
 import { remember } from './cache.ts';
+import { FONT } from './font.ts';
 
 type Rgb = readonly [number, number, number];
+
+/** A hora e o tempo do jogo: mudam a luz, as janelas e, no campo de rua, o céu e o chão molhado. */
+export interface Sky {
+  hour: 'day' | 'evening' | 'night';
+  rain: boolean;
+  /** Um dia de sol forte. */
+  sun: boolean;
+}
 
 // Há espaço à volta do campo antes das bancadas, como num pavilhão a sério.
 const WALL_NEAR_X = -4;
@@ -52,8 +61,9 @@ export const TUNNEL = { x0: 12.6, x1: 15.4, height: 2.6 } as const;
 // Assim, ao alternar entre duas, não salta toda a gente ao mesmo tempo.
 export const CROWD_FRAMES = 5;
 
-// Marcas inventadas para a publicidade. Sem acentos, porque a fonte 3x5 não os tem.
-const SPONSORS = ['SOPA DA AVO', 'PASTEL BAR', 'SESTA FM', 'BIFANA MAX', 'BAILARICO', 'CAFE CENTRAL'] as const;
+// Marcas inventadas para a publicidade, sem acentos.
+// Cada pavilhão começa a lista num sítio diferente, por isso as placas mudam de clube para clube.
+const SPONSORS = ['SOPA DA AVO', 'PASTEL BAR', 'SESTA FM', 'BIFANA MAX', 'BAILARICO', 'CAFE CENTRAL', 'BICA BOA', 'TALHO LUIS', 'GRELHADOS', 'BOLO REI', 'TREMOCO FM', 'FERRAGENS ZE'] as const;
 
 const hash = (a: number, b: number): number => {
   const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
@@ -61,6 +71,9 @@ const hash = (a: number, b: number): number => {
 };
 const frac = (value: number): number => ((value % 1) + 1) % 1;
 const shade = (c: Rgb, k: number): Rgb => [c[0] * k, c[1] * k, c[2] * k];
+const tinted = (c: Rgb, k: Rgb | undefined): Rgb => (k ? [c[0] * k[0], c[1] * k[1], c[2] * k[2]] : c);
+const mix = (a: Rgb, b: Rgb, k: number): Rgb => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+const hexRgb = (c: string): Rgb => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
 
 export interface CourtTheme {
   name: string;
@@ -71,8 +84,25 @@ export interface CourtTheme {
   center: Rgb;
   line(noise: number): Rgb;
   apron(noise: number): Rgb;
-  /** Tudo o que não é público nem publicidade. */
-  wall(u: number, z: number): Rgb;
+  /** Tudo o que não é público nem publicidade. Recebe o próprio tema, para ler a cor da parede, as janelas e a hora. */
+  wall(u: number, z: number, t: CourtTheme): Rgb;
+  /** A cor lisa da parede, e as janelas altas (cor e quantas por metro), onde as houver. */
+  wallColor: Rgb;
+  windows?: { color: Rgb; period: number };
+  /** Ao ar livre: a cor do céu. */
+  sky?: Rgb;
+  /** A luz do dia ou da noite, multiplicada em cada canal do chão e das paredes. */
+  tint?: Rgb;
+  hour?: Sky['hour'];
+  rain?: boolean;
+  /** De 0 a 1: onde começa a lista de patrocinadores e por quanto se desloca o pano de fundo do bairro. Muda de clube para clube. */
+  shift?: number;
+  /** O soalho dentro da linha de 3 pontos fica mais escuro, envernizado de outra cor. */
+  stain?: boolean;
+  /** A faixa da claque no muro da bancada, com as cores do clube. */
+  banner?: readonly [Rgb, Rgb];
+  /** A mascote do clube, se tiver: 0 galo, 1 urso, 2 gato. Desenha-a a vista do jogo. */
+  mascot?: number;
   /** Quanto a bancada recua por cada metro que sobe. Zero é uma parede a pique. */
   slope: number;
   /** Ao ar livre: em vez de paredes há uma rede fina, o exterior por trás e um pano de fundo ao longe; `wall` é esse fundo. */
@@ -112,18 +142,26 @@ export const THEMES: readonly CourtTheme[] = [
       const b = 62 + n * 4;
       return [b, b + 8, b + 18];
     },
-    wall: (u, z) => {
-      // O pano de fundo, ao longe: prédios baixos e árvores do bairro, e o céu por cima.
+    wall: (u0, z, t) => {
+      // O pano de fundo, ao longe: prédios baixos e árvores do bairro, e o céu por cima. Cada bairro tem os seus prédios.
+      const u = u0 + (t.shift ?? 0) * 40;
+      const night = t.hour === 'night';
       const block = Math.floor(u / 5.5);
       const height = 2.3 + hash(block, 11) * 3.6;
       if (hash(block, 5) < 0.55 && z < height) {
         const tones: Rgb[] = [[196, 150, 112], [176, 168, 150], [150, 120, 104]];
-        const tone = tones[block % tones.length]!;
+        const tone = tones[Math.abs(block) % tones.length]!;
         const window = frac(u / 5.5) > 0.15 && frac(u / 5.5) < 0.85 && frac((u * 1.4) % 1) < 0.35 && frac(z * 1.1) > 0.35 && frac(z * 1.1) < 0.75;
-        return window ? [228, 220, 170] : z > height - 0.2 ? shade(tone, 0.7) : tone;
+        // À noite só algumas janelas estão acesas, e o resto do prédio fica no escuro.
+        if (window) return !night ? [228, 220, 170] : hash(Math.floor(u * 1.4), Math.floor(z * 1.1)) < 0.55 ? [250, 214, 130] : [40, 44, 66];
+        const c = z > height - 0.2 ? shade(tone, 0.7) : tone;
+        return night ? shade(c, 0.36) : t.rain ? shade(c, 0.8) : c;
       }
-      return Math.sin(u * 0.9) * 0.7 + 3.3 > z ? [62, 134, 92] : [156, 206, 226];
+      if (Math.sin(u * 0.9) * 0.7 + 3.3 > z) return night ? [22, 48, 44] : t.rain ? [52, 102, 80] : [62, 134, 92];
+      return t.sky ?? [156, 206, 226];
     },
+    wallColor: [156, 206, 226],
+    sky: [156, 206, 226],
     open: true,
     slope: 0,
     seams: false,
@@ -149,10 +187,9 @@ export const THEMES: readonly CourtTheme[] = [
     center: [64, 158, 148],
     line: () => [248, 244, 228],
     apron: () => [58, 128, 124],
-    wall: (u, z) => {
-      if (z > 3 && z < 4.6 && frac(u * 0.6) < 0.7) return [186, 226, 240];
-      return [236, 226, 196];
-    },
+    wall: (u, z, t) => (t.windows && z > 3 && z < 4.6 && frac(u * t.windows.period) < 0.7 ? t.windows.color : t.wallColor),
+    wallColor: [236, 226, 196],
+    windows: { color: [186, 226, 240], period: 0.6 },
     slope: 0.5,
     seams: true,
     pole: '#7f8a94',
@@ -177,7 +214,8 @@ export const THEMES: readonly CourtTheme[] = [
     center: [23, 115, 122],
     line: () => [252, 246, 228],
     apron: () => [20, 88, 98],
-    wall: () => [70, 50, 52],
+    wall: (_u, _z, t) => t.wallColor,
+    wallColor: [70, 50, 52],
     slope: 0.7,
     seams: true,
     pole: '#3a4557',
@@ -202,7 +240,8 @@ export const THEMES: readonly CourtTheme[] = [
     center: [24, 52, 124],
     line: () => [250, 240, 214],
     apron: () => [14, 26, 62],
-    wall: () => [14, 18, 36],
+    wall: (_u, _z, t) => t.wallColor,
+    wallColor: [14, 18, 36],
     slope: 0.8,
     seams: true,
     pole: '#14182a',
@@ -295,10 +334,6 @@ function crowdColor(theme: CourtTheme, u: number, z: number, frame: number): Rgb
   return seat;
 }
 
-const BOARD_FONT: Record<string, string> = {
-  A: '25755', B: '65656', C: '34443', D: '65556', E: '74647', F: '74644', I: '72227', L: '44447', M: '57755',
-  N: '65555', O: '25552', P: '65644', R: '65655', S: '34216', T: '72222', V: '55552', X: '55255', ' ': '00000',
-};
 
 export interface CourtTextures {
   theme: CourtTheme;
@@ -310,6 +345,9 @@ export interface CourtTextures {
   walls: Uint32Array[];
   wallW: number;
   wallH: number;
+  /** Ao ar livre: o céu, e o passeio e as duas relvas de fora da rede, já com a luz da hora. */
+  sky: number;
+  ground: readonly [number, number, number];
 }
 
 const textureCache = new Map<string, CourtTextures>();
@@ -379,7 +417,7 @@ const floorLevelFor = (t: CourtTextures, floorT: number): { data: Uint32Array; w
 
 /** As cores do clube da casa: o garrafão, o círculo, a orla do campo e metade da bancada. */
 function dressed(theme: CourtTheme, accent: string): CourtTheme {
-  const rgb: Rgb = [parseInt(accent.slice(1, 3), 16), parseInt(accent.slice(3, 5), 16), parseInt(accent.slice(5, 7), 16)];
+  const rgb = hexRgb(accent);
   return {
     ...theme,
     paint: shade(rgb, 0.85),
@@ -407,12 +445,15 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
         const base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.6);
         color = z > BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
       } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL) {
-        // O muro baixo entre as placas e a primeira fila.
-        color = z > theme.crowd.from + CROWD_WALL - 0.08 ? [120, 120, 118] : [156, 156, 150];
+        // O muro baixo entre as placas e a primeira fila; dos dois lados do túnel, a faixa da claque, às riscas nas cores do clube.
+        const top = theme.crowd.from + CROWD_WALL;
+        const onBanner = theme.banner && u < SIDE_WALL_SPAN && ((x > 2.4 && x < 10.6) || (x > 17.4 && x < 25.6)) && z < top - 0.1;
+        if (onBanner) color = shade(theme.banner![frac(x / 1.2) < 0.5 ? 0 : 1], z > top - 0.16 || z < BOARD_HEIGHT + 0.06 ? 0.7 : 1);
+        else color = z > top - 0.08 ? [120, 120, 118] : [156, 156, 150];
       } else {
-        color = crowdColor(theme, u, z, frame) ?? theme.wall(u, z);
+        color = crowdColor(theme, u, z, frame) ?? theme.wall(u, z, theme);
       }
-      wall[j * wallW + i] = packRgb(color);
+      wall[j * wallW + i] = packRgb(theme.open ? color : tinted(color, theme.tint));
     }
   }
   if (theme.boards.length > 0) {
@@ -425,12 +466,12 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
       // A placa que fica na boca do túnel não leva texto, senão as letras ficavam por cima dele.
       const x0 = WALL_NEAR_X + k * BOARD_WIDTH;
       if (theme.slope > 0 && x0 + BOARD_WIDTH > TUNNEL.x0 - 0.2 && x0 < TUNNEL.x1 + 0.2) continue;
-      const label = SPONSORS[k % SPONSORS.length]!;
+      const label = SPONSORS[(k + Math.floor((theme.shift ?? 0) * SPONSORS.length)) % SPONSORS.length]!;
       const start = k * BOARD_WIDTH * WALL_SCALE;
       const width = label.length * 4 * scale - scale;
       const left = Math.round(start + (BOARD_WIDTH * WALL_SCALE + width) / 2);
       [...label].forEach((ch, index) => {
-        const glyph = BOARD_FONT[ch] ?? '00000';
+        const glyph = FONT[ch] ?? '00000';
         for (let row = 0; row < 5; row++) {
           const bits = Number(glyph[row]);
           for (let col = 0; col < 3; col++) {
@@ -454,15 +495,92 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
 export const CLOSED_GYM = THEMES.length;
 const VENUES: readonly CourtTheme[] = [...THEMES, { ...THEMES[1]!, name: 'Pavilhão Fechado', crowd: null }];
 
+/** Um número fixo por clube, tirado do emblema: o mesmo clube tem sempre o mesmo pavilhão. */
+function venueSeed(emblem: Emblem): number {
+  let h = 2166136261;
+  for (const ch of JSON.stringify(emblem)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+// O soalho: o de sempre, cor de âmbar, nogueira escura e madeira clara lavada. Na rua: alcatrão, piso pintado de verde ou de tijolo.
+const WOOD_TONES: readonly Rgb[] = [[1, 1, 1], [1.08, 0.97, 0.84], [0.86, 0.8, 0.78], [1.03, 1.05, 1.1]];
+const STREET_TONES: readonly Rgb[] = [[1, 1, 1], [0.86, 1.22, 0.96], [1.3, 1, 0.86]];
+const SCHOOL_WALLS: readonly Rgb[] = [[236, 226, 196], [212, 230, 208], [222, 228, 240]];
+const HALL_WALLS: readonly Rgb[] = [[70, 50, 52], [42, 56, 72], [58, 62, 46]];
+const SEAT_SHADOW: Rgb = [40, 40, 46];
+
+/** O pavilhão de cada clube. A divisão manda no tipo de casa (rua, escola, municipal, arena); o emblema escolhe as cadeiras e a faixa
+ * nas cores do clube, a parede, o tom do soalho, a luz, os patrocinadores, os prédios do bairro e a mascote. */
+function clubVenue(theme: CourtTheme, emblem: Emblem): CourtTheme {
+  const seed = venueSeed(emblem);
+  const r = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
+  const pick = <T>(list: readonly T[], salt: number): T => list[Math.floor(r(salt) * list.length)]!;
+  const tone = pick(theme.open ? STREET_TONES : WOOD_TONES, 1);
+  const floor = theme.floor;
+  const venue: CourtTheme = {
+    ...theme,
+    shift: r(2),
+    ambient: theme.ambient + (r(3) - 0.5) * 0.08,
+    spot: Math.max(0, theme.spot + (r(4) - 0.5) * 0.14),
+    floor: (x, y, n, plank) => tinted(floor(x, y, n, plank), tone),
+  };
+  if (theme.open) return venue;
+  const primary = hexRgb(emblem.primary);
+  const secondary = hexRgb(emblem.secondary);
+  return {
+    ...venue,
+    crowd: theme.crowd && { ...theme.crowd, seats: [mix(primary, SEAT_SHADOW, 0.35), mix(primary, SEAT_SHADOW, 0.5)] },
+    banner: [primary, secondary],
+    stain: r(10) < 0.5,
+    wallColor: theme.windows ? pick(SCHOOL_WALLS, 6) : theme.slope >= 0.8 ? mix(theme.wallColor, primary, 0.2) : pick(HALL_WALLS, 6),
+    windows: theme.windows && { ...theme.windows, period: pick([0.45, 0.6, 0.8], 7) },
+    mascot: theme.crowd && r(8) < 0.55 ? Math.floor(r(9) * 3) : undefined,
+  };
+}
+
+// Poças no alcatrão molhado: uma oval achatada em algumas células de 2,5 × 1,6 m, que reflete o céu.
+const puddle = (x: number, y: number): boolean => {
+  const i = Math.floor(x / 2.5);
+  const j = Math.floor(y / 1.6);
+  if (hash(i + 7, j) < 0.7) return false;
+  const dx = (x - (i + 0.5) * 2.5) / 0.8;
+  const dy = (y - (j + 0.5) * 1.6) / 0.35;
+  return dx * dx + dy * dy < 1;
+};
+
+/** A hora e o tempo: a luz, as janelas e, ao ar livre, o céu; à chuva, o alcatrão escurece e ganha poças. */
+function underSky(theme: CourtTheme, sky: Sky): CourtTheme {
+  const open = theme.open === true;
+  const base: CourtTheme = { ...theme, hour: sky.hour, rain: sky.rain && open };
+  const windows = (color: Rgb): CourtTheme['windows'] => theme.windows && { ...theme.windows, color };
+  if (sky.hour === 'night') {
+    return open
+      ? { ...base, sky: [26, 32, 62], ambient: 0.62, spot: 0.5, tint: [0.86, 0.9, 1.06] }
+      : { ...base, ambient: theme.ambient * 0.86, spot: theme.spot + 0.16, tint: [0.94, 0.95, 1.03], windows: windows([34, 42, 74]) };
+  }
+  if (sky.hour === 'evening') return { ...base, sky: [236, 164, 120], ambient: theme.ambient * 0.96, tint: [1.06, 0.93, 0.82], windows: windows([246, 176, 118]) };
+  if (sky.rain) {
+    if (!open) return { ...base, windows: windows([150, 164, 178]) };
+    const floor = theme.floor;
+    const grey: Rgb = [150, 160, 172];
+    return { ...base, sky: grey, ambient: theme.ambient * 0.86, tint: [0.9, 0.94, 1], floor: (x, y, n, p) => (puddle(x, y) ? mix(floor(x, y, n, p), grey, 0.45) : floor(x, y, n, p)) };
+  }
+  if (sky.sun) return { ...base, sky: [110, 184, 236], ambient: theme.ambient * 1.07, tint: [1.04, 1.02, 0.95], windows: windows([236, 248, 252]) };
+  return base;
+}
+
 // O emblema da equipa da casa, com 3 m de lado, deitado no círculo central.
 const CREST_METRES = 3;
 
-/** As texturas calculam-se uma vez por divisão, cor da casa e emblema. Desenhar um frame é só consultá-las. */
-export function courtTextures(division: number, accent?: string, emblem?: Emblem): CourtTextures {
-  const key = `${division}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}`;
+/** As texturas calculam-se uma vez por divisão, cor da casa, emblema do dono do pavilhão e tempo. Desenhar um frame é só consultá-las. */
+export function courtTextures(division: number, accent?: string, emblem?: Emblem, sky?: Sky): CourtTextures {
+  const key = `${division}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}|${sky ? `${sky.hour}${sky.rain}${sky.sun}` : ''}`;
   const cached = textureCache.get(key);
   if (cached) return cached;
-  const theme = accent ? dressed(VENUES[division]!, accent) : VENUES[division]!;
+  let theme = VENUES[division]!;
+  if (emblem) theme = clubVenue(theme, emblem);
+  if (accent) theme = dressed(theme, accent);
+  if (sky) theme = underSky(theme, sky);
   // Sem letras: no chão só se vê a forma e o símbolo.
   const crest = emblem ? emblemCanvas({ ...emblem, letters: '' }) : null;
   const crestSize = crest?.width ?? 0;
@@ -496,16 +614,21 @@ export function courtTextures(division: number, accent?: string, emblem?: Emblem
         const plank = hash(row, Math.floor((wx + hash(row, 3) * 4) / 3.1)) - 0.5;
         color = theme.floor(x, y, noise, plank);
         if (theme.seams && frac(y / 0.55) < 0.07) color = [color[0] - 16, color[1] - 16, color[2] - 16];
+        if (theme.stain && x >= 0 && (x - HOOP_U) * (x - HOOP_U) + y * y < THREE_RADIUS * THREE_RADIUS && Math.abs(y) < THREE_CORNER_V) color = shade(color, 0.86);
       }
-      floor[j * floorW + i] = packRgb(shade(color, lightAt(theme, x, y)));
+      floor[j * floorW + i] = packRgb(tinted(shade(color, lightAt(theme, x, y)), theme.tint));
     }
   }
+  // Ao ar livre, o céu e o chão para lá da rede seguem a mesma luz.
+  const outside = (c: Rgb): number => packRgb(tinted(shade(c, Math.min(1, theme.ambient)), theme.tint));
+  const skyColor = packRgb(theme.sky ?? [156, 206, 226]);
+  const ground = [outside(PAVEMENT), outside(GRASS), outside(GRASS_DARK)] as const;
   const wallW = Math.ceil(WALL_U_SPAN * WALL_SCALE);
   const wallH = WALL_Z_SPAN * WALL_SCALE;
   const walls = Array.from({ length: CROWD_FRAMES }, (_, frame) => buildWall(theme, frame, wallW, wallH));
   const floorLevels: CourtTextures['floorLevels'] = [{ data: floor, w: floorW, h: floorH, scale: FLOOR_SCALE }];
   for (let level = 1; level <= 2; level++) floorLevels.push(halve(floorLevels[level - 1]!));
-  const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH };
+  const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH, sky: skyColor, ground };
   // Cada pavilhão ocupa uns 12 MB e cada clube da casa tem o seu: só ficam os últimos.
   return remember(textureCache, key, textures, 3);
 }
@@ -622,10 +745,10 @@ export class Camera {
           along = SIDE_WALL_SPAN + (cy + dirY * tb - backY);
         }
       }
-      let color = SKY;
+      let color = t.sky;
       let mesh = 0;
       if (rz < 0 && floorT < back) {
-        color = groundOutside(hitX, hitY);
+        color = groundOutside(hitX, hitY, t.ground);
       } else if (back < Infinity) {
         const z = cz + rz * back;
         const wu = Math.max(0, Math.min(t.wallW - 1, (along * WALL_SCALE) | 0));
@@ -797,7 +920,7 @@ export class Camera {
         const qy = Math.floor(qy0 - 0.5);
         const mx = (line[i - 1]![0] + x) / 2;
         const my = (line[i - 1]![1] + y) / 2;
-        const color = packRgb(shade(theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)));
+        const color = packRgb(tinted(shade(theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)), theme.tint));
         // Bresenham: cada passo avança um píxel no eixo mais longo, por isso a linha nunca engrossa nem tem buracos.
         const dx = Math.abs(qx - px);
         const dy = -Math.abs(qy - py);
@@ -830,21 +953,20 @@ export class Camera {
  * ao longe, um pano de fundo vertical com prédios e árvores, e o céu por cima de tudo. Cada plano é cortado pelo raio onde calha. */
 const BACKDROP = 14;
 const FENCE_HEIGHT = 2.2;
-const SKY = packRgb([156, 206, 226]);
 const FENCE = packRgb([104, 112, 120]);
 const POST = packRgb([110, 116, 124]);
 const FENCE_CELL = 0.4;
 // Um cinzento meio transparente, para a grade vista de longe.
 const VEIL = (120 << 24) | (120 << 16) | (112 << 8) | 104;
 // O passeio e a relva de fora são lisos: com ruído por célula, de raspão, viam-se riscas a arrastar com a câmara.
-const PAVEMENT = packRgb([150, 150, 146]);
-const GRASS = packRgb([100, 154, 80]);
-const GRASS_DARK = packRgb([92, 144, 74]);
-function groundOutside(x: number, y: number): number {
+const PAVEMENT: Rgb = [150, 150, 146];
+const GRASS: Rgb = [100, 154, 80];
+const GRASS_DARK: Rgb = [92, 144, 74];
+function groundOutside(x: number, y: number, ground: CourtTextures['ground']): number {
   const outside = Math.max(WALL_Y - y, WALL_NEAR_X - x, x - WALL_FAR_X);
-  if (outside < 1.6) return PAVEMENT;
+  if (outside < 1.6) return ground[0];
   // Faixas largas de relva cortada, que não tremem.
-  return Math.floor((x + y) / 4) % 2 === 0 ? GRASS : GRASS_DARK;
+  return Math.floor((x + y) / 4) % 2 === 0 ? ground[1] : ground[2];
 }
 
 /**

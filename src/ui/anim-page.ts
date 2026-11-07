@@ -1,5 +1,7 @@
 // Desenha as poses e os movimentos especiais numa cena à parte, para a verificação os poder ver sem correr o jogo.
-import { simulateMatch, type MatchState } from '../sim/match.ts';
+import { requestTimeout, simulateMatch, type MatchState } from '../sim/match.ts';
+import { clubIdentity } from './art/identity.ts';
+import { drawTown, weatherFor } from './art/town.ts';
 import { MOVES, type MoveId } from '../sim/types.ts';
 import { drawSprite, lookOf, type PoseName } from './art/sprites.ts';
 import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
@@ -74,4 +76,93 @@ function moveStrip(move: MoveId, frames: number): { image: string; floaters: num
   return { image: strip.toDataURL(), floaters };
 }
 
-Object.assign(window, { __anim: { poseSheet, moveStrip, moves: MOVES } });
+type Humor = 'dog' | 'pigeon' | 'sleeper' | 'mascot';
+
+/** Um jogo à parte numa tela de 360×216, já a meio do primeiro período: no pavilhão do clube `owner` (sem nome, o nosso), à hora e com o tempo da semana `week`. */
+function venueView(division: number, owner: string | null, week: number, seed = 5): MatchView {
+  const club = newClub(seed, division);
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 216;
+  const identity = owner ? clubIdentity(owner) : null;
+  const emblem = identity?.emblem ?? club.emblem;
+  const accent = identity ? identity.emblem.primary : club.kits[0]!.jersey;
+  return new MatchView(canvas.getContext('2d')!, clubTeam(club), opponentOf(club), weekSeed(club), division, { announce: () => {}, event: () => {}, sound: () => {} },
+    [true, false], owner ? 0 : 1, undefined, undefined, accent, 0.9, undefined, emblem, club.emblem, undefined, weatherFor(week));
+}
+
+const frames = (view: MatchView, ticks: number): void => {
+  for (let i = 0; i < ticks; i++) view.stepSim();
+};
+const shot = (view: MatchView, renders = 1): string => {
+  for (let i = 0; i < renders; i++) view.render(1, 0.05);
+  return (view as unknown as { g: CanvasRenderingContext2D }).g.canvas.toDataURL();
+};
+
+/** O pavilhão de um clube, a jogar há 15 s. */
+function venueShot(division: number, owner: string | null, week: number): string {
+  const view = venueView(division, owner, week);
+  frames(view, 300);
+  return shot(view, 30);
+}
+
+/** Os nomes dos clubes de uma divisão: para os pavilhões de três adversários diferentes. */
+function rivals(division: number, count: number, mascot?: boolean): string[] {
+  const club = newClub(5, division);
+  const names = club.clubs.map(c => c.name).filter(name => name !== club.team.name);
+  if (mascot === undefined) return names.slice(0, count);
+  return names.filter(name => (venueView(division, name, 1) as unknown as { textures: { theme: { mascot?: number } } }).textures.theme.mascot !== undefined === mascot).slice(0, count);
+}
+
+/** A cidade numa divisão e numa semana. */
+function townShot(division: number, week: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 574;
+  drawTown(canvas.getContext('2d')!, 360, 574, division, [], 1000, { jersey: '#2b5fd9', trim: '#f2c230', poster: 'DOMINGO: CERRO BC', festive: false }, weatherFor(week));
+  return canvas.toDataURL();
+}
+
+/** Um momento de humor, forçado. */
+function humorShot(kind: Humor): string[] {
+  if (kind === 'pigeon') {
+    const view = venueView(2, null, 1);
+    view.humor.pigeon = true;
+    while (view.s.phase !== 'freeThrow' && view.s.tick < 9000) {
+      view.stepSim();
+      view.render(1, 0.05);
+    }
+    return [shot(view, 20), (frames(view, 1), shot(view, 10))];
+  }
+  if (kind === 'dog') {
+    const view = venueView(0, null, 1);
+    frames(view, 200);
+    view.humor.dogAt = view.s.tick;
+    return [70, 110, 60].map(n => {
+      frames(view, n);
+      return shot(view);
+    });
+  }
+  if (kind === 'sleeper') {
+    const view = venueView(3, null, 1);
+    view.humor.sleeper = true;
+    view.humor.blowout = 0;
+    frames(view, 300);
+    // A câmara segue a bola; aqui olha-se para quem dorme, com a simulação parada.
+    const inside = view as unknown as { sleeperFan: number; fans: { x: number }[]; camera: { lookX: number } };
+    const look = (): string => {
+      inside.camera.lookX = inside.fans[inside.sleeperFan]!.x;
+      view.render(1, 0, 0.05);
+      return (view as unknown as { g: CanvasRenderingContext2D }).g.canvas.toDataURL();
+    };
+    return [look(), look(), (frames(view, 10), look())];
+  }
+  const view = venueView(2, rivals(2, 1, true)[0]!, 1);
+  frames(view, 200);
+  requestTimeout(view.s, 0);
+  while (view.s.phase !== 'timeout' && view.s.tick < 4000) view.stepSim();
+  frames(view, 6);
+  return [shot(view, 40), (frames(view, 4), shot(view, 2))];
+}
+
+Object.assign(window, { __anim: { poseSheet, moveStrip, moves: MOVES, venueShot, rivals, townShot, humorShot } });

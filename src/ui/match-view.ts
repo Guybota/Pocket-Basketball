@@ -7,7 +7,7 @@ import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE,
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { MOVE_INFO } from './narrate.ts';
-import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures } from './art/court.ts';
+import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
 import {
@@ -174,6 +174,13 @@ export class MatchView {
   // A rede do campo de rua, numa camada à parte: quem vê o jogo do lado de fora fica atrás dela.
   private fence: { image: ImageData; pixels: Uint32Array; canvas: HTMLCanvasElement } | null = null;
   private readonly outsiders: { x: number; y: number; look: Look; phase: number; flip: boolean }[] = [];
+  /** Momentos de humor, raros e só na vista, escolhidos pela semente do jogo: o tick em que um cão entra no campo de rua,
+   * um pombo no aro no primeiro lance livre, um adepto que adormece quando a diferença chega a `blowout`. A verificação força-os aqui. */
+  readonly humor: { dogAt: number | null; pigeon: boolean; sleeper: boolean; blowout: number };
+  private pigeon: { hoopX: number; flew: number } | null = null;
+  private readonly sleeperFan: number;
+  private readonly ownerLook: Look;
+  private readonly mascotLook: Look | null;
   private fansCheerUntil = 0;
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
@@ -218,7 +225,7 @@ export class MatchView {
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
 
-  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem, rivalEmblem?: Emblem) {
+  constructor(g: CanvasRenderingContext2D, home: Team, away: Team, seed: number, division: number, callbacks: ViewCallbacks, controlled: [boolean, boolean] = [true, false], visitor: TeamIndex = 1, homeKit?: ClubKit, state?: MatchState, venue?: string, attendance = 0.7, awayKit?: ClubKit, centreEmblem?: Emblem, ownEmblem?: Emblem, rivalEmblem?: Emblem, weather?: Sky) {
     this.ownEmblem = ownEmblem;
     this.rivalEmblem = rivalEmblem;
     this.crowdSeed = seed;
@@ -226,7 +233,9 @@ export class MatchView {
     this.g = g;
     this.callbacks = callbacks;
     this.s = state ?? createMatch(home, away, seed, controlled, visitor);
-    this.textures = courtTextures(division, venue, centreEmblem);
+    this.textures = courtTextures(division, venue, centreEmblem, weather);
+    const roll = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
+    this.humor = { dogAt: division === 0 && roll(1) < 0.35 ? Math.floor(600 + roll(2) * 3000) : null, pigeon: roll(3) < 0.25, sleeper: roll(4) < 0.6, blowout: 25 };
     this.image = g.createImageData(g.canvas.width, g.canvas.height);
     this.pixels = new Uint32Array(this.image.data.buffer);
     this.camera.setViewport(g.canvas.width, g.canvas.height);
@@ -253,6 +262,11 @@ export class MatchView {
       look.build = buildOf(168 + ((i * 53) % 24), 66 + ((i * 29) % 30), fan.attributes.strength);
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
+    this.ownerLook = looks[3]!;
+    // A mascote veste as cores do clube dono do pavilhão; a cabeça grande desenha-se por cima.
+    const css = (c: readonly number[]): string => `#${c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    const banner = theme.banner;
+    this.mascotLook = theme.mascot === undefined || !banner ? null : { ...looks[0]!, custom: { id: 'mascot', name: '', jersey: css(banner[0]), second: css(banner[1]), pattern: 'plain', trim: css(banner[1]), shorts: css(banner[0]) } };
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
     // E um adversário forte para a divisão traz mais gente, um fraco menos (uma divisão de diferença vale ±50 %).
     const draw = division >= DIVISIONS.length ? 1 : Math.max(0.75, Math.min(1.3, 1 + (teamRating(away) - DIVISIONS[division]!.level) / 22));
@@ -305,6 +319,12 @@ export class MatchView {
       }
     }
     this.coaches = [coachLook(home), coachLook(away)];
+    // Quem adormece numa goleada: um da primeira fila perto do meio da bancada, onde a câmara passa mais.
+    const front = this.fans.map((f, i) => ({ f, i })).filter(({ f }) => f.front);
+    const spot = 8 + roll(5) * 12;
+    this.sleeperFan = front.reduce((best, c) => (best < 0 || Math.abs(c.f.x - spot) < Math.abs(this.fans[best]!.x - spot) ? c.i : best), -1);
+    // Uma repetição começa a meio do jogo: o pombo já lá não está.
+    if (state) this.humor.pigeon = false;
     this.refereeLook = { ...lookOf({ ...home.roster[0]!, name: 'Árbitro' }, 'referee'), style: 0, legs: 7, torso: 7, build: 'athletic' };
     this.camera.aim(...this.cameraTarget());
     // Num jogo já a meio, o que aconteceu antes não se mostra: nem balões, nem poses, nem sons.
@@ -1202,6 +1222,7 @@ export class MatchView {
     const drawables: { y: number; draw: () => void }[] = [];
     this.addSideline(drawables, time);
     this.addExits(drawables, alpha);
+    this.addHumor(drawables);
     for (const hoopX of [HOOP_LEFT, HOOP_RIGHT]) {
       const outward = hoopX < 14 ? -1 : 1;
       const swish = hoopX === this.swishHoop && s.tick < this.swishUntil ? (this.swishUntil - s.tick) / SWISH_TICKS : 0;
@@ -1319,6 +1340,7 @@ export class MatchView {
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
+    this.drawRain();
     this.drawCarrier(alpha);
     this.drawNameTags(alpha);
     this.drawFloaters();
@@ -1396,6 +1418,111 @@ export class MatchView {
     }
   }
 
+  /** A mascote, o cão do bairro e o pombo do aro: entram na ordem de profundidade como os outros bonecos. Nada disto mexe no jogo. */
+  private addHumor(drawables: { y: number; draw: () => void }[]): void {
+    const { g, s, camera } = this;
+    const { theme } = this.textures;
+    const beat = this.reducedMotion ? 0 : this.animTick >> 2;
+    const mascot = this.mascotLook;
+    if (mascot && theme.mascot !== undefined) {
+      // Encostada à ponta do banco da casa, a festejar os cestos do clube; num desconto vem para o campo dançar.
+      const dancing = s.phase === 'timeout';
+      const [sx, sy] = camera.project(dancing ? 9.8 : 2.4, dancing ? -4.4 : -9);
+      const pose: PoseName = dancing ? (['cheer0', 'clap0', 'cheer1', 'clap1'] as const)[beat % 4]! : s.tick < this.benchCheerUntil[this.crowdTeam] ? (beat % 2 ? 'cheer0' : 'cheer1') : 'idle';
+      const y = (sy | 0) - (dancing && beat % 2 === 0 ? 2 : 0);
+      const kind = theme.mascot;
+      drawables.push({
+        y: sy,
+        draw: () => {
+          drawShadow(g, sx, sy);
+          drawSprite(g, pose, mascot, sx | 0, y, dancing && beat % 8 >= 4, false, false);
+          drawMascotHead(g, kind, mascot.custom!, sx | 0, y - spriteHeight(mascot));
+        },
+      });
+    }
+    const dogAt = this.humor.dogAt;
+    if (dogAt !== null && s.tick >= dogAt && s.tick < dogAt + DOG_TICKS) {
+      // Um cão entra pelo portão, corre pelo campo e senta-se; o dono vem buscá-lo e leva-o ao colo.
+      const t = s.tick - dogAt;
+      const owner = along(OWNER_PATH, t);
+      const carried = t >= DOG_PICKED;
+      const dog = carried ? owner : along(DOG_PATH, t);
+      const [dx, dy] = camera.project(dog.x, dog.y);
+      const [ox, oy] = camera.project(owner.x, owner.y);
+      const look = this.ownerLook;
+      if (t >= OWNER_PATH[1]![0]) {
+        drawables.push({
+          y: oy,
+          draw: () => {
+            drawShadow(g, ox, oy);
+            drawSprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
+            if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
+            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, Math.max(28, (oy | 0) - spriteHeight(look) - 22));
+          },
+        });
+      }
+      if (!carried) {
+        drawables.push({
+          y: dy,
+          draw: () => {
+            drawShadow(g, dx, dy, 4);
+            drawDog(g, dx | 0, dy | 0, dog.dx < 0, dog.moving ? beat : this.animTick >> 3, !dog.moving);
+          },
+        });
+      }
+    }
+    if (this.humor.pigeon) {
+      // No primeiro lance livre do jogo há um pombo pousado no aro; quando a bola sai das mãos, voa para o teto.
+      if (!this.pigeon && s.phase === 'freeThrow') this.pigeon = { hoopX: this.attackedHoop(s.offense), flew: -1 };
+      const pigeon = this.pigeon;
+      if (pigeon && pigeon.flew < 0 && s.phase !== 'freeThrow') pigeon.flew = s.tick;
+      const flying = !pigeon ? Infinity : pigeon.flew < 0 ? -1 : s.tick - pigeon.flew;
+      if (pigeon && flying < 50) {
+        const { hoopX } = pigeon;
+        const inward = hoopX < 14 ? 1 : -1;
+        const f = Math.max(0, flying);
+        const [px, py] = camera.project(hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09);
+        const layer = camera.project(hoopX - inward * 0.5, 0, 0)[1] + HOOP_FRONT_OFFSET + 0.1;
+        drawables.push({ y: layer, draw: () => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
+      }
+    }
+  }
+
+  /** A chuva no campo de rua: riscas inclinadas por cima de tudo, e salpicos no chão. */
+  private drawRain(): void {
+    if (!this.textures.theme.rain) return;
+    const { g, camera } = this;
+    const { width: w, height: h } = camera;
+    const t = this.reducedMotion ? 0 : this.animTime;
+    g.fillStyle = 'rgba(206,220,240,0.55)';
+    for (let n = 0; n < 90; n++) {
+      const y = ((n * 53) % h + t * 260 + n * 11) % h;
+      const x = ((n * 97) % w - y * 0.25 + w * 2) % w;
+      g.fillRect(x | 0, y | 0, 1, 4);
+    }
+    g.fillStyle = 'rgba(226,236,250,0.8)';
+    for (let n = 0; n < 16; n++) {
+      if ((this.animTick + n * 5) % 14 > 1) continue;
+      g.fillRect(((n * 131 + (this.animTick >> 4) * 37) % w) | 0, (h * 0.45 + ((n * 71) % (h * 0.55))) | 0, 2, 1);
+    }
+  }
+
+  /** Um balão de fala, igual aos da bancada, com a ponta em `fx`. */
+  private speech(label: string, fx: number, top: number): void {
+    const { g, camera } = this;
+    const w = textWidth(label, 2) + 8;
+    const x = Math.max(6, Math.min(camera.width - w - 6, (fx | 0) - (w >> 1)));
+    const y = top;
+    g.fillStyle = '#1b2230';
+    // A caixa sobe 6 píxeis acima do texto para caberem os acentos.
+    g.fillRect(x - 1, y - 7, w + 2, 22);
+    g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
+    g.fillStyle = '#fbf6e2';
+    g.fillRect(x, y - 6, w, 20);
+    g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
+    text(g, label, x + 4, y + 2, '#1b2230', 2);
+  }
+
   /** O público: sentado quase sempre, de pé a festejar um cesto da casa, de mãos na cabeça com um da visita. Alguns têm bandeira. */
   private drawFans(): void {
     const { g, s, camera } = this;
@@ -1412,9 +1539,24 @@ export class MatchView {
       }
     }
     const sad = s.tick < this.fansSadUntil;
-    for (const f of this.fans) {
+    const asleep = this.humor.sleeper && Math.abs(s.score[0] - s.score[1]) >= this.humor.blowout ? this.sleeperFan : -1;
+    for (const [i, f] of this.fans.entries()) {
       const [sx, sy] = camera.project(f.x, f.y, f.z);
       if (sx < -20 || sx > camera.width + 20 || sy < -10 || sy > camera.height + 40) continue;
+      if (i === asleep) {
+        // Numa goleada, alguém dorme sentado: a cabeça cai de vez em quando e os «Z» sobem.
+        const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
+        drawSprite(g, 'sit', f.look, sx | 0, (sy | 0) + nod, f.flip, false, false);
+        const top = (sy | 0) - spriteHeight(f.look);
+        for (let k = 0; k < 3; k++) {
+          const p = this.reducedMotion ? k / 3 : ((this.animTick + k * 14) % 42) / 42;
+          const zx = (sx | 0) + 3 + Math.round(p * 6);
+          const zy = top - 4 - Math.round(p * 12);
+          text(g, 'Z', zx + 1, zy + 1, '#1b2230', 1);
+          text(g, 'Z', zx, zy, '#fbf6e2', 1);
+        }
+        continue;
+      }
       // Cada adepto tem o seu entusiasmo: só se levanta se o momento valer mais do que ele pede, e os menos entusiastas
       // sentam-se mais cedo; uns saltam, outros batem palmas.
       const cheering = s.tick < this.fansCheerUntil - f.zeal * 0.5 * this.fansCheerTicks && f.zeal < this.fansCheerLevel;
@@ -1445,18 +1587,8 @@ export class MatchView {
       }
       const fan = this.fans[b.fan]!;
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
-      const w = textWidth(b.label, 2) + 8;
-      const x = Math.max(6, Math.min(camera.width - w - 6, (fx | 0) - (w >> 1)));
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
-      const y = Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age);
-      g.fillStyle = '#1b2230';
-      // A caixa sobe 6 píxeis acima do texto para caberem os acentos.
-      g.fillRect(x - 1, y - 7, w + 2, 22);
-      g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
-      g.fillStyle = '#fbf6e2';
-      g.fillRect(x, y - 6, w, 20);
-      g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
-      text(g, b.label, x + 4, y + 2, '#1b2230', 2);
+      this.speech(b.label, fx, Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age));
     }
   }
 
@@ -1554,5 +1686,113 @@ export class MatchView {
 
   lookFor(b: Body): Look {
     return this.view(b).look;
+  }
+}
+
+// O cão do bairro: [tick, x, y]. Entra pelo portão, dá uma volta pelo meio-campo de lá e senta-se; o dono chega e leva-o ao colo.
+const DOG_PATH: readonly (readonly [number, number, number])[] = [[0, 14, -12.6], [40, 11, -8], [90, 6, -5.4], [130, 8.6, -3], [165, 10.2, -5.8], [400, 10.2, -5.8]];
+const OWNER_PATH: readonly (readonly [number, number, number])[] = [[0, 14.6, -13], [110, 14.6, -13], [200, 10.8, -6], [225, 10.8, -6], [330, 14.6, -13.2]];
+const DOG_PICKED = 220;
+const DOG_TICKS = 330;
+
+/** Onde está quem segue um caminho, ao tick `t`, para onde anda e se está a andar. */
+function along(path: readonly (readonly [number, number, number])[], t: number): { x: number; y: number; dx: number; dy: number; moving: boolean } {
+  const next = path.findIndex(p => p[0] > t);
+  const k = next < 0 ? path.length - 1 : Math.max(0, next - 1);
+  const [t0, x0, y0] = path[k]!;
+  const [t1, x1, y1] = path[Math.min(path.length - 1, k + 1)]!;
+  const f = t1 > t0 ? Math.min(1, (t - t0) / (t1 - t0)) : 1;
+  return { x: x0 + (x1 - x0) * f, y: y0 + (y1 - y0) * f, dx: x1 - x0, dy: y1 - y0, moving: f < 1 && (x1 !== x0 || y1 !== y0) };
+}
+
+/** Um cão pequeno e castanho, de perfil: corre com as patas a alternar, ou senta-se a abanar a cauda. */
+function drawDog(g: CanvasRenderingContext2D, x: number, y: number, flip: boolean, frame: number, sitting: boolean): void {
+  const r = (dx: number, dy: number, w: number, h: number, color: string): void => {
+    g.fillStyle = color;
+    g.fillRect(flip ? x - dx - w : x + dx, y + dy, w, h);
+  };
+  const body = '#9a6438';
+  const dark = '#5a3a22';
+  if (sitting) {
+    r(-3, -5, 5, 4, body);
+    r(1, -8, 3, 3, body);
+    r(4, -7, 1, 1, dark);
+    r(1, -9, 1, 2, dark);
+    r(-1, -1, 1, 1, dark);
+    r(1, -1, 1, 1, dark);
+    r(-4 - (frame % 2), -3, 1, 2, body);
+    return;
+  }
+  r(-4, -5, 8, 3, body);
+  r(3, -7, 3, 3, body);
+  r(6, -6, 1, 1, dark);
+  r(3, -8, 1, 2, dark);
+  r(-5, -7 + (frame % 2), 1, 2, body);
+  const step = frame % 2;
+  r(-3 + step, -2, 1, 2, dark);
+  r(2 - step, -2, 1, 2, dark);
+}
+
+/** Um pombo cinzento: pousado a mexer a cabeça, ou a voar de asas a bater (`frame` ≥ 0). */
+function drawPigeon(g: CanvasRenderingContext2D, x: number, y: number, flip: boolean, frame: number, peck: boolean): void {
+  const r = (dx: number, dy: number, w: number, h: number, color: string): void => {
+    g.fillStyle = color;
+    g.fillRect(flip ? x - dx - w : x + dx, y + dy, w, h);
+  };
+  r(-3, -5, 7, 6, '#1b2230');
+  r(-2, -4, 5, 4, '#9aa0ab');
+  r(-4, -3, 2, 2, '#6d7380');
+  const head = peck ? 1 : 0;
+  r(2, -7 + head, 4, 4, '#1b2230');
+  r(3, -6 + head, 2, 2, '#5d636c');
+  r(3, -4 + head, 1, 1, '#3bb08a');
+  r(5, -5 + head, 1, 1, '#e8a030');
+  if (frame < 0) {
+    r(-1, 0, 1, 1, '#e8a030');
+    r(1, 0, 1, 1, '#e8a030');
+  } else {
+    const up = frame % 2 === 0;
+    r(-3, up ? -6 : -1, 3, up ? 3 : 2, '#b4bac4');
+  }
+}
+
+/** A cabeça grande da mascote, por cima do boneco: galo (0), urso (1) ou gato (2), nas cores do clube. */
+function drawMascotHead(g: CanvasRenderingContext2D, kind: number, kit: ClubKit, x: number, top: number): void {
+  const r = (dx: number, dy: number, w: number, h: number, color: string): void => {
+    g.fillStyle = color;
+    g.fillRect(x + dx, top + dy, w, h);
+  };
+  const ink = '#1b2230';
+  if (kind === 1) {
+    r(-6, -6, 4, 4, ink);
+    r(3, -6, 4, 4, ink);
+    r(-5, -5, 2, 2, kit.jersey);
+    r(4, -5, 2, 2, kit.jersey);
+  } else if (kind === 2) {
+    r(-5, -7, 3, 3, ink);
+    r(3, -7, 3, 3, ink);
+    r(-4, -6, 1, 2, kit.jersey);
+    r(4, -6, 1, 2, kit.jersey);
+  } else {
+    r(-2, -8, 2, 3, '#cf3a2c');
+    r(0, -9, 2, 4, '#cf3a2c');
+    r(2, -8, 2, 3, '#cf3a2c');
+  }
+  r(-5, -5, 11, 10, ink);
+  r(-4, -4, 9, 8, kit.jersey);
+  r(-3, -2, 2, 2, '#ffffff');
+  r(2, -2, 2, 2, '#ffffff');
+  r(-2, -1, 1, 1, ink);
+  r(2, -1, 1, 1, ink);
+  if (kind === 0) {
+    r(-1, 1, 3, 2, '#f2c230');
+    r(0, 3, 1, 2, '#cf3a2c');
+  } else {
+    r(-2, 1, 5, 3, kit.second);
+    r(0, 1, 1, 1, kind === 2 ? '#e88aa0' : ink);
+    if (kind === 2) {
+      r(-7, 2, 3, 1, ink);
+      r(5, 2, 3, 1, ink);
+    }
   }
 }

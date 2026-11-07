@@ -1,4 +1,4 @@
-import { fillPolygon, pixelLine } from './court.ts';
+import { fillPolygon, pixelLine, type Sky } from './court.ts';
 import { text } from './font.ts';
 import { drawShadow, drawSprite, INK, type Look, type PoseName } from './sprites.ts';
 
@@ -70,8 +70,20 @@ function gridFor(width: number, height: number): Grid {
 
 const project = ({ tw, th, ox, oy }: Grid, i: number, j: number, k = 0): Point => [ox + (i - j) * tw, oy + (i + j) * th - k * th * 2];
 
-/** O pavilhão vai ficando mais alto à medida que o clube sobe de divisão. */
-const arenaHeight = (division: number): number => 2.6 + division * 0.5;
+/** O pavilhão cresce a cada subida de divisão: mais alto e mais largo, para trás, por isso a frente fica sempre no mesmo sítio. */
+const arenaHeight = (division: number): number => 2.6 + division * 0.8;
+const pavilionOf = (division: number): typeof PAVILION => {
+  const grow = Math.min(3, division);
+  return { i: PAVILION.i - grow, j: PAVILION.j - grow, a: PAVILION.a + grow, b: PAVILION.b + grow };
+};
+
+/** O que a cidade ganha com cada subida: um café, uma loja e um hotel, na orla do bosque atrás do pavilhão.
+ * O da divisão seguinte aparece em obras, com tapumes e uma grua. */
+const LOTS = [
+  { division: 1, kind: 'cafe', i: 12, j: -3.8, a: 2.4, b: 2.2 },
+  { division: 2, kind: 'shop', i: -2.6, j: 9, a: 3, b: 2.4 },
+  { division: 3, kind: 'hotel', i: -1.8, j: 1.4, a: 2.6, b: 2.6 },
+] as const;
 
 interface Town {
   ground: HTMLCanvasElement;
@@ -88,18 +100,31 @@ export interface TownDress {
   festive: boolean;
 }
 
-/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, e neve em certas semanas do inverno. Não chove. Em dezembro, luzes de Natal nas casas e no pavilhão. */
-export type Weather = { tint: string | null; snow: boolean; night: boolean; lights: boolean };
+/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, neve em certas semanas do inverno, chuva de vez em quando
+ * e um ou outro dia de sol forte. Em dezembro, luzes de Natal nas casas e no pavilhão. `hour` é a hora do jogo da semana, para a luz do campo. */
+export type Weather = Sky & { tint: string | null; snow: boolean; night: boolean; lights: boolean };
 export function weatherFor(week: number): Weather {
   // 29 semanas, de setembro a março: a luz muda com os meses, e o tempo com a semana.
   const month = Math.floor((week - 1) / 4);
-  if (month <= 0) return { tint: null, snow: false, night: false, lights: false };
-  if (month === 1) return { tint: 'rgba(255,190,110,0.16)', snow: false, night: false, lights: false };
-  if (month === 2) return { tint: 'rgba(255,150,90,0.22)', snow: false, night: false, lights: false };
-  if (month === 3) return { tint: 'rgba(40,50,110,0.42)', snow: false, night: true, lights: true };
-  if (month === 4) return { tint: 'rgba(150,170,220,0.2)', snow: true, night: false, lights: false };
-  if (month === 5) return { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, night: false, lights: false };
-  return { tint: 'rgba(255,230,160,0.1)', snow: false, night: false, lights: false };
+  const season = month <= 0 ? { tint: null, snow: false, night: false, lights: false }
+    : month === 1 ? { tint: 'rgba(255,190,110,0.16)', snow: false, night: false, lights: false }
+    : month === 2 ? { tint: 'rgba(255,150,90,0.22)', snow: false, night: false, lights: false }
+    : month === 3 ? { tint: 'rgba(40,50,110,0.42)', snow: false, night: true, lights: true }
+    : month === 4 ? { tint: 'rgba(150,170,220,0.2)', snow: true, night: false, lights: false }
+    : month === 5 ? { tint: 'rgba(170,190,230,0.14)', snow: week % 2 === 0, night: false, lights: false }
+    : { tint: 'rgba(255,230,160,0.1)', snow: false, night: false, lights: false };
+  // Um dado por semana, sempre o mesmo. A primeira semana é sempre um dia normal.
+  let h = Math.imul(week ^ 0x5bd1e995, 0x27d4eb2d);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x85ebca6b);
+  h = (h ^ (h >>> 13)) >>> 0;
+  const first = week <= 1;
+  // Em dezembro joga-se sempre à noite; nas outras semanas, um jogo em quatro é ao fim da tarde e outro à noite.
+  const hour: Sky['hour'] = first ? 'day' : month === 3 || (h >>> 8) % 4 === 3 ? 'night' : (h >>> 8) % 4 === 2 ? 'evening' : 'day';
+  // Chove numa semana em quatro, nunca com neve nem em dezembro; sol forte de dia, no princípio e no fim da época.
+  const rain = !first && !season.snow && month !== 3 && h % 12 < 3;
+  const sun = !first && !rain && hour === 'day' && (month <= 1 || month >= 6) && (h >>> 16) % 3 === 0;
+  return { ...season, rain, sun, hour };
 }
 
 function buildTown(width: number, height: number, division: number, dress: TownDress): Town {
@@ -203,13 +228,18 @@ function buildTown(width: number, height: number, division: number, dress: TownD
 
   // Pavilhão: paredes com faixa branca, entrada na frente e o campo à vista no telhado.
   {
-    const { i, j, a, b } = PAVILION;
+    const { i, j, a, b } = pavilionOf(division);
     const h = arenaHeight(division);
     flat(i - 1.2, j - 1.2, a + 2.4, b + 2.4, YARD);
     add(i + j + (a + b) / 2, () => {
       prism(i, j, a, b, h, '#e8622a', '#c9622f', '#a44b22');
       onLeft(i, j + b, a, h - 0.55, 0.28, WHITE);
       onRight(i + a, j, b, h - 0.55, 0.28, '#d9cfb4');
+      // A partir da segunda divisão, uma faixa com a cor do clube a toda a volta.
+      if (division >= 1) {
+        onLeft(i, j + b, a, h - 0.85, 0.22, dress.jersey);
+        onRight(i + a, j, b, h - 0.85, 0.22, dress.jersey);
+      }
       // Janelas altas a toda a volta.
       for (let n = 0; n < 7; n++) {
         const step = (a - 1) / 7;
@@ -247,6 +277,89 @@ function buildTown(width: number, height: number, division: number, dress: TownD
       for (let n = 0.7; n < lantern.a; n += 0.9) onLeft(lantern.i + n, lantern.j + lantern.b, 0.1, lantern.k, lantern.h, '#3d5a78');
       for (let n = 0.7; n < lantern.b; n += 0.9) onRight(lantern.i + lantern.a, lantern.j + n, 0.1, lantern.k, lantern.h, '#2d4a68');
       hipRoof(lantern.i - 0.25, lantern.j - 0.25, lantern.a + 0.5, lantern.b + 0.5, lantern.k + lantern.h, 0.8, '#e8622a', '#b84a1e');
+      // Duas divisões acima, um ecrã gigante na fachada do lado; na mais alta, bandeiras do clube nos quatro cantos do telhado.
+      if (division >= 2) {
+        onRight(i + a, j + b / 2 - 1.8, 3.6, 0.9, 1.5, INK);
+        onRight(i + a, j + b / 2 - 1.6, 3.2, 1, 1.3, dress.jersey);
+        onRight(i + a, j + b / 2 - 1.6, 3.2, 1.45, 0.25, dress.trim);
+        onRight(i + a, j + b / 2 - 0.5, 1, 1.15, 0.2, WHITE);
+      }
+      if (division >= 3) {
+        for (const [ci, cj] of [[i, j], [i + a, j], [i, j + b], [i + a, j + b]] as const) {
+          const [x, y] = P(ci, cj, h).map(Math.round) as Point;
+          g.fillStyle = INK;
+          g.fillRect(x, y - 12, 1, 12);
+          g.fillStyle = ci === i ? dress.jersey : dress.trim;
+          g.fillRect(x + 1, y - 12, 5, 4);
+        }
+      }
+    });
+  }
+
+  // Os lotes: o que já se construiu, e o da próxima subida em obras. Onde há lote não há pinheiros.
+  const lots = LOTS.filter(lot => lot.division <= division + 1);
+  const inLot = (ti: number, tj: number): boolean => lots.some(l => ti > l.i - 1.2 && ti < l.i + l.a + 1 && tj > l.j - 1.2 && tj < l.j + l.b + 1);
+  for (const lot of lots) {
+    const { i, j, a, b } = lot;
+    flat(i - 0.5, j - 0.5, a + 1, b + 1, YARD);
+    if (lot.division > division) {
+      // Em obras: as fundações, uma grua amarela e tapumes à volta.
+      flat(i, j, a, b, '#9a9488');
+      add(i + j + (a + b) / 2, () => {
+        prism(i + 0.3, j + 0.3, a - 0.6, b - 0.6, 0.5, '#c4bea6', '#a39d84', '#8a8369');
+        const [mx, my] = P(i + 0.6, j + 0.6).map(Math.round) as Point;
+        const [, top] = P(i + 0.6, j + 0.6, 4.5).map(Math.round) as Point;
+        g.fillStyle = '#f2c230';
+        for (let y = top; y < my; y += 4) {
+          g.fillRect(mx - 2, y, 1, 4);
+          g.fillRect(mx + 2, y, 1, 4);
+          g.fillRect(mx - 1, y + (((y - top) >> 2) % 2 ? 0 : 2), 3, 1);
+        }
+        g.fillRect(mx - 14, top, 40, 2);
+        g.fillStyle = INK;
+        g.fillRect(mx + 20, top + 2, 1, 12);
+        g.fillRect(mx - 14, top + 2, 5, 4);
+        g.fillStyle = '#cf3a2c';
+        g.fillRect(mx + 18, top + 14, 5, 3);
+        for (let n = 0; n <= a; n += 0.5) onLeft(i + n - 0.25, j + b + 0.3, 0.42, 0, 0.45, n % 1 ? '#d9a400' : '#e6d7ad');
+        for (let n = 0; n <= b; n += 0.5) onRight(i + a + 0.3, j + n - 0.25, 0.42, 0, 0.45, n % 1 ? '#b88a00' : '#c9bea0');
+      });
+      continue;
+    }
+    add(i + j + (a + b) / 2, () => {
+      if (lot.kind === 'cafe') {
+        // O café: paredes creme, toldo às riscas e duas mesas na rua.
+        prism(i, j, a, b, 1.1, '#e6d7ad', '#f4ebd0', '#c9bea0');
+        onLeft(i + 0.3, j + b, 0.6, 0, 0.8, '#5a3a22');
+        onLeft(i + 1.2, j + b, 1.1, 0.35, 0.5, '#2d6fa8');
+        for (let n = 0; n < 6; n++) onLeft(i + (n * a) / 6, j + b + 0.01, a / 6, 0.85, 0.25, n % 2 ? WHITE : '#cf3a2c');
+        flat(i, j, a, b, '#b8a981', 1.1);
+        for (const ti of [i + 0.6, i + 1.8]) {
+          disc(ti, j + b + 0.7, 0.25, '#efe3c2', 0.35);
+          disc(ti, j + b + 0.7, 0.4, '#cf3a2c', 0.75);
+        }
+      } else if (lot.kind === 'shop') {
+        // A loja do clube: montra envidraçada, letreiro com as cores do clube.
+        prism(i, j, a, b, 1.4, '#c4c9d4', '#dfe2ea', '#a9aebc');
+        onLeft(i + 0.2, j + b, a - 0.4, 0.1, 0.9, '#7ec8e0');
+        onLeft(i + a / 2 - 0.3, j + b, 0.6, 0, 0.9, '#3d5a78');
+        onLeft(i, j + b + 0.01, a, 1.05, 0.3, dress.jersey);
+        onLeft(i + a / 2 - 0.4, j + b + 0.02, 0.8, 1.1, 0.2, dress.trim);
+        flat(i, j, a, b, '#8f97ab', 1.4);
+      } else {
+        // O hotel: alto, com janelas a toda a altura e um letreiro vermelho no topo.
+        const hh = 6;
+        prism(i, j, a, b, hh, '#f4efe0', '#e6d7ad', '#b8a981');
+        for (let floor = 0; floor < 6; floor++) {
+          for (let col = 0; col < 3; col++) {
+            onLeft(i + 0.3 + col * 0.75, j + b, 0.45, 0.6 + floor * 0.9, 0.5, '#2d6fa8');
+            onRight(i + a, j + 0.3 + col * 0.75, 0.45, 0.6 + floor * 0.9, 0.5, '#24598a');
+          }
+        }
+        onLeft(i + 0.9, j + b, 0.8, 0, 0.5, '#3d5a78');
+        flat(i, j, a, b, '#dcd6c4', hh);
+        onLeft(i + 0.4, j + b / 2, a - 0.8, hh, 0.45, '#cf3a2c');
+      }
     });
   }
 
@@ -390,22 +503,47 @@ function buildTown(width: number, height: number, division: number, dress: TownD
     add(i + j + 2.2, () => house(i, j, n));
   });
   // Árvores à volta, e bosque onde o mapa acaba.
+  const yard = pavilionOf(division);
   TOWN_TREES.forEach(([i, j], n) => {
+    if (i > yard.i - 1.4 && j > yard.j - 1.4 && i < yard.i + yard.a && j < yard.j + yard.b) return;
     add(i + j, () => tree(i, j, n % 2 === 1));
   });
+  // O bosque à volta encolhe a cada subida: na divisão mais alta fica um pinheiro em quatro, e perto do mapa nascem casas.
+  const onRoad = (v: number, start: number): boolean => v > start - 0.8 && v < start + ROAD_WIDTH + 0.8;
+  const roadAt = (ti: number, tj: number): boolean => onRoad(ti, ROAD_A) || onRoad(tj, ROAD_A) || onRoad(ti, ROAD_B_I) || onRoad(tj, ROAD_B_J);
   for (let i = -reach; i < reach * 2; i += 2) {
     for (let j = -reach; j < reach * 2; j += 2) {
       const hash = (i * 73 + j * 37) & 255;
-      if (hash % 3 !== 0) continue;
       const ti = i + (hash % 5) * 0.3;
       const tj = j + ((hash >> 2) % 5) * 0.3;
       if (ti > -1 && ti < 41 && tj > -1 && tj < 40) continue;
-      const onRoad = (v: number, start: number): boolean => v > start - 0.8 && v < start + ROAD_WIDTH + 0.8;
-      if (onRoad(ti, ROAD_A) || onRoad(tj, ROAD_A) || onRoad(ti, ROAD_B_I) || onRoad(tj, ROAD_B_J)) continue;
+      if (roadAt(ti, tj) || inLot(ti, tj)) continue;
       const [x, y] = P(ti, tj);
       if (x < -12 || x > width + 12 || y < -4 || y > height + 22) continue;
+      const cleared = (hash >> 4) % 4 < division;
+      const near = ti > -7 && ti < 47 && tj > -7 && tj < 46;
+      if (cleared && division >= 2 && near && i % 4 === 0 && j % 4 === 0 && !roadAt(ti + HOUSE_SIZE, tj + HOUSE_SIZE) && !inLot(ti + HOUSE_SIZE, tj + HOUSE_SIZE)) {
+        add(ti + tj + HOUSE_SIZE, () => house(ti, tj, hash));
+        continue;
+      }
+      if (hash % 3 !== 0 || cleared) continue;
       add(ti + tj, () => tree(ti, tj, hash % 2 === 1));
     }
+  }
+  // Na divisão mais alta, a estátua do treinador no meio da rotunda.
+  if (division >= 3) {
+    add(PLAZA * 2 + 0.1, () => {
+      prism(PLAZA - 0.35, PLAZA - 0.35, 0.7, 0.7, 0.6, '#d9d3bf', '#b8b2a0', '#9a947f');
+      const [x, y] = P(PLAZA, PLAZA, 0.6).map(Math.round) as Point;
+      g.fillStyle = '#8a8676';
+      g.fillRect(x - 2, y - 14, 5, 9);
+      g.fillRect(x - 1, y - 18, 3, 4);
+      g.fillRect(x + 3, y - 16, 2, 6);
+      g.fillRect(x - 2, y - 5, 2, 5);
+      g.fillRect(x + 1, y - 5, 2, 5);
+      g.fillStyle = '#a8a494';
+      g.fillRect(x - 1, y - 13, 2, 7);
+    });
   }
   // Bandeiras na rotunda com as cores do clube; depois de um título, faixas de festa à volta dela.
   for (const [fi, fj] of [[PLAZA - 1.3, PLAZA - 1.3], [PLAZA + 1.1, PLAZA - 1.3], [PLAZA - 1.3, PLAZA + 1.1], [PLAZA + 1.1, PLAZA + 1.1]] as const) {
@@ -461,7 +599,7 @@ export function townBoxes(width: number, height: number, division: number): Reco
     return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
   };
   return {
-    arena: box(PAVILION.i, PAVILION.j, PAVILION.a, PAVILION.b, arenaHeight(division) + 1.4),
+    arena: (({ i, j, a, b }) => box(i, j, a, b, arenaHeight(division) + 1.4))(pavilionOf(division)),
     office: box(OFFICE.i, OFFICE.j, OFFICE.a, OFFICE.b, OFFICE.h + 0.4),
     training: box(TRAINING.i, TRAINING.j, TRAINING.a, TRAINING.b, 1),
     federation: box(FEDERATION.i, FEDERATION.j, FEDERATION.a, FEDERATION.b, FEDERATION.h + FEDERATION.roof + 0.4),
@@ -550,8 +688,9 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       string(hi - 0.1, hj + a - 0.1, hi + a - 0.1, hj + a - 0.1, 1, 6, n + 2);
     });
     const h = arenaHeight(division);
-    string(PAVILION.i + PAVILION.a, PAVILION.j, PAVILION.i + PAVILION.a, PAVILION.j + PAVILION.b, h, 24, 1);
-    string(PAVILION.i, PAVILION.j + PAVILION.b, PAVILION.i + PAVILION.a, PAVILION.j + PAVILION.b, h, 24, 3);
+    const p = pavilionOf(division);
+    string(p.i + p.a, p.j, p.i + p.a, p.j + p.b, h, 24, 1);
+    string(p.i, p.j + p.b, p.i + p.a, p.j + p.b, h, 24, 3);
   }
   if (weather.snow) {
     g.fillStyle = 'rgba(255,255,255,0.9)';
@@ -559,6 +698,27 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
       const x = ((n * 97) % width + Math.sin(now / 900 + n) * 6 + width) % width;
       const y = ((n * 61) % height + (now / 1000) * 22 + n * 3) % height;
       g.fillRect(Math.round(x), Math.round(y), 2, 2);
+    }
+  }
+  if (weather.sun) {
+    g.fillStyle = 'rgba(255,238,170,0.14)';
+    g.fillRect(0, 0, width, height);
+  }
+  if (weather.rain) {
+    // Céu carregado, riscas inclinadas a cair depressa e salpicos que acendem e apagam no chão.
+    g.fillStyle = 'rgba(50,70,100,0.24)';
+    g.fillRect(0, 0, width, height);
+    g.fillStyle = 'rgba(206,220,240,0.6)';
+    for (let n = 0; n < 140; n++) {
+      const y = ((n * 61) % height + (now / 1000) * 300 + n * 7) % height;
+      const x = ((n * 97) % width - y * 0.25 + width * 2) % width;
+      g.fillRect(Math.round(x), Math.round(y), 1, 4);
+    }
+    g.fillStyle = 'rgba(226,236,250,0.8)';
+    const tick = Math.floor(now / 50);
+    for (let n = 0; n < 24; n++) {
+      if ((tick + n * 5) % 14 > 1) continue;
+      g.fillRect((n * 131 + Math.floor(tick / 16) * 37) % width, (n * 89 + Math.floor(tick / 16) * 53) % height, 2, 1);
     }
   }
 }
