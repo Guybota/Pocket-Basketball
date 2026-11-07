@@ -698,7 +698,21 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .actions button.icon.back img.ink, .actions button.icon.primary img.ink { filter: invert(1); }
 .actions button.icon:disabled img { opacity: .4; }
 .actions button.icon .badge { position: absolute; right: 3px; bottom: 2px; padding: 0 3px; font: 700 11px/1.3 var(--ui); color: var(--paper); background: var(--ink); border-radius: 3px; }
-.scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+/* No computador a barra de scroll ocupa largura: a lista guarda-lhe sempre o lugar (gutter), e o cabeçalho dos ícones guarda
+   o mesmo, para as colunas ficarem alinhadas com as notas. No telemóvel a barra flutua e nenhum dos dois reserva nada. */
+:root { --scrollbar: 10px; }
+.thead { overflow-y: hidden; scrollbar-gutter: stable; }
+/* A barra de scroll no estilo do jogo: tinta sobre papel, com cantos retos. */
+::-webkit-scrollbar { width: var(--scrollbar); height: var(--scrollbar); }
+::-webkit-scrollbar-track { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--paper-2); border-left-width: 4px; }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: var(--ball); }
+::-webkit-scrollbar-corner { background: var(--paper-2); }
+@supports not selector(::-webkit-scrollbar) {
+  :root { --scrollbar: 8px; }
+  * { scrollbar-width: thin; scrollbar-color: var(--ink) var(--paper-2); }
+}
 
 /* Ficha de jogador */
 .pcard { background: var(--paper); border: 2px solid var(--ink); border-radius: 6px; overflow: hidden; color: var(--ink); height: 100%; display: flex; flex-direction: column; }
