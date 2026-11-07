@@ -706,7 +706,8 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 /* A barra de scroll no estilo do jogo: tinta sobre papel, com cantos retos. */
 ::-webkit-scrollbar { width: var(--scrollbar); height: var(--scrollbar); }
 ::-webkit-scrollbar-track { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--ink); }
-::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--paper-2); border-left-width: 4px; }
+/* A borda é transparente e o fundo fica dentro dela: a linha de tinta da calha continua à vista onde a barra passa. */
+::-webkit-scrollbar-thumb { background: var(--ink); background-clip: padding-box; border: 2px solid transparent; border-left-width: 4px; }
 ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: var(--ball); }
 ::-webkit-scrollbar-corner { background: var(--paper-2); }
 @supports not selector(::-webkit-scrollbar) {
