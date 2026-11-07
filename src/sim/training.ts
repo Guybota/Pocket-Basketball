@@ -195,15 +195,17 @@ export function independentPractice(player: Player, rng: Rng): Player {
   return { ...player, attributes: { ...player.attributes, [key]: Math.min(ATTRIBUTE_MAX, value) } };
 }
 
-/** Fecho da semana para um jogador: recupera condição, cansa-se pelos segundos que jogou e pode lesionar-se. */
-export function weeklyFitness(player: Player, before: Player, playedSeconds: number, rng: Rng): Player {
+/** Fecho da semana para um jogador: recupera condição, cansa-se pelos segundos que jogou e pode lesionar-se. `medical` é o nível do departamento médico. */
+export function weeklyFitness(player: Player, before: Player, playedSeconds: number, rng: Rng, medical = 0): Player {
   const injured = (before.injuryWeeks ?? 0) > 0;
   const recovery = B.weeklyRecovery - ((player.attributes.stamina - 50) / 100) * B.staminaRecovery;
   const fatigue = player.fatigue * recovery + (playedSeconds / 480) * B.matchFatigue;
   const next: Player = { ...player, fatigue: Math.max(0, Math.min(1, Math.round(fatigue * 100) / 100)) };
   // Quem está lesionado conta mais uma semana de recuperação; o risco de lesão cresce com os minutos e com o cansaço.
   let injuryWeeks = Math.max(0, (before.injuryWeeks ?? 0) - 1);
-  if (!injured && playedSeconds > 0 && chance(rng, B.injuryBase * Math.min(1, playedSeconds / 480) * (1 + B.injuryPerFatigue * before.fatigue))) injuryWeeks = Math.round(between(rng, B.injuryMinWeeks, B.injuryMaxWeeks));
+  // O médico baixa o risco e encurta a lesão.
+  const risk = B.injuryBase * Math.min(1, playedSeconds / 480) * (1 + B.injuryPerFatigue * before.fatigue) * Math.max(0, 1 - B.medicalInjuryCut * medical);
+  if (!injured && playedSeconds > 0 && chance(rng, risk)) injuryWeeks = Math.max(B.injuryMinWeeks, Math.round(between(rng, B.injuryMinWeeks, B.injuryMaxWeeks)) - Math.floor(medical * B.medicalWeeksPerLevel));
   if (injuryWeeks > 0) next.injuryWeeks = injuryWeeks;
   else delete next.injuryWeeks;
   return next;

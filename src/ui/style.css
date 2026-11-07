@@ -1189,3 +1189,14 @@ html.high-contrast {
 html.high-contrast button.quiet { border-color: var(--ink); color: var(--ink); }
 html.high-contrast button:disabled { opacity: 0.7; }
 html.high-contrast button:focus-visible { outline-color: var(--ink); outline-width: 4px; }
+
+/* Escritório: o objetivo da direção e as instalações. */
+.objective { display: flex; flex-direction: column; gap: 2px; padding: 3px 5px; background: var(--paper-3); border-left: 3px solid var(--ball); }
+.objective b { font-weight: 400; color: var(--ink); }
+.facility { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 6px; padding: 3px 5px; background: var(--paper-3); }
+.facility header { grid-column: 1 / -1; display: flex; justify-content: space-between; }
+.facility header b { font-weight: 400; }
+.facility .pips { display: flex; gap: 2px; }
+.facility .pips i { width: 10px; height: 10px; border: 1px solid var(--ink); background: var(--paper); }
+.facility .pips i.on { background: var(--good); }
+.facility small { color: var(--muted); }

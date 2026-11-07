@@ -21,7 +21,8 @@ import { drawMatchPoster, drawWardrobe, kitImage } from './art/wardrobe.ts';
 import { INK, drawSprite, lookOf, spriteImage, type Look, type PoseName } from './art/sprites.ts';
 import { clubSeasons, seasonLines, type SeasonLine, CLUB_NAME_MAX, PLAYER_CLUB, SPECIAL_RIVALS, activeKit, aiTeam, applyRenewals, rivalTeam, cancelOffer, cupRoundName, cupStatus, currentFixture, leagueTable, makeOffer, marketList, salaryFor, sellPlayer, surplus, totalSalaries, transferFee, transferWindowOpen, yearsAtClub, type MarketEntry, opponentId, playoffFormat, renameClub, setClubShort, swapPlayers, totalCards, trainOne, type ClubState } from './club.ts';
 import { officialLabel } from './season-screens.ts';
-import { TACTIC_ROWS, tacticValue } from './club-screens.ts';
+import { TACTIC_ROWS, facilitiesHtml, objectiveHtml, recordsHtml, tacticValue } from './club-screens.ts';
+import { buyFacility, type FacilityId } from './club.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
@@ -32,7 +33,7 @@ import { assistantHalf, assistantPreGame, presidentBoard, presidentRenewals, say
 export type GameKind = 'official' | 'friendly' | 'practice';
 type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office';
 type GoTo = Screen | 'town';
-type OfficeItem = 'board' | 'trophies' | 'history' | 'reset';
+type OfficeItem = 'board' | 'trophies' | 'records' | 'facilities' | 'history' | 'reset';
 
 export interface MenuHost {
   top: HTMLElement;
@@ -863,18 +864,23 @@ function officeScreen(): Rendered {
     board: `<div class="note"><header><b>Direção do clube</b><span>${Math.round(club.confidence)}%</span></header><div class="inner">
       <div>Confiança no treinador</div><div class="gauge"><i style="width:${club.confidence}%;background:${club.confidence < 15 ? 'var(--bad)' : club.confidence < 40 ? 'var(--gold)' : 'var(--good)'}"></i></div>
       <div class="compare" style="grid-template-columns:1fr 1fr 1fr"><span>Orçamento ${club.money} mil</span><span>Salários ${totalSalaries(club)} mil</span><span>Sobra ${surplus(club)} mil</span></div>
-      ${say('president', ...presidentBoard(club))}
+      ${club.objective ? '' : say('president', ...presidentBoard(club))}
+      ${objectiveHtml(club)}
       <div>Abaixo de ${B.confidenceFired}% de confiança, a direção despede-te.</div>
     </div></div>`,
     history: `<div class="note"><header><b>Historial</b><span>${club.wins} V · ${club.losses} D · ${titles} títulos</span></header><div class="inner">${seasons
       ? `<table class="mini-table"><tr><th>Época</th><th>Divisão</th><th>Lugar</th><th>V-D</th><th></th></tr>${seasons}</table>`
       : '<div class="quote">Ainda não acabou nenhuma época. Aqui ficam as épocas acabadas e os títulos do clube.</div>'}</div></div>`,
+    records: recordsHtml(club),
+    facilities: facilitiesHtml(club),
     reset: `<div class="note"><header><b>Treinar outro clube</b></header><div class="inner"><div class="quote">Perdes o ${esc(club.team.name)}, na semana ${club.week}, assim que criares o novo clube. Os teus troféus vão contigo.</div><button type="button" id="resetYes" data-act="newClub">Escolher novo clube</button><button type="button" id="resetNo" data-office="board">Ficar com este clube</button></div></div>`,
   };
   const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}" style="grid-template-columns:1fr auto"><span>${label}</span><small>${note}</small></button>`;
   const items: [OfficeItem, string, string][] = [
-    ['board', 'Direção', 'A confiança no treinador'],
+    ['board', 'Direção', 'Confiança e objetivo'],
     ['trophies', 'Troféus e prémios', `${trophyList(club).filter(t => t.won).length} na vitrina`],
+    ['facilities', 'Instalações', 'Ginásio, médico e olheiros'],
+    ['records', 'Recordes e lendas', 'O que o clube guarda'],
     ['history', 'Historial', 'Épocas e títulos'],
     ['reset', 'Novo clube', 'Começar de novo'],
   ];
@@ -1096,6 +1102,10 @@ function onClick(event: Event): void {
     render();
   } else if (data.office) {
     officeItem = data.office as OfficeItem;
+    render();
+  } else if (data.facility) {
+    commit(buyFacility(club, data.facility as FacilityId));
+    host.sound('cheer');
     render();
   } else if (data.act === 'swap') {
     swapping = swapping === null ? selected : null;

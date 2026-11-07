@@ -7,7 +7,7 @@ import { simulateMatch, type MatchState, type TeamIndex } from '../sim/match.ts'
 import { between, chance, makeRng, next, type Rng } from '../sim/rng.ts';
 import { DIVISIONS, PLAYER_POOL, ROSTER_SLOTS, dealPool, heightCmOf, levelOfHeight, generatePlayer, generateTeam, generateTeamFrom, playerRating, teamRating } from '../sim/teamgen.ts';
 import { CARD_IDS, CARDS, endOfMatchCards, independentPractice, trainPlayer, weeklyFitness, type CardCategory, type CardId, type TrainingResult } from '../sim/training.ts';
-import { NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
+import { ATTRIBUTE_KEYS, NEUTRAL_TACTICS, POSITIONS, validateTactics, validateTeam, type Player, type Position, type Tactics, type Team } from '../sim/types.ts';
 import { DEFAULT_KITS, defaultEmblem, emblemLetters, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
 import { clubIdentity } from './art/identity.ts';
 import { CLUB_NAMES, FOREIGN_NAMES, shortName } from './setup.ts';
@@ -106,6 +106,8 @@ export interface SeasonRecord {
   objective?: Objective & { met: boolean };
   /** Falta nas épocas guardadas antes dos prémios. */
   awards?: SeasonAwards;
+  /** O que sobrou e passou para a época seguinte, em milhares. Falta nas épocas antigas. */
+  carriedMoney?: number;
 }
 
 /** Um jogador à venda esta semana: livre, ou de outro clube, com o que custa. */
@@ -273,7 +275,7 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
   const team = generateTeamFrom(world.clubs[PLAYER_CLUB]!.players!.map(i => PLAYER_POOL[i]!), seed * 2 + 1, name, DIVISIONS[division]!.level + B.playerClubLevelOffset);
   const squad: Team = { ...team, short: shortName(name), roster: team.roster.map(player => ({ ...player, moves: [] })) };
   const qualified = firstQualified(world.clubs, world.divisions, seed);
-  return {
+  const created: ClubState = {
     version: SAVE_VERSION,
     seed,
     division,
@@ -299,6 +301,44 @@ export function newClub(seed: number, division = 0, career: CareerRecord[] = [])
     history: [],
     seasonReport: null,
   };
+  return { ...created, objective: boardObjective(created) };
+}
+
+/** O objetivo que a direção dá para a época: um lugar na liga pela força do plantel na divisão, ou às vezes uma ronda da Taça da Federação. */
+export function boardObjective(club: ClubState): Objective {
+  const rng = makeRng((club.seed ^ (club.season * 0x2b1d3)) & 0x7fffffff);
+  const ours = teamRating(club.team);
+  // O lugar que o plantel vale: quantos clubes da divisão são mais fortes do que nós.
+  const stronger = leagueIds(club).filter(id => id !== PLAYER_CLUB && teamRating(aiTeam(club.clubs[id]!)) > ours).length;
+  const stakes = { confidence: B.objectiveConfidence, money: B.objectiveMoney[club.division]! };
+  if (chance(rng, B.objectiveCupChance)) return { kind: 'federation', target: B.objectiveCupRound[club.division]!, ...stakes };
+  return { kind: 'league', target: Math.max(1, Math.min(LEAGUE_SIZE - 1, stronger + 1 + B.objectiveLeagueSlack[club.division]!)), ...stakes };
+}
+
+/** O preço do próximo nível de uma instalação, ou null se já está no máximo. */
+export const facilityCost = (club: ClubState, id: FacilityId): number | null => B.facilityCosts[club.facilities[id]] ?? null;
+
+/** Comprar o nível seguinte de uma instalação, com o que sobra do orçamento. */
+export function buyFacility(club: ClubState, id: FacilityId): ClubState {
+  const cost = facilityCost(club, id);
+  if (cost === null) throw new Error('Esta instalação já está no máximo');
+  if (surplus(club) < cost) throw new Error('Não há dinheiro para esta obra');
+  return { ...club, money: club.money - cost, facilities: { ...club.facilities, [id]: club.facilities[id] + 1 } };
+}
+
+/** O ginásio faz render mais o que as cartas deram: só os ganhos, nunca as perdas de um combo mau. */
+function gymBoost(result: TrainingResult, level: number): TrainingResult {
+  if (level === 0) return result;
+  const attributes = { ...result.player.attributes };
+  const gains = { ...result.gains };
+  for (const key of ATTRIBUTE_KEYS) {
+    const gain = gains[key] ?? 0;
+    if (gain <= 0) continue;
+    const updated = Math.min(99, Math.round((attributes[key] + gain * level * B.gymTrainingBonus) * 10) / 10);
+    gains[key] = Math.round((gain + updated - attributes[key]) * 10) / 10;
+    attributes[key] = updated;
+  }
+  return { ...result, gains, player: { ...result.player, attributes } };
 }
 
 /** O jogo oficial desta semana e o que ele é: jornada da liga ou ronda de uma taça. */
@@ -549,7 +589,9 @@ export function applyRenewals(club: ClubState, keep: readonly string[]): ClubSta
   const released = renewals.filter(r => !keep.includes(r.name));
   const positions = released.map(r => archetypeOf(club, r.name));
   for (const r of released) current = releasePlayer(current, r.name);
-  return fillSquad(current, positions, 1).club;
+  const filled = fillSquad(current, positions, 1).club;
+  // Com o plantel fechado, a direção dá o objetivo da época.
+  return { ...filled, objective: boardObjective(filled) };
 }
 
 // Prognóstico: cada ponto de nota vale 3,5% e jogar em casa 4%.
@@ -616,9 +658,11 @@ export function marketList(club: ClubState): MarketEntry[] {
   const taken = new Set([...club.team.roster.map(p => p.name), ...club.offers.map(o => o.player.name)]);
   const level = DIVISIONS[club.division]!.level;
   const entries: MarketEntry[] = [];
-  for (let i = 0; i < B.marketFreeAgents; i++) {
+  // Os olheiros encontram mais jogadores livres, e melhores.
+  const scouts = club.facilities.scouts;
+  for (let i = 0; i < B.marketFreeAgents + scouts * B.scoutExtraFreeAgents; i++) {
     const position = POSITIONS[Math.floor(next(rng) * POSITIONS.length)]!;
-    const player = generatePlayer((weekSeed(club) + i * 977) & 0x7fffffff, position, level + between(rng, -8, 4), between(rng, 30, 85), [...taken]);
+    const player = generatePlayer((weekSeed(club) + i * 977) & 0x7fffffff, position, level + scouts * B.scoutLevelPerLevel + between(rng, -8, 4), between(rng, 30 + scouts * B.scoutPotentialPerLevel, 85), [...taken]);
     taken.add(player.name);
     // O mesmo lugar da lista gera sempre o mesmo jogador (só o nome foge aos já ocupados): se ele já foi contratado esta
     // semana, está no plantel com outro nome e os mesmos atributos, e o lugar fica vazio em vez de o "repor".
@@ -742,7 +786,7 @@ export function trainOne(club: ClubState, index: number, cards: readonly CardId[
     if (left <= 0) throw new Error(`Não há cartas de ${CARDS[card].name}`);
     owned[card] = left - 1;
   }
-  const result = trainPlayer(player, cards);
+  const result = gymBoost(trainPlayer(player, cards), club.facilities.gym);
   const isNewCombo = result.combo !== null && !club.knownCombos.includes(result.combo.id);
   return {
     result,
@@ -771,7 +815,7 @@ function closeWeek(club: ClubState, played: (index: number) => number): ClubStat
   const roster = club.team.roster.map((player, index) => {
     const injured = (player.injuryWeeks ?? 0) > 0;
     const practiced = injured || club.trainedThisWeek.includes(player.name) ? player : independentPractice(player, rng);
-    return weeklyFitness(practiced, player, played(index), rng);
+    return weeklyFitness(practiced, player, played(index), rng, club.facilities.medical);
   });
   // Os alvos são do adversário desta semana, por isso não passam para a seguinte.
   const settled = settleOffers({ ...settlePendingCup(club), team: { ...club.team, roster } }).club;
@@ -923,7 +967,12 @@ function endSeason(club: ClubState): ClubState {
     ...(club.objective ? { objective: { ...club.objective, met: club.objective.kind === 'league' ? position + 1 <= club.objective.target : federationExit >= club.objective.target } } : {}),
     awards: seasonAwards(club),
   };
-  const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup));
+  // O objetivo cumprido dá confiança e dinheiro; falhado, tira-os.
+  const stake = record.objective ? (record.objective.met ? 1 : -1) : 0;
+  const confidence = Math.max(0, Math.min(100, club.confidence + SEASON_CONFIDENCE[outcome] + cups.length * B.confidenceCup + stake * (record.objective?.confidence ?? 0)));
+  // Parte do que sobrou (com o dinheiro reservado em propostas, que volta) passa para a época seguinte.
+  const carried = Math.round(Math.max(0, surplus(club) + club.offers.reduce((sum, o) => sum + o.fee, 0)) * B.moneyCarryShare);
+  record.carriedMoney = carried;
   const qualified = orders[DIVISIONS.length - 1]!.slice(0, CONTINENTAL_PLACES);
   const filled = fillSquad({ ...shrunk, season: club.season + 1, division }, departures.map(name => archetypeOf(club, name)), 0, aged.length);
   record.arrivals = filled.arrivals;
@@ -936,7 +985,7 @@ function endSeason(club: ClubState): ClubState {
     salaries: filled.club.salaries,
     recentTraining: filled.club.recentTraining,
     // As propostas pendentes caem com a época, e o dinheiro reservado volta.
-    money: B.budgetByDivision[division]! + prizeMoney,
+    money: Math.max(0, B.budgetByDivision[division]! + prizeMoney + carried + stake * (record.objective?.money ?? 0)),
     offers: [],
     pendingRenewals: renewals,
     division,

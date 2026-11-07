@@ -3,7 +3,7 @@ import { teamRating } from '../sim/teamgen.ts';
 import type { Team } from '../sim/types.ts';
 import { portraitImage, type Mood } from './art/portrait.ts';
 import type { Look } from './art/sprites.ts';
-import { surplus, type ClubState, type SeasonRecord } from './club.ts';
+import { surplus, type ClubState, type FacilityId, type Objective, type SeasonRecord } from './club.ts';
 import { escapeHtml } from './panel.ts';
 
 export type StaffId = 'secretary' | 'assistant' | 'president';
@@ -83,4 +83,28 @@ export const presidentFired = (): [Mood, string] => ['sad', 'A direção agradec
 export function secretaryFarewell(names: readonly string[]): [Mood, string] {
   const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} e ${names.at(-1)}`;
   return ['sad', `Hoje despedimo-nos de ${list}. Levou o cacifo e deixou o café.`];
+}
+
+/** O presidente explica o objetivo da época. */
+export function presidentObjective(objective: Objective): [Mood, string] {
+  if (objective.kind === 'federation') return ['neutral', 'Este ano a cidade quer a taça. Não lhe peço que a ganhe, peço que não nos envergonhe nela.'];
+  if (objective.target <= 2) return ['neutral', 'Com este plantel, quero-nos lá em cima. Não aceito desculpas com o calendário.'];
+  if (objective.target >= 8) return ['worried', 'Sejamos realistas: não descer já era uma boa notícia.'];
+  return ['neutral', 'Fiz as contas ao plantel e aos outros. O objetivo é justo, e eu sou um homem justo.'];
+}
+
+/** No fim da época, o que o presidente diz do objetivo. */
+export function presidentObjectiveResult(met: boolean): [Mood, string] {
+  return met ? ['happy', 'Objetivo cumprido. A direção cumpre a sua parte, como prometido.'] : ['sad', 'O objetivo ficou por cumprir. Isso também se paga.'];
+}
+
+/** O adjunto comenta as instalações: a que falta é a que mais o preocupa. */
+export function assistantFacilities(facilities: Record<FacilityId, number>): [Mood, string] {
+  const { gym, medical, scouts } = facilities;
+  if (gym + medical + scouts === 0) return ['worried', 'Treinamos num ginásio emprestado, o médico é o primo do roupeiro e os olheiros somos nós ao domingo.'];
+  if (medical === 0) return ['worried', 'Sem médico, cada entorse dura um mês. Um departamento médico pagava-se sozinho.'];
+  if (gym === 0) return ['neutral', 'Com máquinas a sério, cada carta de treino rendia mais. Os garrafões de água já deram o que tinham a dar.'];
+  if (scouts === 0) return ['neutral', 'Sem olheiros, o mercado é o que nos aparece à porta. Com eles, aparecia gente melhor.'];
+  if (gym + medical + scouts >= 9) return ['happy', 'Instalações de primeira. Agora já não há desculpas, nem para mim.'];
+  return ['happy', 'Isto já parece um clube a sério. Mais uma obra e nem nos reconhecem.'];
 }

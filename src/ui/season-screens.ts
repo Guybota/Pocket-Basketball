@@ -3,13 +3,13 @@ import { LEAGUE_SIZE, MOVING_PLACES, PRESEASON_WEEKS, SEASON_WEEKS, weekCup, wee
 import { DIVISIONS } from '../sim/teamgen.ts';
 import type { TownPlace } from './art/town.ts';
 import { leagueIcon } from './art/leagues.ts';
-import { foundCards } from './club-screens.ts';
+import { foundCards, objectiveResult } from './club-screens.ts';
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord, weeksToNextGame } from './club.ts';
 import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
-import { presidentFired, presidentSeason, say, secretaryMood } from './staff.ts';
+import { presidentFired, presidentObjectiveResult, presidentSeason, say, secretaryMood } from './staff.ts';
 
 // A letra do jogo não tem o «º», por isso diz-se por extenso.
 const place = (position: number): string => `Lugar ${position + 1}`;
@@ -154,6 +154,14 @@ const outcomeTitle = (record: SeasonRecord): string => {
   }
 };
 
+/** Os prémios individuais da época, entre os nossos jogadores. */
+export function awardsLines(record: SeasonRecord): string {
+  const a = record.awards;
+  if (!a) return '';
+  const rows: [string, string | null][] = [['MVP da época', a.mvp], ['Revelação', a.rookie], ['Melhor defensor', a.defender]];
+  return rows.filter(([, name]) => name).map(([label, name]) => `<div class="league-line"><span>${label}</span><span>${escapeHtml(name!)}</span></div>`).join('');
+}
+
 /** O balanço de uma época: a tabela final, o que se ganhou e onde se joga a seguir. */
 export function seasonReportHtml(club: ClubState, record: SeasonRecord): string {
   return `<div class="result">
@@ -162,7 +170,11 @@ export function seasonReportHtml(club: ClubState, record: SeasonRecord): string 
       <div class="league-line"><span>Época ${record.season} · ${divisionName(record.division)}</span><span>${place(record.position)} · ${record.wins} V · ${record.losses} D</span></div>
       ${tableRows(club, record.table, record.division)}
       ${playoffLine(record)}
+      ${objectiveResult(record)}
+      ${record.objective ? say('president', ...presidentObjectiveResult(record.objective.met)) : ''}
+      ${awardsLines(record)}
       ${record.prizeMoney > 0 ? `<div class="league-line"><span>Prémios</span><span>${record.prizeMoney} mil</span></div>` : ''}
+      ${record.carriedMoney ? `<div class="league-line"><span>Passa para a próxima época</span><span>${record.carriedMoney} mil</span></div>` : ''}
       ${record.departures.length > 0 ? `<div class="league-line"><span>Saíram, com o potencial no fim</span><span>${record.departures.map(escapeHtml).join(', ')}</span></div>` : ''}
       ${record.arrivals.length > 0 ? `<div class="league-line"><span>Chegaram</span><span>${record.arrivals.map(escapeHtml).join(', ')}</span></div>` : ''}
       <div class="league-line"><span>${CUP_NAMES.federation}</span><span>${record.federationExit >= FEDERATION_ROUNDS.length ? 'Vencedores!' : `Eliminados: ${cupRoundName('federation', record.federationExit).toLowerCase()}`}</span></div>

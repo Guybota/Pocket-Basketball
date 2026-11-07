@@ -281,6 +281,19 @@ try {
   // O emblema e os equipamentos ficam guardados, e o equipamento chega ao campo.
   await coach.click('#officeBtn');
   await shot(coach, `${OUT}/escritorio.png`);
+  check('A direção mostra o objetivo da época', (await coach.locator('.objective').count()) === 1);
+  await coach.click('[data-office="facilities"]');
+  await shot(coach, `${OUT}/instalacoes.png`);
+  const works = await coach.evaluate(() => ({ surplus: window.__pocket.club()!.money - Object.values(window.__pocket.club()!.salaries).reduce((a, b) => a + b, 0), gym: window.__pocket.club()!.facilities.gym }));
+  const gymBtn = coach.locator('[data-facility="gym"]');
+  check('As obras só se fazem com dinheiro que sobre', (await gymBtn.isDisabled()) === works.surplus < 200, `sobra ${works.surplus}`);
+  if (!(await gymBtn.isDisabled())) {
+    await gymBtn.click();
+    check('Uma obra sobe a instalação de nível', await coach.evaluate((g: number) => window.__pocket.club()!.facilities.gym === g + 1, works.gym));
+  }
+  await coach.click('[data-office="records"]');
+  await shot(coach, `${OUT}/recordes.png`);
+  await coach.click('[data-office="board"]');
   await coach.click('[data-go="emblem"]');
   await coach.click('[data-em-design="circle:plain"]');
   await coach.click('[data-em-symbol="star"]');
@@ -452,6 +465,8 @@ try {
   await coach.evaluate(() => window.__pocket.fastForward(17));
   await coach.waitForSelector('#seasonContinue');
   await shot(coach, `${OUT}/fim-epoca.png`);
+  const reportText = await coach.locator('#seasonContinue').evaluate(el => el.closest('.panel, body')!.textContent ?? '');
+  check('O fim da época avalia o objetivo e dá os prémios', reportText.includes('Objetivo:') && reportText.includes('MVP da época'));
   await reloadClub(coach);
   await coach.waitForSelector('#seasonContinue');
   check('O balanço da época continua lá depois de recarregar', true);
@@ -471,6 +486,11 @@ try {
   await coach.waitForSelector('#arenaChip');
   check('Começa a época 2', await coach.evaluate(() => window.__pocket.club()!.season === 2 && window.__pocket.club()!.week === 1));
   check('Quem não renova sai, e o plantel fica com os que ficaram', await coach.evaluate((b: number) => window.__pocket.club()!.team.roster.length === Math.max(10, b - 1) && window.__pocket.club()!.pendingRenewals === null, squadBefore));
+  await coach.click('#officeBtn');
+  await coach.click('[data-office="records"]');
+  await shot(coach, `${OUT}/recordes-epoca2.png`);
+  await coach.click('.back');
+  await coach.waitForSelector('#arenaChip');
   check('O orçamento cobre os salários', await coach.evaluate(() => window.__pocket.club()!.money >= Object.values(window.__pocket.club()!.salaries).reduce((a, b) => a + b, 0)));
 
   // Despedimento. A regra em si é testada em Node; aqui confirma-se o ecrã e que fica guardado.

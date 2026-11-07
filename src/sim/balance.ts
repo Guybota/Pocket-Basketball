@@ -494,6 +494,26 @@ export const BALANCE = {
   offerMinWeeks: 1,
   offerMaxWeeks: 3,
   offerAcceptChance: 0.7,
+  // Metade do que sobra no fim da época passa para a seguinte (com o dinheiro reservado em propostas).
+  moneyCarryShare: 0.5,
+  // Instalações: o preço de cada nível, em milhares (o primeiro, o segundo e o terceiro). Na Pro Liga 1 sobram ~1300 por época.
+  facilityCosts: [200, 400, 700],
+  // Ginásio: cada nível faz o treino com cartas render mais 8%.
+  gymTrainingBonus: 0.08,
+  // Departamento médico: cada nível tira 20% ao risco de lesão e, a partir do segundo, uma semana à lesão.
+  medicalInjuryCut: 0.2,
+  medicalWeeksPerLevel: 0.5,
+  // Olheiros: cada nível mostra mais um jogador livre, com mais 10 de potencial mínimo e mais 2 de nível.
+  scoutExtraFreeAgents: 1,
+  scoutPotentialPerLevel: 10,
+  scoutLevelPerLevel: 2,
+  // Objetivos da direção: a folga sobre o lugar que a força do plantel dá, por divisão; a ronda da Taça da Federação pedida;
+  // quantas épocas em cada 4 pedem a taça; e o que está em jogo.
+  objectiveLeagueSlack: [2, 2, 1, 1],
+  objectiveCupRound: [2, 2, 3, 4],
+  objectiveCupChance: 0.25,
+  objectiveConfidence: 8,
+  objectiveMoney: [40, 60, 100, 150],
 
   // Treino: quanto mais alto o atributo, menos rende. Com 140, um atributo de 70 rende metade.
   trainingHardCap: 140,

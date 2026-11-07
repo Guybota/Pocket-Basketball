@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { simulateMatch } from '../sim/match.ts';
 import { generateTeam, teamRating } from '../sim/teamgen.ts';
-import { CARD_IDS, CARDS, COMBOS, comboFor, cardFromEvent, endOfMatchCards, independentPractice, previewGains, trainPlayer, trainingFactor, type CardId } from '../sim/training.ts';
+import { CARD_IDS, CARDS, COMBOS, comboFor, cardFromEvent, endOfMatchCards, independentPractice, previewGains, trainPlayer, trainingFactor, weeklyFitness, type CardId } from '../sim/training.ts';
 import { makeRng } from '../sim/rng.ts';
 import { MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTeam } from '../sim/types.ts';
 import { BALANCE as B } from '../sim/balance.ts';
@@ -11,7 +11,7 @@ import { LEAGUE_SIZE, PRESEASON_WEEKS, SEASON_WEEKS } from '../sim/league.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { CUP_ROUNDS, FEDERATION_ROUNDS } from '../sim/cup.ts';
 import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
-import { clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, liveOtherGames, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
+import { boardObjective, buyFacility, seasonAwards, facilityCost, totalSalaries, type MarketEntry, clubSeasons, seasonLines, CONTINENTAL_CLUBS, FOREIGN_START, PLAYER_CLUB, WORLD_CLUB, activeKit, aiTeam, applyRenewals, autoRenew, cancelOffer, careerOf, clubTeam, cupStatus, makeOffer, marketList, releasePlayer, rivalTeam, salaryFor, sellPlayer, signPlayer, specialTeam, surplus, transferWindowOpen, yearsAtClub, currentFixture, currentGame, currentSeries, finishMatch, finishPractice, firstHalfOver, leaguePosition, liveOtherGames, leagueTable, newClub, opponentId, opponentOf, parseClub, renameClub, setClubShort, skipWeek, swapPlayers, totalCards, trainOne, visitorOf, weekSeed, type ClubState } from './club.ts';
 import { createMatch, step } from '../sim/match.ts';
 import { seconds } from '../sim/court.ts';
 import { CLUB_NAMES, shortName } from './setup.ts';
@@ -513,6 +513,10 @@ describe('época', () => {
     const record = after.history.at(-1)!;
     expect(record.objective).toEqual({ kind: 'league', target: 10, confidence: 5, money: 20, met: true });
     expect(after.objective).toBeNull();
+    // Metade da sobra passa de época, e o objetivo cumprido junta o dinheiro prometido.
+    expect(record.carriedMoney).toBeGreaterThan(0);
+    expect(after.money).toBe(B.budgetByDivision[after.division]! + record.prizeMoney + record.carriedMoney! + 20);
+    expect(autoRenew(after).objective).not.toBeNull();
     expect(record.awards!.mvp).not.toBeNull();
     expect(record.awards!.defender).not.toBeNull();
     expect(record.awards!.rookie).not.toBe(record.awards!.mvp);
@@ -942,6 +946,71 @@ describe('época', () => {
     expect(parseClub(JSON.stringify({ ...c, rounds: [[{ home: 99, away: 0, score: null }]] }))).toBeNull();
     expect(parseClub(JSON.stringify({ ...c, week: 99 }))).toBeNull();
     expect(parseClub(JSON.stringify({ ...c, confidence: 'muita' }))).toBeNull();
+  });
+});
+
+describe('progressão: objetivos e instalações', () => {
+  it('a direção dá um objetivo justo logo ao criar o clube, sempre o mesmo para a mesma semente', () => {
+    for (const division of [0, 1, 2, 3]) {
+      const c = newClub(41, division);
+      expect(c.objective).toEqual(newClub(41, division).objective);
+      const o = c.objective!;
+      expect(o.money).toBe(B.objectiveMoney[division]);
+      if (o.kind === 'league') expect(o.target).toBeGreaterThanOrEqual(1 + B.objectiveLeagueSlack[division]!);
+      if (o.kind === 'league') expect(o.target).toBeLessThan(LEAGUE_SIZE);
+      else expect(o.target).toBe(B.objectiveCupRound[division]);
+    }
+    // Em várias épocas aparecem os dois tipos.
+    const kinds = new Set(Array.from({ length: 12 }, (_, i) => boardObjective({ ...newClub(41), season: i + 1 }).kind));
+    expect(kinds).toEqual(new Set(['league', 'federation']));
+  });
+
+  it('as obras pagam-se com a sobra, sobem um nível e param no máximo', () => {
+    const c = { ...newClub(41, 3) };
+    const built = buyFacility(c, 'gym');
+    expect(built.facilities.gym).toBe(1);
+    expect(built.money).toBe(c.money - B.facilityCosts[0]!);
+    expect(facilityCost(built, 'gym')).toBe(B.facilityCosts[1]);
+    const full = { ...c, facilities: { ...c.facilities, gym: B.facilityCosts.length } };
+    expect(facilityCost(full, 'gym')).toBeNull();
+    expect(() => buyFacility(full, 'gym')).toThrow();
+    expect(() => buyFacility({ ...c, money: totalSalaries(c) }, 'medical')).toThrow();
+    expect(parseClub(JSON.stringify(built))).toEqual(built);
+  });
+
+  it('o ginásio faz o treino render mais', () => {
+    const c = newClub(41);
+    const cards = CARD_IDS.filter(id => (c.cards[id] ?? 0) > 0).slice(0, 1);
+    const plain = trainOne(c, 0, cards).result.gains;
+    const gym = trainOne({ ...c, facilities: { ...c.facilities, gym: 3 } }, 0, cards).result.gains;
+    const sum = (g: typeof plain): number => Object.values(g).reduce((a, b) => a + b, 0);
+    expect(sum(gym)).toBeGreaterThan(sum(plain));
+  });
+
+  it('o médico tira lesões e encurta-as, sem mudar nada quando não há médico', () => {
+    const tired = { ...base, fatigue: 0.6 };
+    const hurt = (medical: number): number[] => Array.from({ length: 400 }, (_, i) => weeklyFitness(tired, tired, 480, makeRng(i), medical).injuryWeeks ?? 0);
+    const none = hurt(0);
+    expect(Array.from({ length: 400 }, (_, i) => weeklyFitness(tired, tired, 480, makeRng(i)).injuryWeeks ?? 0)).toEqual(none);
+    const doctor = hurt(3);
+    expect(doctor.filter(w => w > 0).length).toBeLessThan(none.filter(w => w > 0).length);
+    expect(Math.max(...doctor)).toBeLessThan(Math.max(...none));
+  });
+
+  it('os prémios vão para quem mais fez: o MVP, a revelação entre os que chegaram, e o defensor', () => {
+    const c = newClub(41);
+    const [a, b, d, e] = c.team.roster.map(p => p.name);
+    const line = (points: number, defense: number, games = 10) => ({ games, points, rebounds: 0, assists: 0, steals: defense, blocks: 0 });
+    const awards = seasonAwards({ ...c, joined: { ...c.joined, [d!]: c.season, [a!]: c.season - 1, [b!]: c.season - 1 }, stats: { [a!]: line(200, 5), [b!]: line(50, 40), [d!]: line(100, 0), [e!]: line(900, 90, 2) } });
+    // O último jogou poucos jogos e fica de fora.
+    expect(awards).toEqual({ mvp: a, rookie: d, defender: b });
+  });
+
+  it('os olheiros mostram mais jogadores livres, com mais potencial', () => {
+    const c = newClub(41);
+    const free = (scouts: number): MarketEntry[] => marketList({ ...c, facilities: { ...c.facilities, scouts } }).filter(e => e.clubId === null);
+    expect(free(2).length).toBe(free(0).length + 2 * B.scoutExtraFreeAgents);
+    expect(Math.min(...free(2).map(e => e.player.potential))).toBeGreaterThanOrEqual(30 + 2 * B.scoutPotentialPerLevel);
   });
 });
 
