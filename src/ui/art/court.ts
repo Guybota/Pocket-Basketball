@@ -217,27 +217,38 @@ export const THEMES: readonly CourtTheme[] = [
   },
 ];
 
-function isLine(x: number, y: number): boolean {
-  const w = 0.075;
-  if (x < -w || x > 14 + w || Math.abs(y) > 7.5 + w) return false;
-  const near = (a: number, b: number, width = w): boolean => Math.abs(a - b) < width;
-  const dist = (cx: number): number => Math.sqrt((x - cx) * (x - cx) + y * y);
-  const absY = Math.abs(y);
-  if (near(x, 0) || near(absY, 7.5) || near(x, 14)) return true;
-  if (x < 5.8 + w && near(absY, 2.45)) return true;
-  if (near(x, 5.8) && absY < 2.45) return true;
-  // Mais pequeno do que o da FIBA, para não encostar à linha de 3, que também é mais curta.
-  if (near(dist(5.8), 1.5) && x > 5.8) return true;
-  if (near(dist(1.575), 1.25) && x > 1.575) return true;
-  if (near(dist(HOOP_U), THREE_RADIUS) && absY < THREE_CORNER_V) return true;
-  if (near(absY, THREE_CORNER_V) && x < THREE_CORNER_MAX_U) return true;
-  if (near(dist(14), 1.8)) return true;
+// As linhas do campo não vão na textura: reamostrada em perspetiva, saíam serrilhadas e com espessuras diferentes.
+// São traçados no mundo, desenhados depois do chão como linhas de 1 píxel, sempre com a mesma espessura.
+const arc = (cx: number, r: number, from: number, to: number): [number, number][] => {
+  const n = Math.max(4, Math.ceil((r * (to - from)) / 0.25));
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const a = from + ((to - from) * i) / n;
+    return [cx + r * Math.cos(a), r * Math.sin(a)];
+  });
+};
+const halfCourtLines = (): [number, number][][] => {
+  const cornerA = Math.asin(THREE_CORNER_V / THREE_RADIUS);
+  const threeX = HOOP_U + THREE_RADIUS * Math.cos(cornerA);
+  const lines: [number, number][][] = [
+    [[0, -7.5], [0, 7.5]],
+    [[0, 2.45], [5.8, 2.45], [5.8, -2.45], [0, -2.45]],
+    // Mais pequeno do que o da FIBA, para não encostar à linha de 3, que também é mais curta.
+    arc(5.8, 1.5, -Math.PI / 2, Math.PI / 2),
+    arc(1.575, 1.25, -Math.PI / 2, Math.PI / 2),
+    [[0, -THREE_CORNER_V], [Math.min(THREE_CORNER_MAX_U, threeX), -THREE_CORNER_V], ...arc(HOOP_U, THREE_RADIUS, -cornerA, cornerA), [0, THREE_CORNER_V]],
+  ];
   // Traços ao longo da área, onde os jogadores se alinham no lance livre.
-  if (absY > 2.45 && absY < 2.72) {
-    for (const mark of [1.75, 2.6, 3.45, 4.3]) if (near(x, mark, 0.05)) return true;
-  }
-  return false;
-}
+  for (const mark of [1.75, 2.6, 3.45, 4.3]) for (const side of [-1, 1]) lines.push([[mark, side * 2.45], [mark, side * 2.72]]);
+  return lines;
+};
+const COURT_LINES: readonly (readonly [number, number][])[] = [
+  ...halfCourtLines(),
+  ...halfCourtLines().map(l => l.map(([x, y]): [number, number] => [28 - x, y])),
+  [[0, -7.5], [28, -7.5]],
+  [[0, 7.5], [28, 7.5]],
+  [[14, -7.5], [14, 7.5]],
+  arc(14, 1.8, 0, Math.PI * 2),
+];
 
 /** O emblema do centro: uma bola desenhada com as costuras. */
 function isCenterSeam(x: number, y: number): boolean {
@@ -466,8 +477,7 @@ export function courtTextures(division: number, accent?: string, emblem?: Emblem
       const x = wx < 14 ? wx : 28 - wx; // O campo é simétrico: só a metade esquerda precisa de desenho.
       const noise = hash(Math.floor(x * 5), Math.floor(y * 5));
       let color: Rgb;
-      if (isLine(x, y)) color = theme.line(hash(Math.floor(x * 3), Math.floor(y * 3)));
-      else if (x < 0 || Math.abs(y) > 7.5) color = theme.apron(noise);
+      if (x < 0 || Math.abs(y) > 7.5) color = theme.apron(noise);
       else if (x < 5.8 && Math.abs(y) < 2.45) color = theme.paint;
       else if ((14 - x) * (14 - x) + y * y < 1.8 * 1.8) {
         color = isCenterSeam(wx, y) ? theme.line(1) : theme.center;
@@ -697,6 +707,7 @@ export class Camera {
     this.lastScene = key;
     if (t.theme.open) {
       this.drawOpenScene(pixels, t, fence);
+      this.drawCourtLines(pixels, t.theme);
       return true;
     }
     const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
@@ -767,7 +778,51 @@ export class Camera {
         pixels[row + sx] = wall[wv * t.wallW + wu]!;
       }
     }
+    this.drawCourtLines(pixels, t.theme);
     return true;
+  }
+
+  /** As linhas do campo, por cima do chão: 1 píxel, com a cor e a luz de cada troço. */
+  private drawCourtLines(pixels: Uint32Array, theme: CourtTheme): void {
+    const { width, height } = this;
+    for (const line of COURT_LINES) {
+      let [px, py] = this.project(line[0]![0], line[0]![1]);
+      // O chão de cada píxel é a média do troço logo abaixo do seu centro: a linha desce meio píxel para ficar onde a área muda de cor.
+      px = Math.floor(px);
+      py = Math.floor(py - 0.5);
+      for (let i = 1; i < line.length; i++) {
+        const [x, y] = line[i]!;
+        const [qx0, qy0] = this.project(x, y);
+        const qx = Math.floor(qx0);
+        const qy = Math.floor(qy0 - 0.5);
+        const mx = (line[i - 1]![0] + x) / 2;
+        const my = (line[i - 1]![1] + y) / 2;
+        const color = packRgb(shade(theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)));
+        // Bresenham: cada passo avança um píxel no eixo mais longo, por isso a linha nunca engrossa nem tem buracos.
+        const dx = Math.abs(qx - px);
+        const dy = -Math.abs(qy - py);
+        const stepX = px < qx ? 1 : -1;
+        const stepY = py < qy ? 1 : -1;
+        let err = dx + dy;
+        let ax = px;
+        let ay = py;
+        for (;;) {
+          if (ax >= 0 && ay >= 0 && ax < width && ay < height) pixels[ay * width + ax] = color;
+          if (ax === qx && ay === qy) break;
+          const e2 = 2 * err;
+          if (e2 >= dy) {
+            err += dy;
+            ax += stepX;
+          }
+          if (e2 <= dx) {
+            err += dx;
+            ay += stepY;
+          }
+        }
+        px = qx;
+        py = qy;
+      }
+    }
   }
 }
 

@@ -983,10 +983,11 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .fx-text .cs { display: flex; gap: 6px; }
 .fx-text .cs img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }
 @keyframes fx-gather {
-  0% { opacity: 1; transform: translateX(var(--x)) rotate(0deg); }
-  30% { opacity: 1; transform: translateX(var(--x)) translateY(-8px) rotate(-3deg); }
-  80% { opacity: 1; transform: translateX(0) rotate(14deg) scale(.9); }
-  100% { opacity: 0; transform: translateX(0) rotate(40deg) scale(.4); }
+  /* Sem rodar: as cartas inclinadas partiam a grelha de píxeis. */
+  0% { opacity: 1; transform: translateX(var(--x)); }
+  30% { opacity: 1; transform: translateX(var(--x)) translateY(-8px); }
+  80% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(0) scale(.5); }
 }
 @keyframes fx-flash { 0% { opacity: 0; } 35% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes fx-rays-in { from { opacity: 0; } to { opacity: 1; } }
