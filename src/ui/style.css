@@ -151,7 +151,8 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  top: 18%;
+  /* Em baixo: os cestos ficam na metade de cima do ecrã, e o aviso tapava o próprio afundanço. Fica acima do nome de quem tem a bola. */
+  bottom: 24%;
   margin-inline: auto;
   width: fit-content;
   zoom: var(--hud-zoom, 1);
@@ -169,7 +170,7 @@ body {
 #banner.show { animation: banner-in 0.18s steps(4); }
 
 @keyframes banner-in {
-  from { transform: translateY(-14px); opacity: 0; }
+  from { transform: translateY(14px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 

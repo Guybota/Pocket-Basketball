@@ -702,7 +702,8 @@ export class MatchView {
     const t = Math.min(1, (s.tick + 4) / 24);
     const w = Math.min(camera.width - 16, 300);
     const x = (camera.width - w) >> 1;
-    const y = (camera.height >> 1) - 22;
+    // No fundo do campo: no meio tapava o círculo central e o emblema, que são o que a entrada das equipas mostra.
+    const y = camera.height - 50;
     g.fillStyle = 'rgba(27,34,48,0.88)';
     g.fillRect(x, y, w, 44);
     g.fillStyle = '#f2c230';
@@ -1376,7 +1377,7 @@ export class MatchView {
       const fan = this.fans[b.fan]!;
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
       const w = textWidth(b.label, 2) + 8;
-      const x = Math.max(2, Math.min(camera.width - w - 2, (fx | 0) - (w >> 1)));
+      const x = Math.max(6, Math.min(camera.width - w - 6, (fx | 0) - (w >> 1)));
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
       const y = Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age);
       g.fillStyle = '#1b2230';
