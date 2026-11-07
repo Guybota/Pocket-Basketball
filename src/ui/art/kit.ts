@@ -158,10 +158,11 @@ export const defaultEmblem = (short: string): Emblem => ({
 export function validEmblem(emblem: Emblem): boolean {
   return typeof emblem === 'object' && emblem !== null
     && EMBLEM_SHAPES.includes(emblem.shape) && EMBLEM_PATTERNS.includes(emblem.pattern)
-    && (emblem.symbol === 'none' || emblem.symbol in EMBLEM_SYMBOLS)
+    // Object.hasOwn e não `in`: um ficheiro de fora com «constructor» ou «toString» não pode passar por símbolo.
+    && (emblem.symbol === 'none' || (typeof emblem.symbol === 'string' && Object.hasOwn(EMBLEM_SYMBOLS, emblem.symbol)))
     && [emblem.primary, emblem.secondary, emblem.accent].every(isColor)
     && typeof emblem.letters === 'string' && emblemLetters(emblem.letters) === emblem.letters
-    && (emblem.border === undefined || emblem.border in BORDER_COLORS);
+    && (emblem.border === undefined || (typeof emblem.border === 'string' && Object.hasOwn(BORDER_COLORS, emblem.border)));
 }
 
 const EMBLEM_SIZE = 32;
