@@ -6,6 +6,11 @@
   --paper-3: #e4d5ad;
   --line: #cbb98e;
   --ball: #e8622a;
+  /* O laranja da bola é só para a bola e a arte. Como letra sobre papel dá 2,3–3:1; estes passam 4,5:1. */
+  --ball-ink: #9a3412;
+  /* Fundo laranja dos botões principais, com letra branca a 5,3:1 (4,7:1 ao passar o rato). */
+  --ball-fill: #b8481c;
+  --ball-fill-2: #c4501f;
   --paint-dk: #0f5560;
   --paint-dkr: #0c4a54;
   --muted: #5d5a4f;
@@ -217,9 +222,9 @@ button[aria-pressed="true"]:not(.gcard, .swatch), [role="tab"][aria-selected="tr
 
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
 
-button.primary { background: var(--ball); color: #fff; width: 100%; font-size: 20px; }
+button.primary { background: var(--ball-fill); color: #fff; width: 100%; font-size: 20px; }
 
-button.primary:hover { background: #f07238; }
+button.primary:hover { background: var(--ball-fill-2); }
 
 .tabs { display: flex; gap: 2px; padding: 4px 4px 0; background: var(--ink); flex: none; }
 
@@ -240,11 +245,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .subs { display: flex; flex-direction: column; gap: 3px; }
 
-.subs-title { font: 400 30px/1 var(--display); text-align: center; color: var(--ball); padding-bottom: 3px; }
+.subs-title { font: 400 30px/1 var(--display); text-align: center; color: var(--ball-ink); padding-bottom: 3px; }
 
 .subs-hint { padding: 5px 6px; background: var(--paper-2); border: 2px solid var(--ink); font: 400 15px/1.25 var(--ui-sm); }
 
-.subs-hint b { color: var(--ball); font-weight: 400; }
+.subs-hint b { color: var(--ball-ink); font-weight: 400; }
 
 
 
@@ -325,7 +330,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .qt .team { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
 
-.qt .tot { color: var(--ball); }
+.qt .tot { color: var(--ball-ink); }
 
 .dot { display: block; width: 8px; height: 14px; flex: none; background: var(--team); }
 
@@ -417,7 +422,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .move { display: grid; gap: 1px; }
 
-.move b { font-weight: 400; color: var(--ball); line-height: 1; }
+.move b { font-weight: 400; color: var(--ball-ink); line-height: 1; }
 
 .move span, .no-moves { font: 400 15px/1 var(--ui-sm); margin: 0; }
 
@@ -493,7 +498,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .final-score b { font-weight: 400; }
 
 
-.winner { font: 400 30px/1 var(--display); text-align: center; color: var(--ball); }
+.winner { font: 400 30px/1 var(--display); text-align: center; color: var(--ball-ink); }
 
 .mvp { display: flex; align-items: center; justify-content: center; gap: 6px; font: 400 15px/1.1 var(--ui-sm); padding: 4px; background: var(--paper-2); border: 2px solid var(--ink); }
 
@@ -546,7 +551,7 @@ html.reduce-motion .intro-row { animation: none; }
 
 .club-week { display: grid; justify-items: center; gap: 2px; text-align: center; }
 
-.club-week b { font: 400 40px/0.9 var(--display); font-weight: 400; color: var(--ball); }
+.club-week b { font: 400 40px/0.9 var(--display); font-weight: 400; color: var(--ball-ink); }
 
 .club-week span { font: 400 15px/1 var(--ui-sm); color: var(--muted); }
 
@@ -721,7 +726,7 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .grades img { display: block; width: 100%; image-rendering: pixelated; }
 .gr { display: block; text-align: center; font: 400 15px/15px var(--small); color: var(--grade-ink); background: var(--grade); border: 1px solid var(--ink); min-width: 0; }
 .kv { display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 3px; margin-top: 2px; padding: 1px 4px; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 17px; }
-.kv b { font-weight: 400; color: var(--ball); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv b { font-weight: 400; color: var(--ball-ink); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
 .body-stars { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 
@@ -781,7 +786,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 /* A estrela das opções de ataque, ao lado do nome. */
 .ostar { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; image-rendering: pixelated; }
 .prow:active { transform: none; box-shadow: none; }
-.prow.swapfrom { background: var(--ball) !important; color: #fff !important; }
+.prow.swapfrom { background: var(--ball-fill) !important; color: #fff !important; }
 .prow .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ppos { display: block; font: 400 15px/16px var(--small); text-align: center; color: #fff; border: 1px solid var(--ink); }
 .ppos-BAS, .ppos-ESC { background: #2b7fb8; } .ppos-EXT { background: var(--good); } .ppos-EXP { background: #7246c4; } .ppos-POS { background: var(--bad); } .ppos-SUP { background: var(--muted); }
@@ -800,7 +805,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .gcard:disabled { opacity: .35; }
 .gcard[aria-pressed="true"] { opacity: 1; }
 .info { flex: none; padding: 2px 6px; font: 400 15px/1.05 var(--small); background: var(--paper-2); border-top: 2px solid var(--ink); min-height: 34px; }
-.info b { font-weight: 400; color: var(--ball); }
+.info b { font-weight: 400; color: var(--ball-ink); }
 .slots { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 58px; gap: 4px; padding: 3px 5px 5px; flex: 1; min-height: 0; align-content: center; }
 .slot { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 3px; align-items: center; padding: 2px; min-height: 0; background: var(--paper-2); box-shadow: none; font: 400 15px/1 var(--small); text-align: left; }
 .slot img { display: block; width: 32px; height: 35px; image-rendering: pixelated; border: 1px solid var(--ink); }
@@ -858,7 +863,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .comboprogress i { display: block; height: 100%; background: var(--gold); }
 .lastcombo { display: grid; justify-items: center; gap: 4px; padding-top: 4px; }
 .lastcombo span { font: 400 14px/1 var(--small); color: var(--muted); }
-.lastcombo b { font: 400 22px/1 var(--display); color: var(--ball); font-weight: 400; }
+.lastcombo b { font: 400 22px/1 var(--display); color: var(--ball-ink); font-weight: 400; }
 .lastcombo div { display: flex; gap: 8px; }
 .lastcombo img { width: 64px; height: 64px; image-rendering: pixelated; }
 /* Uma lista curta não deixa meio painel vazio: as linhas crescem até 40 px quando há espaço, e ficam mais fáceis de tocar. */
@@ -870,8 +875,8 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .mbar { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; min-height: 46px; padding: 3px 10px 3px 6px; text-align: left; background: var(--paper); border-radius: 6px; box-shadow: 2px 3px 0 var(--ink); }
 .mbar img { display: block; width: 28px; height: 28px; image-rendering: pixelated; }
 .mbar small { font: 400 15px/1 var(--small); color: var(--muted); }
-.mbar.go { background: var(--ball); color: #fff; }
-.mbar.go small { color: #ffe0c8; }
+.mbar.go { background: var(--ball-fill); color: #fff; }
+.mbar.go small { color: #fff; }
 .matchhead { flex: none; display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; background: var(--ink); color: var(--paper); font: 400 15px/1 var(--small); }
 .matchhead b { font-weight: 400; color: var(--gold); }
 
@@ -931,13 +936,13 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 /* Quem fala, com cara: a secretária, o adjunto e o presidente. */
 .say { flex: none; display: grid; grid-template-columns: 40px 1fr; gap: 6px; align-items: center; margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); color: var(--ink); text-align: left; }
 .say img { display: block; width: 40px; height: 40px; image-rendering: pixelated; border: 2px solid var(--ink); background: #8fd0e6; }
-.say b { display: block; font-weight: 400; color: var(--ball); }
+.say b { display: block; font-weight: 400; color: var(--ball-ink); }
 /* Na cidade o painel é baixo: retrato mais pequeno e o nome na mesma linha. */
 .cityp .say { grid-template-columns: 32px 1fr; padding: 2px 6px; }
 .cityp .say img { width: 32px; height: 32px; }
 .cityp .say b { display: inline; margin-right: 4px; }
 .citydetail { text-align: center; font: 400 15px/1 var(--small); color: var(--muted); }
-.cityp p b { font-weight: 400; color: var(--ball); }
+.cityp p b { font-weight: 400; color: var(--ball-ink); }
 .cityp .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .prow.trained { box-shadow: inset 4px 0 0 var(--good); }
 .prow.trained .name { color: var(--good); }
@@ -995,7 +1000,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .note .inner { position: relative; }
 .mvp.farewell { justify-content: flex-start; text-align: left; }
 .mvp.farewell img { width: 40px; height: 40px; border: 2px solid var(--ink); }
-.mvp.farewell b { font-weight: 400; color: var(--ball); }
+.mvp.farewell b { font-weight: 400; color: var(--ball-ink); }
 .fx-text .n { font: 400 36px/.9 var(--display); padding-inline: 8px; }
 .fx-text .cs { display: flex; gap: 6px; }
 .fx-text .cs img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }
@@ -1097,7 +1102,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 
 /* A vitrina de troféus */
 .tnote { position: absolute; left: 8px; right: 8px; top: 8px; display: grid; gap: 1px; padding: 3px 6px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); font: 400 15px/1.05 var(--small); }
-.tnote b { font: 400 18px/1 var(--ui); color: var(--ball); }
+.tnote b { font: 400 18px/1 var(--ui); color: var(--ball-ink); }
 .trow { width: 100%; display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: center; min-height: 34px; padding: 1px 6px; text-align: left; border: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: transparent; font: 400 18px/1 var(--ui); }
 .trow:active { transform: none; box-shadow: none; }
 .trow i { display: block; width: 12px; height: 12px; background: var(--ink-2); border: 1px solid var(--ink); }
@@ -1106,7 +1111,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 
 /* O passar do rato não pode apagar o texto dos botões coloridos. */
 .chalk button:hover { background: rgba(244, 241, 228, .14); }
-.mbar.go:hover { background: #f07238; }
+.mbar.go:hover { background: var(--ball-fill-2); }
 .prow:hover, .trow:hover { background: var(--paper-2); }
 .combofx:hover { background: #241a45; }
 .clubbadge { flex: 1; display: grid; justify-items: center; align-content: center; gap: 6px; font: 400 24px/1 var(--ui); }
@@ -1147,7 +1152,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .fedmap .field { grid-area: 2 / 2; position: relative; width: 100%; aspect-ratio: 1; background: var(--paint-dk); background-image: linear-gradient(rgba(255, 255, 255, .35), rgba(255, 255, 255, .35)), linear-gradient(rgba(255, 255, 255, .35), rgba(255, 255, 255, .35)); background-size: 100% 2px, 2px 100%; background-position: center; background-repeat: no-repeat; border: 2px solid var(--ink); }
 .fedmap .field img { position: absolute; width: 48px; transform: translate(-50%, -50%); image-rendering: pixelated; }
 .fedstyle { flex: none; font: 400 15px/1.1 var(--small); }
-.fedstyle b { font-weight: 400; color: var(--ball); }
+.fedstyle b { font-weight: 400; color: var(--ball-ink); }
 .fedsquad { flex: none; }
 
 /* O ecrã do adversário: a ficha do clube, e os números da época nas linhas do plantel. */
@@ -1188,7 +1193,7 @@ button.update-ready { position: fixed; top: 8px; left: 50%; transform: translate
 #keysHelp kbd { display: inline-block; min-width: 22px; padding: 1px 5px; border: 2px solid var(--ink); background: var(--paper-2); text-align: center; font: inherit; }
 .set-row { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 8px; min-height: 44px; font: 400 18px/1 var(--ui); }
 .set-row button { min-height: 44px; font-size: 18px; }
-.set-row input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--ball); }
+.set-row input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--ball-fill); }
 
 /* Alto contraste: o texto secundário e as linhas ficam quase tinta, e as notas com letra sobre cor clara ficam com contorno. */
 html.high-contrast {
@@ -1197,6 +1202,9 @@ html.high-contrast {
   --paper: #fffaea;
   --paper-2: #f3e8c8;
   --chalk-2: #e6f4ef;
+  --ball-ink: #6e250c;
+  --ball-fill: #9a3412;
+  --ball-fill-2: #9a3412;
 }
 html.high-contrast button.quiet { border-color: var(--ink); color: var(--ink); }
 html.high-contrast button:disabled { opacity: 0.7; }
@@ -1219,7 +1227,7 @@ html.high-contrast button:focus-visible { outline-color: var(--ink); outline-wid
 @keyframes timeout-arm { to { transform: scaleX(0); } }
 html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 .tower-copy { margin: 0; font: 400 15px/1.15 var(--ui-sm); }
-.tower-copy.stale { color: #9a3412; }
+.tower-copy.stale { color: var(--ball-ink); }
 
 /* Estados vazios: um só aspeto para dizer o que falta e o que fazer (emptyState, em club-screens.ts). */
 .empty-state { flex: none; margin: 6px 3px; padding: 8px 10px; border: 2px dashed var(--line); color: var(--muted); font: 400 15px/1.2 var(--small); text-align: center; }

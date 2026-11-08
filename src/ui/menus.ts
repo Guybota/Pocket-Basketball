@@ -448,11 +448,12 @@ function preScreen(): Rendered {
     `<button type="button" class="mbar" data-go="rival"><img alt="" src="${ICON_BALL}"><span>Adversário</span><small>${focusLabel(rival)}</small></button>`,
     `<button type="button" class="mbar" data-go="tactics"><img alt="" src="${ICON_TACTICS}"><span>Táticas da equipa</span><small>Pressão, ataque, ritmo</small></button>`,
     half ? `<button type="button" class="mbar" data-go="halfStats"><img alt="" src="${ICON_BALL}"><span>Estatísticas</span><small>Primeira parte</small></button>` : `<button type="button" class="mbar" data-go="kit"><img alt="" src="${ICON_KIT}"><span>Equipamento</span><small>${esc(activeKit(club).name)}</small></button>`,
-    `<button type="button" class="mbar go" id="${half ? 'secondHalfBtn' : 'kickoffBtn'}" data-act="${half ? 'secondHalf' : 'startMatch'}"><img alt="" src="${ICON_GO}"><span>${half ? 'Segunda parte' : 'Bola ao alto'}</span><small>${half ? 'A equipa volta ao campo' : gameKind === 'practice' ? 'Dois períodos, sem público' : 'Começa o jogo'}</small></button>`,
   ];
+  // Antes do jogo, «Bola ao alto» vai para a barra de baixo: em 360×640 o menu não tem altura para cinco entradas.
+  if (half) bars.push(`<button type="button" class="mbar go" id="secondHalfBtn" data-act="secondHalf"><img alt="" src="${ICON_GO}"><span>Segunda parte</span><small>A equipa volta ao campo</small></button>`);
   return {
     top: `${fullCanvas('scene')}${half ? `<div class="banner">Intervalo · ${score}</div>` : ''}`,
-    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantReport(view.s) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : guestGame ? 'airport' : 'offers'))}`,
+    bottom: `<div class="matchhead"><span>${kind}</span><b>${esc(club.team.short)} contra ${esc(rival.name)}</b></div>${say('assistant', ...(half && view ? assistantReport(view.s) : assistantPreGame(club, rival)))}<div class="menu">${bars.join('')}</div>${half ? '' : bar(backBtn(gameKind === 'official' ? 'town' : guestGame ? 'airport' : 'offers'), `<button type="button" class="primary" id="kickoffBtn" data-act="startMatch">Bola ao alto</button>`)}`,
   };
 }
 
