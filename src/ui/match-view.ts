@@ -75,6 +75,10 @@ const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
 const FADE_IN_TICKS = 20;
+// O nome de um movimento fica este espaço, em píxeis, acima do ponto mais alto do boneco; e nunca acima desta linha,
+// onde estão a faixa e o marcador.
+const FLOATER_GAP = 3;
+const FLOATER_MIN_TOP = 40;
 
 interface Point {
   x: number;
@@ -121,6 +125,12 @@ interface Floater {
   y: number;
   z: number;
   born: number;
+  /** Quem fez o movimento: a palavra segue-o, por cima da cabeça. */
+  body?: Body;
+  /** Sem espaço por cima dele, a palavra fica ao lado, à direita (1) ou à esquerda (-1), até desaparecer. */
+  beside?: 1 | -1;
+  /** A linha mais alta onde a palavra já esteve: só sobe, para não andar para cima e para baixo com o salto de quem a fez. */
+  top?: number;
 }
 
 export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
@@ -143,6 +153,8 @@ export class MatchView {
   private readonly camera = new Camera();
   /** Nos cenários de teste do revisor, quem se desenha em campo; sem isto, todos, e o árbitro. */
   visible: ((b: Body) => boolean) | null = null;
+  /** O que o último frame desenhou, para os cenários de teste do revisor medirem: cada boneco, a bola e os rótulos. */
+  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
   private pixels: Uint32Array;
@@ -163,6 +175,8 @@ export class MatchView {
   private readonly bounces = new WeakMap<object, boolean>();
   private lastFreeThrowPose: PoseName | null = null;
   private readonly floaters: Floater[] = [];
+  /** Quantos píxeis acima dos pés chega cada pose, medido uma vez no próprio desenho: braços no ar e salto incluídos. */
+  private readonly poseTops = new Map<string, number>();
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   // Quantas frases de cada contexto já se disseram, para a bancada não se repetir.
@@ -585,7 +599,7 @@ export class MatchView {
               this.view(body).slide = { ...this.view(body).prev, start: s.tick };
               this.view(body).stepBack = s.tick;
             }
-            this.floaters.push({ label: MOVE_LABELS[e.move!], x: body.x, y: body.y, z: 2.6, born: s.tick });
+            this.floaters.push({ label: MOVE_LABELS[e.move!], x: body.x, y: body.y, z: 2.6, born: s.tick, body });
           }
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
@@ -1155,6 +1169,7 @@ export class MatchView {
       }
       const [sx, sy] = camera.project(e.from.x + (e.to.x - e.from.x) * t, e.from.y + (e.to.y - e.from.y) * t);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
+      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(this.view(e.body).look) });
       drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.view(e.body).look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
@@ -1165,6 +1180,9 @@ export class MatchView {
     this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
     this.animTime += this.frameSeconds;
     this.animTick = Math.floor(this.animTime * 20);
+    this.drawn.bodies.clear();
+    this.drawn.ball = null;
+    this.drawn.labels.length = 0;
     const time = this.animTime;
     const { theme } = this.textures;
     const [lookX, lookY] = this.cameraTarget();
@@ -1262,7 +1280,9 @@ export class MatchView {
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
-      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha), pose, withBall, look, flip, back };
+      const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha);
+      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look) });
+      return { x: sx, y: sy, lift, pose, withBall, look, flip, back };
     });
     const { referee } = this;
     if (!this.visible) {
@@ -1326,6 +1346,7 @@ export class MatchView {
       }
       const [gx, gy] = camera.project(x, y);
       const [bx, by] = this.ballScreen(x, y, z);
+      this.drawn.ball = [bx, by];
       if (s.flight?.kind === 'shot') {
         this.trail.push([bx, by]);
         if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
@@ -1601,6 +1622,25 @@ export class MatchView {
     }
   }
 
+  /** O ponto mais alto de uma pose, em píxeis acima dos pés, com bola e com os braços. */
+  private poseTop(pose: PoseName, look: Look): number {
+    const key = `${pose}|${look.legs}|${look.torso}`;
+    let top = this.poseTops.get(key);
+    if (top === undefined) {
+      const c = document.createElement('canvas');
+      c.width = 48;
+      c.height = 96;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      drawSprite(g, pose, look, 24, 80, false, false, true);
+      const { data } = g.getImageData(0, 0, c.width, c.height);
+      let row = 0;
+      while (row < c.height && !data.slice(row * c.width * 4, (row + 1) * c.width * 4).some((v, i) => i % 4 === 3 && v > 0)) row++;
+      top = row < c.height ? 80 - row : spriteHeight(look);
+      this.poseTops.set(key, top);
+    }
+    return top;
+  }
+
   private drawFloaters(): void {
     const { g, s, camera } = this;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
@@ -1614,12 +1654,37 @@ export class MatchView {
       const rise = Math.min(10, age);
       // Os pontos são grandes e ficam ao lado do aro; as palavras, mais pequenas e por cima de quem as fez.
       const word = f.label.length > 3;
-      // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés do jogador.
-      const below = word && y < camera.height * 0.38;
-      const top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(40, (y | 0) - 14 - rise));
       const scale = word ? 2 : 3;
-      // Num canto, a palavra encosta à margem em vez de sair do ecrã.
-      const left = word ? Math.max(2, Math.min(camera.width - textWidth(f.label, scale) - 2, (x | 0) - (textWidth(f.label, scale) >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      const width = textWidth(f.label, scale);
+      // A altura da palavra: 5 linhas, a sombra e a cedilha.
+      const height = 6 * scale + 1;
+      let left: number;
+      let top: number;
+      const drawn = f.body && this.drawn.bodies.get(f.body);
+      if (word && drawn) {
+        // A palavra segue quem fez o movimento, por cima do ponto mais alto da pose, e sobe devagar. Sem espaço em cima,
+        // por baixo da faixa do marcador, encosta-se ao lado dele: nunca por cima do corpo.
+        const head = (drawn.y | 0) - Math.round(drawn.lift) - this.poseTop(drawn.pose, this.view(f.body!).look);
+        top = head - FLOATER_GAP - height - rise;
+        left = (drawn.x | 0) - (width >> 1);
+        // O lado decide-se uma vez, logo no início e a contar com o salto do afundanço que aí vem; senão a palavra saltava
+        // de cima para o lado a meio do salto.
+        if (f.top === undefined && f.beside === undefined && top - (this.view(f.body!).dunkJump ? DUNK_LIFT : 0) < FLOATER_MIN_TOP) f.beside = (drawn.x | 0) + 9 + width <= camera.width - 2 ? 1 : -1;
+        if (f.beside !== undefined) {
+          top = Math.max(FLOATER_MIN_TOP, head);
+          left = f.beside > 0 ? (drawn.x | 0) + 9 : (drawn.x | 0) - 9 - width;
+        } else top = f.top = Math.max(2, Math.min(f.top ?? top, top));
+        left = Math.max(2, Math.min(camera.width - width - 2, left));
+      } else {
+        // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés de quem a disse.
+        const below = word && y < camera.height * 0.38;
+        top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(FLOATER_MIN_TOP, (y | 0) - 14 - rise));
+        // Num canto, a palavra encosta à margem em vez de sair do ecrã.
+        left = word ? Math.max(2, Math.min(camera.width - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      }
+      // A caixa ocupada: os acentos sobem 3 linhas, a cedilha desce 1 e a sombra mais 1 píxel.
+      const accent = /[ÁÀÂÃÉÊÍÓÔÕÚ]/.test(f.label) ? 3 * scale : 0;
+      this.drawn.labels.push([left, top - accent, width + 1, accent + height]);
       text(g, f.label, left + 1, top + 1, '#1b2230', scale);
       text(g, f.label, left, top, '#f2c230', scale);
     }
