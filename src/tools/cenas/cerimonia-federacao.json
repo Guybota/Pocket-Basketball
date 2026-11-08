@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "cerimonia-federacao",
+  "force": { "type": "end" },
+  "ceremony": "federation",
+  "division": 2,
+  "before": 0.5,
+  "after": 8,
+  "crop": null,
+  "zoom": 1
+}

@@ -34,8 +34,8 @@ interface PoseShape {
   g: Offset;
   jump?: number;
   ball?: Offset;
-  /** Um objeto na mão direita: a garrafa de água do descanso, ou a prancheta do treinador. */
-  prop?: 'bottle' | 'board';
+  /** Um objeto na mão direita: a garrafa de água do descanso, ou a prancheta do treinador; ou o troféu nas duas mãos. */
+  prop?: 'bottle' | 'board' | 'trophy';
 }
 
 const POSES = {
@@ -133,7 +133,19 @@ const POSES = {
   // No descanso: a beber água, e o treinador de prancheta na mão a explicar.
   drink: (L: number): PoseShape => ({ a: [-2, 5], b: [3, -4], f: [-2, L], g: [2, L], prop: 'bottle' }),
   board: (L: number): PoseShape => ({ a: [-3, 2], b: [5, -3], f: [-2, L], g: [2, L], prop: 'board' }),
+  // O capitão a levantar o troféu (`Look.trophy`): as duas mãos a segurá-lo por cima da cabeça, e depois esticadas, em bicos de pés.
+  lift0: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L], g: [2, L], prop: 'trophy' }),
+  lift1: (L: number): PoseShape => ({ a: [-3, -12], b: [3, -12], f: [-2, L], g: [2, L], jump: 1, prop: 'trophy' }),
 };
+
+// Os troféus nas mãos, de cima para baixo, centrados entre as mãos: l, m e d são o claro, o meio e o escuro do metal.
+// A mesma taça e a mesma taça grande da vitrina (trophies.ts), à escala do boneco; o contorno é o automático.
+const TROPHY_ROWS = {
+  cup: ['..lmmmmmdd..', 'mmlmmmmmddmm', 'm.lmmmmmdd.m', 'm.lmmmmmdd.m', 'mmlmmmmmddmm', '...lmmmmd...', '.....md.....', '....mmmd....', '.lmmmmmmmdd.', '.dddddddddd.'],
+  bigCup: ['..lmmmmmmmdd..', 'mmlmmmmmmmddmm', 'm.lmmmmmmmdd.m', 'm.lmmmmmmmdd.m', 'mmlmmmmmmmddmm', '...lmmmmmmd...', '....lmmmmd....', '......md......', '......md......', '.....mmmd.....', '..lmmmmmmmdd..', '..dddddddddd..'],
+} as const;
+// Prata para a taça e ouro para a taça grande, como na vitrina.
+const TROPHY_METALS = { cup: { l: '#ffffff', m: '#c9ccd4', d: '#8f93a0' }, bigCup: { l: '#ffffff', m: '#f2c230', d: '#c99a14' } } as const;
 export type PoseName = keyof typeof POSES;
 /** Todas as poses, pela ordem em que estão escritas. */
 export const ALL_POSES = Object.keys(POSES) as PoseName[];
@@ -163,6 +175,8 @@ export interface Look {
   face: number;
   /** Público: calças e sapatos escuros em vez de calções e ténis. */
   street?: boolean;
+  /** O troféu das poses de levantar (`lift0`, `lift1`); por omissão, a taça. */
+  trophy?: 'cup' | 'bigCup';
 }
 
 /** A aparência vem do nome: o mesmo jogador tem sempre a mesma cara. */
@@ -339,6 +353,13 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     rect(bx + 1, by + 2, 4, 1, INK);
     rect(bx + 1, by + 4, 3, 1, INK);
     rect(bx + 2, by - 1, 2, 1, INK);
+  } else if (shape.prop === 'trophy') {
+    // A base fica entre as duas mãos, com a linha de baixo à altura da de baixo das mãos.
+    const rows = TROPHY_ROWS[look.trophy ?? 'cup'];
+    const metal = TROPHY_METALS[look.trophy ?? 'cup'];
+    const x0 = hx - (rows[0]!.length >> 1);
+    const y0 = top + 2 + shape.a[1] - (rows.length - 1);
+    rows.forEach((row, j) => [...row].forEach((c, i) => c !== '.' && put(x0 + i, y0 + j, metal[c as 'l' | 'm' | 'd'])));
   }
   // A camisola tapa os ombros: o braço só aparece a partir da cava.
   rect(shoulderLeft - 1, top, body.shoulder + 2, 1, kit.jersey);
@@ -402,7 +423,7 @@ function leaned(source: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
 /** Desenha um boneco. Com `legs`, as pernas vêm dessa pose (um passo da corrida) e o resto de `pose`. */
 export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName): void {
   if (legs === pose) legs = undefined;
-  const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}`;
+  const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}|${look.trophy ?? ''}`;
   const lean = legs ? undefined : LEAN[pose];
   let sprite = cache.get(key);
   if (!sprite) {

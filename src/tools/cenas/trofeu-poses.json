@@ -1,0 +1,8 @@
+{
+  "kind": "sheet",
+  "name": "trofeu-poses",
+  "poses": ["lift0", "lift1", "lift0+run1", "lift1+run0", "cheer0", "cheer1"],
+  "looks": [{ "player": 0 }, { "player": 4, "kit": "cream", "trophy": "bigCup" }, { "player": 9, "skin": 3, "style": 2 }, { "player": 2, "legs": 9, "torso": 9, "trophy": "bigCup", "style": 1 }],
+  "variants": ["front", "back", "flip"],
+  "zoom": 4
+}

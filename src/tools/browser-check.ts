@@ -11,7 +11,7 @@ import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } fr
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
-  state(): { phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[]; tactics: { pressure: number; spacing: number; pace: number } | null };
+  state(): { ceremony: boolean; phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[]; tactics: { pressure: number; spacing: number; pace: number } | null };
   setSpeedRaw(value: number): void;
   townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
@@ -26,6 +26,7 @@ interface Pocket {
   fastForward(weeks: number): void;
   fire(): void;
   setConfidence(value: number): void;
+  forceTitle(title: { kind: 'league'; division: number } | { kind: 'cup'; cup: 'federation' | 'continental' | 'world' } | null): void;
   timeOtherGames(): number;
   pauseAt(eventType: string, extraTicks: number, maxDistance?: number, move?: string): { phase: string; found: boolean };
   /** A vista do jogo, para desenhar casos difíceis. */
@@ -588,6 +589,29 @@ try {
     console.log('AVISO  o clube de ensaio não chegou aos playoffs; o quadro não foi visto');
   }
   check('Sem erros nos playoffs', playoffProblems.length === 0, playoffProblems.join(' | '));
+
+  // A cerimónia do troféu depois de uma final: aparece com o apito final e salta-se com um toque.
+  const ceremonyPage = await phone.newPage();
+  const ceremonyProblems: string[] = [];
+  ceremonyPage.on('pageerror', error => ceremonyProblems.push(error.message));
+  await ceremonyPage.goto(`${url}?semente=2&divisao=1`);
+  await ceremonyPage.waitForFunction(() => window.__pocket !== undefined);
+  await ceremonyPage.evaluate(() => window.__pocket.forceTitle({ kind: 'cup', cup: 'federation' }));
+  await kick(ceremonyPage);
+  await ceremonyPage.evaluate(() => window.__pocket.setSpeedRaw(40));
+  await waitThrough(ceremonyPage, atHalf(ceremonyPage));
+  await ceremonyPage.click('#secondHalfBtn');
+  await waitThrough(ceremonyPage, () => ceremonyPage.evaluate(() => window.__pocket.state().ceremony || window.__pocket.state().finished));
+  check('A final ganha acaba com a cerimónia do troféu', await ceremonyPage.evaluate(() => window.__pocket.state().ceremony));
+  // Depois de os vencedores se juntarem: o capitão já levanta o troféu e há confetes.
+  await ceremonyPage.waitForTimeout(2600);
+  await shot(ceremonyPage, `${OUT}/cerimonia-trofeu.png`);
+  check('A cerimónia continua sem relatório até ao toque', !(await ceremonyPage.evaluate(() => window.__pocket.state().finished)));
+  await ceremonyPage.click('#court');
+  await ceremonyPage.waitForTimeout(300);
+  check('Um toque salta a cerimónia para o relatório', await ceremonyPage.evaluate(() => window.__pocket.state().finished && !window.__pocket.state().ceremony));
+  await shot(ceremonyPage, `${OUT}/cerimonia-depois.png`);
+  check('Sem erros na cerimónia', ceremonyProblems.length === 0, ceremonyProblems.join(' | '));
 
   // As definições: abrem no título e na Torre, guardam-se à parte do clube e ficam depois de recarregar.
   const prefsContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
