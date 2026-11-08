@@ -79,6 +79,8 @@ describe('ressaltos', () => {
             if (Math.hypot(b.x - s.ball.x, b.y - s.ball.y) <= B.reboundCatchDistance + (B.heightByLevel[2]! - B.referenceHeight) * B.reachPerCm + 0.1) close++;
           } else {
             const shot = s.events.slice(0, seen).reverse().find(x => x.type === 'shot');
+            // Quem marcou e foi trocado na bola parada desse mesmo passo já está sentado no banco: a posição não diz nada.
+            if (b.slot === -1) continue;
             const hoopX = (e.team === 0) !== e.period >= 3 ? 26.425 : 1.575;
             if (shot?.dunk) {
               dunks++;
