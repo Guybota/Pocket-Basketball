@@ -49,6 +49,14 @@ function onKey(event: KeyboardEvent): void {
   if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || event.key === 'Tab') return;
   const active = document.activeElement;
   // Nunca a escrever, nem por cima de uma janela aberta (as Definições, esta lista): aí as teclas são do campo ou da janela.
+  // A lista dos atalhos fecha-se com o Esc também aqui: o fecho nativo do browser nem sempre chega (por exemplo depois de uma captura).
+  const help = document.getElementById('keysHelp') as HTMLDialogElement | null;
+  if (help?.open && event.key === 'Escape') {
+    event.preventDefault();
+    help.close();
+    help.remove();
+    return;
+  }
   if (editing(active) || document.querySelector('dialog[open]')) return;
   if (event.key === '?') {
     if (!desktop()) return;

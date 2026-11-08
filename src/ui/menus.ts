@@ -972,7 +972,9 @@ const FOCUSABLE = 'button:not([disabled]), input, select, a[href], [tabindex="0"
 function focusIn(key: string | undefined): void {
   const visible = (el: HTMLElement | null): el is HTMLElement => !!el && (el.checkVisibility?.({ visibilityProperty: true }) ?? el.offsetParent !== null);
   const keyed = key ? document.querySelector<HTMLElement>(key) : null;
-  const target = visible(keyed) ? keyed : [...host.top.querySelectorAll<HTMLElement>(FOCUSABLE), ...host.panel.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
+  // Sem botão a que voltar, o foco vai para a ação principal do ecrã (o Enter do teclado carrega no botão com foco).
+  const all = [...host.top.querySelectorAll<HTMLElement>(FOCUSABLE), ...host.panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
+  const target = visible(keyed) ? keyed : all.find(el => el.matches('.primary, .mbar.go') && visible(el)) ?? all.find(visible);
   target?.focus({ preventScroll: true });
 }
 

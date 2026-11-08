@@ -993,6 +993,19 @@ try {
   check('A dica da pausa mostra a tecla', (await keys.getAttribute('#pauseBtn', 'title'))?.endsWith('(Espaço)') === true);
   await keys.keyboard.press(' ');
   await keys.waitForFunction(() => document.getElementById('pauseBtn')?.getAttribute('aria-label') === 'Continuar', undefined, { timeout: 15_000 });
+  await keys.keyboard.press('2');
+  check('2 escolhe o segundo separador', (await keys.getAttribute('[data-tab="stats"]', 'aria-selected')) === 'true');
+  const muted = await keys.getAttribute('#muteBtn', 'aria-pressed');
+  await keys.keyboard.press('s');
+  check('S liga e desliga o som', (await keys.getAttribute('#muteBtn', 'aria-pressed')) !== muted);
+  await keys.keyboard.press('?');
+  const help = await keys.locator('#keysHelp[open]').count();
+  await shot(keys, `${OUT}/atalhos.png`);
+  await keys.keyboard.press('Escape');
+  check('? abre a lista dos atalhos e Esc fecha-a', help === 1 && (await keys.locator('#keysHelp').count()) === 0);
+  await keys.keyboard.press(' ');
+  check('Espaço continua o jogo', (await keys.getAttribute('#pauseBtn', 'aria-label')) !== 'Continuar');
+  // O desconto, as trocas e as táticas no fim: o desconto pedido muda o estado do jogo e baralhava as teclas seguintes.
   const timeouts = (): Promise<number> => keys.evaluate(() => window.__pocket.state().commands.filter(c => c.startsWith('timeout@')).length);
   const timeoutsBefore = await timeouts();
   await keys.keyboard.press('d');
@@ -1007,18 +1020,6 @@ try {
   const tactics = await keys.locator('#matchTacticsClose').count();
   await keys.keyboard.press('Escape');
   check('A abre as táticas e Esc fecha', tactics === 1 && (await keys.locator('#matchTacticsClose').count()) === 0);
-  await keys.keyboard.press('2');
-  check('2 escolhe o segundo separador', (await keys.getAttribute('[data-tab="stats"]', 'aria-selected')) === 'true');
-  const muted = await keys.getAttribute('#muteBtn', 'aria-pressed');
-  await keys.keyboard.press('s');
-  check('S liga e desliga o som', (await keys.getAttribute('#muteBtn', 'aria-pressed')) !== muted);
-  await keys.keyboard.press('?');
-  const help = await keys.locator('#keysHelp[open]').count();
-  await shot(keys, `${OUT}/atalhos.png`);
-  await keys.keyboard.press('Escape');
-  check('? abre a lista dos atalhos e Esc fecha-a', help === 1 && (await keys.locator('#keysHelp').count()) === 0);
-  await keys.keyboard.press(' ');
-  check('Espaço continua o jogo', (await keys.getAttribute('#pauseBtn', 'aria-label')) !== 'Continuar');
   check('Sem erros com os atalhos', keyProblems.length === 0, keyProblems.join(' | '));
   await keysContext.close();
 
