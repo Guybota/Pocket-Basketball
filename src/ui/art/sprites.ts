@@ -97,10 +97,11 @@ const POSES = {
   slide0: (L: number): PoseShape => ({ a: [-7, -3], b: [7, -3], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),
   slide1: (L: number): PoseShape => ({ a: [-7, -2], b: [7, -3], f: [-2, L - 1], g: [2, L - 1], jump: -1 }),
   pass: (L: number): PoseShape => ({ a: [4, 3], b: [5, 0], f: [-2, L], g: [3, L], ball: [8, -6] }),
-  // O passe picado, de braços para baixo; o lob, de braços no ar; e quem o recebe salta de braços esticados.
+  // O passe picado, de braços para baixo; o lob, de braços no ar; e quem o recebe estica os braços, ainda no chão: o salto
+  // é o do afundanço que vem a seguir, e um salto fixo aqui ligava-se e desligava-se num frame.
   bouncePass: (L: number): PoseShape => ({ a: [-1, 4], b: [4, 4], f: [-2, L], g: [4, L - 1] }),
   lob: (L: number): PoseShape => ({ a: [-2, -9], b: [4, -10], f: [-2, L], g: [3, L], jump: 1 }),
-  reach: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 2], g: [2, L - 2], jump: 8 }),
+  reach: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 1], g: [2, L - 1], jump: 1 }),
   // O salto ao ressalto: a mesma pose, mas a altura vem da vista, que o faz subir e descer em arco.
   leap: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L - 2], g: [2, L - 2], jump: 1 }),
   // O step-back: recua a driblar, inclinado para trás, e lança a cair para trás.
@@ -136,6 +137,8 @@ const POSES = {
 export type PoseName = keyof typeof POSES;
 /** Todas as poses, pela ordem em que estão escritas. */
 export const ALL_POSES = Object.keys(POSES) as PoseName[];
+/** Quantos píxeis acima do chão a pose desenha os pés (o `jump` dela). */
+export const poseFeet = (pose: PoseName): number => POSES[pose](7, 7).jump ?? 0;
 
 /** Proporções do corpo, em píxeis. `shoulder` e `waist` são larguras do tronco; `arm` e `leg` são espessuras. */
 export const BUILDS = {
@@ -202,7 +205,7 @@ const JERSEY_MARK = 'camisola';
 const SHADE_MARK = 'sombra';
 const cache = new Map<string, HTMLCanvasElement>();
 
-function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolean): HTMLCanvasElement {
+function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolean, legs?: PoseName): HTMLCanvasElement {
   const grid: (string | null)[] = new Array<string | null>(SPRITE_W * SPRITE_H).fill(null);
   const put = (x: number, y: number, color: string | null): void => {
     x |= 0;
@@ -224,7 +227,11 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const L = look.legs;
   const T = look.torso;
   const body = BUILDS[look.build];
-  const shape = POSES[pose](L, T);
+  // Com `legs`, as pernas (e a altura dos pés) vêm dessa pose, e o resto, braços, tronco e bola, de `pose`: um gesto
+  // feito a correr, sem os pés a deslizar.
+  const own = POSES[pose](L, T);
+  const stride = legs ? POSES[legs](L, T) : own;
+  const shape: PoseShape = { ...own, f: stride.f, g: stride.g, jump: stride.jump };
   // Camisola marcada com estes dois nomes: o desenho dela só se resolve no fim, quando já se sabe cada píxel.
   // Uma peça da cor da tinta fundia-se com o contorno: fica num azul-noite. As riscas do árbitro são tinta de propósito.
   const fill = (c: string): string => (c === INK ? '#2c3345' : c);
@@ -392,12 +399,14 @@ function leaned(source: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
   return canvas;
 }
 
-export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean): void {
-  const key = `${pose}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}`;
-  const lean = LEAN[pose];
+/** Desenha um boneco. Com `legs`, as pernas vêm dessa pose (um passo da corrida) e o resto de `pose`. */
+export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName): void {
+  if (legs === pose) legs = undefined;
+  const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}`;
+  const lean = legs ? undefined : LEAN[pose];
   let sprite = cache.get(key);
   if (!sprite) {
-    const built = buildSprite(pose, look, back, withBall);
+    const built = buildSprite(pose, look, back, withBall, legs);
     sprite = lean === undefined ? built : leaned(built, lean);
     remember(cache, key, sprite, 3000);
   }
@@ -433,12 +442,12 @@ export function drawShadow(g: CanvasRenderingContext2D, x: number, y: number, ra
 }
 
 /** O reflexo no chão polido é o próprio boneco, virado ao contrário e quase transparente. */
-export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, strength: number): void {
+export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, strength: number, legs?: PoseName): void {
   g.save();
   g.globalAlpha = strength;
   g.translate(0, (y | 0) * 2 + 1);
   g.scale(1, -1);
-  drawSprite(g, pose, look, x, y, flip, back, false);
+  drawSprite(g, pose, look, x, y, flip, back, false, legs);
   g.restore();
 }
 
