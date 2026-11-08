@@ -1102,6 +1102,12 @@ function playRound(club: ClubState, fixtures: readonly Fixture[], s: MatchState,
 
 /** Fecha a semana: resultado, cartas encontradas, confiança, os outros jogos e o cansaço de quem jogou. */
 export function finishMatch(club: ClubState, s: MatchState, found: readonly CardId[], live: readonly OtherGame[] = [], guest = false): MatchResult {
+  // O amigável do Aeroporto é só uma exibição: joga-se em qualquer semana e não dá cartas nem cansa, não gasta a semana,
+  // não mexe na confiança nem nas vitórias do clube. Fica só no histórico dos amigáveis.
+  if (guest) {
+    const guestGames = withGuestGame(club.guestGames, { name: s.teams[1].name, score: [s.score[0], s.score[1]], season: club.season, week: club.week });
+    return { club: { ...club, guestGames }, cards: [], round: null, cup: null, series: null, confidenceDelta: 0 };
+  }
   const won = s.score[0] > s.score[1];
   const game = currentGame(club);
   if (game?.playoff) return finishPlayoffGame(club, s, found, game);
@@ -1126,8 +1132,7 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
   const round = game === null ? null : playRound(club, game.cup ? club.cups[game.cup]!.rounds[game.round]! : club.rounds[game.round]!, s, live);
   const rounds = round === null || game!.cup ? club.rounds : club.rounds.map((r, i) => (i === game!.round ? round : r));
   const cups = round === null || !game!.cup ? club.cups : { ...club.cups, [game!.cup]: settleCupRound(club.cups[game!.cup]!, game!.round, round) };
-  // O amigável do Aeroporto não mexe na confiança: a direção não liga a jogos com equipas de fora.
-  const delta = guest ? 0 : confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), game !== null);
+  const delta = confidenceChange(won, teamRating(club.team), teamRating(s.teams[1]), game !== null);
   const confidence = Math.max(0, Math.min(100, club.confidence + delta));
   const updated: ClubState = {
     ...club,
@@ -1140,7 +1145,6 @@ export function finishMatch(club: ClubState, s: MatchState, found: readonly Card
     wins: club.wins + (won ? 1 : 0),
     losses: club.losses + (won ? 0 : 1),
     records: game ? updateRecords(club, s) : club.records,
-    guestGames: guest ? withGuestGame(club.guestGames, { name: s.teams[1].name, score: [s.score[0], s.score[1]], season: club.season, week: club.week }) : club.guestGames,
   };
   return { club: closeWeek(updated, secondsPlayedBy(club, s)), cards, round, cup: game?.cup ?? null, series: null, confidenceDelta: delta };
 }

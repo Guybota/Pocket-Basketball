@@ -11,7 +11,11 @@ export function initTouch(): void {
     clearTimeout(tipTimer);
     tip.hidden = true;
   };
-  // O zoom com dois dedos fica livre. Os dois toques seguidos num botão não fazem zoom por causa do touch-action: manipulation do style.css.
+  // Sem zoom de dois dedos (decisão do utilizador). O Safari do iPhone e do iPad ignora o user-scalable: os gestos têm de ser travados aqui.
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, event => event.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', event => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false });
   document.addEventListener('contextmenu', event => {
     if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
   });

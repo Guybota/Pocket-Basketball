@@ -114,17 +114,20 @@ describe('amigável do Aeroporto', () => {
     expect(migrated.guestGames).toEqual([]);
   });
 
-  it('dá cartas como um particular, não mexe na confiança e fica no histórico', () => {
-    expect(currentFixture(withGuest)).toBeNull();
+  it('joga-se em qualquer semana, sem cartas nem cansaço, e só fica no histórico', () => {
     const s = simulateMatch(clubTeam(withGuest), rivalTeam(withGuest, GUEST_RIVAL), 11);
-    const result = finishMatch(withGuest, s, [], [], true);
-    const friendly = finishMatch(withGuest, s, []);
+    const result = finishMatch(withGuest, s, ['fado'], [], true);
     expect(result.round).toBeNull();
-    expect(result.cards).toEqual(friendly.cards);
+    expect(result.cards).toEqual([]);
     expect(result.confidenceDelta).toBe(0);
-    expect(result.club.confidence).toBe(withGuest.confidence);
-    expect(result.club.week).toBe(withGuest.week + 1);
     expect(result.club.guestGames).toEqual([{ name: guest.name, score: [s.score[0], s.score[1]], season: club.season, week: club.week }]);
-    expect(friendly.club.guestGames).toEqual([]);
+    // Fora o histórico, o clube fica igual: a mesma semana, as mesmas cartas, o mesmo cansaço, as mesmas vitórias.
+    expect({ ...result.club, guestGames: [] }).toEqual({ ...withGuest, guestGames: [] });
+    // Numa semana com jogo oficial também, e a jornada continua por jogar.
+    const official = { ...withGuest, week: withGuest.week + 1 };
+    while (!currentFixture(official)) official.week++;
+    const during = finishMatch(official, s, [], [], true);
+    expect(during.round).toBeNull();
+    expect(during.club.rounds).toEqual(official.rounds);
   });
 });

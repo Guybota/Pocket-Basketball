@@ -403,7 +403,7 @@ function airportScreen(): Rendered {
   const strength = (team: Team): string => `<small>Força ${grade(teamRating(team))}</small>`;
   const rows = rival ? rival.roster.map((p, index) => `<div class="prow${index >= 5 ? ' bench' : ''}">${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>`).join('') : '';
   const games = club.guestGames.map(g => `<div class="round-row"><span class="name">${esc(club.team.short)} · ép. ${g.season}</span><b>${g.score[0]}-${g.score[1]}</b><span class="name right">${esc(g.name)}</span></div>`).join('');
-  const why = !guest ? 'Importa primeiro uma equipa.' : friendlyAllowed() ? '' : 'Esta semana há jogo oficial: o amigável fica para uma semana livre.';
+  const why = guest ? '' : 'Importa primeiro uma equipa.';
   return {
     top: inside(`<div class="note"><header><b>Aeroporto</b><span>Amigável · no nosso pavilhão</span></header><div class="inner">
       ${guest && rival ? `<div class="vsbox"><div>${ownCrest(32)}${esc(club.team.name)}${strength(club.team)}</div><span>contra</span><div><img class="emblem" alt="Emblema do ${esc(guest.name)}" style="width:32px;height:32px" src="${emblemImage(guest.emblem)}">${esc(guest.name)}${strength(rival)}</div></div>

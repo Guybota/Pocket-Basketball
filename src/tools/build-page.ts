@@ -13,7 +13,7 @@ const read = (extension: string): string => {
 const body = readFileSync('dist-page/index.html', 'utf8').match(/<body>([\s\S]*?)<\/body>/)?.[1];
 if (!body) throw new Error('Não encontrei o corpo da página em dist-page/index.html');
 
-const page = `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+const page = `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Pocket Basketball</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Jersey+20&display=swap" media="print" onload="this.media='all'">

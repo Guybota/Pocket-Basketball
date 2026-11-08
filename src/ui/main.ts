@@ -303,7 +303,8 @@ const guestOf = (rivalId: number): ClubState['guest'] => (rivalId === GUEST_RIVA
 
 function makeView(kind: GameKind, rivalId: number): void {
   const current = club!;
-  const seed = weekSeed(current);
+  // Os amigáveis jogam-se quantas vezes se quiser na mesma semana: cada um conta os anteriores, para não ser sempre o mesmo jogo.
+  const seed = rivalId === GUEST_RIVAL ? (weekSeed(current) + (current.guestGames.length + 1) * 7919) & 0x7fffffff : weekSeed(current);
   liveLeague = kind === 'official' ? { club: current, others: liveOtherGames(current) } : null;
   dropRng = makeRng(seed ^ 0x3c1a77);
   found = [];
@@ -316,7 +317,8 @@ function makeView(kind: GameKind, rivalId: number): void {
       const said = started ? liveLine(e, view!.s) : null;
       if (said) speak(...said);
       // A vista já recebe o início do jogo ao ser criada, antes de o jogo começar a sério.
-      const card = started && found.length < MAX_CARDS_PER_MATCH ? cardFromEvent(e, 0, dropRng) : null;
+      // O amigável do Aeroporto não dá cartas.
+      const card = started && rivalId !== GUEST_RIVAL && found.length < MAX_CARDS_PER_MATCH ? cardFromEvent(e, 0, dropRng) : null;
       if (card) showDrop(card);
     },
     sound: name => {

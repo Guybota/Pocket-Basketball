@@ -734,7 +734,7 @@ try {
   await shot(airport, `${OUT}/aeroporto-fim.png`);
   const afterGuest = await airport.evaluate(() => ({ club: window.__pocket.club()!, state: window.__pocket.state() }));
   check('O amigável joga-se até ao fim, contra a equipa de fora', afterGuest.state.period >= 4 && afterGuest.club.guestGames[0]?.name === parseTeamFile(guestFile).name);
-  check('O amigável não mexe na confiança e gasta a semana', afterGuest.club.confidence === beforeGuest.confidence && afterGuest.club.week === beforeGuest.week + 1);
+  check('O amigável não mexe na confiança, não gasta a semana nem dá cartas', afterGuest.club.confidence === beforeGuest.confidence && afterGuest.club.week === beforeGuest.week && JSON.stringify(afterGuest.club.cards) === JSON.stringify(beforeGuest.cards));
   check('O amigável não conta para a liga', JSON.stringify(afterGuest.club.rounds) === JSON.stringify(beforeGuest.rounds));
   await airport.click('#againBtn');
   await airport.waitForSelector('#airportChip');
