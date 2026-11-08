@@ -26,7 +26,7 @@ import { buyFacility, type FacilityId } from './club.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, board, boardPlayer, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
 import { GUEST_RIVAL, guestKit, kitClash, parseTeamFile, teamFile, type GuestTeam } from './airport.ts';
 import { downloadFile, pickFile } from './save.ts';
@@ -564,10 +564,8 @@ function rivalScreen(): Rendered {
   const rows = rival.roster.map((p, index) => `<button type="button" class="prow${rivalStats ? ' statcols' : ''}${index >= 5 ? ' bench' : ''}" data-target="${index}" aria-pressed="${focus.includes(index)}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}>
       ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}${optionMark(rival.tactics?.options, p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
     </button>`).join('');
-  // Os cinco do adversário na prancheta, como a ficha de equipa do original. Toca-se num boneco para o marcar.
-  const five = board(rival.roster.slice(0, 5).map((p, index) => boardPlayer(lookOf(p, 'cream'), p.name, null, index, `data-target="${index}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}`, focus.includes(index))).join(''), true);
   return {
-    top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${five}${clubSheet(id, rival)}</div></div>`),
+    top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${clubSheet(id, rival)}</div></div>`),
     bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
       <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Estatísticas da época</button></div>
       <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}</div>

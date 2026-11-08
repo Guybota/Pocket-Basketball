@@ -5,9 +5,9 @@ import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
 import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
-import { faceImage, spriteImage, type Look } from './art/sprites.ts';
+import { faceImage, type Look } from './art/sprites.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { SPOTS, TICKS_PER_SECOND } from '../sim/court.ts';
+import { TICKS_PER_SECOND } from '../sim/court.ts';
 import { emptyState, foundCards } from './club-screens.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO, clockText, narrate } from './narrate.ts';
 import type { MatchView } from './match-view.ts';
@@ -215,18 +215,6 @@ export function playerCard(view: MatchView, b: Body, shirts: Readonly<Record<str
   </div>`;
 }
 
-// A prancheta: meio campo visto de cima, com o cesto em cima. As linhas esticam com a largura, que é só um esquema.
-const BOARD_LINES = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 110" preserveAspectRatio="none"><g fill="none" stroke="#f4f1e4" stroke-width="2"><rect x="1" y="1" width="198" height="108"/><rect x="67" y="1" width="66" height="45"/><circle cx="100" cy="46" r="12"/><path d="M 10 1 L 10 22 A 90 53 0 0 0 190 22 L 190 1"/></g><circle cx="100" cy="12" r="3" fill="none" stroke="#e8622a" stroke-width="2"/></svg>');
-
-/** Um jogador na prancheta: o boneco no seu lugar de ataque, com o nome numa etiqueta da cor da energia. */
-export function boardPlayer(look: Look, name: string, energy: number | null, slot: number, attribute: string, picked: boolean): string {
-  const [u, v] = SPOTS[slot]![0]!;
-  const tone = energy === null ? '' : energy > 0.65 ? ' good' : energy > 0.35 ? ' mid' : ' low';
-  return `<button type="button" class="bpl" style="left:${(50 + (v / 7.5) * 46).toFixed(1)}%;top:${((u / 14) * 100 + 8).toFixed(1)}%" ${attribute} aria-pressed="${picked}"><img alt="" src="${spriteImage(look)}"><span class="tag${tone}">${escapeHtml(name)}</span></button>`;
-}
-
-export const board = (players: string, away = false): string => `<div class="board${away ? ' away' : ''}" style="background-image:url('data:image/svg+xml,${BOARD_LINES}')">${players}</div>`;
-
 /** Painel de trocas: toca-se em dois jogadores e trocam, sejam de campo ou do banco. `picked` é o primeiro, pelo índice em `bodies`. */
 export function subsPanel(view: MatchView, picked: number | null, inTimeout: boolean): string {
   const { s } = view;
@@ -292,13 +280,11 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
   const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><img class="energy" alt="Energia" title="Energia" src="${energyIcon()}"><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
   const onCourt = lineup.map((b, slot) => row(b, slot)).join('');
   const benchRows = bench.map(b => row(b)).join('');
-  const onBoard = board(lineup.map((b, slot) => boardPlayer(view.lookFor(b), b.player.name, 1 - b.fatigue, slot, `data-pick="${s.bodies.indexOf(b)}"`, s.bodies.indexOf(b) === picked)).join(''));
   // Desligada, fica no cimo: com ela desligada os mesmos cinco jogam até rebentar, e o treinador tem de o ver.
   const rotation = `<button type="button" class="rotation" data-rotation aria-pressed="${s.autoRotation[team]}">Rotação automática: ${s.autoRotation[team] ? 'ligada' : 'desligada · tocar para ligar'}</button>`;
   return `<div class="subs">
     ${inTimeout ? `<div class="subs-title">${s.phase === 'timeout' ? 'Desconto de tempo' : 'Fim do período'}</div>${say('assistant', ...assistantReport(s))}` : ''}
     ${s.autoRotation[team] ? '' : rotation}
-    ${onBoard}
     ${head('Em campo', 'team-0')}${onCourt}
     ${head('No banco', 'plain')}${benchRows}
     ${s.autoRotation[team] ? rotation : ''}
