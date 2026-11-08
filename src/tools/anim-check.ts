@@ -1,34 +1,16 @@
 // Guarda imagens das poses e dos movimentos especiais, sem correr o jogo: npm run anim-check
 // Usa o Edge instalado. Noutra máquina: BROWSER_CHANNEL=chrome npm run anim-check
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { withAnimPage } from './anim-browser.ts';
 
 const OUT = 'dist-check';
 mkdirSync(OUT, { recursive: true });
-const server = await createServer({ server: { port: 4176, strictPort: false }, logLevel: 'warn' });
-await server.listen();
-const url = server.resolvedUrls!.local[0]!;
-// No Windows usa o Edge instalado; noutra máquina o Chromium do Playwright, ou o browser em BROWSER_PATH, ou o canal em BROWSER_CHANNEL.
-const browser = await chromium.launch({
-  channel: process.env.BROWSER_CHANNEL ?? (process.env.BROWSER_PATH || process.platform !== 'win32' ? undefined : 'msedge'),
-  executablePath: process.env.BROWSER_PATH || undefined,
-  headless: true,
-});
 const save = (name: string, dataUrl: string): void => {
   writeFileSync(`${OUT}/${name}.png`, Buffer.from(dataUrl.split(',')[1]!, 'base64'));
   console.log(`${OUT}/${name}.png`);
 };
 let failed = false;
-try {
-  const page = await browser.newPage();
-  page.on('console', message => console.log('  ', message.text().slice(0, 300)));
-  page.on('pageerror', error => {
-    failed = true;
-    console.log('ERRO', error.message);
-  });
-  await page.goto(`${url}anim.html`);
-  await page.waitForFunction(() => (window as unknown as { __anim?: unknown }).__anim !== undefined);
+await withAnimPage(async page => {
   // O mundo: pavilhões de clubes diferentes, a cidade em cada divisão, o tempo e as horas, e os momentos de humor (forçados).
   type World = { venueShot(d: number, owner: string | null, week: number): string; rivals(d: number, n: number): string[]; townShot(d: number, week: number): string; humorShot(kind: string): string[] };
   // Semanas de weatherFor: 1 dia normal, 4 sol forte, 5 fim da tarde, 8 chuva, 13 noite.
@@ -61,8 +43,8 @@ try {
     }
     save(`movimento-${move}`, result.image);
   }
-} finally {
-  await browser.close();
-  await server.close();
-}
+}, message => {
+  failed = true;
+  console.log('ERRO', message);
+});
 process.exit(failed ? 1 : 0);

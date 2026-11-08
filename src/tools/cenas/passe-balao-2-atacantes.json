@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "passe-balao-2-atacantes",
+  "force": { "type": "pass", "lob": true },
+  "division": 2,
+  "attackers": 2,
+  "defenders": 1,
+  "before": 0.5,
+  "after": 2,
+  "crop": [240, 150]
+}

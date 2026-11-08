@@ -6,6 +6,7 @@ import { MOVES, type MoveId } from '../sim/types.ts';
 import { drawSprite, lookOf, type PoseName } from './art/sprites.ts';
 import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
 import { MatchView } from './match-view.ts';
+import { scene, sheet } from './review.ts';
 
 const POSE_NAMES: PoseName[] = ['idle', 'run0', 'run1', 'run2', 'drib0', 'drib1', 'dribRun0', 'dribRun1', 'dribRun2', 'dribRun3', 'crossover', 'stumble', 'gather', 'shoot', 'dunk', 'block', 'defend', 'pass', 'cheer0', 'cheer1', 'sit', 'fists', 'handsHead', 'slump'];
 const CELL = 40;
@@ -165,4 +166,4 @@ function humorShot(kind: Humor): string[] {
   return [shot(view, 40), (frames(view, 4), shot(view, 2))];
 }
 
-Object.assign(window, { __anim: { poseSheet, moveStrip, moves: MOVES, venueShot, rivals, townShot, humorShot } });
+Object.assign(window, { __anim: { poseSheet, moveStrip, moves: MOVES, venueShot, rivals, townShot, humorShot, sheet, scene } });

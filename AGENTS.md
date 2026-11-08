@@ -21,6 +21,7 @@ npm run dev            # abre o jogo no browser, em http://localhost:5173
 npm run browser-check  # testa o jogo num browser verdadeiro e guarda imagens em dist-check/
 npm run anim-check     # desenha as poses e os movimentos especiais em dist-check/, sem correr o jogo
 npm run sound-wavs     # grava sons em WAV, secos e em cada sala, em dist-sounds/: npm run sound-wavs -- apito
+npm run review         # folhas de sprites e cenários de teste para o revisor, em dist-check/revisao/: npm run review -- src/tools/cenas/poses-todas.json
 npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
 ```
 

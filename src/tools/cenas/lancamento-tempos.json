@@ -1,0 +1,8 @@
+{
+  "kind": "sheet",
+  "name": "lancamento-tempos",
+  "frames": [["gather", 3], ["shoot", 2], ["shoot", 3], ["idle", 2]],
+  "looks": [{ "player": 0 }, { "player": 9, "skin": 3, "kit": "cream" }],
+  "variants": ["ball", "flipBall"],
+  "zoom": 6
+}

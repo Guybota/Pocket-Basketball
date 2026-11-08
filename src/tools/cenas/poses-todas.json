@@ -1,0 +1,8 @@
+{
+  "kind": "sheet",
+  "name": "poses-todas",
+  "poses": "all",
+  "looks": [{ "player": 0 }, { "player": 4, "kit": "cream" }, { "player": 9, "skin": 3 }],
+  "variants": ["front", "ball", "back", "flip"],
+  "zoom": 3
+}

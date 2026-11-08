@@ -1,0 +1,10 @@
+{
+  "kind": "scene",
+  "name": "triplo-sem-defesas",
+  "force": { "type": "made", "points": 3 },
+  "division": 2,
+  "defenders": 0,
+  "attackers": 1,
+  "before": 1.5,
+  "after": 1.5
+}

@@ -141,6 +141,8 @@ export class MatchView {
   /** Os períodos do tempo regulamentar: o jogo-treino, à porta fechada, só tem dois. */
   readonly periods: number;
   private readonly camera = new Camera();
+  /** Nos cenários de teste do revisor, quem se desenha em campo; sem isto, todos, e o árbitro. */
+  visible: ((b: Body) => boolean) | null = null;
   private readonly textures: CourtTextures;
   private image: ImageData;
   private pixels: Uint32Array;
@@ -1191,9 +1193,11 @@ export class MatchView {
     if (excited && theme.flashes && !this.reducedMotion) {
       // Flashes de fotografia nas bancadas: sujam os píxeis do chão, que têm de se refazer na imagem seguinte.
       const { width, height } = camera;
+      // Ao acaso, mas pelo animTick: duas gravações da mesma cena saem iguais.
       for (let i = 0; i < 6; i++) {
-        const y = Math.floor(Math.random() * height * 0.25);
-        const x = Math.floor(Math.random() * width);
+        const h = Math.imul(this.animTick * 6 + i + 1, 2654435761) >>> 0;
+        const y = h % Math.max(1, Math.floor(height * 0.25));
+        const x = (h >>> 8) % width;
         this.pixels[y * width + x] = 0xffffffff;
       }
       camera.forgetScene();
@@ -1233,8 +1237,8 @@ export class MatchView {
       drawables.push({ y: hoopY, draw: () => drawHoopBack(g, camera, theme, hoopX, swish) });
       drawables.push({ y: hoopY + HOOP_FRONT_OFFSET, draw: () => drawHoopFront(g, camera, hoopX, swish) });
     }
-    // Quem já entrou no túnel deixa de se ver.
-    const onCourt = [...s.court[0], ...s.court[1]].filter(b => b.y > STAND.y - 0.4);
+    // Quem já entrou no túnel deixa de se ver; nos cenários de teste, só quem `visible` deixar.
+    const onCourt = [...s.court[0], ...s.court[1]].filter(b => b.y > STAND.y - 0.4 && (!this.visible || this.visible(b)));
     const placed = onCourt.map(b => {
       const prev = this.view(b).prev;
       let x = prev.x + (b.x - prev.x) * alpha;
@@ -1261,18 +1265,20 @@ export class MatchView {
       return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha), pose, withBall, look, flip, back };
     });
     const { referee } = this;
-    const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
-    const signalling = s.tick < referee.signalUntil;
-    placed.push({
-      x: refereeX,
-      y: refereeY,
-      lift: 0,
-      pose: signalling ? 'cheer0' : referee.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle',
-      withBall: false,
-      look: this.refereeLook,
-      flip: referee.flip,
-      back: false,
-    });
+    if (!this.visible) {
+      const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
+      const signalling = s.tick < referee.signalUntil;
+      placed.push({
+        x: refereeX,
+        y: refereeY,
+        lift: 0,
+        pose: signalling ? 'cheer0' : referee.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle',
+        withBall: false,
+        look: this.refereeLook,
+        flip: referee.flip,
+        back: false,
+      });
+    }
     // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
     if (theme.reflection > 0) {
       for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection);
@@ -1628,6 +1634,11 @@ export class MatchView {
     const bob = (s.tick >> 3) % 2;
     drawCarrierArrow(g, x, y - spriteHeight(this.view(holder).look) - 3 - bob);
     this.drawTargets(alpha);
+  }
+
+  /** A pose de um jogador neste instante, para os cenários de teste do revisor. */
+  bodyPose(b: Body): PoseName {
+    return this.poseOf(b, this.motionOf(b).moving).pose;
   }
 
   /** A pose do portador da bola neste instante. Serve para a verificação no browser. */

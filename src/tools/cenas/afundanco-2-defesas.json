@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "afundanco-2-defesas",
+  "force": { "type": "move", "move": "powerDunk" },
+  "division": 3,
+  "defenders": 2,
+  "attackers": 1,
+  "before": 1,
+  "after": 2,
+  "zoom": 2
+}

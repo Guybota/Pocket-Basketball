@@ -172,9 +172,30 @@ O revisor:
 
 **Gravações reprodutíveis.** Os flashes de fotografia usam `Math.random`, por isso grava com movimento reduzido ou com uma semente.
 
-**A ferramenta do cenário ainda não existe.** A proposta está na secção 7 de `references/revisao.md` e reaproveita `anim.html`, `anim-page.ts` e `anim-check.ts`. Até ela existir, o revisor usa:
-- `npm run anim-check`, que dá `poses.png` e as tiras `movimento-*` em `dist-check/`;
-- as capturas do `browser-check`;
-- canvases desenhados por um script seu, com `drawSprite`.
+**A ferramenta: `npm run review -- <descrição.json> [outra.json …]`.** Grava em `dist-check/revisao/<nome>/`. Há exemplos em `src/tools/cenas/`, e os formatos (`SheetSpec` e `SceneSpec`) estão em `src/ui/review.ts`.
+
+- **Folha de sprites** (`"kind": "sheet"`):
+  - **O que se escolhe:**
+    - as poses (`"all"` para todas), ou uma animação com tempo (`"frames": [["gather", 3], ["shoot", 2]]`, uma coluna por tick);
+    - os aspetos (`player`, `kit`, `skin`, `hair` e os outros campos de `Look`);
+    - as variantes (`front`, `ball`, `back`, `backBall`, `flip`, `flipBall`);
+    - o `zoom`.
+  - **O que grava:**
+    - `folha.png` a 1× e `folha-ampliada.png`, com o número e o nome em cada célula;
+    - `medidas.json`, com a caixa, os pés, os píxeis meio transparentes, as falhas de contorno, as cores e a diferença entre o virado e o espelho;
+    - `avisos.txt`.
+- **Cenário de teste** (`"kind": "scene"`):
+  - **O que se escolhe:**
+    - `force`, o evento que tem de acontecer, com os campos do `MatchEvent`, por exemplo `{"type": "move", "move": "powerDunk"}` ou `{"type": "made", "points": 3}`. Para um passe, `{"type": "pass"}`, ou `{"type": "pass", "lob": true}` para um em balão: quem passa é o ator, e quem recebe aparece sempre;
+    - `attackers` e `defenders`, quantos atacantes (o ator incluído) e quantos defesas se veem, os mais perto do ator. Os outros e o árbitro não se desenham. Para um passe ou uma jogada de equipa, põe 2 ou mais atacantes;
+    - `division`, `week`, `before`, `after`, `fps` (30), `speed`, `crop` (null para o campo inteiro) e `reducedMotion`.
+  - **O que grava:**
+    - `frames/frame-0001.png`, …;
+    - `folha.png`, a folha de contacto com «número · tick · pose» e o frame do evento a dourado;
+    - `medidas.json`, com o tick, a pose e os píxeis mudados por frame;
+    - `cena.json`, com a semente e o tick encontrados, para repetir logo;
+    - `avisos.txt`: se a cena não é determinista (grava-se duas vezes e compara-se) e as poses que duram menos de um tick.
+- **Avisos que já se sabem e são de propósito:** os frames de queda (`fallA`, `fallB`, `fallen`) são rodados e por isso têm píxeis meio transparentes e falhas no contorno. Nas poses com salto, os pés não ficam na mesma linha.
+- **Ainda não faz:** componentes de interface e fluxos pela aplicação inteira. Para esses, usa as capturas do `browser-check`. Os efeitos (pó, rasto) só se veem dentro de um cenário.
 
 Quem fez o asset corrige e volta a pedir revisão até não haver problemas. O detalhe do método, o protocolo e a lista de verificação estão em `references/revisao.md`.

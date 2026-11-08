@@ -131,6 +131,8 @@ const POSES = {
   board: (L: number): PoseShape => ({ a: [-3, 2], b: [5, -3], f: [-2, L], g: [2, L], prop: 'board' }),
 };
 export type PoseName = keyof typeof POSES;
+/** Todas as poses, pela ordem em que estão escritas. */
+export const ALL_POSES = Object.keys(POSES) as PoseName[];
 
 /** Proporções do corpo, em píxeis. `shoulder` e `waist` são larguras do tronco; `arm` e `leg` são espessuras. */
 export const BUILDS = {
