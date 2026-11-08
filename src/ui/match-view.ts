@@ -49,6 +49,7 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
@@ -115,6 +116,9 @@ interface Motion {
   backLock: number;
   flipLock: number;
   lastBackChange: number;
+  /** De costas como se desenha, com o seu próprio bloqueio (`BACK_POSES`). */
+  drawnBack: boolean;
+  drawnBackLock: number;
 }
 /** O estado de desenho de cada jogador, num só sítio. Os campos opcionais só existem enquanto dura o que descrevem. */
 interface BodyView {
@@ -181,7 +185,7 @@ export class MatchView {
   /** Nos cenários de teste do revisor, quem se desenha em campo; sem isto, todos, e o árbitro. */
   visible: ((b: Body) => boolean) | null = null;
   /** O que o último frame desenhou, para os cenários de teste do revisor medirem: cada boneco, a bola e os rótulos. */
-  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
+  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point; back?: boolean }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
   private pixels: Uint32Array;
@@ -290,7 +294,7 @@ export class MatchView {
       this.views.set(b, {
         look: b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : { ...lookOf(b.player, 'cream'), custom: awayKit },
         prev: { x: b.x, y: b.y },
-        motion: { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0 },
+        motion: { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0, drawnBack: false, drawnBackLock: 0 },
         stride: 0,
         steps: 0,
         stepAt: 0,
@@ -1400,9 +1404,17 @@ export class MatchView {
       // No poste, os dois ficam virados para fora do cesto: o atacante de costas para ele, o defensor de frente para o atacante.
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
-      const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
+      // De costas só a andar, a deslizar em defesa, de pé ou a saltar ao ressalto; o que se desenha tem o seu próprio bloqueio, para a troca entre
+      // estas poses (do drible para a corrida, do salto para a corrida) não virar o boneco antes do tempo.
+      const backable = BACK_POSES.test(pose);
+      const wantBack = motion.back && backable;
+      if (wantBack !== motion.drawnBack && s.tick >= motion.drawnBackLock) {
+        motion.drawnBack = wantBack;
+        motion.drawnBackLock = s.tick + TURN_LOCK_TICKS;
+      }
+      const back = falling ? b.fallProne && pose.startsWith('fall') : motion.drawnBack && backable;
       const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
-      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y } });
+      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y }, back });
       return { x: sx, y: sy, lift, pose, withBall, look, flip, back };
     });
     const { referee } = this;
