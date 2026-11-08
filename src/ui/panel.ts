@@ -4,7 +4,7 @@ import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/ty
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
 import { portraitImage } from './art/portrait.ts';
-import { attributeIcon, energyIcon, optionStar } from './art/icons.ts';
+import { heightIcon, attributeIcon, energyIcon, optionStar } from './art/icons.ts';
 import { faceImage, type Look } from './art/sprites.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { TICKS_PER_SECOND } from '../sim/court.ts';
@@ -27,7 +27,7 @@ export interface LiveLeague {
 
 /** Altura e peso de 1 a 3 estrelas, pelos terços dos jogadores gerados: até 192 cm e 87 kg é uma estrela, a partir de 203 cm e 105 kg são três. */
 /** A altura (1 a 3) numa só estrela, com o número ao centro: cabe em qualquer lista de jogadores. */
-export const heightStar = (height: number): string => `<span class="hstar" title="Altura ${height} de 3" aria-label="Altura ${height} de 3">${height}</span>`;
+export const heightStar = (height: number): string => `<img class="hstar" src="${heightIcon(height)}" title="Altura ${height} de 3" alt="Altura ${height} de 3">`;
 export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${heightStar(p.height)}</span>`;
 
 export function energyColor(energy: number): string {
