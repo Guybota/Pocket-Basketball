@@ -2,7 +2,7 @@ import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
 import {
-  SR, applause, babble, backboard, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
+  SR, applause, babble, backboard, brass, carPass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
   squeak, swish, thud, timpani, whistle,
   type Rng, type Room, type Sample, type Shout,
 } from './synth.ts';
@@ -474,27 +474,6 @@ export class GameAudio {
     }
   }
 
-  /** Um sopro de ruído que cresce e se desfaz devagar, com o filtro a deslizar: vento, trânsito, burburinho. */
-  private swell(type: BiquadFilterType, from: number, to: number, seconds: number, volume: number, q = 0.8, delay = 0): void {
-    const ctx = this.context!;
-    const source = ctx.createBufferSource();
-    source.buffer = this.noiseBuffer;
-    source.loop = true;
-    const filter = ctx.createBiquadFilter();
-    filter.type = type;
-    filter.Q.value = q;
-    const start = ctx.currentTime + delay;
-    filter.frequency.setValueAtTime(from, start);
-    filter.frequency.exponentialRampToValueAtTime(to, start + seconds);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + seconds * 0.4);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    source.connect(filter).connect(gain).connect(this.room!);
-    source.start(start, Math.random() * 0.8);
-    source.stop(start + seconds);
-  }
-
   /** O chiar de uma sapatilha a travar, de um lado qualquer do campo. */
   private squeak(volume: number): void {
     this.shot(this.squeaks(), 1.5 * volume * (0.5 + Math.random() * 0.5), { pan: Math.random() * 1.2 - 0.6 });
@@ -510,9 +489,10 @@ export class GameAudio {
     switch (this.venue) {
       case 'street':
         this.nextAmbience = now + 700 + Math.random() * 1500;
-        if (roll < 0.35) this.swell('bandpass', 300 + Math.random() * 300, 700 + Math.random() * 500, 2 + Math.random() * 2.5, 0.025, 0.6);
-        else if (roll < 0.6) this.swell('lowpass', 160, 260, 2.5 + Math.random() * 2, 0.04);
-        else if (roll < 0.64) for (const [k, f] of [[0, 392], [0.28, 330]] as const) this.tone('square', f, f, 0.22, 0.005, k);
+        // Um carro de vez em quando e pássaros: o vento e o trânsito, como ruído a crescer e a desfazer-se, soavam a mar.
+        if (roll < 0.15) this.shot(this.set('carPass', 3, carPass), 0.035);
+        else if (roll < 0.4) this.shot(this.set('chirp', 4, chirp), 0.012, { pan: Math.random() * 1.6 - 0.8 });
+        else if (roll < 0.44) for (const [k, f] of [[0, 392], [0.28, 330]] as const) this.tone('square', f, f, 0.22, 0.005, k);
         else if (roll < 0.78) this.shoutOnce(0.012);
         else this.squeak(0.012);
         return;

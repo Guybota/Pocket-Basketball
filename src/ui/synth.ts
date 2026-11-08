@@ -362,6 +362,55 @@ export function clapBeat(people: number, r: Rng): Stereo {
   return normalize(out);
 }
 
+// ---------------------------------------------------------------- a rua
+
+/**
+ * Um carro a passar ao longe, de um lado para o outro: o motor (um zumbido grave com harmónicos) e o rolar dos pneus,
+ * que crescem quando ele chega e descem de tom quando passa (Doppler). É o tom do motor que o distingue do mar: ruído
+ * filtrado a crescer e a desfazer-se, sozinho, soava a ondas.
+ */
+export function carPass(r: Rng): Stereo {
+  const seconds = between(r, 2.2, 3);
+  const n = samples(seconds);
+  const out: Stereo = [new Float32Array(n), new Float32Array(n)];
+  const f0 = between(r, 55, 80);
+  const shift = between(r, 0.05, 0.08);
+  const side = r() < 0.5 ? -1 : 1;
+  const tyres = new Biquad('bandpass', between(r, 500, 800), 0.8);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const x = ((i / n) - 0.5) * 2;
+    const near = 1 / (1 + 16 * x * x);
+    const f = f0 * (1 - (shift * x) / Math.sqrt(x * x + 0.04));
+    phase += (TAU * f) / SR;
+    const y = (0.6 * sawAt(phase, f, 1500) + 0.5 * tyres.run(white(r))) * near;
+    const [gl, gr] = panGains(side * x * 0.8);
+    out[0][i] = y * gl;
+    out[1][i] = y * gr;
+  }
+  return normalize(out, 0.8);
+}
+
+/** Um pássaro: dois a cinco piados curtos e agudos, que sobem ou descem. */
+export function chirp(r: Rng): Mono {
+  const out = new Float32Array(samples(0.8));
+  const base = between(r, 3000, 4500);
+  const bend = r() < 0.5 ? between(r, 1.15, 1.35) : between(r, 0.7, 0.85);
+  let at = 0;
+  for (let k = Math.floor(between(r, 2, 6)); k > 0; k--) {
+    const length = samples(between(r, 0.05, 0.09));
+    const f = base * between(r, 0.95, 1.05);
+    let phase = 0;
+    for (let i = 0; i < length && at + i < out.length; i++) {
+      const u = i / length;
+      phase += (TAU * f * (1 + (bend - 1) * u)) / SR;
+      out[at + i] = Math.sin(phase) * Math.sin(Math.PI * u);
+    }
+    at += length + samples(between(r, 0.05, 0.12));
+  }
+  return normalize(out, 0.7);
+}
+
 // ---------------------------------------------------------------- vozes da bancada
 
 /** Formantes (Hz) das vogais. */
