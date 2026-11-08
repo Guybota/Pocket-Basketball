@@ -72,6 +72,12 @@ const DUNK_CROUCH_TICKS = 3;
 const DUNK_HANG_SECONDS = 0.06;
 const DUNK_LAND_TICKS = 2;
 const CHEER_TICKS = 14;
+// Poses de pés parados: a andar, deslizavam no chão. As reações só se mostram parado; o crossover e o roubo, a andar,
+// só no instante do gesto (os primeiros ticks dos 8 que duram).
+const STANDING_REACTIONS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists', 'handsHead']);
+const STRIKE_POSES: ReadonlySet<PoseName> = new Set(['crossover', 'snatch']);
+const STRIKE_TICKS = 8;
+const MOVING_STRIKE_TICKS = 3;
 // O tremor do afundanço conta em tempo real: 200 ms, a mudar de posição 15 vezes por segundo, 1 píxel de arte para cada lado.
 const SHAKE_SECONDS = 0.2;
 const SHAKE_HZ = 15;
@@ -165,7 +171,7 @@ export class MatchView {
   /** Nos cenários de teste do revisor, quem se desenha em campo; sem isto, todos, e o árbitro. */
   visible: ((b: Body) => boolean) | null = null;
   /** O que o último frame desenhou, para os cenários de teste do revisor medirem: cada boneco, a bola e os rótulos. */
-  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
+  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
   private pixels: Uint32Array;
@@ -560,7 +566,7 @@ export class MatchView {
             // Um passe comprido cortado a meio chega alto: o intercetador salta e apanha-o lá em cima, como num ressalto.
             const high = s.ball.z > INTERCEPT_JUMP_HEIGHT;
             if (high && this.view(body).reboundJump === undefined) this.view(body).reboundJump = s.tick - 4;
-            this.view(body).override = { pose: high ? 'grab' : 'snatch', until: s.tick + 8, withBall: true };
+            this.view(body).override = { pose: high ? 'grab' : 'snatch', until: s.tick + STRIKE_TICKS, withBall: true };
           }
           break;
         case 'tipOff':
@@ -611,8 +617,8 @@ export class MatchView {
         case 'move':
           if (body) {
             // Cada movimento tem a sua pose e o nome por cima de quem o fez. O afundanço e o alley-oop acabam na pose de afundar, com o lançamento.
-            if (e.move === 'crossover') this.view(body).override = { pose: 'crossover', until: s.tick + 8, withBall: true };
-            if (e.move === 'pickpocket') this.view(body).override = { pose: 'snatch', until: s.tick + 8, withBall: true };
+            if (e.move === 'crossover') this.view(body).override = { pose: 'crossover', until: s.tick + STRIKE_TICKS, withBall: true };
+            if (e.move === 'pickpocket') this.view(body).override = { pose: 'snatch', until: s.tick + STRIKE_TICKS, withBall: true };
             if (e.move === 'stepBack') {
               this.view(body).slide = { ...this.view(body).prev, start: s.tick };
               this.view(body).stepBack = s.tick;
@@ -1034,7 +1040,8 @@ export class MatchView {
     if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
     const dunk = this.view(b).dunkJump;
     if (dunk?.pose) return { pose: dunk.pose, withBall: dunk.withBall === true };
-    if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
+    const slides = moving && override !== undefined && (STANDING_REACTIONS.has(override.pose) || (STRIKE_POSES.has(override.pose) && override.until - s.tick <= STRIKE_TICKS - MOVING_STRIKE_TICKS));
+    if (override && override.until > s.tick && !slides) return { pose: override.pose, withBall: override.withBall === true };
     // O lay-up acompanha o voo: o passo de chamada, o impulso a uma perna e o braço esticado em cima. A bola vai pela simulação.
     const flight = s.flight;
     if (flight?.kind === 'shot' && flight.layup && !flight.blockedBy && flight.shooter === b) {
@@ -1065,7 +1072,8 @@ export class MatchView {
     if (s.posting && b.team !== s.offense && this.nearestOpponent(s.posting) === b) return { pose: 'brace', withBall: false };
     if (s.holder === b) {
       // A correr, as pernas acompanham o drible; parado, só a bola mexe.
-      if (moving) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
+      // Com o mesmo limite para arrancar e para parar: a abrandar ou a arrancar devagar, as pernas ainda andam.
+      if (moving || this.motionOf(b).speed > 0.4) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
     // Só quem defende o jogador com a bola fica em posição de defesa, a deslizar de lado; os outros andam e correm normalmente.
@@ -1236,7 +1244,7 @@ export class MatchView {
         const pose = jump.pose ?? 'dunk';
         const withBall = jump.withBall === true;
         const flip = this.motionOf(e.body).flip;
-        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: spriteHeight(look) });
+        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y } });
         drawables.push({ y: dy, draw: () => {
           drawShadow(g, dx, dy);
           drawSprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall);
@@ -1248,9 +1256,10 @@ export class MatchView {
         this.exits.splice(i, 1);
         continue;
       }
-      const [sx, sy] = camera.project(e.from.x + (e.to.x - e.from.x) * t, e.from.y + (e.to.y - e.from.y) * t);
+      const world = { x: e.from.x + (e.to.x - e.from.x) * t, y: e.from.y + (e.to.y - e.from.y) * t };
+      const [sx, sy] = camera.project(world.x, world.y);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
-      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(look) });
+      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(look), world });
       drawables.push({ y: sy, draw: () => drawSprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
@@ -1365,7 +1374,7 @@ export class MatchView {
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
       const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
-      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look) });
+      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y } });
       return { x: sx, y: sy, lift, pose, withBall, look, flip, back };
     });
     const { referee } = this;
