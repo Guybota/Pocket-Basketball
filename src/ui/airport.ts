@@ -2,6 +2,7 @@
 // O ficheiro vem de fora, por isso só se aceita o que se conhece: cada campo é verificado e copiado à mão.
 import { ATTRIBUTE_KEYS, HEIGHT_LEVELS, MOVES, OFF_BALL_STYLES, ON_BALL_STYLES, validateTactics, validateTeam, type Player, type Tactics, type Team } from '../sim/types.ts';
 import { EMBLEM_SYMBOL_LIST, RESERVED_SYMBOLS, emblemLetters, validEmblem, validKit, type ClubKit, type Emblem } from './art/kit.ts';
+import { teamsClash } from './art/color.ts';
 
 export const TEAM_FILE_FORMAT = 'pocket-basketball-equipa';
 export const TEAM_FILE_VERSION = 1;
@@ -96,11 +97,7 @@ export function guestTeam(guest: GuestTeam, own: Team): Team {
 }
 
 /** As duas camisolas são tão parecidas que em campo não se distinguem as equipas. */
-export function kitClash(kit: ClubKit, other: ClubKit): boolean {
-  const x = parseInt(kit.jersey.slice(1), 16);
-  const y = parseInt(other.jersey.slice(1), 16);
-  return Math.abs(((x >> 16) & 255) - ((y >> 16) & 255)) + Math.abs(((x >> 8) & 255) - ((y >> 8) & 255)) + Math.abs((x & 255) - (y & 255)) < 90;
-}
+export const kitClash = (kit: ClubKit, other: ClubKit): boolean => teamsClash(kit.jersey, other.jersey);
 
 /** O equipamento da equipa de fora: o primeiro que não se confunde com o nosso. */
 export const guestKit = (guest: GuestTeam, ours: ClubKit): ClubKit => guest.kits.find(kit => !kitClash(kit, ours)) ?? guest.kits[0]!;

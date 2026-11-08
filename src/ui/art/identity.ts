@@ -1,5 +1,6 @@
 // A identidade fixa de cada clube da liga: emblema e equipamentos iguais em todas as carreiras, e únicos.
 import { CLUB_NAMES, FOREIGN_NAMES } from '../setup.ts';
+import { teamsClash } from './color.ts';
 import { EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, KIT_PATTERNS, RESERVED_SYMBOLS, type ClubKit, type Emblem, type EmblemBorder } from './kit.ts';
 
 // Cor principal, segunda cor e cor de realce. As principais são escuras, para a camisola contrastar com a letra.
@@ -57,11 +58,5 @@ export function clubIdentity(name: string): ClubIdentity {
 /** O equipamento com que um clube joga contra outro: o principal, ou o alternativo quando as camisolas se confundem. */
 export function kitAgainst(name: string, other: ClubKit): ClubKit {
   const [home, away] = clubIdentity(name).kits;
-  return colorDistance(home.jersey, other.jersey) < 140 ? away : home;
-}
-
-function colorDistance(a: string, b: string): number {
-  const va = parseInt(a.slice(1), 16);
-  const vb = parseInt(b.slice(1), 16);
-  return Math.abs(((va >> 16) & 255) - ((vb >> 16) & 255)) + Math.abs(((va >> 8) & 255) - ((vb >> 8) & 255)) + Math.abs((va & 255) - (vb & 255));
+  return teamsClash(home.jersey, other.jersey) ? away : home;
 }
