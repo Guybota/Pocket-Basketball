@@ -26,8 +26,9 @@ export interface LiveLeague {
 }
 
 /** Altura e peso de 1 a 3 estrelas, pelos terços dos jogadores gerados: até 192 cm e 87 kg é uma estrela, a partir de 203 cm e 105 kg são três. */
-const stars = (count: number, label: string): string => `<span class="stars" title="${label}" aria-label="${label} ${count} de 3">${[1, 2, 3].map(n => `<i class="${n <= count ? 'on' : ''}"></i>`).join('')}</span>`;
-export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${stars(p.height, 'Altura')}</span>`;
+/** A altura (1 a 3) numa só estrela, com o número ao centro: cabe em qualquer lista de jogadores. */
+export const heightStar = (height: number): string => `<span class="hstar" title="Altura ${height} de 3" aria-label="Altura ${height} de 3">${height}</span>`;
+export const bodyStars = (p: Player): string => `<span class="body-stars"><span>Alt.</span>${heightStar(p.height)}</span>`;
 
 export function energyColor(energy: number): string {
   if (energy > 0.55) return 'var(--good)';
@@ -274,7 +275,7 @@ export function subsPanel(view: MatchView, picked: number | null, inTimeout: boo
       <span class="bar"><i style="width:${Math.round(energy * 20) * 5}%;background:${energyColor(energy)}"></i></span>
       <span class="num">${b.line.points}</span>
       ${ATTRIBUTE_KEYS.map(key => `<b class="gr gr-${gradeOf(b.player.attributes[key])}">${gradeOf(b.player.attributes[key])}</b>`).join('')}
-      ${stars(b.player.height, 'Altura')}
+      ${heightStar(b.player.height)}
     </button>`;
   };
   const head = (label: string, kind: string): string => `<div class="srow head ${kind}"><span></span><span></span><span class="name">${label}</span><img class="energy" alt="Energia" title="Energia" src="${energyIcon()}"><span class="num">Pts</span>${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
@@ -395,8 +396,8 @@ export function optionsControls(roster: readonly Player[], tactics: { options?: 
   const label = (n: number): string => (n === 0 ? 'Primeira opção' : 'Segunda opção');
   const grade = (value: number): string => `<b class="gr gr-${gradeOf(value)}">${gradeOf(value)}</b>`;
   if (picking !== null) {
-    const head = `<div class="optpick head"><span></span><span></span>${ATTRIBUTE_KEYS.map(key => `<img alt="" src="${attributeIcon(key)}">`).join('')}</div>`;
-    const rows = roster.map((p, i) => `<button type="button" class="optpick${i >= 5 ? ' bench' : ''}" data-option-set="${escapeHtml(p.name)}" aria-pressed="${options[picking] === p.name}"><img alt="" src="${face(p)}"><span>${escapeHtml(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</button>`).join('');
+    const head = `<div class="optpick head"><span></span><span></span>${ATTRIBUTE_KEYS.map(key => `<img alt="" src="${attributeIcon(key)}">`).join('')}<span class="num">Alt</span></div>`;
+    const rows = roster.map((p, i) => `<button type="button" class="optpick${i >= 5 ? ' bench' : ''}" data-option-set="${escapeHtml(p.name)}" aria-pressed="${options[picking] === p.name}"><img alt="" src="${face(p)}"><span>${escapeHtml(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}${heightStar(p.height)}</button>`).join('');
     return `<div class="tacrow"><span>Escolhe a ${label(picking).toLowerCase()}. No banco só conta quando entrar.</span><div class="optlist">${head}${rows}</div><button type="button" data-option-cancel="1">Cancelar</button></div>`;
   }
   const slot = (n: number): string => {

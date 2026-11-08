@@ -730,11 +730,14 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 /* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
 .body-stars { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 
-.stars { display: inline-flex; gap: 1px; }
+.hstar { display: inline-grid; place-items: center; width: 18px; height: 18px; position: relative; isolation: isolate; font: 400 13px/1 var(--small); color: var(--ink); }
 
-.stars i { width: 9px; height: 9px; background: var(--ink-2); clip-path: polygon(50% 0, 62% 35%, 98% 35%, 69% 57%, 80% 92%, 50% 70%, 20% 92%, 31% 57%, 2% 35%, 38% 35%); }
+/* Uma estrela dourada com contorno de tinta, e a altura por cima, ao centro. */
+.hstar::before, .hstar::after { content: ''; position: absolute; z-index: -1; clip-path: polygon(50% 0, 62% 35%, 98% 35%, 69% 57%, 80% 92%, 50% 70%, 20% 92%, 31% 57%, 2% 35%, 38% 35%); }
 
-.stars i.on { background: var(--gold); }
+.hstar::before { inset: 0; background: var(--ink); }
+
+.hstar::after { inset: 2px; background: var(--gold); }
 
 .pcard header .body-stars { font: inherit; }
 
@@ -760,7 +763,7 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .seasons th { color: var(--muted); }
 
 /* Lista de jogadores */
-.thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px); align-items: center; gap: 2px; padding: 1px 4px; }
+.thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px) 18px; align-items: center; gap: 2px; padding: 1px 4px; }
 .thead { flex: none; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 21px; }
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 details.legend { flex: none; }
@@ -1157,7 +1160,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 
 /* O ecrã do adversário: a ficha do clube, e os números da época nas linhas do plantel. */
 .rivalview { flex: none; }
-.thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px); }
+.thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px) 18px; }
 .statcols .num { text-align: right; font: 400 15px/1 var(--small); }
 .rivalview button { color: var(--ink); background: var(--paper-2); }
 
@@ -1169,7 +1172,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .optwho img { width: 24px; height: 24px; image-rendering: pixelated; border: 1px solid var(--ink); }
 .optwho.empty { color: var(--muted); }
 .tacrow .optlist { display: grid; grid-template-columns: 1fr; gap: 2px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
-.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px); align-items: center; gap: 3px; min-height: 34px; padding: 2px 4px; text-align: left; }
+.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px) 18px; align-items: center; gap: 3px; min-height: 34px; padding: 2px 4px; text-align: left; }
 .optpick span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .optpick.head { min-height: 18px; padding-top: 0; padding-bottom: 0; }
 .optpick.head img { width: 16px; height: 16px; }
@@ -1236,3 +1239,8 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 .chalk .empty-state { color: var(--chalk); border-color: var(--chalk-2); }
 .chalk .empty-state .say { color: var(--chalk); }
 .chalk .empty-state .say b { color: var(--gold); }
+
+/* As divisões, por baixo dos separadores da tabela da federação: o emblema da liga, o nome curto e um ponto na nossa. */
+.divtabs button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+.divtabs img { image-rendering: pixelated; }
+.divtabs .here { width: 6px; height: 6px; background: var(--gold); border: 1px solid var(--ink); }

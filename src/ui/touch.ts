@@ -17,7 +17,7 @@ export function initTouch(): void {
     if (event.touches.length > 1) event.preventDefault();
   }, { passive: false });
   document.addEventListener('contextmenu', event => {
-    if ((event.target as HTMLElement).closest('img, canvas, button, .face, .stars')) event.preventDefault();
+    if ((event.target as HTMLElement).closest('img, canvas, button, .face, .hstar')) event.preventDefault();
   });
   document.addEventListener('pointerdown', event => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('[title], img[alt], [aria-label]');

@@ -26,7 +26,7 @@ import { buyFacility, type FacilityId } from './club.ts';
 import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
-import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
+import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, bodyStars, heightStar, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
 import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
 import { GUEST_RIVAL, guestKit, kitClash, parseTeamFile, teamFile, type GuestTeam } from './airport.ts';
 import { downloadFile, pickFile } from './save.ts';
@@ -68,7 +68,7 @@ let swapping: number | null = null;
 let picked: CardId[] = [];
 let focusCard: CardId | null = null;
 let lastTraining: { before: Player; result: TrainingResult; cards: CardId[]; isNew: boolean; index: number } | null = null;
-let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' | 'ladder' = 'table';
+let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' = 'table';
 // A divisão que se está a ver na federação, e o jogador escolhido no plantel de um clube.
 let federationDivision = 0;
 // -1 é a ficha do clube; a partir de 0, a ficha desse jogador do plantel.
@@ -214,10 +214,10 @@ const inside = (html: string): string => `<div class="patterned">${html}</div>`;
 function squadScreen(): Rendered {
   return {
     top: inside(playerCard(selected)),
-    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}`)}
+    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}<span class="num">Alt</span>`)}
       <div class="scroll">
         <div class="starters"><span>Titulares</span><span>${swapping === null ? 'O lugar na lista é o papel em campo' : 'Toca em quem entra para o lugar dele'}</span></div>
-        ${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')).replace('<button type="button" class="prow bench', '<div class="starters plain"><span>Banco</span></div><button type="button" class="prow bench')}
+        ${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('') + heightStar(p.height)).replace('<button type="button" class="prow bench', '<div class="starters plain"><span>Banco</span></div><button type="button" class="prow bench')}
       </div>
       ${bar(backBtn(backFromSquad), `<button type="button" data-act="swap" aria-pressed="${swapping !== null}">${swapping === null ? '⇄ Trocar' : 'Cancelar'}</button>`, backFromSquad === 'town' ? `<button type="button" data-act="sell" aria-pressed="${selling}" ${club.team.roster.length <= 10 ? 'disabled' : ''}>${selling ? `Vender por ${transferFee(club.team.roster[selected]!)}?` : 'Vender'}</button>` : '<button type="button" data-go="tactics">Táticas</button>')}`,
   };
@@ -241,8 +241,8 @@ function trainScreen(): Rendered {
   const hurt = (player.injuryWeeks ?? 0) > 0;
   return {
     top: inside(playerCard(selected)),
-    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}`)}
-      <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join(''))}</div>
+    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}<span class="num">Alt</span>`)}
+      <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('') + heightStar(p.height))}</div>
       ${totalCards(club) === 0 ? emptyState('Não há cartas para treinar. Ganham-se nos jogos: a jornada, um particular ou um jogo-treino.') : ''}
       ${bar(`<button type="button" class="icon back" data-go="town" aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`, `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
   };
@@ -401,7 +401,7 @@ function airportScreen(): Rendered {
   const guest = club.guest;
   const rival = guest ? rivalTeam(club, GUEST_RIVAL) : null;
   const strength = (team: Team): string => `<small>Força ${grade(teamRating(team))}</small>`;
-  const rows = rival ? rival.roster.map((p, index) => `<div class="prow${index >= 5 ? ' bench' : ''}">${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}</div>`).join('') : '';
+  const rows = rival ? rival.roster.map((p, index) => `<div class="prow${index >= 5 ? ' bench' : ''}">${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}</span>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}${heightStar(p.height)}</div>`).join('') : '';
   const games = club.guestGames.map(g => `<div class="round-row"><span class="name">${esc(club.team.short)} · ép. ${g.season}</span><b>${g.score[0]}-${g.score[1]}</b><span class="name right">${esc(g.name)}</span></div>`).join('');
   const why = guest ? '' : 'Importa primeiro uma equipa.';
   return {
@@ -486,13 +486,13 @@ function marketScreen(): Rendered {
   const list = marketList(club);
   const pick = list[Math.min(marketPick, list.length - 1)] ?? null;
   const rows = list.map((entry, i) => `<button type="button" class="prow${entry.clubId === null ? '' : ' bench'}" data-market="${i}" aria-pressed="${i === marketPick}">
-      <span></span>${entry.clubId === null ? '<span class="pnum">L</span>' : `<img class="emblem" alt="${esc(club.clubs[entry.clubId]!.name)}" style="width:18px;height:18px" src="${emblemImage(clubIdentity(club.clubs[entry.clubId]!.name).emblem)}">`}<span class="name">${esc(entry.player.name)}</span><i class="edot${entry.salary + entry.fee > surplus(club) ? ' low' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(entry.player.attributes[key])).join('')}
+      <span></span>${entry.clubId === null ? '<span class="pnum">L</span>' : `<img class="emblem" alt="${esc(club.clubs[entry.clubId]!.name)}" style="width:18px;height:18px" src="${emblemImage(clubIdentity(club.clubs[entry.clubId]!.name).emblem)}">`}<span class="name">${esc(entry.player.name)}</span><i class="edot${entry.salary + entry.fee > surplus(club) ? ' low' : ''}"></i>${ATTRIBUTE_KEYS.map(key => grade(entry.player.attributes[key])).join('')}${heightStar(entry.player.height)}
     </button>`).join('');
-  const offers = club.offers.map(o => `<button type="button" class="prow" data-cancel-offer="${esc(o.player.name)}"><span></span><span class="pnum">${o.weeksLeft}s</span><span class="name">${esc(o.player.name)}</span><i class="edot mid"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${o.fee} mil · cancelar</span></button>`).join('');
+  const offers = club.offers.map(o => `<button type="button" class="prow" data-cancel-offer="${esc(o.player.name)}"><span></span><span class="pnum">${o.weeksLeft}s</span><span class="name">${esc(o.player.name)}</span><i class="edot mid"></i><span style="grid-column:span 8;text-align:right;font:400 15px/1 var(--small)">${o.fee} mil · cancelar</span></button>`).join('');
   const canOffer = pick !== null && pick.salary + pick.fee <= surplus(club) && club.team.roster.length + club.offers.length < 15 && (pick.clubId === null || transferWindowOpen(club));
   return {
     top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
-    bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}</div>
+    bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}<span class="num">Alt</span></div>
       <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows || emptyState('Esta semana não aparece ninguém. A lista muda todas as semanas: volta na próxima.', 'secretary')}</div>
       ${bar(backBtn('office'), `<button type="button" class="primary" data-act="offer" ${canOffer ? '' : 'disabled'}>${pick === null ? 'Nada' : pick.clubId === null ? 'Contratar' : 'Propor'}</button>`)}`,
   };
@@ -507,7 +507,7 @@ function renewalsScreen(): Rendered {
     const p = club.team.roster.find(player => player.name === r.name)!;
     const kept = keep.has(r.name);
     return `<button type="button" class="prow${club.team.roster.indexOf(p) >= 5 ? ' bench' : ''}" data-renew="${esc(r.name)}" aria-pressed="${kept}">
-      ${slotBadge(club.team.roster.indexOf(p))}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span><i class="edot${kept ? '' : ' low'}"></i><span style="grid-column:span 7;text-align:right;font:400 15px/1 var(--small)">${r.current} › <b>${r.asked}</b> mil${kept ? '' : ' · sai'}</span>
+      ${slotBadge(club.team.roster.indexOf(p))}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}</span><i class="edot${kept ? '' : ' low'}"></i><span style="grid-column:span 8;text-align:right;font:400 15px/1 var(--small)">${r.current} › <b>${r.asked}</b> mil${kept ? '' : ' · sai'}</span>
     </button>`;
   }).join('');
   return {
@@ -518,7 +518,7 @@ function renewalsScreen(): Rendered {
       ${say('president', ...presidentRenewals(club))}
       <div class="quote">Contratos de um ano. Cada jogador pede o salário que vale agora; quem não ficar sai, e abaixo de 10 jogadores entram livres.</div>
     </div></div>`),
-    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span><span style="grid-column:span 7;text-align:right">Era › Pede</span></div>
+    bottom: `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span><span style="grid-column:span 8;text-align:right">Era › Pede</span></div>
       <div class="scroll">${rows || emptyState('Este ano não há contratos para renovar. Podes começar a época.', 'secretary')}</div>
       ${bar(`<button type="button" class="primary" id="renewalsConfirm" data-act="confirmRenewals" ${left < 0 ? 'disabled' : ''}>${left < 0 ? 'Acima do orçamento' : 'Começar a época'}</button>`)}`,
   };
@@ -563,13 +563,13 @@ function rivalScreen(): Rendered {
   const perGame = (total: number, games: number): string => (games ? (total / games).toFixed(1).replace('.', ',') : '-');
   const statCells = (l: SeasonLine): string => `<span class="num">${l.games}</span><span class="num">${perGame(l.points, l.games)}</span><span class="num">${perGame(l.rebounds, l.games)}</span><span class="num">${perGame(l.assists, l.games)}</span>`;
   const rows = rival.roster.map((p, index) => `<button type="button" class="prow${rivalStats ? ' statcols' : ''}${index >= 5 ? ' bench' : ''}" data-target="${index}" aria-pressed="${focus.includes(index)}" ${!focus.includes(index) && focus.length >= MAX_FOCUS ? 'disabled' : ''}>
-      ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}${optionMark(rival.tactics?.options, p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+      ${slotBadge(index)}<span class="pnum">${index + 4}</span><span class="name">${esc(p.name)}${optionMark(rival.tactics?.options, p.name)}</span><i class="edot${focus.includes(index) ? ' target' : ''}"></i>${rivalStats ? statCells(lines[index]!) : ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}${heightStar(p.height)}
     </button>`).join('');
   return {
     top: inside(`<div class="note fedsheet"><header><b><img class="emblem" alt="" style="width:24px;height:24px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b></header><div class="inner">${clubSheet(id, rival)}</div></div>`),
     bottom: `<div class="rivalhead"><b><img class="emblem" alt="" style="width:20px;height:20px" src="${emblemImage(rivalIdentity(rival.name).emblem)}"> ${esc(rival.name)}</b><span>${club.divisions.some(ids => ids.includes(id)) ? `<img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(club.divisions.findIndex(ids => ids.includes(id)))}"> ${esc(DIVISIONS[club.divisions.findIndex(ids => ids.includes(id))]!.name)} · ` : ''}${wins} V ${played.length - wins} D</span><span>Lança mais: ${esc(best.name)} · Mais alto: ${esc(tallest.name)}</span><span class="quote">Marca até ${MAX_FOCUS} jogadores: quem os defende cola-se a eles, e os outros ficam um passo mais soltos.</span></div>
       <div class="chalktabs rivalview"><button type="button" data-rival-view="0" aria-pressed="${!rivalStats}">Atributos</button><button type="button" data-rival-view="1" aria-pressed="${rivalStats}">Estatísticas da época</button></div>
-      <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}</div>
+      <div class="thead${rivalStats ? ' statcols' : ''}"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${rivalStats ? '<span class="num">J</span><span class="num">Pts</span><span class="num">Res</span><span class="num">Ass</span>' : attributeHead}<span class="num">Alt</span></div>
       <div class="scroll">${rivalStats && lines.every(l => l.games === 0) ? emptyState('Ainda não jogaram esta época. Os números aparecem depois do primeiro jogo oficial; até lá, vê os atributos.', 'assistant') : ''}${rows}</div>
       ${bar(backBtn('pre'), `<button type="button" data-act="clearFocus" ${focus.length ? '' : 'disabled'}>Sem alvos</button>`)}`,
   };
@@ -810,8 +810,8 @@ function federationScreen(): Rendered {
     return `<tr><td>${esc(club.clubs[f.home === federationClub ? f.away : f.home]!.name)}</td><td class="${own > other ? 'won' : 'lost'}" style="color:${own > other ? 'var(--good)' : 'var(--bad)'}">${own}-${other}</td></tr>`;
   }).join('');
   const sheet = clubSheet(federationClub, team);
-  const squadRowsHtml = `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}</div>` + roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-fed-player="${index}">
-      ${slotBadge(index)}<span class="pnum">${federationClub === PLAYER_CLUB ? shirtOf(p) : index + 4}</span><span class="name">${esc(p.name)}${optionMark(federationClub === PLAYER_CLUB ? club.tactics.options : team.tactics?.options, p.name)}</span><i class="edot"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}
+  const squadRowsHtml = `<div class="thead"><span>Pos</span><span>#</span><span>Jogador</span><span></span>${attributeHead}<span class="num">Alt</span></div>` + roster.map((p, index) => `<button type="button" class="prow${index >= 5 ? ' bench' : ''}" data-fed-player="${index}">
+      ${slotBadge(index)}<span class="pnum">${federationClub === PLAYER_CLUB ? shirtOf(p) : index + 4}</span><span class="name">${esc(p.name)}${optionMark(federationClub === PLAYER_CLUB ? club.tactics.options : team.tactics?.options, p.name)}</span><i class="edot"></i>${ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('')}${heightStar(p.height)}
     </button>`).join('');
   const top = federationPlayer >= 0
     ? inside(federationClub === PLAYER_CLUB ? playerCard(player) : clubPlayerCard(team, player))
@@ -824,7 +824,9 @@ function federationScreen(): Rendered {
   let body = '';
   if (federationTab === 'table') {
     const note = !own ? emptyState('Nesta divisão não seguimos os jogos: os clubes estão por ordem de força. Toca num para ver a ficha.') : table.every(r => r.played === 0) ? emptyState('A liga ainda não começou. A tabela mexe depois da primeira jornada.') : '';
-    body = `${note}${own ? '<div class="crow head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>' : ''}${table.map((r, i) => {
+    // As divisões são uma parte da tabela: escolhe-se aqui qual se vê, e a nossa leva um ponto dourado.
+    const divisions = `<div class="chalktabs divtabs">${DIVISIONS.map((d, n) => `<button type="button" data-fed-division="${n}" aria-pressed="${federationDivision === n}" aria-label="${d.name}${n === club.division ? ', a nossa' : ''}"><img class="emblem" alt="" style="width:14px;height:14px" src="${leagueIcon(n)}">${d.name.replace('Liga ', '')}${n === club.division ? '<i class="here"></i>' : ''}</button>`).join('')}</div>`;
+    body = `${divisions}${note}${own ? '<div class="crow head"><span></span><span class="name"></span><span>V</span><span>D</span><span>+/-</span></div>' : ''}${table.map((r, i) => {
       const format = playoffFormat(club);
       const up = format ? format.places.includes(i) : i < MOVING_PLACES && club.division < DIVISIONS.length - 1;
       const down = i >= LEAGUE_SIZE - MOVING_PLACES && club.division > 0;
@@ -867,13 +869,10 @@ function federationScreen(): Rendered {
     };
     const picker = `<div class="chalktabs">${(['federation', 'continental', 'world'] as CupName[]).map(cup => `<button type="button" data-cup-view="${cup}" aria-pressed="${cupView === cup}">${CUP_NAMES[cup].replace('Taça da ', '').replace('Taça ', '').replace(' de Clubes', '')}</button>`).join('')}</div>`;
     body = picker + `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${CUP_NAMES[cupView]}</span><span>${headline}</span></div>` + (state ? [...state.rounds].map((round, n) => ({ round, n })).reverse().map(({ round, n }) => `<div class="crow head" style="grid-template-columns:1fr auto"><span class="name">${cupRoundName(cupView, n)}</span><span>${round.length} ${round.length === 1 ? 'jogo' : 'jogos'}</span></div>` + round.map(f => `<div class="crow round${f.home === PLAYER_CLUB || f.away === PLAYER_CLUB ? ' mine' : ''}"><span class="name">${esc(club.clubs[f.home]!.name)}</span><b>${f.score ? `${f.score[0]}-${f.score[1]}` : '-'}</b><span class="name">${esc(club.clubs[f.away]!.name)}</span></div>`).join('')).join('') : '') + ((state?.rounds.length ?? 0) === 0 ? `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${cupView === 'world' ? 'Só se joga quando houver campeão continental, na semana 28.' : `O sorteio da primeira ronda é na semana ${cupView === 'federation' ? 2 : 4}.`}</span></div>` : '') + `<div class="crow round" style="grid-template-columns:1fr;min-height:0"><span class="name" style="white-space:normal;padding:3px 0">${about[cupView]}</span></div>`;
-  } else {
-    // Toca-se numa divisão para ver os clubes dela.
-    body = [...DIVISIONS].map((d, n) => ({ d, n })).reverse().map(({ d, n }) => `<button type="button" class="crow round" data-fed-division="${n}" aria-pressed="${federationDivision === n}" style="grid-template-columns:1fr auto;font:400 18px/1 var(--ui);min-height:44px${n === club.division ? ';color:var(--gold)' : ''}"><span class="name"><img class="emblem" alt="" style="width:16px;height:16px;margin-right:4px" src="${leagueIcon(n)}">${d.name}</span><small>${n === club.division ? 'Estás aqui' : `${LEAGUE_SIZE} clubes`}</small></button>`).join('');
   }
   const tabs: [typeof federationTab, string][] = own
-    ? [['table', 'Classificação'], ['calendar', 'Calendário'], ['round', 'Jornada'], ...(playoffFormat(club) ? [['playoffs', 'Playoffs'] as [typeof federationTab, string]] : []), ['cup', 'Taça'], ['ladder', 'Divisões']]
-    : [['table', 'Clubes'], ['cup', 'Taça'], ['ladder', 'Divisões']];
+    ? [['table', 'Classificação'], ['calendar', 'Calendário'], ['round', 'Jornada'], ...(playoffFormat(club) ? [['playoffs', 'Playoffs'] as [typeof federationTab, string]] : []), ['cup', 'Taça']]
+    : [['table', 'Clubes'], ['cup', 'Taça']];
   const bracket = federationTab === 'cup' || federationTab === 'playoffs';
   return {
     top: bracket ? fullCanvas('bracket') : top,
