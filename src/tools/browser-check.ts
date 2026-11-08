@@ -998,6 +998,12 @@ try {
   const muted = await keys.getAttribute('#muteBtn', 'aria-pressed');
   await keys.keyboard.press('s');
   check('S liga e desliga o som', (await keys.getAttribute('#muteBtn', 'aria-pressed')) !== muted);
+  await keys.keyboard.press('v');
+  const fast = await keys.getAttribute('#speedBtn', 'aria-label');
+  await keys.keyboard.press('v');
+  const faster = await keys.getAttribute('#speedBtn', 'aria-label');
+  await keys.keyboard.press('v');
+  check('V muda a velocidade 1× → 2× → 4× → 1×', (fast ?? '').includes('2×') && (faster ?? '').includes('4×') && ((await keys.getAttribute('#speedBtn', 'aria-label')) ?? '').includes('1×'), `${fast} | ${faster}`);
   await keys.keyboard.press('?');
   const help = await keys.locator('#keysHelp[open]').count();
   await shot(keys, `${OUT}/atalhos.png`);

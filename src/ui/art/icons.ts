@@ -105,6 +105,22 @@ export function subsIcon(): string {
   return url;
 }
 
+/** O botão da velocidade do jogo: «X1», «X2» ou «X4». */
+export function speedIcon(speed: number): string {
+  const key = `speed:${speed}`;
+  let url = iconCache.get(key);
+  if (!url) {
+    // «X1», «X2», «X4» na letra do jogo, a 2×: 14 por 10 píxeis, ao centro do ícone de 16.
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    text(canvas.getContext('2d')!, `X${speed}`, 1, 3, INK, 2);
+    url = canvas.toDataURL();
+    iconCache.set(key, url);
+  }
+  return url;
+}
+
 /** O relógio do desconto com os descontos que restam ao centro do mostrador; com zero, só o relógio. */
 export function clockIcon(count: number): string {
   const key = `clock:${count}`;

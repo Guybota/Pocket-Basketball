@@ -1,6 +1,6 @@
 import { matchHash } from '../sim/hash.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { clockIcon, controlIcon, subsIcon } from './art/icons.ts';
+import { clockIcon, speedIcon, controlIcon, subsIcon } from './art/icons.ts';
 import { cancelSubstitution, holdMatch, isSprinting, queueSubstitution, resumeMatch, reorderBench, replayMatch, requestTimeout, setAutoRotation, setTactics, simulateMatch, type Body, type MatchEvent, type MatchState } from '../sim/match.ts';
 import { makeRng, type Rng } from '../sim/rng.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
@@ -494,6 +494,7 @@ function matchControls(): string {
     <div id="tabContent" class="content" role="tabpanel" aria-labelledby="tab-${tab}"></div>
     <div class="coachbar">
       <button type="button" id="pauseBtn" class="icon" aria-pressed="${paused || pauseRequested}" aria-label="${paused ? 'Continuar' : pauseRequested ? 'A parar…' : 'Pausa'}" title="${paused ? 'Continuar' : 'Pausa'}"><img class="ink" alt="" src="${controlIcon(paused ? 'play' : 'pause')}"></button>
+      <button type="button" id="speedBtn" class="icon" aria-label="Velocidade ${speed}×, tocar para mudar" title="Velocidade ${speed}×"><img class="ink" alt="" src="${speedIcon(speed)}"></button>
       <button type="button" id="muteBtn" class="icon" aria-pressed="${audio.muted}" aria-label="${audio.muted ? 'Ligar o som' : 'Desligar o som'}" title="Som"><img class="ink" alt="" src="${controlIcon(audio.muted ? 'muted' : 'sound')}"></button>
       <button type="button" id="timeoutBtn" class="icon" aria-label="Desconto de tempo" title="Desconto de tempo"><img class="ink" id="timeoutIcon" alt="" src="${clockIcon(view?.s.timeoutsLeft[0] ?? 0)}"></button>
       <button type="button" id="subsBtn" class="icon" aria-pressed="${subsOpen}" aria-label="Trocas" title="Trocas"><img alt="" src="${subsIcon()}"></button>
@@ -532,6 +533,11 @@ function bindControls(): void {
     } else {
       pauseRequested = true;
     }
+    showMatch();
+  });
+  // A velocidade do jogo: 1×, 2× e 4×, e fica escolhida para os jogos seguintes.
+  element('speedBtn').addEventListener('click', () => {
+    speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
     showMatch();
   });
   element('muteBtn').addEventListener('click', () => {

@@ -3,13 +3,13 @@
 
 /** O que cada tecla faz, na lista do «?» e nas dicas dos botões. */
 export const KEY_HELP: readonly (readonly [string, readonly (readonly [string, string])[]])[] = [
-  ['No jogo', [['Espaço', 'Pausa / continuar'], ['D', 'Desconto (duas vezes)'], ['T', 'Trocas'], ['A', 'Táticas'], ['S', 'Som'], ['1–5', 'Separadores do painel'], ['Esc', 'Fechar o painel aberto']]],
+  ['No jogo', [['Espaço', 'Pausa / continuar'], ['D', 'Desconto (duas vezes)'], ['T', 'Trocas'], ['A', 'Táticas'], ['S', 'Som'], ['V', 'Velocidade 1×, 2×, 4×'], ['1–5', 'Separadores do painel'], ['Esc', 'Fechar o painel aberto']]],
   ['Na cidade', [['P', 'Pavilhão'], ['E', 'Escritório'], ['T', 'Treino'], ['F', 'Federação'], ['R', 'Torre'], ['A', 'Aeroporto'], ['Enter', 'Passar a semana']]],
   ['Nos menus', [['Esc', 'Voltar'], ['Enter', 'Botão principal'], ['↑ ↓', 'Mudar de linha numa lista']]],
   ['Sempre', [['?', 'Esta lista']]],
 ];
 
-const MATCH_KEYS: Record<string, string> = { ' ': '#pauseBtn', d: '#timeoutBtn', t: '#subsBtn', a: '#matchTacticsBtn', s: '#muteBtn' };
+const MATCH_KEYS: Record<string, string> = { ' ': '#pauseBtn', d: '#timeoutBtn', t: '#subsBtn', a: '#matchTacticsBtn', s: '#muteBtn', v: '#speedBtn' };
 const TOWN_KEYS: Record<string, string> = { p: '#arenaChip', e: '#officeBtn', t: '#trainBtn', f: '#federationBtn', r: '#towerChip', a: '#airportChip', enter: '#skipWeekBtn' };
 // Por ordem: a ficha, as trocas e as táticas do jogo, a repetição, e o Voltar dos menus.
 const CLOSE = '[data-card="close"], [data-subs-close], #matchTacticsClose, #replayBack, .back';
