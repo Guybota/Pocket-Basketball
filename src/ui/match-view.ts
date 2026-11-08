@@ -1838,7 +1838,7 @@ export class MatchView {
           top = Math.max(FLOATER_MIN_TOP, f.base - rise);
           left = f.beside > 0 ? (drawn.x | 0) + 9 : (drawn.x | 0) - 9 - width;
         } else {
-          top = Math.max(2, peak - FLOATER_GAP - height - rise);
+          top = Math.max(FLOATER_MIN_TOP, peak - FLOATER_GAP - height - rise);
           left = (drawn.x | 0) - (width >> 1);
         }
         top = f.top = Math.min(f.top ?? top, top);
