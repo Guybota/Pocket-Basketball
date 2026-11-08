@@ -138,14 +138,21 @@ export function bounce(floor: 'wood' | 'asphalt', r: Rng): Mono {
 
 /** O aro: um anel de aço com modos inarmónicos que tocam muito, o baque do suporte e o estalo do impacto. */
 export function rim(r: Rng): Mono {
-  const out = new Float32Array(samples(0.7));
-  const f0 = between(r, 470, 560);
-  const ratios = [1, 2.32, 2.81, 4.13, 5.4, 6.95, 8.6];
-  const amps = [1, 0.75, 0.5, 0.42, 0.3, 0.2, 0.12];
-  const taus = [0.32, 0.24, 0.2, 0.12, 0.09, 0.06, 0.04];
-  addModes(out, ratios.map((k, i) => [f0 * k, amps[i]!, taus[i]! * between(r, 0.8, 1.2)] as const), r);
-  addModes(out, [[118, 0.35, 0.12]], r);
-  addBurst(out, r, 0.8, 0.0025, new Biquad('highpass', 2500));
+  // Um aro é aço grosso aparafusado à tabela e abafado pela rede: um «clank» curto e baixo, não um sino. Notas
+  // inarmónicas e graves que morrem em centésimas de segundo, o baque da borracha da bola, e um segundo toque
+  // mais fraco logo a seguir, da bola a saltitar no aro.
+  const out = new Float32Array(samples(0.35));
+  const f0 = between(r, 260, 330);
+  const ratios = [1, 1.47, 2.09, 2.56, 3.24, 4.1];
+  const amps = [1, 0.7, 0.55, 0.4, 0.25, 0.15];
+  const taus = [0.06, 0.045, 0.035, 0.025, 0.018, 0.012];
+  const hit = (start: number, gain: number): void => {
+    addModes(out, ratios.map((k, i) => [f0 * k, amps[i]! * gain, taus[i]! * between(r, 0.8, 1.2)] as const), r, start);
+    addModes(out, [[between(r, 95, 120), 0.7 * gain, 0.035], [210, 0.3 * gain, 0.02]], r, start);
+    addBurst(out, r, 0.6 * gain, 0.006, new Biquad('bandpass', 1800, 1), start);
+  };
+  hit(0, 1);
+  hit(samples(between(r, 0.04, 0.07)), between(r, 0.25, 0.4));
   return normalize(out);
 }
 
@@ -158,25 +165,23 @@ export function backboard(r: Rng): Mono {
   return normalize(out);
 }
 
-/** A rede: um sopro de ruído com a banda a subir depressa e a cair, os fios a tremer e uns toques soltos. */
+/** A rede: um «chhff» de ruído agudo que sobe devagar e se apaga suave; sem cliques nem baque, que soavam a soco. */
 export function swish(r: Rng): Mono {
-  const out = new Float32Array(samples(0.32));
-  const band = new Biquad('bandpass', 2000, 1.1);
-  const air = new Biquad('highpass', 6000);
-  const peak = between(r, 0.04, 0.06);
-  const tail = between(r, 0.06, 0.09);
+  const out = new Float32Array(samples(0.42));
+  const band = new Biquad('bandpass', 3500, 0.8);
+  const low = new Biquad('highpass', 1500);
+  const rise = between(r, 0.03, 0.045);
+  const tail = between(r, 0.11, 0.14);
   let flutter = 0;
   for (let n = 0; n < out.length; n++) {
     const t = n / SR;
-    if (n % 32 === 0) band.set('bandpass', t < peak ? 1800 + 3800 * (t / peak) : 2400 + 3200 * Math.exp(-(t - peak) / 0.06), 1.1);
-    const env = t < 0.018 ? (t / 0.018) * (t / 0.018) : Math.exp(-(t - 0.018) / tail);
-    flutter += 0.02 * (white(r) - flutter);
-    const x = white(r);
-    out[n] = band.run(x) * env * (1 + 6 * flutter) + air.run(x) * env * env * 0.25;
+    if (n % 32 === 0) band.set('bandpass', t < rise ? 3500 + 3000 * (t / rise) : 4500 + 2000 * Math.exp(-(t - rise) / 0.08), 0.8);
+    const k = Math.min(1, t / rise);
+    const env = t < rise ? k * k * (3 - 2 * k) : Math.exp(-(t - rise) / tail);
+    flutter += 0.01 * (white(r) - flutter);
+    out[n] = low.run(band.run(white(r))) * env * (1 + 1.5 * flutter);
   }
-  const tick = new Biquad('highpass', 4000);
-  for (let i = 0; i < 4; i++) addBurst(out, r, between(r, 0.1, 0.25), 0.0008, tick.reset(), samples(between(r, 0.005, 0.12)));
-  return normalize(out);
+  return normalize(out, 0.7);
 }
 
 // ---------------------------------------------------------------- vozes da bancada
