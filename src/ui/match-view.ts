@@ -72,6 +72,10 @@ const DUNK_CROUCH_TICKS = 3;
 const DUNK_HANG_SECONDS = 0.06;
 const DUNK_LAND_TICKS = 2;
 const CHEER_TICKS = 14;
+// A corrida muda de pose a cada tanto de caminho: à velocidade típica em campo, 5 a 6 m/s, de 80 em 100 ms. E nunca em
+// menos de 2 imagens a 60 fps, mesmo a 4×.
+const STRIDE_METRES = 0.48;
+const MIN_POSE_SECONDS = 0.034;
 // Poses de pés parados: a andar, deslizavam no chão. As reações só se mostram parado; o crossover e o roubo, a andar,
 // só no instante do gesto (os primeiros ticks dos 8 que duram).
 const STANDING_REACTIONS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists', 'handsHead']);
@@ -135,6 +139,12 @@ interface BodyView {
   huddle?: Point;
   /** Até quando o nome fica por cima dele, depois de ser tocado. */
   nameTag?: number;
+  /** O ciclo de corrida anda com a distância: quantos passos já deu (`stride`, com a fração), quantos se mostraram
+   * (`steps`), quando se mostrou o último (tempo real), e onde estava no último frame. */
+  stride: number;
+  steps: number;
+  stepAt: number;
+  walked?: Point;
 }
 interface Floater {
   label: string;
@@ -281,6 +291,9 @@ export class MatchView {
         look: b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : { ...lookOf(b.player, 'cream'), custom: awayKit },
         prev: { x: b.x, y: b.y },
         motion: { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0 },
+        stride: 0,
+        steps: 0,
+        stepAt: 0,
       });
     }
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'suit'), style: 0, legs: 6, torso: 6, build: 'athletic' });
@@ -726,6 +739,19 @@ export class MatchView {
     return -SHOOT_POSE_FEET + 4 * (SHOOT_POSE_FEET + SHOT_JUMP_HEIGHT) * t * (1 - t);
   }
 
+  /** Avança o ciclo de corrida pelo caminho feito desde o último frame. A 4×, a pose não muda mais de uma vez em cada
+   * `MIN_POSE_SECONDS` reais e o caminho a mais não se acumula: a corrida abranda em vez de cintilar. */
+  private walk(view: BodyView, x: number, y: number): void {
+    // Um salto de mais de 1 m é uma mudança de sítio (substituição, intervalo), não caminho.
+    if (view.walked) view.stride += Math.min(1, Math.hypot(x - view.walked.x, y - view.walked.y)) / STRIDE_METRES;
+    view.walked = { x, y };
+    if (view.stride >= view.steps + 1 && this.realTime - view.stepAt >= MIN_POSE_SECONDS) {
+      view.steps++;
+      view.stepAt = this.realTime;
+    }
+    view.stride = Math.min(view.stride, view.steps + 1.99);
+  }
+
   /** Se o lance em curso deste jogador é um afundanço. */
   private dunking(b: Body): boolean {
     const view = this.view(b);
@@ -1016,8 +1042,9 @@ export class MatchView {
 
   private poseOf(b: Body, moving: boolean): { pose: PoseName; withBall: boolean } {
     const { s } = this;
-    // A sprintar, as pernas mexem-se mais depressa.
-    const frame = Math.floor(s.tick / (moving && isSprinting(s, b) ? 1.6 : 2.5));
+    // O que não é andar segue o tempo; as pernas de quem anda seguem o caminho feito (`stride`).
+    const frame = Math.floor(s.tick / 2.5);
+    const step = this.view(b).steps % 4;
     if (s.phase === 'end') {
       const won = s.score[b.team] > s.score[b.team === 0 ? 1 : 0];
       return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'slump', withBall: false };
@@ -1054,7 +1081,7 @@ export class MatchView {
       return { pose: shooting ? 'shoot' : 'idle', withBall: false };
     }
     // Quem vai repor leva a bola nas mãos até à linha.
-    if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[frame % 4]! : 'hold', withBall: true };
+    if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[step]! : 'hold', withBall: true };
     // A pose de passe só no instante do passe, e só parado: a correr, as pernas continuam a mexer.
     if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < PASS_POSE_TICKS && !moving) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
     // No ar à espera do ressalto, de braços esticados.
@@ -1068,12 +1095,12 @@ export class MatchView {
       return s.tick - stepBack < STEP_BACK_TICKS / 2 ? { pose: 'stepBack', withBall: false } : { pose: 'fadeaway', withBall: false };
     }
     // De costas no poste: agachado a proteger a bola, a recuar aos poucos; e o defensor encostado a fazer força.
-    if (s.posting === b) return { pose: moving ? (frame % 4 < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
+    if (s.posting === b) return { pose: moving ? (step < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
     if (s.posting && b.team !== s.offense && this.nearestOpponent(s.posting) === b) return { pose: 'brace', withBall: false };
     if (s.holder === b) {
       // A correr, as pernas acompanham o drible; parado, só a bola mexe.
       // Com o mesmo limite para arrancar e para parar: a abrandar ou a arrancar devagar, as pernas ainda andam.
-      if (moving || this.motionOf(b).speed > 0.4) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
+      if (moving || this.motionOf(b).speed > 0.4) return { pose: DRIBBLE_RUN_FRAMES[step]!, withBall: true };
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
     // Só quem defende o jogador com a bola fica em posição de defesa, a deslizar de lado; os outros andam e correm normalmente.
@@ -1082,8 +1109,8 @@ export class MatchView {
     const hoopX = man ? this.attackedHoop(man.team) : 0;
     const inFront = man !== undefined && Math.hypot(b.x - hoopX, b.y) < Math.hypot(man.x - hoopX, man.y);
     const guarding = man !== undefined && inFront && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
-    if (moving && guarding) return { pose: frame % 4 < 2 ? 'slide0' : 'slide1', withBall: false };
-    if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
+    if (moving && guarding) return { pose: step < 2 ? 'slide0' : 'slide1', withBall: false };
+    if (moving) return { pose: RUN_FRAMES[step]!, withBall: false };
     if (s.screen?.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
@@ -1363,6 +1390,7 @@ export class MatchView {
         }
       }
       const dunk = this.dunkLift(b, alpha, x, y);
+      this.walk(this.view(b), dunk.x, dunk.y);
       const [sx, sy] = camera.project(dunk.x, dunk.y);
       const motion = this.motionOf(b);
       const look = this.view(b).look;
