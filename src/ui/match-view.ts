@@ -50,7 +50,7 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
-const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$)/;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
@@ -1022,11 +1022,8 @@ export class MatchView {
     const h = s.holder;
     if (!h || s.phase !== 'live' || s.posting === h || s.nextDecision - s.tick > GATHER_TICKS || this.peekedDecision === s.nextDecision) return;
     this.peekedDecision = s.nextDecision;
-    // Os eventos não fazem falta à cópia e são a parte que cresce: ficam de fora.
-    const events = s.events;
-    s.events = [];
-    const ahead = structuredClone(s);
-    s.events = events;
+    // Os eventos não fazem falta à cópia e são a parte que cresce: ficam de fora, sem tocar no jogo verdadeiro.
+    const ahead: MatchState = structuredClone({ ...s, events: [] });
     while (ahead.tick < s.nextDecision && ahead.phase === 'live') step(ahead);
     // Um step-back ou outro movimento no lançamento já tem a sua pose; o lay-up e o afundanço também.
     const shot = ahead.events.find(e => e.type === 'shot' && e.player === h.player.name && e.team === h.team);
