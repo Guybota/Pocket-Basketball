@@ -1238,3 +1238,6 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 .divtabs button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
 .divtabs img { image-rendering: pixelated; }
 .divtabs .here { width: 6px; height: 6px; background: var(--gold); border: 1px solid var(--ink); }
+
+/* O símbolo da liga ao lado do nome, no quadro da taça. */
+.league-mark { width: 16px; height: 16px; margin: 0 4px; vertical-align: -3px; image-rendering: pixelated; }
