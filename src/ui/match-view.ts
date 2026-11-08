@@ -77,10 +77,10 @@ const DUNK_CROUCH_TICKS = 3;
 const DUNK_HANG_SECONDS = 0.06;
 const DUNK_LAND_TICKS = 2;
 const CHEER_TICKS = 14;
-// A corrida muda de pose a cada tanto de caminho: à velocidade típica em campo, 5 a 6 m/s, de 80 em 100 ms. E nunca em
-// menos de 2 imagens a 60 fps, mesmo a 4×.
+// A corrida muda de pose a cada tanto de caminho: à velocidade típica em campo, 5 a 6 m/s, de 80 em 100 ms. Nenhuma
+// pose fica menos de 80 ms reais (2 ticks a 1×), nem a 4×, onde se salta para a pose que o caminho pede.
 const STRIDE_METRES = 0.48;
-const MIN_POSE_SECONDS = 0.034;
+const MIN_POSE_SECONDS = 0.08;
 // Poses de pés parados: a andar, deslizavam no chão. As reações só se mostram parado; o crossover e o roubo, a andar,
 // só no instante do gesto (os primeiros ticks dos 8 que duram).
 const STANDING_REACTIONS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists', 'handsHead']);
@@ -148,11 +148,10 @@ interface BodyView {
   /** Até quando o nome fica por cima dele, depois de ser tocado. */
   nameTag?: number;
   /** O ciclo de corrida anda com a distância: quantos passos já deu (`stride`, com a fração), quantos se mostraram
-   * (`steps`), quando se mostrou o último (tempo real), e onde estava no último frame. */
+   * (`steps`) e em que tick se mostrou o último. */
   stride: number;
   steps: number;
   stepAt: number;
-  walked?: Point;
 }
 interface Floater {
   label: string;
@@ -747,17 +746,16 @@ export class MatchView {
     return -SHOOT_POSE_FEET + 4 * (SHOOT_POSE_FEET + SHOT_JUMP_HEIGHT) * t * (1 - t);
   }
 
-  /** Avança o ciclo de corrida pelo caminho feito desde o último frame. A 4×, a pose não muda mais de uma vez em cada
-   * `MIN_POSE_SECONDS` reais e o caminho a mais não se acumula: a corrida abranda em vez de cintilar. */
-  private walk(view: BodyView, x: number, y: number): void {
+  /** Avança o ciclo de corrida pelo caminho feito neste passo da simulação. Cada pose fica pelo menos
+   * `MIN_POSE_SECONDS` reais, a qualquer velocidade; se entretanto o caminho deu para mais de um passo, salta-se para a
+   * pose certa, e as pernas continuam a acompanhar o chão. */
+  private walk(view: BodyView, b: Body): void {
     // Um salto de mais de 1 m é uma mudança de sítio (substituição, intervalo), não caminho.
-    if (view.walked) view.stride += Math.min(1, Math.hypot(x - view.walked.x, y - view.walked.y)) / STRIDE_METRES;
-    view.walked = { x, y };
-    if (view.stride >= view.steps + 1 && this.realTime - view.stepAt >= MIN_POSE_SECONDS) {
-      view.steps++;
-      view.stepAt = this.realTime;
+    view.stride += Math.min(1, Math.hypot(b.x - view.prev.x, b.y - view.prev.y)) / STRIDE_METRES;
+    if (Math.floor(view.stride) > view.steps && this.s.tick - view.stepAt >= Math.ceil(MIN_POSE_SECONDS * 20 * this.simPerReal - 1e-6)) {
+      view.steps = Math.floor(view.stride);
+      view.stepAt = this.s.tick;
     }
-    view.stride = Math.min(view.stride, view.steps + 1.99);
   }
 
   /** Se o lance em curso deste jogador é um afundanço. */
@@ -1002,6 +1000,7 @@ export class MatchView {
     // A poeira some ao fim do seu tempo; a sprintar, cada passo largo deixa uma nuvem atrás dos pés.
     while (this.puffs.length > 0 && s.tick - this.puffs[0]!.born >= PUFF_TICKS) this.puffs.shift();
     for (const b of [...s.court[0], ...s.court[1]]) {
+      this.walk(this.view(b), b);
       const m = this.motionOf(b);
       if (m.moving && s.tick % 4 === b.slot % 4 && isSprinting(s, b)) {
         const prev = this.view(b).prev;
@@ -1398,7 +1397,6 @@ export class MatchView {
         }
       }
       const dunk = this.dunkLift(b, alpha, x, y);
-      this.walk(this.view(b), dunk.x, dunk.y);
       const [sx, sy] = camera.project(dunk.x, dunk.y);
       const motion = this.motionOf(b);
       const look = this.view(b).look;
