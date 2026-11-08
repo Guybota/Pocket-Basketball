@@ -730,8 +730,8 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 /* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
 .body-stars { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 
-/* A altura em barras de sinal: 13 píxeis desenhados no código, a 2× exato. */
-.hstar { display: block; width: 26px; height: 26px; image-rendering: pixelated; }
+/* A altura em barras de sinal: 16 píxeis desenhados no código, a 1×, da altura das caixas das notas. */
+.hstar { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 
 .pcard header .body-stars { font: inherit; }
 
@@ -757,7 +757,7 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .seasons th { color: var(--muted); }
 
 /* Lista de jogadores */
-.thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px) 26px; align-items: center; gap: 2px; padding: 1px 4px; }
+.thead, .prow { display: grid; grid-template-columns: 27px 18px 1fr 12px repeat(7, 16px) 20px; align-items: center; gap: 2px; padding: 1px 4px; }
 .thead { flex: none; background: var(--paper-3); font: 400 15px/1 var(--small); min-height: 21px; }
 .thead img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
 details.legend { flex: none; }
@@ -1148,13 +1148,14 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .fedmap .w, .fedmap .e { writing-mode: vertical-rl; } .fedmap .w { grid-area: 2 / 1; transform: rotate(180deg); } .fedmap .e { grid-area: 2 / 3; }
 .fedmap .field { grid-area: 2 / 2; position: relative; width: 100%; aspect-ratio: 1; background: var(--paint-dk); background-image: linear-gradient(rgba(255, 255, 255, .35), rgba(255, 255, 255, .35)), linear-gradient(rgba(255, 255, 255, .35), rgba(255, 255, 255, .35)); background-size: 100% 2px, 2px 100%; background-position: center; background-repeat: no-repeat; border: 2px solid var(--ink); }
 .fedmap .field img { position: absolute; width: 48px; transform: translate(-50%, -50%); image-rendering: pixelated; }
+.fedsquad .thead { scrollbar-gutter: auto; }
 .fedstyle { flex: none; font: 400 15px/1.1 var(--small); }
 .fedstyle b { font-weight: 400; color: var(--ball-ink); }
 .fedsquad { flex: none; }
 
 /* O ecrã do adversário: a ficha do clube, e os números da época nas linhas do plantel. */
 .rivalview { flex: none; }
-.thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px) 26px; }
+.thead.statcols, .prow.statcols { grid-template-columns: 27px 18px 1fr 12px repeat(4, 34px) 20px; }
 .statcols .num { text-align: right; font: 400 15px/1 var(--small); }
 .rivalview button { color: var(--ink); background: var(--paper-2); }
 
@@ -1166,7 +1167,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .optwho img { width: 24px; height: 24px; image-rendering: pixelated; border: 1px solid var(--ink); }
 .optwho.empty { color: var(--muted); }
 .tacrow .optlist { display: grid; grid-template-columns: 1fr; gap: 2px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
-.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px) 26px; align-items: center; gap: 3px; min-height: 34px; padding: 2px 4px; text-align: left; }
+.optpick { display: grid; grid-template-columns: 24px 1fr repeat(7, 16px) 20px; align-items: center; gap: 3px; min-height: 34px; padding: 2px 4px; text-align: left; }
 .optpick span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .optpick.head { min-height: 18px; padding-top: 0; padding-bottom: 0; }
 .optpick.head img { width: 16px; height: 16px; }

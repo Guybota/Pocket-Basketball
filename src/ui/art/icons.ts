@@ -145,21 +145,21 @@ export function attributeIcon(key: keyof Attributes): string {
   return url;
 }
 
-/** A altura (1 a 3) em três barras que sobem, como as do sinal: cheias a dourado até ao nível, as outras vazias. */
+/** A altura (1 a 3) em três barras que sobem, como as do sinal: cheias a dourado até ao nível, as outras vazias. 16×16, da altura das caixas das notas. */
 export function heightIcon(level: number): string {
   const key = `height:${level}`;
   let url = iconCache.get(key);
   if (!url) {
     const canvas = document.createElement('canvas');
-    canvas.width = 13;
-    canvas.height = 13;
+    canvas.width = 16;
+    canvas.height = 16;
     const g = canvas.getContext('2d')!;
-    [4, 7, 10].forEach((h, i) => {
-      const x = 1 + i * 4;
+    [6, 11, 16].forEach((h, i) => {
+      const x = 1 + i * 5;
       g.fillStyle = INK;
-      g.fillRect(x, 12 - h, 4, h + 1);
+      g.fillRect(x, 16 - h, 4, h);
       g.fillStyle = i < level ? '#f2c230' : '#efe3c2';
-      g.fillRect(x + 1, 13 - h, 2, h - 1);
+      g.fillRect(x + 1, 17 - h, 2, h - 2);
     });
     url = canvas.toDataURL();
     iconCache.set(key, url);
