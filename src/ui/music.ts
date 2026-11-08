@@ -1,6 +1,8 @@
 // A música do jogo, sintetizada. Cada tema tem secções (A, B, C...) que se repetem fora de ordem, como nos temas de Koji Kondo:
 // o mesmo material volta noutro contexto e não cansa. Dentro de cada secção, uma frase curta repete-se com o fim mudado.
 // Quatro vozes, como numa consola antiga: melodia (pulso), arpejo (pulso fino), baixo (triângulo) e bateria (ruído).
+// Alguns temas trocam a melodia por instrumentos gerados em synth.ts (metais, glockenspiel) e juntam timbales; a tarola
+// é sempre a de synth.ts. Cada nota toca uma amostra com `playbackRate` para mudar de tom.
 
 export type MusicTheme = 'none' | 'town' | 'win' | 'loss' | 'farewell' | 'locker' | 'entrance' | 'combo' | 'anthem';
 
@@ -9,6 +11,15 @@ type Note = readonly [number, number];
 type Lead = 'pulse25' | 'pulse50' | 'triangle';
 type BassStyle = 'bounce' | 'walk' | 'long';
 type Drums = 'full' | 'groove' | 'light' | 'none';
+/** Um instrumento tocado a partir de uma amostra. */
+export type Instrument = 'brass' | 'glock' | 'timpani' | 'snare';
+
+/** De onde vêm as amostras: o ruído da bateria e uma nota de cada instrumento, com a velocidade que a põe no tom. */
+export interface MusicKit {
+  noise: AudioBuffer;
+  /** Para a tarola, `midi` só escolhe a variante. */
+  note(instrument: Instrument, midi: number): { buffer: AudioBuffer; rate: number };
+}
 
 interface Part {
   /** Notas como texto: `e5`, `g#4`, `c6:3` (três colcheias), `r:2` (pausa), `|` só separa compassos. */
@@ -25,6 +36,8 @@ interface Part {
   fill?: boolean;
   /** Em semitons: uma secção pode subir de tom para soar fresca. */
   transpose?: number;
+  /** A melodia num instrumento em vez do chip; manda sobre o do tema. */
+  voice?: 'brass' | 'glock';
 }
 
 interface Song {
@@ -39,6 +52,9 @@ interface Song {
   loopFrom?: number;
   /** Uma vinheta que, ao acabar, devolve o tema que tocava antes dela. */
   resume?: boolean;
+  voice?: 'brass' | 'glock';
+  /** Um golpe de timbale na fundamental de cada acorde. */
+  timpani?: boolean;
 }
 
 const BAR = 8;
@@ -77,7 +93,7 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
       C: {
         chords: 'Dm G Em Am Dm G C C',
         melody: 'd5:3 f5 a5:2 g5 f5 | g5:3 b5 d6:2 c6 b5 | e5:3 g5 b5:2 a5 g5 | a5:6 r:2 | d6:3 c6 a5:2 g5 f5 | g5:3 a5 b5:2 d6 b5 | c6:2 g5 e5 c5:2 e5 g5 | c6:4 r:4',
-        lead: 'triangle', bass: 'long', drums: 'light', arp: true, fill: true,
+        lead: 'triangle', bass: 'long', drums: 'light', arp: true, fill: true, voice: 'glock',
       },
       A2: {
         chords: 'C Am F G C Am Dm,G C',
@@ -117,6 +133,7 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
     swing: 0,
     volume: 0.8,
     loop: true,
+    timpani: true,
     order: ['A', 'A2', 'B', 'A2'],
     parts: {
       A: { chords: 'Dm Bb Gm A', melody: `${LOCKER_A} | e5:3 c#5 a4:4`, lead: 'pulse25', bass: 'bounce', drums: 'groove' },
@@ -126,12 +143,12 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
   },
   // A entrada das equipas: três compassos de chamada de metais, em ré maior, rápida, com rufo de tarola no acorde final.
   entrance: {
-    bpm: 150, swing: 0, volume: 1, loop: false, order: ['A'],
+    bpm: 150, swing: 0, volume: 1, loop: false, order: ['A'], voice: 'brass', timpani: true,
     parts: { A: { chords: 'D G,A D', melody: 'd5 d5 r d5 f#5:2 a5:2 | g5 g5 r b5 a5:2 c#6:2 | d6:6 r:2', lead: 'pulse50', bass: 'bounce', arp: true, drums: 'full', fill: true } },
   },
   // O combo descoberto: um arpejo de sol maior a subir duas oitavas até um sol agudo, com rufo; depois volta o tema de antes.
   combo: {
-    bpm: 160, swing: 0, volume: 1.1, loop: false, resume: true, order: ['A'],
+    bpm: 160, swing: 0, volume: 1.1, loop: false, resume: true, order: ['A'], voice: 'glock',
     parts: { A: { chords: 'G D,G', melody: 'd4 g4 b4 d5 g5 b5 d6:2 | a5 c6 d6 f#6 g6:4', bassNotes: 'g2:2 b2:2 d3:2 g3:2 d3:4 g2:4', lead: 'pulse25', arp: true, drums: 'light', fill: true } },
   },
   // O título e o fim de época com troféu: uma marcha em si bemol, direita, com ritmo pontuado. Chamada, A, B (sobe pelo
@@ -141,6 +158,8 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
     swing: 0,
     volume: 0.8,
     loop: true,
+    voice: 'brass',
+    timpani: true,
     loopFrom: 1,
     order: ['intro', 'A', 'B', 'A2', 'A3'],
     parts: {
@@ -152,7 +171,7 @@ const SONGS: Record<Exclude<MusicTheme, 'none'>, Song> = {
     },
   },
   // As vinhetas da vitória e da derrota: curtas e sem volta.
-  win: { bpm: 140, swing: 0, volume: 1.2, loop: false, order: ['A'], parts: { A: { chords: 'C C', melody: 'c5 e5 g5 c6:2 g5 c6:4', bassNotes: 'c3:2 e3:2 g3:2 c4:4', lead: 'pulse50', drums: 'none' } } },
+  win: { bpm: 140, swing: 0, volume: 1.2, loop: false, order: ['A'], voice: 'brass', parts: { A: { chords: 'C C', melody: 'c5 e5 g5 c6:2 g5 c6:4', bassNotes: 'c3:2 e3:2 g3:2 c4:4', lead: 'pulse50', drums: 'none' } } },
   loss: { bpm: 80, swing: 0, volume: 1.2, loop: false, order: ['A'], parts: { A: { chords: 'Am Am', melody: 'e4:2 d#4:2 d4:2 c#4:4', bassNotes: 'a2:4 g#2:6', lead: 'triangle', drums: 'none' } } },
 };
 
@@ -207,7 +226,7 @@ function pulse(ctx: BaseAudioContext, duty: number): PeriodicWave {
 }
 
 /** Agenda uma secção a partir de `start` e diz quanto dura, em segundos. `pass` conta as voltas, para variar o arranjo. */
-export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, noise: AudioBuffer, theme: Exclude<MusicTheme, 'none'>, index: number, start: number, pass: number): number {
+export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, kit: MusicKit, theme: Exclude<MusicTheme, 'none'>, index: number, start: number, pass: number): number {
   const song = SONGS[theme];
   const part = song.parts[song.order[index]!]!;
   const eighth = 60 / song.bpm / 2;
@@ -233,11 +252,28 @@ export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, noise: Au
     osc.start(t0);
     osc.stop(t1 + 0.01);
   };
+  /** Uma amostra no tom da nota. Os metais calam-se no fim da nota; o glockenspiel e o timbale deixam-se soar. */
+  const sampled = (instrument: Instrument, midi: number, from: number, to: number, volume: number): void => {
+    const { buffer, rate } = kit.note(instrument, midi);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    const gain = ctx.createGain();
+    const t0 = time(from);
+    const end = instrument === 'brass' ? Math.max(t0 + 0.06, time(to) - 0.01) : t0 + buffer.duration / rate;
+    gain.gain.setValueAtTime(volume, t0);
+    if (instrument === 'brass') gain.gain.setTargetAtTime(0, end - 0.03, 0.025);
+    source.connect(gain).connect(out);
+    source.start(t0);
+    source.stop(end + 0.15);
+  };
   // Na segunda volta, a melodia troca de timbre: o mesmo tema com outra cor.
   const lead: Lead = part.lead === 'triangle' ? 'triangle' : (pass % 2 === 1) !== (part.lead === 'pulse50') ? 'pulse50' : 'pulse25';
+  const voice = part.voice ?? song.voice;
   let at = 0;
   for (const [midi, length] of parseNotes(part.melody)) {
-    if (midi > 0) tone(midi + shift, at, at + length, lead, (lead === 'triangle' ? 0.05 : 0.026) * v);
+    if (midi > 0 && voice) sampled(voice, midi + shift, at, at + length, (voice === 'brass' ? 0.05 : 0.06) * v);
+    else if (midi > 0) tone(midi + shift, at, at + length, lead, (lead === 'triangle' ? 0.05 : 0.026) * v);
     at += length;
   }
   const total = at;
@@ -257,6 +293,7 @@ export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, noise: Au
       else for (let k = 0; k < c.length; k++) tone(k % 2 === 0 ? root : root + 12, c.at + k, c.at + k + 1, 'bass', 0.055 * v);
     }
   }
+  if (song.timpani) for (const c of chords) sampled('timpani', c.root - 12 + shift, c.at, c.at + c.length, 0.1 * v);
   if (part.arp) {
     // O arpejo sobe e desce pelas notas do acorde; nas voltas ímpares, uma oitava acima.
     const lift = pass % 2 === 1 ? 24 : 12;
@@ -279,13 +316,18 @@ export function scheduleSection(ctx: BaseAudioContext, out: AudioNode, noise: Au
       osc.stop(t + 0.15);
       return;
     }
+    if (kind === 'snare') {
+      // A tarola de synth.ts, com três variantes a alternar.
+      sampled('snare', k, k, k, volume);
+      return;
+    }
     const source = ctx.createBufferSource();
-    source.buffer = noise;
+    source.buffer = kit.noise;
     const filter = ctx.createBiquadFilter();
-    filter.type = kind === 'hat' ? 'highpass' : 'bandpass';
-    filter.frequency.value = kind === 'hat' ? 7000 : 1900;
+    filter.type = 'highpass';
+    filter.frequency.value = 7000;
     const gain = ctx.createGain();
-    const length = kind === 'hat' ? 0.03 : 0.11;
+    const length = 0.03;
     gain.gain.setValueAtTime(volume, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
     source.connect(filter).connect(gain).connect(out);
