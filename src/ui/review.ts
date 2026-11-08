@@ -38,7 +38,8 @@ export interface SceneSpec {
   /**
    * O evento que tem de acontecer: os campos têm de bater certo com o MatchEvent, por exemplo {"type":"move","move":"powerDunk"}
    * ou {"type":"made","points":3}. Um passe não é evento da simulação: {"type":"pass"}, com "lob": true para um passe em
-   * balão, procura o primeiro passe; quem passa é o ator e quem recebe aparece sempre.
+   * balão, procura o primeiro passe; quem passa é o ator e quem recebe aparece sempre. As marcas `dunk` e `layup` são do
+   * evento `shot`, mas também se aceitam no `made`: {"type":"made","dunk":true} é o cesto de um afundanço.
    */
   force: (Partial<MatchEvent> & { type: MatchEvent['type'] }) | { type: 'pass'; lob?: boolean };
   division?: number;
@@ -206,6 +207,15 @@ export function sheet(spec: SheetSpec): { image: string; zoomed: string; cells: 
 }
 
 type Found = { seed: number; event: MatchEvent; receiver?: string };
+/** Um frame do cenário: o tick, a pose do ator, os píxeis mudados, e onde cada boneco, a bola e os rótulos foram desenhados
+ * (em píxeis do campo inteiro, não do recorte; `wx` e `wy` em metros, no campo), a parte do ator tapada pelos rótulos (%) e o tremor do ecrã. */
+type Frame = {
+  frame: number; tick: number; pose: PoseName | null; changed: number;
+  bodies: { name: string; pose: PoseName; x: number; y: number; lift: number; wx: number; wy: number; back: boolean }[];
+  ball: [number, number] | null; labels: number[][]; cover: number; shake: string;
+  /** Onde fica o centro do campo no ecrã: tira-se às posições para as ter relativas à câmara. */
+  camera: [number, number];
+};
 
 /** A primeira semente (de 1 a 300) em que o evento acontece no primeiro jogo da época, e o próprio evento. */
 function findEvent(spec: SceneSpec): Found | null {
@@ -230,7 +240,14 @@ function findEvent(spec: SceneSpec): Found | null {
       continue;
     }
     const s = simulateMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false]);
-    const event = s.events.find(e => Object.entries(force).every(([k, v]) => (e as unknown as Record<string, unknown>)[k] === v));
+    // Um cesto herda as marcas do lançamento que o fez (afundanço, lay-up), que só vêm no evento `shot`.
+    let shot: MatchEvent | undefined;
+    const event = s.events.find(e => {
+      if (e.type === 'shot') shot = e;
+      const last = shot;
+      const fields = e.type === 'made' && last && last.player === e.player && last.team === e.team ? { dunk: last.dunk, layup: last.layup, ...e } : e;
+      return Object.entries(force).every(([k, v]) => (fields as unknown as Record<string, unknown>)[k] === v);
+    });
     if (event) return { seed, event };
   }
   return null;
@@ -243,7 +260,7 @@ function findEvent(spec: SceneSpec): Found | null {
 export function scene(spec: SceneSpec): { seed: number; tick: number; frames: string[]; sheet: string; timeline: unknown[]; warnings: string[] } | { error: string } {
   const found = findEvent(spec);
   if (!found) return { error: `O evento ${JSON.stringify(spec.force)} não acontece em nenhuma das sementes procuradas` };
-  const record = (): { frames: string[]; canvases: HTMLCanvasElement[]; timeline: { frame: number; tick: number; pose: PoseName | null; changed: number }[]; eventFrame: number } => {
+  const record = (): { frames: string[]; canvases: HTMLCanvasElement[]; timeline: Frame[]; eventFrame: number } => {
     const division = spec.division ?? 2;
     const club = newClub(found.seed, division);
     const canvas = document.createElement('canvas');
@@ -252,6 +269,7 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
     const view = new MatchView(canvas.getContext('2d', { willReadFrequently: true })!, clubTeam(club), opponentOf(club), weekSeed(club), division,
       { announce: () => {}, event: () => {}, sound: () => {} }, [true, false], 1, undefined, undefined, undefined, 0.9, undefined, undefined, club.emblem, undefined, weatherFor(spec.week ?? 1));
     const s: MatchState = view.s;
+    const { camera } = view as unknown as { camera: { project(x: number, y: number): [number, number] } };
     const fps = spec.fps ?? 30;
     const speed = spec.speed ?? 1;
     const start = Math.max(0, found.event.tick - Math.round((spec.before ?? 0.5) * 20));
@@ -273,7 +291,7 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
     const o = out.getContext('2d', { willReadFrequently: true })!;
     const frames: string[] = [];
     const canvases: HTMLCanvasElement[] = [];
-    const timeline: { frame: number; tick: number; pose: PoseName | null; changed: number }[] = [];
+    const timeline: Frame[] = [];
     let previous: Uint8ClampedArray | null = null;
     let eventFrame = -1;
     for (let n = 0; n < total; n++) {
@@ -282,8 +300,10 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
       view.render(time - Math.floor(time), speed / fps, 1 / fps);
       if (eventFrame < 0 && s.tick >= found.event.tick) eventFrame = n;
       o.clearRect(0, 0, out.width, out.height);
+      // O ator onde foi desenhado, já interpolado, para o recorte não tremer com ele.
+      const drawn = actor ? view.drawn.bodies.get(actor) : undefined;
       if (crop && actor) {
-        const [cx, cy] = (view as unknown as { camera: { project(x: number, y: number): [number, number] } }).camera.project(actor.x, actor.y);
+        const [cx, cy] = drawn ? [drawn.x, drawn.y] : camera.project(actor.x, actor.y);
         const sx = Math.max(0, Math.min(canvas.width - crop[0], Math.round(cx - crop[0] / 2)));
         const sy = Math.max(0, Math.min(canvas.height - crop[1], Math.round(cy - crop[1] * 0.62)));
         o.drawImage(canvas, sx, sy, crop[0], crop[1], 0, 0, crop[0], crop[1]);
@@ -298,7 +318,20 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
       copy.height = out.height;
       copy.getContext('2d')!.drawImage(out, 0, 0);
       canvases.push(copy);
-      timeline.push({ frame: n + 1, tick: s.tick, pose: actor ? view.bodyPose(actor) : null, changed });
+      const round = (v: number): number => Math.round(v * 10) / 10;
+      const bodies = [...view.drawn.bodies].map(([b, d]) => ({ name: b.player.name, pose: d.pose, x: round(d.x), y: round(d.y), lift: round(d.lift), wx: Math.round(d.world.x * 1000) / 1000, wy: Math.round(d.world.y * 1000) / 1000, back: d.back === true }));
+      // Quanto da caixa do ator (14 px de largura, da altura do boneco, acima do salto) os rótulos tapam.
+      let cover = 0;
+      if (drawn && actor) {
+        const h = drawn.height;
+        const [ax0, ay0, ax1, ay1] = [drawn.x - 7, drawn.y - drawn.lift - h, drawn.x + 7, drawn.y - drawn.lift];
+        for (const [lx, ly, lw, lh] of view.drawn.labels) cover += Math.max(0, Math.min(ax1, lx + lw) - Math.max(ax0, lx)) * Math.max(0, Math.min(ay1, ly + lh) - Math.max(ay0, ly)) / (14 * h);
+      }
+      timeline.push({
+        frame: n + 1, tick: s.tick, pose: actor ? view.bodyPose(actor) : null, changed, bodies,
+        ball: view.drawn.ball && [round(view.drawn.ball[0]), round(view.drawn.ball[1])], labels: view.drawn.labels.map(l => [...l]), cover: round(cover * 100), shake: canvas.style.transform,
+        camera: camera.project(14, 0).map(round) as [number, number],
+      });
     }
     return { frames, canvases, timeline, eventFrame };
   };

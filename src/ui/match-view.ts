@@ -6,6 +6,7 @@ import { BALANCE as B } from '../sim/balance.ts';
 import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
+import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
@@ -48,12 +49,17 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
 const TIP_HEIGHT = 16;
 // A pose de passe dura pouco: depois, quem passou volta a correr ou a esperar, em vez de deslizar de braços esticados.
 const PASS_POSE_TICKS = 6;
+// A correr, o gesto do passe só dura o instante de soltar a bola (preparar e soltar, 100 ms), para os pés não deslizarem.
+const MOVING_PASS_TICKS = 2;
+// A palmada do desarme: 300 ms no ar, e não 600, depois dos 10 ticks de braços no ar a contestar (animacao.md §10).
+const SWAT_TICKS = 6;
 // O salto ao ressalto: começa estes passos antes de a bola cair, dura isto e sobe até aqui, em píxeis.
 const REBOUND_JUMP_AHEAD = 5;
 const REBOUND_JUMP_TICKS = 12;
@@ -64,7 +70,26 @@ const DUNK_LIFT = 14;
 const SHOT_JUMP_TICKS = 10;
 const SHOT_JUMP_HEIGHT = 8;
 const SHOOT_POSE_FEET = 6;
-const DUNK_FALL_TICKS = 6;
+const DUNK_FALL_TICKS = 3;
+// O afundanço por fases (animacao.md §10): agacha 150 ms, sobe, fica pendurado no aro 60 ms reais, cai a acelerar em
+// 150 ms e aterra a fletir as pernas 100 ms; só depois festeja.
+const DUNK_CROUCH_TICKS = 3;
+const DUNK_HANG_SECONDS = 0.06;
+const DUNK_LAND_TICKS = 2;
+const CHEER_TICKS = 14;
+// A corrida muda de pose a cada tanto de caminho: à velocidade típica em campo, 5 a 6 m/s, de 80 em 100 ms. Nenhuma
+// pose fica menos de 80 ms reais (2 ticks a 1×), nem a 4×, onde se salta para a pose que o caminho pede.
+const STRIDE_METRES = 0.48;
+const MIN_POSE_SECONDS = 0.08;
+// Poses de pés parados: a andar, deslizavam no chão. As reações só se mostram parado; o crossover e o roubo, a andar,
+// só no instante do gesto (os primeiros ticks dos 8 que duram).
+const STANDING_REACTIONS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists', 'handsHead']);
+const STRIKE_POSES: ReadonlySet<PoseName> = new Set(['crossover', 'snatch']);
+const STRIKE_TICKS = 8;
+const MOVING_STRIKE_TICKS = 3;
+// O tremor do afundanço conta em tempo real: 200 ms, a mudar de posição 15 vezes por segundo, 1 píxel de arte para cada lado.
+const SHAKE_SECONDS = 0.2;
+const SHAKE_HZ = 15;
 // Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
 // à altura do aro, quando ele lhe toca.
@@ -75,6 +100,10 @@ const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
 const FADE_IN_TICKS = 20;
+// O nome de um movimento fica este espaço, em píxeis, acima do ponto mais alto do boneco; e nunca acima desta linha,
+// onde estão a faixa e o marcador.
+const FLOATER_GAP = 3;
+const FLOATER_MIN_TOP = 40;
 
 interface Point {
   x: number;
@@ -91,6 +120,9 @@ interface Motion {
   backLock: number;
   flipLock: number;
   lastBackChange: number;
+  /** De costas como se desenha, com o seu próprio bloqueio (`BACK_POSES`). */
+  drawnBack: boolean;
+  drawnBackLock: number;
 }
 /** O estado de desenho de cada jogador, num só sítio. Os campos opcionais só existem enquanto dura o que descrevem. */
 interface BodyView {
@@ -108,12 +140,18 @@ interface BodyView {
   stepBack?: number;
   /** Quando saltou ao ressalto: o salto começa antes de a bola chegar, e apanha-se em cima. */
   reboundJump?: number;
-  /** Quando começou o salto do afundanço e quanto dura a subida, até à mão tocar no aro. */
-  dunkJump?: { start: number; up: number };
+  /** O afundanço: quando começou e quanto dura até à mão tocar no aro; a pose da fase em curso; até quando fica pendurado
+   * (em tempo real), onde, e desde quando cai; e como festeja depois de aterrar. */
+  dunkJump?: { start: number; up: number; pose?: PoseName; withBall?: boolean; hangEnd?: number; pin?: Point; fallFrom?: number; cheer?: PoseName };
   /** Onde está o suplente, quando sai do banco para a roda do desconto e volta. */
   huddle?: Point;
   /** Até quando o nome fica por cima dele, depois de ser tocado. */
   nameTag?: number;
+  /** O ciclo de corrida anda com a distância: quantos passos já deu (`stride`, com a fração), quantos se mostraram
+   * (`steps`) e em que tick se mostrou o último. */
+  stride: number;
+  steps: number;
+  stepAt: number;
 }
 interface Floater {
   label: string;
@@ -121,6 +159,12 @@ interface Floater {
   y: number;
   z: number;
   born: number;
+  /** Quem fez o movimento: a palavra segue-o, por cima da cabeça. */
+  body?: Body;
+  /** Sem espaço por cima dele, a palavra fica ao lado, à direita (1) ou à esquerda (-1), até desaparecer. */
+  beside?: 1 | -1;
+  /** A linha mais alta onde a palavra já esteve: só sobe, para não andar para cima e para baixo com o salto de quem a fez. */
+  top?: number;
 }
 
 export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
@@ -143,6 +187,8 @@ export class MatchView {
   private readonly camera = new Camera();
   /** Nos cenários de teste do revisor, quem se desenha em campo; sem isto, todos, e o árbitro. */
   visible: ((b: Body) => boolean) | null = null;
+  /** O que o último frame desenhou, para os cenários de teste do revisor medirem: cada boneco, a bola e os rótulos. */
+  readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point; back?: boolean }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
   private pixels: Uint32Array;
@@ -163,6 +209,8 @@ export class MatchView {
   private readonly bounces = new WeakMap<object, boolean>();
   private lastFreeThrowPose: PoseName | null = null;
   private readonly floaters: Floater[] = [];
+  /** Quantos píxeis acima dos pés chega cada pose, medido uma vez no próprio desenho: braços no ar e salto incluídos. */
+  private readonly poseTops = new Map<string, number>();
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   // Quantas frases de cada contexto já se disseram, para a bancada não se repetir.
@@ -200,6 +248,10 @@ export class MatchView {
   private readonly coachPos: (Point | null)[] = [null, null];
   // O relógio das animações: anda com a simulação e, com ela parada, com o tempo real, para ninguém ficar hirto numa pausa.
   private animTime = 0;
+  /** O tempo real, que para na pausa mas não acelera a 2× e 4×: para os efeitos de sensação, como a paragem no aro. */
+  private realTime = 0;
+  /** Quantos segundos de jogo passam por segundo real: 1, 2 ou 4. */
+  private simPerReal = 1;
   private animTick = 0;
   private frameSeconds = 0;
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
@@ -245,7 +297,10 @@ export class MatchView {
       this.views.set(b, {
         look: b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : { ...lookOf(b.player, 'cream'), custom: awayKit },
         prev: { x: b.x, y: b.y },
-        motion: { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0 },
+        motion: { vx: 0, vy: 0, speed: 0, moving: false, back: false, flip: false, backLock: 0, flipLock: 0, lastBackChange: 0, drawnBack: false, drawnBackLock: 0 },
+        stride: 0,
+        steps: 0,
+        stepAt: 0,
       });
     }
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'suit'), style: 0, legs: 6, torso: 6, build: 'athletic' });
@@ -456,11 +511,11 @@ export class MatchView {
           if (!body) break;
           const dunk = e.dunk === true;
           // No lay-up e no step-back não há pose fixa: `poseOf` segue o voo. De costas no poste, lança-se de gancho.
-          if (!e.layup && this.view(body).stepBack !== s.tick) this.view(body).override = { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : SHOT_JUMP_TICKS) };
+          // Quem afunda salta até à mão tocar no aro, no fim do lance, e as poses seguem as fases do salto (`dunkLift`).
+          if (dunk && s.flight?.kind === 'shot') this.view(body).dunkJump = { start: s.tick, up: Math.max(DUNK_CROUCH_TICKS + 2, s.flight.total) };
+          else if (!e.layup && this.view(body).stepBack !== s.tick) this.view(body).override = { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : SHOT_JUMP_TICKS) };
           // O lançador sobe e desce num arco e só se mexe quando aterra; a pose dura exatamente o salto.
           if (!e.layup && !dunk && body) this.view(body).shotJump = s.tick;
-          // Quem afunda salta até à mão tocar no aro, no fim do lance.
-          if (dunk && s.flight?.kind === 'shot') this.view(body).dunkJump = { start: s.tick, up: Math.max(4, s.flight.total) };
           // Quem está em cima do lançador salta de braços no ar para o tentar abafar.
           const contester = this.nearestOpponent(body);
           if (contester && (contester.x - body.x) * (contester.x - body.x) + (contester.y - body.y) * (contester.y - body.y) < CONTEST_RANGE * CONTEST_RANGE) this.view(contester).override = { pose: 'block', until: s.tick + 10 };
@@ -468,10 +523,13 @@ export class MatchView {
         }
         case 'made': {
           this.addPoints(e, e.points!);
-          const dunk = body ? this.view(body).override?.pose === 'dunk' : false;
+          const dunk = body ? this.dunking(body) : false;
           this.announceMade(e, body);
           const decisive = s.clock <= 20 || (s.period >= 4 && s.clock < 600 && s.score[e.team] - s.score[e.team === 0 ? 1 : 0] <= e.points! && s.score[e.team] > s.score[e.team === 0 ? 1 : 0]);
-          if (body) this.view(body).override = { pose: decisive ? 'fists' : 'cheer1', until: s.tick + 14 };
+          // Quem afunda só festeja depois de aterrar.
+          const jump = body && this.view(body).dunkJump;
+          if (jump) jump.cheer = decisive ? 'fists' : 'cheer1';
+          else if (body) this.view(body).override = { pose: decisive ? 'fists' : 'cheer1', until: s.tick + CHEER_TICKS };
           if (dunk && body) {
             const beaten = this.nearestOpponent(body);
             if (beaten) this.view(beaten).override = { pose: 'handsHead', until: s.tick + 12 };
@@ -504,7 +562,7 @@ export class MatchView {
           if (body) this.view(body).override = { pose: 'slump', until: s.tick + 10 };
           break;
         case 'block':
-          if (body) this.view(body).override = { pose: 'swat', until: s.tick + 12 };
+          if (body) this.view(body).override = { pose: 'swat', until: s.tick + SWAT_TICKS };
           this.excitedUntil = s.tick + 24;
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           callbacks.sound('block');
@@ -528,7 +586,7 @@ export class MatchView {
             // Um passe comprido cortado a meio chega alto: o intercetador salta e apanha-o lá em cima, como num ressalto.
             const high = s.ball.z > INTERCEPT_JUMP_HEIGHT;
             if (high && this.view(body).reboundJump === undefined) this.view(body).reboundJump = s.tick - 4;
-            this.view(body).override = { pose: high ? 'grab' : 'snatch', until: s.tick + 8, withBall: true };
+            this.view(body).override = { pose: high ? 'grab' : 'snatch', until: s.tick + STRIKE_TICKS, withBall: true };
           }
           break;
         case 'tipOff':
@@ -579,13 +637,13 @@ export class MatchView {
         case 'move':
           if (body) {
             // Cada movimento tem a sua pose e o nome por cima de quem o fez. O afundanço e o alley-oop acabam na pose de afundar, com o lançamento.
-            if (e.move === 'crossover') this.view(body).override = { pose: 'crossover', until: s.tick + 8, withBall: true };
-            if (e.move === 'pickpocket') this.view(body).override = { pose: 'snatch', until: s.tick + 8, withBall: true };
+            if (e.move === 'crossover') this.view(body).override = { pose: 'crossover', until: s.tick + STRIKE_TICKS, withBall: true };
+            if (e.move === 'pickpocket') this.view(body).override = { pose: 'snatch', until: s.tick + STRIKE_TICKS, withBall: true };
             if (e.move === 'stepBack') {
               this.view(body).slide = { ...this.view(body).prev, start: s.tick };
               this.view(body).stepBack = s.tick;
             }
-            this.floaters.push({ label: MOVE_LABELS[e.move!], x: body.x, y: body.y, z: 2.6, born: s.tick });
+            this.floaters.push({ label: MOVE_LABELS[e.move!], x: body.x, y: body.y, z: 2.6, born: s.tick, body });
           }
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
@@ -688,17 +746,58 @@ export class MatchView {
     return -SHOOT_POSE_FEET + 4 * (SHOOT_POSE_FEET + SHOT_JUMP_HEIGHT) * t * (1 - t);
   }
 
-  private dunkLift(b: Body, alpha: number): number {
-    const jump = this.view(b).dunkJump;
-    if (!jump) return 0;
-    const t = this.s.tick + alpha - jump.start;
-    if (t < jump.up) return DUNK_LIFT * Math.sqrt(t / jump.up);
-    const down = (t - jump.up) / DUNK_FALL_TICKS;
-    if (down >= 1) {
-      this.view(b).dunkJump = undefined;
-      return 0;
+  /** Avança o ciclo de corrida pelo caminho feito neste passo da simulação. Cada pose fica pelo menos
+   * `MIN_POSE_SECONDS` reais, a qualquer velocidade; se entretanto o caminho deu para mais de um passo, salta-se para a
+   * pose certa, e as pernas continuam a acompanhar o chão. */
+  private walk(view: BodyView, b: Body): void {
+    // Um salto de mais de 1 m é uma mudança de sítio (substituição, intervalo), não caminho.
+    view.stride += Math.min(1, Math.hypot(b.x - view.prev.x, b.y - view.prev.y)) / STRIDE_METRES;
+    if (Math.floor(view.stride) > view.steps && this.s.tick - view.stepAt >= Math.ceil(MIN_POSE_SECONDS * 20 * this.simPerReal - 1e-6)) {
+      view.steps = Math.floor(view.stride);
+      view.stepAt = this.s.tick;
     }
-    return DUNK_LIFT * (1 - down);
+  }
+
+  /** Se o lance em curso deste jogador é um afundanço. */
+  private dunking(b: Body): boolean {
+    const view = this.view(b);
+    return view.dunkJump !== undefined || view.override?.pose === 'dunk';
+  }
+
+  /** O salto do afundanço, em píxeis, e onde se desenha quem afunda (`x`, `y`, no campo). Agacha-se com a bola, sobe a
+   * abrandar até a mão chegar ao aro no fim do lance, fica pendurado no aro um instante, em tempo real para se ver a
+   * qualquer velocidade e preso ao sítio onde chegou, cai a acelerar e aterra a fletir as pernas. Só então festeja. */
+  private dunkLift(b: Body, alpha: number, x: number, y: number): { lift: number; x: number; y: number } {
+    const view = this.view(b);
+    const jump = view.dunkJump;
+    if (!jump) return { lift: 0, x, y };
+    const now = this.s.tick + alpha;
+    const t = now - jump.start;
+    jump.withBall = t < jump.up;
+    if (t < DUNK_CROUCH_TICKS) {
+      jump.pose = 'gather';
+      return { lift: 0, x, y };
+    }
+    jump.pose = 'dunk';
+    if (t < jump.up) {
+      const u = (t - DUNK_CROUCH_TICKS) / (jump.up - DUNK_CROUCH_TICKS);
+      return { lift: DUNK_LIFT * (1 - (1 - u) * (1 - u)), x, y };
+    }
+    const pin = (jump.pin ??= { x, y });
+    jump.hangEnd ??= this.realTime + DUNK_HANG_SECONDS;
+    if (this.realTime < jump.hangEnd) return { lift: DUNK_LIFT, ...pin };
+    // A queda começa quando a paragem acabou, e não no frame em que se deu por isso.
+    jump.fallFrom ??= now - (this.realTime - jump.hangEnd) * this.simPerReal * 20;
+    const d = (now - jump.fallFrom) / DUNK_FALL_TICKS;
+    if (d < 1) return { lift: DUNK_LIFT * (1 - d * d), x: pin.x + (x - pin.x) * d, y: pin.y + (y - pin.y) * d };
+    if (d < 1 + DUNK_LAND_TICKS / DUNK_FALL_TICKS) {
+      jump.pose = 'gather';
+      return { lift: 0, x, y };
+    }
+    jump.pose = 'gather';
+    view.dunkJump = undefined;
+    if (jump.cheer) view.override = { pose: jump.cheer, until: this.s.tick + CHEER_TICKS };
+    return { lift: 0, x, y };
   }
 
   /** O salto ao ressalto, em píxeis acima do chão: um arco que começa antes de a bola chegar. */
@@ -747,13 +846,13 @@ export class MatchView {
     this.swishUntil = s.tick + SWISH_TICKS;
     this.swishHoop = hoopX;
     this.benchCheerUntil[e.team] = s.tick + 24;
-    const dunk = this.view(body!).override?.pose === 'dunk';
+    const dunk = this.dunking(body!);
     const loud = e.points === 3 || dunk;
     const worth = this.basketWorth(e, dunk);
     this.excitement = worth;
     this.excitedUntil = s.tick + Math.round(18 + 40 * worth);
     this.fansReact(e.team === this.crowdTeam, e.team === this.crowdTeam ? Math.round(20 + 50 * worth) : 30, worth);
-    if (dunk) this.shakeUntil = s.tick + 8;
+    if (dunk) this.shakeUntil = this.realTime + SHAKE_SECONDS;
     callbacks.sound('swish');
     callbacks.sound(loud ? 'bigCheer' : 'cheer');
     if (dunk) callbacks.announce('Afundanço!');
@@ -836,6 +935,7 @@ export class MatchView {
     }
     this.ballPrevious = { ...this.ball };
     const receiver = s.flight?.kind === 'pass' ? s.flight.target : null;
+    const flightBefore = s.flight;
     step(s);
     // O passe chega às mãos de quem o esperava.
     if (receiver && !s.flight && s.holder === receiver) this.callbacks.sound('catch');
@@ -843,6 +943,20 @@ export class MatchView {
     // A bola segue a simulação à risca quando voa por um caminho certo: lançamentos, passes, ressaltos, lances livres e bola ao alto.
     if (s.flight || s.loose || s.phase === 'freeThrow' || s.phase === 'jump') {
       this.ball = { ...target };
+      // No passo em que sai da mão, a simulação ainda deixa a bola à altura do drible e só no seguinte a põe no ar, já
+      // longe: aqui parte do ponto de saída da trajetória, e fica nele esse passo, que é o do gesto de soltar a bola.
+      const f = s.flight;
+      if (f && f !== flightBefore && !(f.kind === 'shot' && (f.layup || f.dunk) && !f.blockedBy)) {
+        if (f.kind === 'shot') {
+          const start = { ...s, ball: { ...target } };
+          placeShotBall(start, f, 0);
+          this.ball = start.ball;
+        } else {
+          // As alturas de partida de `updateBall`.
+          this.ball = { x: f.fromX, y: f.fromY, z: f.fromZ ?? (f.lob ? 1.5 : 1.3) };
+        }
+        this.ballPrevious = { ...this.ball };
+      }
     } else {
       // Quando a bola muda de sítio de repente, como no ressalto, desliza em vez de saltar.
       this.ball.x += (target.x - this.ball.x) * 0.45;
@@ -886,6 +1000,7 @@ export class MatchView {
     // A poeira some ao fim do seu tempo; a sprintar, cada passo largo deixa uma nuvem atrás dos pés.
     while (this.puffs.length > 0 && s.tick - this.puffs[0]!.born >= PUFF_TICKS) this.puffs.shift();
     for (const b of [...s.court[0], ...s.court[1]]) {
+      this.walk(this.view(b), b);
       const m = this.motionOf(b);
       if (m.moving && s.tick % 4 === b.slot % 4 && isSprinting(s, b)) {
         const prev = this.view(b).prev;
@@ -934,8 +1049,9 @@ export class MatchView {
 
   private poseOf(b: Body, moving: boolean): { pose: PoseName; withBall: boolean } {
     const { s } = this;
-    // A sprintar, as pernas mexem-se mais depressa.
-    const frame = Math.floor(s.tick / (moving && isSprinting(s, b) ? 1.6 : 2.5));
+    // O que não é andar segue o tempo; as pernas de quem anda seguem o caminho feito (`stride`).
+    const frame = Math.floor(s.tick / 2.5);
+    const step = this.view(b).steps % 4;
     if (s.phase === 'end') {
       const won = s.score[b.team] > s.score[b.team === 0 ? 1 : 0];
       return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'slump', withBall: false };
@@ -956,7 +1072,10 @@ export class MatchView {
       return { pose, withBall: false };
     }
     if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
-    if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
+    const dunk = this.view(b).dunkJump;
+    if (dunk?.pose) return { pose: dunk.pose, withBall: dunk.withBall === true };
+    const slides = moving && override !== undefined && (STANDING_REACTIONS.has(override.pose) || (STRIKE_POSES.has(override.pose) && override.until - s.tick <= STRIKE_TICKS - MOVING_STRIKE_TICKS));
+    if (override && override.until > s.tick && !slides) return { pose: override.pose, withBall: override.withBall === true };
     // O lay-up acompanha o voo: o passo de chamada, o impulso a uma perna e o braço esticado em cima. A bola vai pela simulação.
     const flight = s.flight;
     if (flight?.kind === 'shot' && flight.layup && !flight.blockedBy && flight.shooter === b) {
@@ -969,9 +1088,9 @@ export class MatchView {
       return { pose: shooting ? 'shoot' : 'idle', withBall: false };
     }
     // Quem vai repor leva a bola nas mãos até à linha.
-    if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[frame % 4]! : 'hold', withBall: true };
-    // A pose de passe só no instante do passe, e só parado: a correr, as pernas continuam a mexer.
-    if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < PASS_POSE_TICKS && !moving) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
+    if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[step]! : 'hold', withBall: true };
+    // A pose de passe só no instante do passe; a correr, só o gesto de soltar, e depois as pernas continuam a mexer.
+    if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < (moving ? MOVING_PASS_TICKS : PASS_POSE_TICKS)) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
     // No ar à espera do ressalto, de braços esticados.
     const leap = this.view(b).reboundJump;
     if (leap !== undefined && s.tick - leap < REBOUND_JUMP_TICKS) return { pose: 'leap', withBall: false };
@@ -983,11 +1102,12 @@ export class MatchView {
       return s.tick - stepBack < STEP_BACK_TICKS / 2 ? { pose: 'stepBack', withBall: false } : { pose: 'fadeaway', withBall: false };
     }
     // De costas no poste: agachado a proteger a bola, a recuar aos poucos; e o defensor encostado a fazer força.
-    if (s.posting === b) return { pose: moving ? (frame % 4 < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
+    if (s.posting === b) return { pose: moving ? (step < 2 ? 'postStep0' : 'postStep1') : frame % 4 < 2 ? 'post0' : 'post1', withBall: true };
     if (s.posting && b.team !== s.offense && this.nearestOpponent(s.posting) === b) return { pose: 'brace', withBall: false };
     if (s.holder === b) {
       // A correr, as pernas acompanham o drible; parado, só a bola mexe.
-      if (moving) return { pose: DRIBBLE_RUN_FRAMES[frame % 4]!, withBall: true };
+      // Com o mesmo limite para arrancar e para parar: a abrandar ou a arrancar devagar, as pernas ainda andam.
+      if (moving || this.motionOf(b).speed > 0.4) return { pose: DRIBBLE_RUN_FRAMES[step]!, withBall: true };
       return { pose: frame % 4 < 2 ? 'drib0' : 'drib1', withBall: true };
     }
     // Só quem defende o jogador com a bola fica em posição de defesa, a deslizar de lado; os outros andam e correm normalmente.
@@ -996,8 +1116,8 @@ export class MatchView {
     const hoopX = man ? this.attackedHoop(man.team) : 0;
     const inFront = man !== undefined && Math.hypot(b.x - hoopX, b.y) < Math.hypot(man.x - hoopX, man.y);
     const guarding = man !== undefined && inFront && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
-    if (moving && guarding) return { pose: frame % 4 < 2 ? 'slide0' : 'slide1', withBall: false };
-    if (moving) return { pose: RUN_FRAMES[frame % 4]!, withBall: false };
+    if (moving && guarding) return { pose: step < 2 ? 'slide0' : 'slide1', withBall: false };
+    if (moving) return { pose: RUN_FRAMES[step]!, withBall: false };
     if (s.screen?.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
@@ -1148,14 +1268,33 @@ export class MatchView {
     const { g, s, camera } = this;
     for (let i = this.exits.length - 1; i >= 0; i--) {
       const e = this.exits[i]!;
+      const look = this.view(e.body).look;
+      // Quem é substituído a meio de um afundanço acaba-o primeiro: fica no aro, cai e aterra, e só depois vai para o banco.
+      const jump = this.view(e.body).dunkJump;
+      if (jump) {
+        e.start = s.tick + alpha;
+        const dunk = this.dunkLift(e.body, alpha, e.from.x, e.from.y);
+        const [dx, dy] = camera.project(dunk.x, dunk.y);
+        const pose = jump.pose ?? 'dunk';
+        const withBall = jump.withBall === true;
+        const flip = this.motionOf(e.body).flip;
+        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y } });
+        drawables.push({ y: dy, draw: () => {
+          drawShadow(g, dx, dy);
+          drawSprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall);
+        } });
+        continue;
+      }
       const t = (s.tick + alpha - e.start) / e.ticks;
       if (t >= 1) {
         this.exits.splice(i, 1);
         continue;
       }
-      const [sx, sy] = camera.project(e.from.x + (e.to.x - e.from.x) * t, e.from.y + (e.to.y - e.from.y) * t);
+      const world = { x: e.from.x + (e.to.x - e.from.x) * t, y: e.from.y + (e.to.y - e.from.y) * t };
+      const [sx, sy] = camera.project(world.x, world.y);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
-      drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.view(e.body).look, sx, sy, e.to.x < e.from.x, true, false) });
+      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(look), world });
+      drawables.push({ y: sy, draw: () => drawSprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
 
@@ -1164,7 +1303,12 @@ export class MatchView {
     const { g, s, camera } = this;
     this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
     this.animTime += this.frameSeconds;
+    this.realTime += realSeconds;
+    if (realSeconds > 0 && simSeconds > 0) this.simPerReal = simSeconds / realSeconds;
     this.animTick = Math.floor(this.animTime * 20);
+    this.drawn.bodies.clear();
+    this.drawn.ball = null;
+    this.drawn.labels.length = 0;
     const time = this.animTime;
     const { theme } = this.textures;
     const [lookX, lookY] = this.cameraTarget();
@@ -1252,7 +1396,8 @@ export class MatchView {
           y = slide.y + (b.y - slide.y) * t;
         }
       }
-      const [sx, sy] = camera.project(x, y);
+      const dunk = this.dunkLift(b, alpha, x, y);
+      const [sx, sy] = camera.project(dunk.x, dunk.y);
       const motion = this.motionOf(b);
       const look = this.view(b).look;
       const { pose, withBall } = this.poseOf(b, motion.moving);
@@ -1261,8 +1406,18 @@ export class MatchView {
       // No poste, os dois ficam virados para fora do cesto: o atacante de costas para ele, o defensor de frente para o atacante.
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
-      const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
-      return { x: sx, y: sy, lift: this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha), pose, withBall, look, flip, back };
+      // De costas só a andar, a deslizar em defesa, de pé ou a saltar ao ressalto; o que se desenha tem o seu próprio bloqueio, para a troca entre
+      // estas poses (do drible para a corrida, do salto para a corrida) não virar o boneco antes do tempo.
+      const backable = BACK_POSES.test(pose);
+      const wantBack = motion.back && backable;
+      if (wantBack !== motion.drawnBack && s.tick >= motion.drawnBackLock) {
+        motion.drawnBack = wantBack;
+        motion.drawnBackLock = s.tick + TURN_LOCK_TICKS;
+      }
+      const back = falling ? b.fallProne && pose.startsWith('fall') : motion.drawnBack && backable;
+      const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
+      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y }, back });
+      return { x: sx, y: sy, lift, pose, withBall, look, flip, back };
     });
     const { referee } = this;
     if (!this.visible) {
@@ -1315,7 +1470,9 @@ export class MatchView {
     const inHands = this.ballInHands();
     const holderOverride = inHands ? this.view(inHands).override : undefined;
     const holderDrawsBall = inHands !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
-    if (!holderDrawsBall) {
+    // No afundanço, a bola vai na mão de quem afunda até ao aro.
+    const dunkerDrawsBall = s.flight?.kind === 'shot' && this.view(s.flight.shooter).dunkJump?.withBall === true && this.drawn.bodies.has(s.flight.shooter);
+    if (!holderDrawsBall && !dunkerDrawsBall) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
       let z = this.ballPrevious.z + (this.ball.z - this.ballPrevious.z) * alpha;
@@ -1326,6 +1483,7 @@ export class MatchView {
       }
       const [gx, gy] = camera.project(x, y);
       const [bx, by] = this.ballScreen(x, y, z);
+      this.drawn.ball = [bx, by];
       if (s.flight?.kind === 'shot') {
         this.trail.push([bx, by]);
         if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
@@ -1360,9 +1518,12 @@ export class MatchView {
       g.fillStyle = `rgba(27,34,48,${fade})`;
       g.fillRect(0, 0, camera.width, camera.height);
     }
-    if (!this.reducedMotion && s.tick < this.shakeUntil) {
-      const dx = s.tick % 2 ? 2 : -2;
-      g.canvas.style.transform = `translate(${dx}px, ${s.tick % 3 === 0 ? 1 : -1}px)`;
+    // Acima de 2× o tremor seria um zumbido, e com movimento reduzido não há tremor.
+    if (!this.reducedMotion && this.simPerReal <= 2 && this.realTime < this.shakeUntil) {
+      const phase = Math.floor(this.realTime * SHAKE_HZ);
+      // Um píxel de arte em píxeis CSS: a tela está à escala da arte e o CSS amplia-a.
+      const art = g.canvas.clientWidth > 0 ? g.canvas.clientWidth / g.canvas.width : 1;
+      g.canvas.style.transform = `translate(${(phase % 2 ? 1 : -1) * art}px, ${((phase >> 1) % 2 ? 1 : -1) * art}px)`;
     } else if (g.canvas.style.transform) {
       g.canvas.style.transform = '';
     }
@@ -1601,6 +1762,25 @@ export class MatchView {
     }
   }
 
+  /** O ponto mais alto de uma pose, em píxeis acima dos pés, com bola e com os braços. */
+  private poseTop(pose: PoseName, look: Look): number {
+    const key = `${pose}|${look.legs}|${look.torso}`;
+    let top = this.poseTops.get(key);
+    if (top === undefined) {
+      const c = document.createElement('canvas');
+      c.width = 48;
+      c.height = 96;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      drawSprite(g, pose, look, 24, 80, false, false, true);
+      const { data } = g.getImageData(0, 0, c.width, c.height);
+      let row = 0;
+      while (row < c.height && !data.slice(row * c.width * 4, (row + 1) * c.width * 4).some((v, i) => i % 4 === 3 && v > 0)) row++;
+      top = row < c.height ? 80 - row : spriteHeight(look);
+      this.poseTops.set(key, top);
+    }
+    return top;
+  }
+
   private drawFloaters(): void {
     const { g, s, camera } = this;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
@@ -1614,12 +1794,39 @@ export class MatchView {
       const rise = Math.min(10, age);
       // Os pontos são grandes e ficam ao lado do aro; as palavras, mais pequenas e por cima de quem as fez.
       const word = f.label.length > 3;
-      // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés do jogador.
-      const below = word && y < camera.height * 0.38;
-      const top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(40, (y | 0) - 14 - rise));
       const scale = word ? 2 : 3;
-      // Num canto, a palavra encosta à margem em vez de sair do ecrã.
-      const left = word ? Math.max(2, Math.min(camera.width - textWidth(f.label, scale) - 2, (x | 0) - (textWidth(f.label, scale) >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      const width = textWidth(f.label, scale);
+      // A altura da palavra: 5 linhas, a sombra e a cedilha.
+      const height = 6 * scale + 1;
+      let left: number;
+      let top: number;
+      const drawn = f.body && this.drawn.bodies.get(f.body);
+      if (word && drawn) {
+        // A palavra segue quem fez o movimento, por cima do ponto mais alto da pose, e sobe devagar. Sem espaço em cima,
+        // por baixo da faixa do marcador, encosta-se ao lado dele: nunca por cima do corpo.
+        const head = (drawn.y | 0) - Math.round(drawn.lift) - this.poseTop(drawn.pose, this.view(f.body!).look);
+        top = head - FLOATER_GAP - height - rise;
+        left = (drawn.x | 0) - (width >> 1);
+        // De início conta-se já com o salto do afundanço que aí vem. Passar para o lado acontece no máximo uma vez, e fica:
+        // senão a palavra saltava de cima para o lado e de volta a meio do salto.
+        const above = Math.min(f.top ?? top, top);
+        const lift = f.top === undefined && this.view(f.body!).dunkJump ? DUNK_LIFT : 0;
+        if (f.beside === undefined && above - lift < FLOATER_MIN_TOP) f.beside = (drawn.x | 0) + 9 + width <= camera.width - 2 ? 1 : -1;
+        if (f.beside !== undefined) {
+          top = Math.max(FLOATER_MIN_TOP, head);
+          left = f.beside > 0 ? (drawn.x | 0) + 9 : (drawn.x | 0) - 9 - width;
+        } else top = f.top = above;
+        left = Math.max(2, Math.min(camera.width - width - 2, left));
+      } else {
+        // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés de quem a disse.
+        const below = word && y < camera.height * 0.38;
+        top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(FLOATER_MIN_TOP, (y | 0) - 14 - rise));
+        // Num canto, a palavra encosta à margem em vez de sair do ecrã.
+        left = word ? Math.max(2, Math.min(camera.width - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      }
+      // A caixa ocupada: os acentos sobem 3 linhas, a cedilha desce 1 e a sombra mais 1 píxel.
+      const accent = /[ÁÀÂÃÉÊÍÓÔÕÚ]/.test(f.label) ? 3 * scale : 0;
+      this.drawn.labels.push([left, top - accent, width + 1, accent + height]);
       text(g, f.label, left + 1, top + 1, '#1b2230', scale);
       text(g, f.label, left, top, '#f2c230', scale);
     }
