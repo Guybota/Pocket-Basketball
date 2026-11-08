@@ -730,7 +730,7 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 /* Altura e peso em três estrelas, para não se ler centímetros e quilos. */
 .body-stars { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 
-/* A estrela da altura: 13 píxeis desenhados no código, a 2× exato. */
+/* A altura em barras de sinal: 13 píxeis desenhados no código, a 2× exato. */
 .hstar { display: block; width: 26px; height: 26px; image-rendering: pixelated; }
 
 .pcard header .body-stars { font: inherit; }

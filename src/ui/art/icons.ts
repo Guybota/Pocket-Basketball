@@ -145,42 +145,22 @@ export function attributeIcon(key: keyof Attributes): string {
   return url;
 }
 
-/** A altura (1 a 3) numa estrela dourada de 13 píxeis, com contorno de tinta e o algarismo da letra do jogo ao centro. */
+/** A altura (1 a 3) em três barras que sobem, como as do sinal: cheias a dourado até ao nível, as outras vazias. */
 export function heightIcon(level: number): string {
   const key = `height:${level}`;
   let url = iconCache.get(key);
   if (!url) {
-    const size = 13;
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = 13;
+    canvas.height = 13;
     const g = canvas.getContext('2d')!;
-    // A estrela de cinco pontas, preenchida pelo centro de cada píxel; o contorno são os píxeis de fora que lhe tocam.
-    const points = Array.from({ length: 10 }, (_, i) => {
-      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
-      const radius = i % 2 ? 2.9 : 6.4;
-      return [6.5 + radius * Math.cos(angle), 7.1 + radius * Math.sin(angle)] as const;
+    [4, 7, 10].forEach((h, i) => {
+      const x = 1 + i * 4;
+      g.fillStyle = INK;
+      g.fillRect(x, 12 - h, 4, h + 1);
+      g.fillStyle = i < level ? '#f2c230' : '#efe3c2';
+      g.fillRect(x + 1, 13 - h, 2, h - 1);
     });
-    const inside = (x: number, y: number): boolean => {
-      let hit = false;
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const [xi, yi] = points[i]!;
-        const [xj, yj] = points[j]!;
-        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
-      }
-      return hit;
-    };
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const fill = inside(x + 0.5, y + 0.5);
-        const edge = !fill && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inside(x + dx! + 0.5, y + dy! + 0.5));
-        if (fill || edge) {
-          g.fillStyle = fill ? '#f2c230' : INK;
-          g.fillRect(x, y, 1, 1);
-        }
-      }
-    }
-    text(g, String(level), 5, 5, INK, 1);
     url = canvas.toDataURL();
     iconCache.set(key, url);
   }
