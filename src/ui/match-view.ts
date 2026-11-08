@@ -6,6 +6,7 @@ import { BALANCE as B } from '../sim/balance.ts';
 import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
+import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
@@ -896,6 +897,7 @@ export class MatchView {
     }
     this.ballPrevious = { ...this.ball };
     const receiver = s.flight?.kind === 'pass' ? s.flight.target : null;
+    const flightBefore = s.flight;
     step(s);
     // O passe chega às mãos de quem o esperava.
     if (receiver && !s.flight && s.holder === receiver) this.callbacks.sound('catch');
@@ -903,6 +905,20 @@ export class MatchView {
     // A bola segue a simulação à risca quando voa por um caminho certo: lançamentos, passes, ressaltos, lances livres e bola ao alto.
     if (s.flight || s.loose || s.phase === 'freeThrow' || s.phase === 'jump') {
       this.ball = { ...target };
+      // No passo em que sai da mão, a simulação ainda deixa a bola à altura do drible e só no seguinte a põe no ar, já
+      // longe: aqui parte do ponto de saída da trajetória, e fica nele esse passo, que é o do gesto de soltar a bola.
+      const f = s.flight;
+      if (f && f !== flightBefore && !(f.kind === 'shot' && (f.layup || f.dunk) && !f.blockedBy)) {
+        if (f.kind === 'shot') {
+          const start = { ...s, ball: { ...target } };
+          placeShotBall(start, f, 0);
+          this.ball = start.ball;
+        } else {
+          // As alturas de partida de `updateBall`.
+          this.ball = { x: f.fromX, y: f.fromY, z: f.fromZ ?? (f.lob ? 1.5 : 1.3) };
+        }
+        this.ballPrevious = { ...this.ball };
+      }
     } else {
       // Quando a bola muda de sítio de repente, como no ressalto, desliza em vez de saltar.
       this.ball.x += (target.x - this.ball.x) * 0.45;
