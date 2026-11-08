@@ -77,6 +77,8 @@ let townClock: number | null = null;
 let gameKind: GameKind = 'official';
 let rivalOf = 0;
 let halfShown = false;
+/** Quando a primeira parte acabou (relógio do browser), para o intervalo escurecer e abrir como no fim do jogo. */
+let halfAt = 0;
 let halfSubsOpen = false;
 const saveStatus: SaveStatus = { failed: false, unreadable: false };
 let view: MatchView | undefined;
@@ -783,6 +785,7 @@ function startGame(kind: GameKind, rivalId: number): void {
   gameKind = kind;
   rivalOf = rivalId;
   halfShown = false;
+  halfAt = 0;
   closeMenus();
   applyClubColors();
   setStage('match');
@@ -962,10 +965,15 @@ function frame(now: number): void {
         break;
       }
     }
-    // O intervalo abre quando o último entra no túnel, e não quando a simulação os dá por lá.
-    if (!halfShown && firstHalfOver(current.s) && current.lockerDone()) {
-      if (gameKind === 'practice') showResult();
-      else showHalfTime();
+    // Ao intervalo, como no fim do jogo: começam a sair, o ecrã escurece e o intervalo abre, sem esperar pelo último.
+    if (!halfShown && firstHalfOver(current.s)) {
+      halfAt ||= now;
+      current.endFade = reducedMotion() ? 0 : Math.min(1, Math.max(0, (now - halfAt - END_FADE_AT_MS) / END_FADE_MS));
+      if (now - halfAt > END_FADE_AT_MS + END_FADE_MS) {
+        current.endFade = 0;
+        if (gameKind === 'practice') showResult();
+        else showHalfTime();
+      }
     } else if (current.s.phase === 'end') {
       // Uns segundos de festa, ou de cabeças baixas, antes do relatório.
       if (endAt === 0) {

@@ -2006,12 +2006,6 @@ export class MatchView {
     return !this.reducedMotion && (Math.floor(this.animTick / 5) + b.slot) % 4 >= 2 ? 'cheer1' : 'cheer0';
   }
 
-  /** Já entraram todos no túnel (ou não é a ida para o balneário): o intervalo ou o relatório podem abrir. */
-  lockerDone(): boolean {
-    if (!this.toLocker()) return true;
-    return this.locker !== null && this.animTime - this.locker.start >= this.locker.end;
-  }
-
   /** Uma marca vermelha por cima de cada adversário a marcar de perto. */
   private drawTargets(alpha: number): void {
     const { g, s, camera } = this;
