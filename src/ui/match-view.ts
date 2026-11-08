@@ -372,6 +372,8 @@ export class MatchView {
   private swishHoop = HOOP_LEFT;
   private shakeUntil = 0;
   private fadeInUntil = 0;
+  /** No fim de um jogo sem título, o ecrã escurece (0 a 1) antes do relatório; quem o conta é o main. */
+  endFade = 0;
   /** A cerimónia do troféu, depois do apito final: para onde vai cada um, quem é o capitão e as cores dos confetes. */
   private ceremony: { trophy: 'cup' | 'bigCup'; banner: string; team: TeamIndex; start: number; lift: number; captain: Body; cheered: boolean; walks: Map<Body, Walk>; benched: Set<Body>; colors: (readonly [string, string])[] } | null = null;
   /** A ida para o balneário ao intervalo: o caminho de cada jogador, suplente e treinador (pela equipa), desde `start`
@@ -1726,7 +1728,7 @@ export class MatchView {
     this.drawBubbles();
     this.drawForecast();
     this.drawCeremony();
-    const fade = s.phase === 'break' && s.period === 2 ? Math.max(0, 1 - (2 * s.timer) / (B.periodBreakSeconds * 20)) : Math.max(0, (this.fadeInUntil - s.tick - alpha) / FADE_IN_TICKS);
+    const fade = Math.max(this.endFade, s.phase === 'break' && s.period === 2 ? Math.max(0, 1 - (2 * s.timer) / (B.periodBreakSeconds * 20)) : Math.max(0, (this.fadeInUntil - s.tick - alpha) / FADE_IN_TICKS));
     if (fade > 0) {
       g.fillStyle = `rgba(27,34,48,${fade})`;
       g.fillRect(0, 0, camera.width, camera.height);

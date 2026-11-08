@@ -125,9 +125,9 @@ let ceremonyOn = false;
 /** Para a verificação: o título que o próximo jogo dá, se for ganho (a taça não se levanta numa derrota). */
 let forcedTitle: Title | null = null;
 const CEREMONY_DELAY_MS = 1500;
-// Sem cerimónia, o relatório vem quando o último entra no túnel, mas nunca antes de isto (o «Vitória!») nem depois do máximo.
-const END_MIN_MS = 2500;
-const END_MAX_MS = 12000;
+// Sem cerimónia, não se espera que saiam todos: festejam e começam a sair, o ecrã escurece e vem o relatório.
+const END_FADE_AT_MS = 3000;
+const END_FADE_MS = 700;
 let resultHtml = '';
 let replay: MatchView | undefined;
 let replayUntil = 0;
@@ -981,7 +981,12 @@ function frame(now: number): void {
         if (!endTitle) current.startExit();
       } else if (endTitle && !ceremonyOn) {
         if (now - endAt > CEREMONY_DELAY_MS) startCeremony(current, endTitle);
-      } else if (ceremonyOn ? current.ceremonyDone() : (now - endAt > END_MIN_MS && current.lockerDone()) || now - endAt > END_MAX_MS) showResult();
+      } else if (ceremonyOn) {
+        if (current.ceremonyDone()) showResult();
+      } else {
+        current.endFade = reducedMotion() ? 0 : Math.min(1, Math.max(0, (now - endAt - END_FADE_AT_MS) / END_FADE_MS));
+        if (now - endAt > END_FADE_AT_MS + END_FADE_MS) showResult();
+      }
     } else if (current.s.phase === 'break' && breakAnnounced !== current.s.period) {
       breakAnnounced = current.s.period;
       announce(current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`);
