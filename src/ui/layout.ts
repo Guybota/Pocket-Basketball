@@ -106,7 +106,9 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     if (landscape) {
       // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de 37,5 % da largura.
       // Com 37,5 %, uma janela de 1920×1080 chega ao ×2: os ícones do painel ficam com píxeis inteiros, em vez de ×1,75.
-      const ui = viewHeight < 600 ? Math.max(0.7, viewHeight / 600) : Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
+      // Nunca abaixo de 1: no telemóvel deitado, encolher deixava os botões abaixo de 44 px e os ícones a escalas partidas.
+      // O painel fica com a altura da janela e as listas deslizam.
+      const ui = Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
       // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
       const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
       const stageWidth = innerWidth - panelWidth;
