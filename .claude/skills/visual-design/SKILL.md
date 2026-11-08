@@ -153,18 +153,19 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
 
 O revisor:
 
-1. **Monta cenários de teste sem abrir o jogo inteiro.** Por exemplo:
+1. **Começa pelo mais simples que chegue.** Muitas vezes não é preciso pôr o asset em jogo: basta exportar a sprite sheet. São as poses ou os frames de uma animação lado a lado, à escala 1× e ampliados a um múltiplo inteiro, com o número e o nome de cada frame. Também podes mostrar os vários aspetos (pele, cabelo, equipamento) e as versões de frente, de costas e espelhada. Só passa ao cenário de teste quando o que se quer ver depende do movimento no campo: o arco da bola, os defesas, o tempo entre ações ou um fluxo.
+2. **Monta cenários de teste sem abrir o jogo inteiro.** Por exemplo:
    - um campo vazio com um só jogador a lançar ou a fazer um movimento especial, com o número de defesas à escolha;
    - um só componente da interface;
    - um fluxo curto, como um desconto de tempo.
-2. **Grava o cenário a 30 fps com os frames numerados** (`frame-0001.png`, …) e faz uma folha de contacto com o número desenhado em cada frame.
-3. **Mede o que se pode medir em código:**
+3. **Grava o cenário a 30 fps com os frames numerados** (`frame-0001.png`, …) e faz uma folha de contacto com o número desenhado em cada frame.
+4. **Mede o que se pode medir em código**, nas sprite sheets e nos frames:
    - cores fora da paleta;
    - contorno contínuo;
    - tremor da âncora do boneco de frame para frame;
    - estabilidade da caixa do boneco;
    - contraste;
    - nada a sair do ecrã.
-4. **Olha para as folhas e escreve um relatório.** Cada problema leva o frame, as coordenadas e a regra que falha, e é confirmado com uma medida sempre que possível.
+5. **Olha para as folhas e escreve um relatório.** Cada problema leva o frame, as coordenadas e a regra que falha, e é confirmado com uma medida sempre que possível.
 
 Quem fez o asset corrige e volta a pedir revisão até não haver problemas. O detalhe do método e do cenário de teste está em `references/revisao.md`.
