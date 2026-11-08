@@ -372,9 +372,12 @@ function showNewClub(): void {
     <h1><img src="${ballLogo()}" alt=""><span>Pocket<br>Basketball</span></h1>
     ${saveStatus.unreadable ? '<p class="hint warn">Não foi possível ler o clube guardado. Ele só é substituído se criares um novo.</p>' : ''}
     ${club ? `<button type="button" class="primary" id="continueBtn">Continuar · ${escapeHtml(club.team.short)}</button>` : ''}
-    <button type="button" class="${club ? 'quiet' : 'primary'}" id="newClubBtn">Criar clube</button>
-    <button type="button" class="quiet" id="importBtn">Importar clube</button>
-    <button type="button" class="quiet" id="settingsBtn">Definições</button>
+    ${club ? '' : '<button type="button" class="primary" id="newClubBtn">Criar clube</button>'}
+    <div class="start-row">
+      ${club ? '<button type="button" class="quiet" id="newClubBtn">Criar clube</button>' : ''}
+      <button type="button" class="quiet" id="importBtn">Importar clube</button>
+      <button type="button" class="quiet" id="settingsBtn">Definições</button>
+    </div>
     <p class="hint">${club ? `Época ${club.season}, semana ${club.week}.` : `Começas na ${DIVISIONS[0]!.name}. Treinas a equipa entre jogos, e os jogos correm sozinhos.`}</p>
   </div>`;
   document.getElementById('continueBtn')?.addEventListener('click', () => {
