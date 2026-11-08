@@ -2,7 +2,7 @@ import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
 import {
-  SR, applause, babble, backboard, brass, carPass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
+  SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
   squeak, swish, thud, timpani, whistle,
   type Rng, type Room, type Sample, type Shout,
 } from './synth.ts';
@@ -489,9 +489,8 @@ export class GameAudio {
     switch (this.venue) {
       case 'street':
         this.nextAmbience = now + 700 + Math.random() * 1500;
-        // Um carro de vez em quando e pássaros: o vento e o trânsito, como ruído a crescer e a desfazer-se, soavam a mar.
-        if (roll < 0.15) this.shot(this.set('carPass', 3, carPass), 0.035);
-        else if (roll < 0.4) this.shot(this.set('chirp', 4, chirp), 0.012, { pan: Math.random() * 1.6 - 0.8 });
+        // Pássaros: o vento e o trânsito, como ruído a crescer e a desfazer-se, soavam a mar.
+        if (roll < 0.35) this.shot(this.set('chirp', 4, chirp), 0.012, { pan: Math.random() * 1.6 - 0.8 });
         else if (roll < 0.44) for (const [k, f] of [[0, 392], [0.28, 330]] as const) this.tone('square', f, f, 0.22, 0.005, k);
         else if (roll < 0.78) this.shoutOnce(0.012);
         else this.squeak(0.012);

@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { CROWDS } from '../ui/audio.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, brass, carPass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  ROOMS, SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
   snare, squeak, swish, thud, timpani, whistle, type Rng, type Room, type Sample,
 } from '../ui/synth.ts';
 
@@ -31,7 +31,6 @@ const SOUNDS: Record<string, [(r: Rng, i: number) => Sample, number]> = {
   'buzina-troca': [r => horn(205, 0.35, r), 1],
   tenis: [squeak, 6],
   claque: [r => clapBeat(8, r), 3],
-  carro: [carPass, 2],
   passaro: [chirp, 4],
   carta: [(r, i) => chime(i ? 89 : 82, r), 2],
   hey: [r => shout('hey', r), 4],

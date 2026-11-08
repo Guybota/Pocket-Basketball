@@ -365,49 +365,38 @@ export function clapBeat(people: number, r: Rng): Stereo {
 // ---------------------------------------------------------------- a rua
 
 /**
- * Um carro a passar ao longe, de um lado para o outro: o motor (um zumbido grave com harmónicos) e o rolar dos pneus,
- * que crescem quando ele chega e descem de tom quando passa (Doppler). É o tom do motor que o distingue do mar: ruído
- * filtrado a crescer e a desfazer-se, sozinho, soava a ondas.
+ * Um pássaro ao longe: dois a seis piados. Um seno puro soava a apito eletrónico; aqui cada piado gorjeia (um trinado de
+ * 25 a 45 Hz no tom e no volume), tem um segundo harmónico fraco, perde os agudos com a distância e deixa um eco curto,
+ * de uma parede. Três cantos: a subir, a descer e em trinado.
  */
-export function carPass(r: Rng): Stereo {
-  const seconds = between(r, 2.2, 3);
-  const n = samples(seconds);
-  const out: Stereo = [new Float32Array(n), new Float32Array(n)];
-  const f0 = between(r, 55, 80);
-  const shift = between(r, 0.05, 0.08);
-  const side = r() < 0.5 ? -1 : 1;
-  const tyres = new Biquad('bandpass', between(r, 500, 800), 0.8);
-  let phase = 0;
-  for (let i = 0; i < n; i++) {
-    const x = ((i / n) - 0.5) * 2;
-    const near = 1 / (1 + 16 * x * x);
-    const f = f0 * (1 - (shift * x) / Math.sqrt(x * x + 0.04));
-    phase += (TAU * f) / SR;
-    const y = (0.6 * sawAt(phase, f, 1500) + 0.5 * tyres.run(white(r))) * near;
-    const [gl, gr] = panGains(side * x * 0.8);
-    out[0][i] = y * gl;
-    out[1][i] = y * gr;
-  }
-  return normalize(out, 0.8);
-}
-
-/** Um pássaro: dois a cinco piados curtos e agudos, que sobem ou descem. */
 export function chirp(r: Rng): Mono {
-  const out = new Float32Array(samples(0.8));
-  const base = between(r, 3000, 4500);
-  const bend = r() < 0.5 ? between(r, 1.15, 1.35) : between(r, 0.7, 0.85);
-  let at = 0;
-  for (let k = Math.floor(between(r, 2, 6)); k > 0; k--) {
-    const length = samples(between(r, 0.05, 0.09));
+  const out = new Float32Array(samples(1));
+  const base = between(r, 2800, 4200);
+  const call = Math.floor(between(r, 0, 3));
+  const bend = call === 0 ? between(r, 1.15, 1.35) : call === 1 ? between(r, 0.7, 0.85) : 1;
+  const trillRate = call === 2 ? between(r, 35, 45) : between(r, 25, 35);
+  const trillDepth = call === 2 ? 0.06 : 0.02;
+  let at = samples(0.01);
+  for (let k = Math.floor(between(r, 2, call === 2 ? 4 : 7)); k > 0; k--) {
+    const length = samples(call === 2 ? between(r, 0.12, 0.2) : between(r, 0.05, 0.09));
     const f = base * between(r, 0.95, 1.05);
     let phase = 0;
+    let trill = r() * TAU;
     for (let i = 0; i < length && at + i < out.length; i++) {
       const u = i / length;
-      phase += (TAU * f * (1 + (bend - 1) * u)) / SR;
-      out[at + i] = Math.sin(phase) * Math.sin(Math.PI * u);
+      trill += (TAU * trillRate) / SR;
+      const wobble = Math.sin(trill);
+      phase += (TAU * f * (1 + (bend - 1) * u) * (1 + trillDepth * wobble)) / SR;
+      const env = Math.sin(Math.PI * u) * (1 - 0.35 * (0.5 + 0.5 * wobble));
+      out[at + i] = (Math.sin(phase) + 0.12 * Math.sin(2 * phase)) * env;
     }
-    at += length + samples(between(r, 0.05, 0.12));
+    at += length + samples(between(r, 0.04, 0.1));
   }
+  // Ao longe: menos agudos, e um eco fraco da parede mais próxima.
+  const far = new Biquad('lowpass', between(r, 4500, 6000), 0.7);
+  for (let i = 0; i < out.length; i++) out[i] = far.run(out[i]!);
+  const delay = samples(between(r, 0.06, 0.11));
+  for (let i = out.length - 1; i >= delay; i--) out[i]! += 0.22 * out[i - delay]!;
   return normalize(out, 0.7);
 }
 

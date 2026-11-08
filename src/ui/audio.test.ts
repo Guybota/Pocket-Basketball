@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameAudio } from './audio.ts';
 import { MUSIC_THEMES, scheduleSection, sectionLengths, songShape, type Instrument, type MusicKit } from './music.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, brass, carPass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  ROOMS, SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
   snare, squeak, swish, thud, timpani, whistle,
   type Sample,
 } from './synth.ts';
@@ -223,7 +223,7 @@ describe('os sons calculados', () => {
     ['glockenspiel', glock(84, r()), 1.8], ['timbale', timpani(42, r()), 2], ['tabela de metal', backboard(r(), 'metal'), 0.4],
     ['rede de corrente', chains(r()), 0.6], ['apito', whistle(0.34, r()), 0.34], ['buzina', horn(150, 1, r()), 1],
     ['ténis', squeak(r()), 0], ['passe recebido', slap(0, r()), 0.14], ['desarme', slap(1, r()), 0.14], ['encontrão', thud(r()), 0.2],
-    ['toque', chime(82, r()), 0.5], ['claque', clapBeat(6, r()), 0.2], ['carro', carPass(r()), 0], ['pássaro', chirp(r()), 0.8],
+    ['toque', chime(82, r()), 0.5], ['claque', clapBeat(6, r()), 0.2], ['pássaro', chirp(r()), 1],
   ];
 
   it.each(cases)('%s: tamanho certo, sem NaN e com o pico abaixo de 1', (_, sample, seconds) => {
