@@ -46,6 +46,7 @@ Um teste automático faz cumprir as regras de proibição e de importação.
 - Há dois esquemas: vertical (360×640, com o campo por cima do painel) e horizontal (o campo ao lado do painel), escolhido pela proporção da janela. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
 - Toda a arte é gerada por código. Os sons são sintetizados, por isso não há ficheiros de áudio.
 - Para criar ou afinar sons segue o skill [sound-design](.claude/skills/sound-design/SKILL.md), que tem as diretrizes e a pesquisa de acústica, síntese e mistura.
+- Para arte, animação, pixel art, cor, ícones, emblemas e interface segue o skill [visual-design](.claude/skills/visual-design/SKILL.md). Qualquer animação ou asset visual novo passa pela revisão de um agente revisor, como lá se descreve.
 
 ## Trabalho a dois
 

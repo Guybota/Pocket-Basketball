@@ -168,4 +168,13 @@ O revisor:
    - nada a sair do ecrã.
 5. **Olha para as folhas e escreve um relatório.** Cada problema leva o frame, as coordenadas e a regra que falha, e é confirmado com uma medida sempre que possível.
 
-Quem fez o asset corrige e volta a pedir revisão até não haver problemas. O detalhe do método e do cenário de teste está em `references/revisao.md`.
+**Medir primeiro, olhar depois.** Um modelo de visão sozinho é fraco a rever arte: o melhor apanhou 43 % das falhas no GlitchBench, e quase nenhuma das que se estendem por vários frames. Também conta mal píxeis e julga mal cores. Por isso as medidas em código vêm primeiro, o olhar vem depois, e cada problema que o olhar encontra é confirmado com uma medida. Ajuda muito dar ao revisor uma imagem de referência e dizer-lhe o que o frame deve mostrar.
+
+**Gravações reprodutíveis.** Os flashes de fotografia usam `Math.random`, por isso grava com movimento reduzido ou com uma semente.
+
+**A ferramenta do cenário ainda não existe.** A proposta está na secção 7 de `references/revisao.md` e reaproveita `anim.html`, `anim-page.ts` e `anim-check.ts`. Até ela existir, o revisor usa:
+- `npm run anim-check`, que dá `poses.png` e as tiras `movimento-*` em `dist-check/`;
+- as capturas do `browser-check`;
+- canvases desenhados por um script seu, com `drawSprite`.
+
+Quem fez o asset corrige e volta a pedir revisão até não haver problemas. O detalhe do método, o protocolo e a lista de verificação estão em `references/revisao.md`.
