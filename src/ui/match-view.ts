@@ -1,9 +1,10 @@
 import { reducedMotion } from './settings.ts';
 import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
-import type { ClubKit, Emblem } from './art/kit.ts';
+import { shadeOf, type ClubKit, type Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
+import { INK } from './art/palette.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { placeShotBall } from '../sim/match-ball.ts';
@@ -17,6 +18,7 @@ import {
   drawReflection,
   drawShadow,
   drawSprite,
+  kitColors,
   lookOf,
   poseFeet,
   spriteHeight,
@@ -109,6 +111,19 @@ const FADE_IN_TICKS = 20;
 // onde estão a faixa e o marcador.
 const FLOATER_GAP = 3;
 const FLOATER_MIN_TOP = 40;
+// A cerimónia do troféu, em tempo real (animacao.md §7 e §10): os vencedores juntam-se no meio campo, o capitão levanta
+// o troféu ao fim de CEREMONY_LIFT_SECONDS, a subir e descer a cada CEREMONY_PUMP_SECONDS, e caem confetes até ao fim.
+const CEREMONY_LIFT_SECONDS = 1.6;
+const CEREMONY_SECONDS = 7.5;
+const CEREMONY_PUMP_SECONDS = 0.3;
+const CEREMONY_CENTRE: Point = { x: 14, y: 0.6 };
+// À volta do capitão, em metros: os de trás um pouco mais acima, para ele ficar à frente de todos.
+const CEREMONY_RING: readonly (readonly [number, number])[] = [[-2.2, -0.2], [-1.1, -1.1], [1.1, -1.1], [2.2, -0.2]];
+const CEREMONY_CHEERS: readonly (readonly [PoseName, PoseName])[] = [['cheer0', 'cheer1'], ['fists', 'cheer1'], ['clap0', 'clap1'], ['cheer1', 'cheer0']];
+// 40 a 120 confetes, e 10 a 20 % parados com movimento reduzido; a queda vai a 0,4–0,8 px por imagem a 60 fps.
+const CONFETTI_COUNT = 90;
+const CONFETTI_STILL = 14;
+const GOLD: readonly [string, string] = ['#f2c230', '#c99a14'];
 
 interface Point {
   x: number;
@@ -292,6 +307,8 @@ export class MatchView {
   private swishHoop = HOOP_LEFT;
   private shakeUntil = 0;
   private fadeInUntil = 0;
+  /** A cerimónia do troféu, depois do apito final: para onde vai cada um, quem é o capitão e as cores dos confetes. */
+  private ceremony: { trophy: 'cup' | 'bigCup'; banner: string; team: TeamIndex; start: number; captain: Body; cheered: boolean; walks: Map<Body, { from: Point; to: Point; seconds: number }>; colors: (readonly [string, string])[] } | null = null;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
@@ -432,6 +449,7 @@ export class MatchView {
 
   private cameraTarget(): [number, number] {
     const { ball } = this.s;
+    if (this.ceremony) return [CEREMONY_CENTRE.x, this.camera.tuning.lookY];
     // Na paragem olha-se para o banco da casa, inclinado para baixo.
     if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, -1.5];
     // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
@@ -1370,12 +1388,15 @@ export class MatchView {
     camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
-    const wantZoom = this.holding() ? 2 : 1;
+    // Na cerimónia, quando o troféu sobe, a imagem corta logo para o dobro, sem passar por escalas fracionárias.
+    const lifted = this.ceremony !== null && this.realTime - this.ceremony.start >= CEREMONY_LIFT_SECONDS;
+    const wantZoom = this.holding() || lifted ? 2 : 1;
     this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * 4));
-    if (Math.abs(this.zoom - wantZoom) < 0.01) this.zoom = wantZoom;
+    if (Math.abs(this.zoom - wantZoom) < 0.01 || this.ceremony) this.zoom = wantZoom;
     if (this.zoom > 1.001) {
       g.imageSmoothingEnabled = false;
-      const [px, py] = camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
+      // Na cerimónia, o centro é o grupo com o troféu por cima.
+      const [px, py] = this.ceremony ? this.ceremonyFocus() : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
       const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
@@ -1438,6 +1459,13 @@ export class MatchView {
     // Quem já entrou no túnel deixa de se ver; nos cenários de teste, só quem `visible` deixar.
     const onCourt = [...s.court[0], ...s.court[1]].filter(b => b.y > STAND.y - 0.4 && (!this.visible || this.visible(b)));
     const placed = onCourt.map(b => {
+      const held = this.ceremonyPlace(b);
+      if (held) {
+        const look = held.trophy ? { ...this.view(b).look, trophy: held.trophy } : this.view(b).look;
+        const [sx, sy] = camera.project(held.x, held.y);
+        this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose: held.pose, height: spriteHeight(look), world: { x: held.x, y: held.y } });
+        return { x: sx, y: sy, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: false, legs: undefined };
+      }
       const prev = this.view(b).prev;
       let x = prev.x + (b.x - prev.x) * alpha;
       let y = prev.y + (b.y - prev.y) * alpha;
@@ -1575,6 +1603,7 @@ export class MatchView {
     this.drawFloaters();
     this.drawBubbles();
     this.drawForecast();
+    this.drawCeremony();
     const fade = s.phase === 'break' && s.period === 2 ? Math.max(0, 1 - (2 * s.timer) / (B.periodBreakSeconds * 20)) : Math.max(0, (this.fadeInUntil - s.tick - alpha) / FADE_IN_TICKS);
     if (fade > 0) {
       g.fillStyle = `rgba(27,34,48,${fade})`;
@@ -1590,6 +1619,120 @@ export class MatchView {
       g.canvas.style.transform = '';
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /**
+   * A cerimónia do troféu, depois do apito final: `team` junta-se no meio campo e o seu melhor marcador, o capitão,
+   * levanta o troféu; os outros vão a passo para o banco. Dura CEREMONY_SECONDS reais (`ceremonyDone`).
+   */
+  startCeremony(trophy: 'cup' | 'bigCup', banner: string, team: TeamIndex = 0): void {
+    const { s } = this;
+    const winners = s.court[team];
+    const captain = winners.reduce((best, b) => (b.line.points > best.line.points ? b : best));
+    const walks = new Map<Body, { from: Point; to: Point; seconds: number }>();
+    const walk = (b: Body, to: Point, speed: number, most: number): void => {
+      const from = { x: b.x, y: b.y };
+      walks.set(b, { from, to, seconds: Math.max(0.3, Math.min(most, Math.hypot(to.x - from.x, to.y - from.y) / speed)) });
+    };
+    walk(captain, CEREMONY_CENTRE, 5, CEREMONY_LIFT_SECONDS - 0.2);
+    winners.filter(b => b !== captain).forEach((b, i) => walk(b, { x: CEREMONY_CENTRE.x + CEREMONY_RING[i]![0], y: CEREMONY_CENTRE.y + CEREMONY_RING[i]![1] }, 5, CEREMONY_LIFT_SECONDS - 0.2));
+    const other: TeamIndex = team === 0 ? 1 : 0;
+    s.court[other].forEach((b, i) => {
+      const [x, y] = huddleSpot(other, i);
+      walk(b, { x, y }, 1.6, CEREMONY_SECONDS);
+    });
+    const kit = kitColors(this.view(captain).look);
+    this.ceremony = { trophy, banner, team, start: this.realTime, captain, cheered: false, walks, colors: [[kit.jersey, kit.shade], [kit.trim, shadeOf(kit.trim)], GOLD] };
+    // A bancada toda de pé, até ao fim.
+    this.excitedUntil = s.tick + 100000;
+    this.excitement = 1;
+    this.fansReact(true, 100000, 1);
+  }
+
+  /** A cerimónia já acabou, ou nunca começou: é a hora do relatório. */
+  ceremonyDone(): boolean {
+    return this.ceremony === null || this.realTime - this.ceremony.start >= CEREMONY_SECONDS;
+  }
+
+  /** O ponto do ecrã no centro da aproximação: o grupo, com o troféu por cima. */
+  private ceremonyFocus(): [number, number] {
+    const [x, y] = this.camera.project(CEREMONY_CENTRE.x, CEREMONY_CENTRE.y);
+    return [x, y - 18];
+  }
+
+  /** Onde está e o que faz cada um na cerimónia; null fora dela. Com movimento reduzido, já no sítio e sem saltar. */
+  private ceremonyPlace(b: Body): { x: number; y: number; pose: PoseName; flip: boolean; trophy?: 'cup' | 'bigCup' } | null {
+    const c = this.ceremony;
+    const walk = c?.walks.get(b);
+    if (!c || !walk) return null;
+    const t = this.realTime - c.start;
+    const still = this.reducedMotion;
+    const { from, to } = walk;
+    const k = still ? 1 : Math.min(1, t / walk.seconds);
+    const x = from.x + (to.x - from.x) * k;
+    const y = from.y + (to.y - from.y) * k;
+    const winner = b.team === c.team;
+    // A correr, ou a passo para quem perdeu: 90 ms por pose a correr e 150 ms a andar (animacao.md §10).
+    if (k < 1) return { x, y, pose: RUN_FRAMES[Math.floor(t / (winner ? 0.09 : 0.15)) % 4]!, flip: to.x < from.x };
+    const facing = x > CEREMONY_CENTRE.x;
+    if (!winner) return { x, y, pose: this.s.score[b.team] < this.s.score[c.team] ? 'slump' : 'idle', flip: facing };
+    const lifting = t - CEREMONY_LIFT_SECONDS;
+    if (b === c.captain) {
+      if (lifting < 0) return { x, y, pose: 'idle', flip: false };
+      return { x, y, pose: still || Math.floor(lifting / CEREMONY_PUMP_SECONDS) % 2 ? 'lift1' : 'lift0', flip: false, trophy: c.trophy };
+    }
+    const i = this.s.court[c.team].filter(o => o !== c.captain).indexOf(b);
+    if (lifting < 0) return { x, y, pose: still || Math.floor(t / 0.2 + i) % 2 ? 'clap0' : 'clap1', flip: facing };
+    // Cada um festeja à sua maneira e no seu compasso: ninguém salta ao mesmo tempo.
+    const [first, second] = CEREMONY_CHEERS[i % CEREMONY_CHEERS.length]!;
+    return { x, y, pose: still ? 'cheer0' : Math.floor((lifting + i * 0.13) / 0.22) % 2 ? second : first, flip: facing };
+  }
+
+  /** Os confetes e a faixa da cerimónia, por cima de tudo, em píxeis de arte (sem a aproximação). */
+  private drawCeremony(): void {
+    const c = this.ceremony;
+    if (!c) return;
+    const { g, camera } = this;
+    const t = this.realTime - c.start - CEREMONY_LIFT_SECONDS;
+    if (t < 0) return;
+    if (!c.cheered) {
+      c.cheered = true;
+      this.callbacks.sound('bigCheer');
+    }
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const { width: W, height: H } = camera;
+    const still = this.reducedMotion;
+    // Os confetes têm o píxel da arte, que na aproximação é o dobro do ecrã.
+    const z = Math.round(this.zoom);
+    // Cada confete tem sítio, atraso, velocidade e cor tirados de um hash do seu número: a mesma cena sai sempre igual.
+    for (let i = 0; i < (still ? CONFETTI_STILL : CONFETTI_COUNT); i++) {
+      const h = Math.imul(i + 1, 2654435761) >>> 0;
+      const age = t - (((h >>> 8) % 64) / 64) * 1.2;
+      if (age < 0 && !still) continue;
+      const x = (h % W) + (still ? 0 : Math.round(Math.sin(age * 3 + i) * 2));
+      const y = still ? (h >>> 4) % Math.floor(H * 0.7) : Math.floor((age * (24 + ((h >>> 14) % 24))) % (H + 8)) - 4;
+      const [light, dark] = c.colors[i % c.colors.length]!;
+      // A volta faz-se a trocar entre 1×2, 1×1, 2×1 e 1×1, com a face clara e a escura.
+      const spin = still ? i % 4 : (Math.floor(age * 8) + i) % 4;
+      g.fillStyle = spin % 2 ? dark : light;
+      g.fillRect(x - (x % z), y - (y % z), (spin === 2 ? 2 : 1) * z, (spin === 0 ? 2 : 1) * z);
+    }
+    // A faixa entra de baixo em 4 degraus; com movimento reduzido, já está no sítio.
+    const steps = still ? 4 : Math.min(4, Math.max(0, Math.floor((t - 0.1) / 0.05)));
+    if (steps > 0) {
+      const w = textWidth(c.banner) + 16;
+      const x = (W - w) >> 1;
+      const y = H - 30 + (4 - steps) * 8;
+      // A letra começa 9 px abaixo do topo: cabem os acentos (3 linhas a 2×) e, por baixo, a cedilha.
+      g.fillStyle = INK;
+      g.fillRect(x, y, w, 24);
+      g.fillStyle = GOLD[1];
+      g.fillRect(x + 2, y + 2, w - 4, 1);
+      g.fillRect(x + 2, y + 21, w - 4, 1);
+      text(g, c.banner, x + 8, y + 9, GOLD[0]);
+    }
+    g.restore();
   }
 
   /** Uma marca vermelha por cima de cada adversário a marcar de perto. */

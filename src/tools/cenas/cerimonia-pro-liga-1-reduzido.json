@@ -1,0 +1,12 @@
+{
+  "kind": "scene",
+  "name": "cerimonia-pro-liga-1-reduzido",
+  "force": { "type": "end" },
+  "ceremony": "league",
+  "division": 3,
+  "before": 0.5,
+  "after": 8,
+  "crop": null,
+  "zoom": 1,
+  "reducedMotion": true
+}

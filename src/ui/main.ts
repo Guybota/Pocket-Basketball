@@ -13,7 +13,8 @@ import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } 
 import { GameAudio, MUSIC_THEMES } from './audio.ts';
 import { applySettings, openSettings, reducedMotion, updateSettings, watchSystemMotion } from './settings.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
-import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type SeasonRecord } from './club.ts';
+import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { titleTrophy, titleWon, type Title } from './trophies.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, showTopScene, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
 import { GUEST_RIVAL } from './airport.ts';
@@ -117,6 +118,13 @@ const idle = createIdleResume();
 // A apresentação antes do jogo, a cena do fim, e a repetição do lance decisivo.
 let introTimer = 0;
 let endAt = 0;
+// O fecho do jogo faz-se logo no apito final, para se saber se deu um título; e então há cerimónia antes do relatório.
+let endResult: MatchResult | null = null;
+let endTitle: Title | null = null;
+let ceremonyOn = false;
+/** Para a verificação: o título que o próximo jogo dá, ganhe-se ou não. */
+let forcedTitle: Title | null = null;
+const CEREMONY_DELAY_MS = 1500;
 let resultHtml = '';
 let replay: MatchView | undefined;
 let replayUntil = 0;
@@ -339,6 +347,9 @@ function makeView(kind: GameKind, rivalId: number): void {
   banner.hidden = true;
   hud.reset();
   endAt = 0;
+  endResult = null;
+  endTitle = null;
+  ceremonyOn = false;
   replay = undefined;
 }
 
@@ -890,7 +901,7 @@ function showResult(): void {
   finished = true;
   banner.hidden = true;
   drop.hidden = true;
-  const result = gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL);
+  const result = endResult ?? (gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL));
   const wasHurt = new Set(club!.team.roster.filter(p => p.injuryWeeks).map(p => p.name));
   club = result.club;
   saveClub();
@@ -903,6 +914,26 @@ function showResult(): void {
   resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice', rivalOf === GUEST_RIVAL)}`);
   showResultPanel();
 }
+
+/** O capitão levanta o troféu no meio campo, com o hino; um toque, um clique ou uma tecla saltam para o relatório. */
+function startCeremony(current: MatchView, title: Title): void {
+  const trophy = titleTrophy(title);
+  ceremonyOn = true;
+  banner.hidden = true;
+  current.startCeremony(trophy.kind, trophy.banner);
+  audio.music('anthem');
+  speak(`Campeões: ${trophy.name}! Toca no ecrã para continuar.`, 3);
+}
+
+// Esse toque não chega a mais nada: senão carregava no botão que o relatório põe no mesmo sítio.
+const skipCeremony = (event: Event): void => {
+  if (!ceremonyOn || finished) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  showResult();
+};
+addEventListener('click', skipCeremony, true);
+addEventListener('keydown', skipCeremony, true);
 
 function frame(now: number): void {
   // Pedida antes de tudo: um erro a meio de uma imagem não pode parar o jogo de vez.
@@ -936,7 +967,14 @@ function frame(now: number): void {
         endAt = now;
         announce(current.s.score[0] > current.s.score[1] ? 'Vitória!' : 'Derrota...');
         bannerUntil = Infinity;
-      } else if (now - endAt > 2500) showResult();
+        if (gameKind !== 'practice') {
+          endResult = finishMatch(club!, current.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL);
+          endTitle = forcedTitle ?? (rivalOf === GUEST_RIVAL ? null : titleWon(club!, endResult));
+          forcedTitle = null;
+        }
+      } else if (endTitle && !ceremonyOn) {
+        if (now - endAt > CEREMONY_DELAY_MS) startCeremony(current, endTitle);
+      } else if (ceremonyOn ? current.ceremonyDone() : now - endAt > 2500) showResult();
     } else if (current.s.phase === 'break' && breakAnnounced !== current.s.period) {
       breakAnnounced = current.s.period;
       announce(current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`);
@@ -1129,7 +1167,12 @@ Object.assign(window, {
       const { changes, shortestTicks } = view!.backChangeStats();
       return { perPlayerMinute: changes / 10 / (s.tick / 20 / 60), shortestSeconds: shortestTicks / 20 };
     },
+    /** O título que o próximo jogo dá, para ver a cerimónia sem jogar uma época inteira. */
+    forceTitle: (title: Title | null) => {
+      forcedTitle = title;
+    },
     state: () => ({
+      ceremony: ceremonyOn && !finished,
       phase: view?.s.phase ?? 'none',
       puffs: view?.puffCount() ?? 0,
       commands: view?.s.commands.map(c => `${c.kind}@${c.tick}`) ?? [],

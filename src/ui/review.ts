@@ -9,6 +9,8 @@ import { ALL_POSES, drawSprite, lookOf, type KitName, type Look, type PoseName }
 import { weatherFor } from './art/town.ts';
 import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
 import { MatchView } from './match-view.ts';
+import { titleTrophy } from './trophies.ts';
+import type { CupName } from '../sim/cup.ts';
 
 /** Um aspeto: um jogador do plantel do clube de semente `club` (por omissão 3), com o que se quiser mudar por cima. */
 export interface LookSpec extends Partial<Omit<Look, 'kit' | 'custom'>> {
@@ -64,6 +66,11 @@ export interface SceneSpec {
   zoom?: number;
   /** Com movimento reduzido (a ferramenta emula-o no browser). */
   reducedMotion?: boolean;
+  /**
+   * A cerimónia do troféu depois do apito final, como depois de uma final: a taça, ou "league" para o campeonato da
+   * divisão. Usa-se com {"type": "end"} em `force`, `crop` null e `after` de uns 8 s.
+   */
+  ceremony?: CupName | 'league';
 }
 
 const CELL_W = 40;
@@ -298,9 +305,16 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
     const timeline: Frame[] = [];
     let previous: Uint8ClampedArray | null = null;
     let eventFrame = -1;
+    let ceremonyStarted = false;
     for (let n = 0; n < total; n++) {
       const time = (n / fps) * 20 * speed;
-      while (s.tick < start + Math.floor(time)) view.stepSim();
+      // Depois do apito final a simulação já não anda.
+      while (s.tick < start + Math.floor(time) && s.phase !== 'end') view.stepSim();
+      if (spec.ceremony && s.phase === 'end' && !ceremonyStarted) {
+        ceremonyStarted = true;
+        const trophy = titleTrophy(spec.ceremony === 'league' ? { kind: 'league', division } : { kind: 'cup', cup: spec.ceremony });
+        view.startCeremony(trophy.kind, trophy.banner, s.score[0] > s.score[1] ? 0 : 1);
+      }
       view.render(time - Math.floor(time), speed / fps, 1 / fps);
       if (eventFrame < 0 && s.tick >= found.event.tick) eventFrame = n;
       o.clearRect(0, 0, out.width, out.height);
