@@ -1,0 +1,8 @@
+{
+  "kind": "sheet",
+  "name": "andar-poses",
+  "frames": [["walk0", 3], ["walk1", 3], ["walk0", 3], ["walk2", 3], ["slump+walk0", 3], ["slump+walk1", 3], ["slump+walk0", 3], ["slump+walk2", 3]],
+  "looks": [{ "player": 0 }, { "player": 4, "kit": "cream" }, { "player": 9, "skin": 3 }],
+  "variants": ["front", "back", "flip"],
+  "zoom": 4
+}

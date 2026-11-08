@@ -43,7 +43,8 @@ function clinched(ids: readonly number[], rounds: readonly (readonly Fixture[])[
 /**
  * O título que o jogo acabado de jogar nos deu, ou null. `before` é o clube antes de `finishMatch`, e `result` o que ela
  * devolveu. A final de uma taça, a final dos playoffs onde eles decidem o campeão, ou, nas outras divisões, a jornada em
- * que o 1.º lugar fica garantido (no máximo a última).
+ * que o 1.º lugar fica garantido (no máximo a última). Sempre num jogo ganho: se o título fica garantido numa derrota, a
+ * cerimónia é na primeira vitória seguinte, e sem mais vitórias fica só a festa do fim de época.
  */
 export function titleWon(before: ClubState, result: MatchResult): Title | null {
   const game = currentGame(before);
@@ -56,10 +57,15 @@ export function titleWon(before: ClubState, result: MatchResult): Title | null {
   }
   if (!result.round) return null;
   if (game.cup) return game.round === CUP_ROUNDS[game.cup].length - 1 && ourWin(result.round) ? { kind: 'cup', cup: game.cup } : null;
-  if (format?.decidesTitle) return null;
+  // A cerimónia é só num jogo ganho: a taça não se levanta depois de uma derrota.
+  if (format?.decidesTitle || !ourWin(result.round)) return null;
   const ids = leagueIds(before);
   const after = before.rounds.map((r, i) => (i === game.round ? result.round! : r));
-  return !clinched(ids, before.rounds) && clinched(ids, after) ? { kind: 'league', division: before.division } : null;
+  if (!clinched(ids, after)) return null;
+  // Garantido antes, numa jornada em que perdemos (o rival também perdeu): festeja-se na primeira vitória a seguir.
+  const upTo = (k: number): Fixture[][] => before.rounds.map((r, i) => (i <= k ? r : r.map(f => ({ ...f, score: null }))));
+  const since = before.rounds.slice(0, game.round).findIndex((_, k) => clinched(ids, upTo(k)));
+  return since < 0 || before.rounds.slice(since, game.round).every(r => ourWin(r) === false) ? { kind: 'league', division: before.division } : null;
 }
 
 // Numa época de 18 jornadas, só uma época excecional chega aqui.

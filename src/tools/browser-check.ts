@@ -590,27 +590,42 @@ try {
   }
   check('Sem erros nos playoffs', playoffProblems.length === 0, playoffProblems.join(' | '));
 
-  // A cerimónia do troféu depois de uma final: aparece com o apito final e salta-se com um toque.
+  // A cerimónia do troféu depois de uma final: só num jogo ganho, aparece com o apito final e salta-se com um toque. O
+  // resultado no browser depende das paragens que a verificação fecha, por isso tenta-se até 3 clubes fortes: numa
+  // derrota confirma-se que não há cerimónia, e no primeiro jogo ganho vê-se a cerimónia.
   const ceremonyPage = await phone.newPage();
   const ceremonyProblems: string[] = [];
   ceremonyPage.on('pageerror', error => ceremonyProblems.push(error.message));
-  await ceremonyPage.goto(`${url}?semente=2&divisao=1`);
-  await ceremonyPage.waitForFunction(() => window.__pocket !== undefined);
-  await ceremonyPage.evaluate(() => window.__pocket.forceTitle({ kind: 'cup', cup: 'federation' }));
-  await kick(ceremonyPage);
-  await ceremonyPage.evaluate(() => window.__pocket.setSpeedRaw(40));
-  await waitThrough(ceremonyPage, atHalf(ceremonyPage));
-  await ceremonyPage.click('#secondHalfBtn');
-  await waitThrough(ceremonyPage, () => ceremonyPage.evaluate(() => window.__pocket.state().ceremony || window.__pocket.state().finished));
-  check('A final ganha acaba com a cerimónia do troféu', await ceremonyPage.evaluate(() => window.__pocket.state().ceremony));
-  // Depois de os vencedores se juntarem: o capitão já levanta o troféu e há confetes.
-  await ceremonyPage.waitForTimeout(2600);
-  await shot(ceremonyPage, `${OUT}/cerimonia-trofeu.png`);
-  check('A cerimónia continua sem relatório até ao toque', !(await ceremonyPage.evaluate(() => window.__pocket.state().finished)));
-  await ceremonyPage.click('#court');
-  await ceremonyPage.waitForTimeout(300);
-  check('Um toque salta a cerimónia para o relatório', await ceremonyPage.evaluate(() => window.__pocket.state().finished && !window.__pocket.state().ceremony));
-  await shot(ceremonyPage, `${OUT}/cerimonia-depois.png`);
+  let ceremonySeen = false;
+  for (const [seed, division] of [[12, 1], [11, 1], [10, 0]] as const) {
+    await ceremonyPage.goto(`${url}?semente=${seed}&divisao=${division}`);
+    await ceremonyPage.waitForFunction(() => window.__pocket !== undefined);
+    await ceremonyPage.evaluate(() => window.__pocket.forceTitle({ kind: 'cup', cup: 'federation' }));
+    await kick(ceremonyPage);
+    await ceremonyPage.evaluate(() => window.__pocket.setSpeedRaw(40));
+    await waitThrough(ceremonyPage, atHalf(ceremonyPage));
+    await ceremonyPage.click('#secondHalfBtn');
+    await waitThrough(ceremonyPage, () => ceremonyPage.evaluate(() => window.__pocket.state().phase === 'end'));
+    // O apito final, e o tempo de a cerimónia começar (1,5 s) ou de o relatório aparecer (2,5 s).
+    await ceremonyPage.waitForTimeout(1800);
+    const { score, ceremony } = await ceremonyPage.evaluate(() => window.__pocket.state());
+    if (score[0] <= score[1]) {
+      check(`Numa derrota (${score.join('-')}) não há cerimónia, mesmo com o título forçado`, !ceremony);
+      continue;
+    }
+    check('A final ganha acaba com a cerimónia do troféu', ceremony, score.join('-'));
+    // Depois de os vencedores se juntarem: o capitão já levanta o troféu e há confetes.
+    await ceremonyPage.waitForTimeout(3500);
+    await shot(ceremonyPage, `${OUT}/cerimonia-trofeu.png`);
+    check('A cerimónia continua sem relatório até ao toque', !(await ceremonyPage.evaluate(() => window.__pocket.state().finished)));
+    await ceremonyPage.click('#court');
+    await ceremonyPage.waitForTimeout(300);
+    check('Um toque salta a cerimónia para o relatório', await ceremonyPage.evaluate(() => window.__pocket.state().finished && !window.__pocket.state().ceremony));
+    await shot(ceremonyPage, `${OUT}/cerimonia-depois.png`);
+    ceremonySeen = true;
+    break;
+  }
+  check('Pelo menos um dos clubes ganha e mostra a cerimónia', ceremonySeen);
   check('Sem erros na cerimónia', ceremonyProblems.length === 0, ceremonyProblems.join(' | '));
 
   // As definições: abrem no título e na Torre, guardam-se à parte do clube e ficam depois de recarregar.

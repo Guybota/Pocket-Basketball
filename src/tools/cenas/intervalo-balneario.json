@@ -1,0 +1,10 @@
+{
+  "kind": "scene",
+  "name": "intervalo-balneario",
+  "force": { "type": "periodEnd", "period": 2 },
+  "division": 2,
+  "before": 0.5,
+  "after": 9,
+  "crop": null,
+  "zoom": 1
+}

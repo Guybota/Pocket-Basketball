@@ -222,7 +222,7 @@ type Found = { seed: number; event: MatchEvent; receiver?: string };
  * (em píxeis do campo inteiro, não do recorte; `wx` e `wy` em metros, no campo), a parte do ator tapada pelos rótulos (%) e o tremor do ecrã. */
 type Frame = {
   frame: number; tick: number; pose: PoseName | null; changed: number;
-  bodies: { name: string; pose: PoseName; x: number; y: number; lift: number; wx: number; wy: number; back: boolean; legs: PoseName | null }[];
+  bodies: { name: string; team: number; slot: number; pose: PoseName; x: number; y: number; lift: number; wx: number; wy: number; back: boolean; legs: PoseName | null }[];
   ball: [number, number] | null; labels: number[][]; cover: number; shake: string;
   /** Onde fica o centro do campo no ecrã: tira-se às posições para as ter relativas à câmara. */
   camera: [number, number];
@@ -337,7 +337,7 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
       copy.getContext('2d')!.drawImage(out, 0, 0);
       canvases.push(copy);
       const round = (v: number): number => Math.round(v * 10) / 10;
-      const bodies = [...view.drawn.bodies].map(([b, d]) => ({ name: b.player.name, pose: d.pose, x: round(d.x), y: round(d.y), lift: round(d.lift), wx: Math.round(d.world.x * 1000) / 1000, wy: Math.round(d.world.y * 1000) / 1000, back: d.back === true, legs: d.legs ?? null }));
+      const bodies = [...view.drawn.bodies].map(([b, d]) => ({ name: b.player.name, team: b.team, slot: b.slot, pose: d.pose, x: round(d.x), y: round(d.y), lift: round(d.lift), wx: Math.round(d.world.x * 1000) / 1000, wy: Math.round(d.world.y * 1000) / 1000, back: d.back === true, legs: d.legs ?? null }));
       // Quanto da caixa do ator (14 px de largura, da altura do boneco, acima do salto) os rótulos tapam.
       let cover = 0;
       if (drawn && actor) {

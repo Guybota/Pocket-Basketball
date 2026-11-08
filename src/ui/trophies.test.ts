@@ -71,6 +71,21 @@ describe('o jogo que dá um título', () => {
     expect(seasonTitles(0, r => r < 17)).toHaveLength(1);
   });
 
+  it('o título garantido numa derrota só se festeja na vitória seguinte, ou nunca se não houver mais vitórias', () => {
+    // A ganhar as 12 primeiras e a perder as outras, acaba-se em 1.º com 12 vitórias contra 9: o título fica garantido
+    // numa derrota, e a cerimónia não aparece em nenhuma jornada.
+    expect(seasonTitles(0, r => r < 12)).toEqual([]);
+    // Com uma vitória na última jornada, é aí que se levanta a taça, e só aí.
+    expect(seasonTitles(0, r => r < 12 || r === 17)).toEqual([17]);
+    // Em todos os casos, a cerimónia é sempre num jogo ganho, e uma só vez.
+    for (let lost = 0; lost < 18; lost++) {
+      const win = (r: number): boolean => r !== lost && r !== lost + 1;
+      const titles = seasonTitles(0, win);
+      expect(titles.length, `derrotas em ${lost} e ${lost + 1}`).toBeLessThanOrEqual(1);
+      for (const r of titles) expect(win(r)).toBe(true);
+    }
+  });
+
   it('na Pro Liga 1 a fase regular não dá o título, nem um amigável dá nada', () => {
     expect(seasonTitles(DIVISIONS.length - 1, () => true)).toEqual([]);
     const { club } = cupWeek('federation', 5);

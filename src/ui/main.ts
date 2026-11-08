@@ -122,7 +122,7 @@ let endAt = 0;
 let endResult: MatchResult | null = null;
 let endTitle: Title | null = null;
 let ceremonyOn = false;
-/** Para a verificação: o título que o próximo jogo dá, ganhe-se ou não. */
+/** Para a verificação: o título que o próximo jogo dá, se for ganho (a taça não se levanta numa derrota). */
 let forcedTitle: Title | null = null;
 const CEREMONY_DELAY_MS = 1500;
 let resultHtml = '';
@@ -958,7 +958,8 @@ function frame(now: number): void {
         break;
       }
     }
-    if (!halfShown && firstHalfOver(current.s)) {
+    // O intervalo abre quando o último entra no túnel, e não quando a simulação os dá por lá.
+    if (!halfShown && firstHalfOver(current.s) && current.lockerDone()) {
       if (gameKind === 'practice') showResult();
       else showHalfTime();
     } else if (current.s.phase === 'end') {
@@ -969,7 +970,7 @@ function frame(now: number): void {
         bannerUntil = Infinity;
         if (gameKind !== 'practice') {
           endResult = finishMatch(club!, current.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL);
-          endTitle = forcedTitle ?? (rivalOf === GUEST_RIVAL ? null : titleWon(club!, endResult));
+          endTitle = forcedTitle && current.s.score[0] > current.s.score[1] ? forcedTitle : rivalOf === GUEST_RIVAL ? null : titleWon(club!, endResult);
           forcedTitle = null;
         }
       } else if (endTitle && !ceremonyOn) {

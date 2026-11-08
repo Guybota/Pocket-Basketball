@@ -134,8 +134,14 @@ const POSES = {
   drink: (L: number): PoseShape => ({ a: [-2, 5], b: [3, -4], f: [-2, L], g: [2, L], prop: 'bottle' }),
   board: (L: number): PoseShape => ({ a: [-3, 2], b: [5, -3], f: [-2, L], g: [2, L], prop: 'board' }),
   // O capitão a levantar o troféu (`Look.trophy`): as duas mãos a segurá-lo por cima da cabeça, e depois esticadas, em bicos de pés.
-  lift0: (L: number): PoseShape => ({ a: [-3, -11], b: [3, -11], f: [-2, L], g: [2, L], prop: 'trophy' }),
-  lift1: (L: number): PoseShape => ({ a: [-3, -12], b: [3, -12], f: [-2, L], g: [2, L], jump: 1, prop: 'trophy' }),
+  // A base do troféu fica 1 px acima do cabelo em `lift0`, para não se ler como um chapéu.
+  lift0: (L: number): PoseShape => ({ a: [-3, -12], b: [3, -12], f: [-2, L], g: [2, L], prop: 'trophy' }),
+  lift1: (L: number): PoseShape => ({ a: [-3, -13], b: [3, -13], f: [-2, L], g: [2, L], jump: 1, prop: 'trophy' }),
+  // A andar, sem saltar: os dois pés no chão, e depois um de cada vez levantado na passagem, com os braços a balançar
+  // pouco. Usam-se sozinhas, ou como pernas de outra pose (os vencidos de cabeça baixa, `slump+walk1`).
+  walk0: (L: number): PoseShape => ({ a: [-1, 5], b: [1, 5], f: [-2, L], g: [2, L] }),
+  walk1: (L: number): PoseShape => ({ a: [-2, 4], b: [1, 5], f: [-1, L - 1], g: [1, L] }),
+  walk2: (L: number): PoseShape => ({ a: [-1, 5], b: [2, 4], f: [-1, L], g: [1, L - 1] }),
 };
 
 // Os troféus nas mãos, de cima para baixo, centrados entre as mãos: l, m e d são o claro, o meio e o escuro do metal.
