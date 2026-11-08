@@ -2,6 +2,7 @@ import { heightCmOf } from '../../sim/teamgen.ts';
 import type { Player } from '../../sim/types.ts';
 import { pixelsForHeight } from './body.ts';
 import { kitKey, shadeOf, usesSecondOnBody, type ClubKit } from './kit.ts';
+import { oklabOf } from './color.ts';
 import { INK } from './palette.ts';
 import { remember } from './cache.ts';
 
@@ -227,7 +228,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   // Camisola marcada com estes dois nomes: o desenho dela só se resolve no fim, quando já se sabe cada píxel.
   // Uma peça da cor da tinta fundia-se com o contorno: fica num azul-noite. As riscas do árbitro são tinta de propósito.
   const fill = (c: string): string => (c === INK ? '#2c3345' : c);
-  const colors = look.custom ? { ...kitColors(look), jersey: JERSEY_MARK, shade: SHADE_MARK } : KITS[look.kit];
+  const plain = look.custom ? kitColors(look) : KITS[look.kit];
+  const colors = look.custom ? { ...plain, jersey: JERSEY_MARK, shade: SHADE_MARK } : plain;
   const kit = { ...colors, shade: fill(colors.shade), trim: fill(colors.trim), shorts: fill(colors.shorts) };
   const [skin, skinShade] = SKINS[look.skin]!;
   const hair = HAIRS[look.hair]!;
@@ -244,7 +246,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     const y1 = hipY + dy - 2;
     limb(x0, hipY, x1, y1, body.leg, k => (trousers ? trouserColor : k < 0.5 ? kit.shorts : shaded ? skinShade : skin));
     rect(x1 - 1, y1 + 2, body.leg + 2, 2, look.street ? '#5a4632' : '#f4f4f4');
-    if (!look.street) rect(x1 - 1, y1 + 3, 2, 1, kit.jersey);
+    // Na cor lisa da camisola: com riscas, o padrão partia este detalhe em píxeis soltos.
+    if (!look.street) rect(x1 - 1, y1 + 3, 2, 1, fill(plain.jersey));
   };
   leg(shape.f, hipLeft + 1, true);
   leg(shape.g, hipLeft + body.hips - body.leg - 1, false);
@@ -307,7 +310,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
       put(headX + 7, headY + 2, hair);
     }
   }
-  if (look.style === 4) rect(headX, headY + 1, 8, 1, kit.trim);
+  // A fita na cor do debrum; se ficar com o valor do cabelo, desaparecia, e passa a branca.
+  if (look.style === 4) rect(headX, headY + 1, 8, 1, Math.abs(oklabOf(kit.trim)[0] - oklabOf(hair)[0]) < 0.06 ? '#f4f4f4' : kit.trim);
   if (back) {
     if (!bald) rect(headX, headY, 8, 5, hair);
   } else {
