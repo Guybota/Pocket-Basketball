@@ -27,7 +27,7 @@ import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, bodyStars, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
-import { drawShelf, drawTrophy, trophyList } from './trophies.ts';
+import { drawShelf, titleTrophy, trophyList } from './trophies.ts';
 import { GUEST_RIVAL, guestKit, kitClash, parseTeamFile, teamFile, type GuestTeam } from './airport.ts';
 import { downloadFile, pickFile } from './save.ts';
 import { assistantReport, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
@@ -1394,21 +1394,23 @@ function drawTrainingFx(canvas: HTMLCanvasElement, now: number): void {
   });
 }
 
-/** No fim de uma época com título: os cinco a festejar, o do meio com o troféu no ar, e confetti por cima. */
+/** No fim de uma época com título: os cinco a festejar, o do meio com o troféu no ar (o do título maior), e confetti por cima. */
 function drawConfetti(canvas: HTMLCanvasElement, now: number): void {
   const g = canvas.getContext('2d')!;
   const kit = activeKit(club);
   g.clearRect(0, 0, canvas.width, canvas.height);
   const record = club.seasonReport;
   if (record) {
-    const big = (record.outcome === 'champion' && record.division === DIVISIONS.length - 1) || record.cups.includes('world');
+    // O Mundial, depois o campeonato, depois as outras taças: o mesmo troféu da cerimónia e da vitrina.
+    const cup = record.cups.includes('world') ? 'world' : record.cups[0];
+    const title = record.outcome === 'champion' && cup !== 'world' ? { kind: 'league' as const, division: record.division } : { kind: 'cup' as const, cup: cup ?? 'federation' };
+    const trophy = titleTrophy(title).kind;
     const bob = (n: number): number => (reducedMotion() ? 0 : Math.floor(now / 220 + n) % 2);
     club.team.roster.slice(0, 5).forEach((p, n) => {
       const lift = n === 2 ? 0 : bob(n);
-      drawSprite(g, lift ? 'cheer1' : 'cheer0', { ...lookOf(p, 'blue'), custom: kit }, 18 + n * 20, canvas.height - 4 - lift * 2, n > 2, false, false);
+      const pose = n === 2 ? (bob(n) ? 'lift1' : 'lift0') : lift ? 'cheer1' : 'cheer0';
+      drawSprite(g, pose, { ...lookOf(p, 'blue'), custom: kit, trophy }, 18 + n * 20, canvas.height - 4 - lift * 2, n > 2, false, false);
     });
-    // A base do troféu fica nas mãos levantadas do jogador do meio.
-    drawTrophy(g, 58, canvas.height - 30 - bob(2) * 2, big ? 'bigCup' : 'cup', true);
   }
   if (reducedMotion()) return;
   const colors = [kit.jersey, kit.trim, '#f2c230', '#f4efe0'];

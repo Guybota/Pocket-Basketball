@@ -1,12 +1,65 @@
+import { CUP_NAMES, CUP_ROUNDS, type CupName } from '../sim/cup.ts';
+import { standings, type Fixture } from '../sim/league.ts';
+import { PLAYOFF_FORMATS } from '../sim/playoff.ts';
 import { DIVISIONS } from '../sim/teamgen.ts';
 import { COMBOS } from '../sim/training.ts';
-import { careerOf, type CareerRecord, type ClubState } from './club.ts';
+import { PLAYER_CLUB, careerOf, currentGame, leagueIds, type CareerRecord, type ClubState, type MatchResult } from './club.ts';
 
 export interface Trophy {
   name: string;
   kind: 'cup' | 'bigCup' | 'plate' | 'medal';
   detail: string;
   won: boolean;
+}
+
+/** Um título que um jogo pode decidir: o campeonato de uma divisão, ou uma das taças. */
+export type Title = { kind: 'league'; division: number } | { kind: 'cup'; cup: CupName };
+
+/** O troféu de cada título, o mesmo da vitrina, e a faixa da cerimónia (a letra do campo só tem maiúsculas). */
+export function titleTrophy(title: Title): { name: string; kind: 'cup' | 'bigCup'; banner: string } {
+  if (title.kind === 'league') {
+    const name = DIVISIONS[title.division]!.name;
+    return { name, kind: title.division === DIVISIONS.length - 1 ? 'bigCup' : 'cup', banner: `CAMPEÕES DA ${name.toUpperCase()}` };
+  }
+  const name = CUP_NAMES[title.cup];
+  return { name, kind: title.cup === 'world' ? 'bigCup' : 'cup', banner: name.toUpperCase() };
+}
+
+/** O nosso resultado num jogo da ronda, ou null se não jogámos nela. */
+function ourWin(round: readonly Fixture[]): boolean | null {
+  const f = round.find(x => x.home === PLAYER_CLUB || x.away === PLAYER_CLUB);
+  if (!f?.score) return null;
+  return f.home === PLAYER_CLUB ? f.score[0] > f.score[1] : f.score[1] > f.score[0];
+}
+
+/** Já ninguém nos apanha: à frente de todos, mesmo que os outros ganhem o que lhes falta; ou acabou tudo e somos 1.º. */
+function clinched(ids: readonly number[], rounds: readonly (readonly Fixture[])[]): boolean {
+  const table = standings(ids, rounds);
+  if (table[0]!.club !== PLAYER_CLUB) return false;
+  const left = (id: number): number => rounds.reduce((n, r) => n + r.filter(f => !f.score && (f.home === id || f.away === id)).length, 0);
+  return table.every(row => left(row.club) === 0) || table.slice(1).every(row => row.wins + left(row.club) < table[0]!.wins);
+}
+
+/**
+ * O título que o jogo acabado de jogar nos deu, ou null. `before` é o clube antes de `finishMatch`, e `result` o que ela
+ * devolveu. A final de uma taça, a final dos playoffs onde eles decidem o campeão, ou, nas outras divisões, a jornada em
+ * que o 1.º lugar fica garantido (no máximo a última).
+ */
+export function titleWon(before: ClubState, result: MatchResult): Title | null {
+  const game = currentGame(before);
+  // O amigável do Aeroporto e as semanas livres não dão nada.
+  if (!game || (result.round === null && result.series === null)) return null;
+  const format = PLAYOFF_FORMATS[before.division];
+  if (game.playoff) {
+    const series = result.series;
+    return format?.decidesTitle && game.round === format.bestOf.length - 1 && series?.decided && series.wins[0] > series.wins[1] ? { kind: 'league', division: before.division } : null;
+  }
+  if (!result.round) return null;
+  if (game.cup) return game.round === CUP_ROUNDS[game.cup].length - 1 && ourWin(result.round) ? { kind: 'cup', cup: game.cup } : null;
+  if (format?.decidesTitle) return null;
+  const ids = leagueIds(before);
+  const after = before.rounds.map((r, i) => (i === game.round ? result.round! : r));
+  return !clinched(ids, before.rounds) && clinched(ids, after) ? { kind: 'league', division: before.division } : null;
 }
 
 // Numa época de 18 jornadas, só uma época excecional chega aqui.
@@ -22,7 +75,7 @@ export function trophyList(club: ClubState): Trophy[] {
     const latest = titles.at(-1);
     return {
       name: division.name,
-      kind: index === last ? 'bigCup' : 'cup',
+      kind: titleTrophy({ kind: 'league', division: index }).kind,
       won: latest !== undefined,
       detail: latest ? `${when(latest)}. ${latest.wins} vitórias e ${latest.losses} derrotas.${titles.length > 1 ? ` Ganha ${titles.length} vezes.` : ''}` : index === last ? 'O título mais alto do país.' : `Ganha a ${division.name} para a veres aqui.`,
     };
@@ -47,9 +100,9 @@ export function trophyList(club: ClubState): Trophy[] {
     { name: 'Treinador do Ano', kind: 'plate', won: bestYear !== undefined, detail: bestYear ? `${when(bestYear)}. ${bestYear.wins} vitórias numa só época.` : `Ganha ${COACH_OF_THE_YEAR_WINS} jogos na mesma época.` },
     { name: 'Melhor Marcador', kind: 'medal', won: Boolean(scorer?.topScorer), detail: scorer?.topScorer ? `${when(scorer)}: ${scorer.topScorer}, com ${scorer.topScorerPoints} pontos.` : 'Tem o melhor marcador da divisão numa época, em pontos por jogo.' },
     { name: 'Coleção de combos', kind: 'plate', won: club.knownCombos.length === COMBOS.length, detail: `Descobre todos os combos secretos. Já tens ${club.knownCombos.length} de ${COMBOS.length}.` },
-    { name: 'Taça da Federação', kind: 'cup', won: federation !== undefined, detail: federation ? `${when(federation)}. ${federationWins > 1 ? `Ganha ${federationWins} vezes.` : 'A taça de todos os clubes.'}` : 'Seis rondas a um jogo, contra qualquer clube do país.' },
-    { name: 'Taça Continental', kind: 'cup', won: continental !== undefined, detail: continental ? `${when(continental)}. Contra os melhores do continente.` : 'Entram os 4 primeiros da Pro Liga 1. Quatro rondas contra clubes de fora, mais fortes do que os de cá.' },
-    { name: 'Mundial de Clubes', kind: 'bigCup', won: world !== undefined, detail: world ? `${when(world)}. Campeões do mundo.` : 'Uma final entre o campeão continental e o campeão de outro continente.' },
+    { name: 'Taça da Federação', kind: titleTrophy({ kind: 'cup', cup: 'federation' }).kind, won: federation !== undefined, detail: federation ? `${when(federation)}. ${federationWins > 1 ? `Ganha ${federationWins} vezes.` : 'A taça de todos os clubes.'}` : 'Seis rondas a um jogo, contra qualquer clube do país.' },
+    { name: 'Taça Continental', kind: titleTrophy({ kind: 'cup', cup: 'continental' }).kind, won: continental !== undefined, detail: continental ? `${when(continental)}. Contra os melhores do continente.` : 'Entram os 4 primeiros da Pro Liga 1. Quatro rondas contra clubes de fora, mais fortes do que os de cá.' },
+    { name: 'Mundial de Clubes', kind: titleTrophy({ kind: 'cup', cup: 'world' }).kind, won: world !== undefined, detail: world ? `${when(world)}. Campeões do mundo.` : 'Uma final entre o campeão continental e o campeão de outro continente.' },
     award('MVP da época', 'mvp', 'O jogador do plantel que mais faz numa época, em pontos, ressaltos, assistências, roubos e desarmes por jogo.'),
     award('Revelação', 'rookie', 'O melhor dos que chegaram ao clube nessa época.'),
     award('Melhor Defensor', 'defender', 'O jogador com mais roubos de bola e desarmes por jogo numa época.'),
