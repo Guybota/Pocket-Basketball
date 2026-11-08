@@ -123,7 +123,7 @@ interface Floater {
   born: number;
 }
 
-export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
+export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
 
 export interface ViewCallbacks {
   announce(message: string): void;
@@ -833,7 +833,10 @@ export class MatchView {
       point.y = b.y;
     }
     this.ballPrevious = { ...this.ball };
+    const receiver = s.flight?.kind === 'pass' ? s.flight.target : null;
     step(s);
+    // O passe chega às mãos de quem o esperava.
+    if (receiver && !s.flight && s.holder === receiver) this.callbacks.sound('catch');
     const target = s.ball;
     // A bola segue a simulação à risca quando voa por um caminho certo: lançamentos, passes, ressaltos, lances livres e bola ao alto.
     if (s.flight || s.loose || s.phase === 'freeThrow' || s.phase === 'jump') {

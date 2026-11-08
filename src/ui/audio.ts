@@ -2,7 +2,8 @@ import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
 import {
-  SR, applause, babble, backboard, bounce, brass, crowd, glock, makeRng, rim, roomImpulse, shout, snare, swish, timpani,
+  SR, applause, babble, backboard, bounce, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
+  squeak, swish, thud, timpani, whistle,
   type Rng, type Room, type Sample, type Shout,
 } from './synth.ts';
 
@@ -24,6 +25,13 @@ const CROWDS: Record<Venue, { level: number; voices: number; claps: number; talk
   closed: { level: 0, voices: 0, claps: 0, talkers: 0, wet: 0.4 },
 };
 
+/** Quantos sons tocam ao mesmo tempo, no máximo; acima disto, os sons de pouca importância ficam por tocar. */
+const VOICE_LIMIT = 24;
+/** Os sons que podem faltar sem o jogador perder informação: o apito, as buzinas e o cesto tocam sempre. */
+const LOW_PRIORITY: ReadonlySet<Sound> = new Set(['bounce', 'catch', 'bump', 'steal']);
+/** O mesmo som dentro deste tempo (s) toca uma vez só: a 4× há eventos colados que soavam a metralhadora. */
+const REPEAT_GAP = 0.045;
+
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar. Os da bola, da bancada e dos
 // instrumentos calculam-se uma vez (synth.ts) para AudioBuffers, com algumas variantes, e depois só se tocam: os do
 // pavilhão quando se escolhe o pavilhão, os outros ao destrancar o som, nos momentos livres do browser.
@@ -33,7 +41,7 @@ const CROWDS: Record<Venue, { level: number; voices: number; claps: number; talk
 // Encaminhamento (criado em unlock):
 //   efeitos → room ─────────────────────────→ effectsBus ──────┐
 //              └→ sala (ConvolverNode) → wet ┘                 │
-//   tema    → musicGain → musicBus → duck ─────────────────────┴→ master → compressor → destination
+//   tema    → musicGain → musicBus → duck ─────────────────────┴→ master → compressor → limitador → destination
 // A sala depende do pavilhão: seca na rua, grande na arena, muito ecoante no pavilhão vazio.
 export class GameAudio {
   private context: AudioContext | null = null;
@@ -63,6 +71,11 @@ export class GameAudio {
   private musicBus: GainNode | null = null;
   private duck: GainNode | null = null;
   private volumes = { master: 1, effects: 1, music: 1 };
+  /** Sons a tocar agora, para o limite de vozes. */
+  private active = 0;
+  private lastPlayed = new Map<Sound, number>();
+  /** A velocidade do jogo: a 4× as reações da bancada encurtam, nunca sobem de tom. */
+  private speed = 1;
   muted = false;
 
   /** Os browsers só deixam tocar som depois de um gesto do jogador. */
@@ -101,9 +114,18 @@ export class GameAudio {
     this.wet = ctx.createGain();
     this.wet.connect(this.effectsBus);
     this.applyVenue();
-    this.master.connect(compressor).connect(ctx.destination);
+    // Um limitador a sério no fim: o compressor sozinho deixa passar picos acima de 0 dB quando tudo toca junto.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.08;
+    this.master.connect(compressor).connect(limiter).connect(ctx.destination);
     // Os sons de todos os jogos e as notas dos metais da festa e da entrada.
     this.warm(() => this.floor('wood'), () => this.floor('asphalt'), () => this.rims(), () => this.boards(), () => this.nets(),
+      () => this.whistles(), () => this.horns(205, 0.35), () => this.horns(150, 1), () => this.horns(310, 0.55), () => this.slaps(0),
+      () => this.slaps(0.5), () => this.slaps(1), () => this.thuds(), () => this.squeaks(),
       () => this.note('snare', 0), ...[72, 78, 84].map(m => () => this.note('brass', m)), () => this.voices('hey'), () => this.voices('oh'));
     // A música pedida antes do primeiro toque começa agora.
     const pending = this.theme;
@@ -275,8 +297,23 @@ export class GameAudio {
     return this.set(`bounce:${surface}`, 3, r => bounce(surface, r));
   }
   private rims(): AudioBuffer[] { return this.set('rim', 3, rim); }
-  private boards(): AudioBuffer[] { return this.set('board', 2, backboard); }
-  private nets(): AudioBuffer[] { return this.set('swish', 3, swish); }
+  /** Na rua a tabela é de metal e a rede de corrente; nos pavilhões, vidro e nylon. */
+  private boards(): AudioBuffer[] {
+    return this.venue === 'street' ? this.set('board:metal', 3, r => backboard(r, 'metal')) : this.set('board', 3, backboard);
+  }
+  private nets(): AudioBuffer[] { return this.venue === 'street' ? this.set('chains', 3, chains) : this.set('swish', 3, swish); }
+  private whistles(): AudioBuffer[] { return this.set('whistle', 3, r => whistle(0.34, r)); }
+  private horns(frequency: number, seconds: number): AudioBuffer[] {
+    return this.set(`horn:${frequency}:${seconds}`, 1, r => horn(frequency, seconds, r));
+  }
+  private squeaks(): AudioBuffer[] { return this.set('squeak', 6, squeak); }
+  private slaps(force: 0 | 0.5 | 1): AudioBuffer[] { return this.set(`slap:${force}`, 3, r => slap(force, r)); }
+  private thuds(): AudioBuffer[] { return this.set('thud', 3, thud); }
+  private chimes(midi: number): AudioBuffer[] { return this.set(`chime:${midi}`, 1, r => chime(midi, r)); }
+  private clapBeats(): AudioBuffer[] {
+    const people = Math.max(4, Math.round(CROWDS[this.venue].claps / 3));
+    return this.set(`clapBeat:${people}`, 3, r => clapBeat(people, r));
+  }
   private voices(kind: Shout): AudioBuffer[] { return this.set(`voice:${kind}`, 4, r => shout(kind, r)); }
   private cheers(kind: Shout): AudioBuffer[] {
     const { voices } = CROWDS[this.venue];
@@ -317,6 +354,8 @@ export class GameAudio {
       tail = gain.connect(panner);
     }
     tail.connect(this.room!);
+    this.active++;
+    source.onended = () => this.active--;
     source.start(start);
     if (seconds !== undefined) {
       gain.gain.setValueAtTime(volume, start + seconds * 0.6);
@@ -327,12 +366,13 @@ export class GameAudio {
 
   /** A bancada reage em coro; no jogo-treino não há ninguém. */
   private react(kind: Shout, strength: number, delay = 0): void {
-    if (CROWDS[this.venue].voices) this.shot(this.cheers(kind), 0.2 * this.crowdLevel * strength, { delay });
+    if (CROWDS[this.venue].voices) this.shot(this.cheers(kind), 0.2 * this.crowdLevel * strength, { delay, seconds: this.speed > 2 ? 0.7 : undefined });
   }
 
   /** Palmas da bancada, inteiras (2,6 s) ou cortadas mais cedo. */
   private clap(strength: number, seconds?: number): void {
-    if (CROWDS[this.venue].claps) this.shot(this.clapping(), 0.3 * this.crowdLevel * strength, { seconds });
+    const cut = this.speed > 2 ? 1 : undefined;
+    if (CROWDS[this.venue].claps) this.shot(this.clapping(), 0.3 * this.crowdLevel * strength, { seconds: seconds === undefined ? cut : Math.min(seconds, cut ?? seconds) });
   }
 
   /** Um grito solto, de um lado qualquer. */
@@ -374,73 +414,21 @@ export class GameAudio {
     osc.stop(start + seconds);
   }
 
-  private noise(frequency: number, seconds: number, volume: number, delay = 0): void {
-    const ctx = this.context!;
-    const source = ctx.createBufferSource();
-    source.buffer = this.noiseBuffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = frequency;
-    filter.Q.value = 1.4;
-    const gain = ctx.createGain();
-    const start = ctx.currentTime + delay;
-    gain.gain.setValueAtTime(volume, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    source.connect(filter).connect(gain).connect(this.room!);
-    source.start(start, Math.random() * 0.8);
-    source.stop(start + seconds);
-  }
-
-  /** Apito de árbitro: um tom agudo que treme depressa, com um pouco de sopro. */
-  private whistle(seconds: number, volume: number): void {
-    const ctx = this.context!;
-    const start = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const trill = ctx.createOscillator();
-    const trillDepth = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = 2900;
-    trill.frequency.value = 42;
-    trillDepth.gain.value = 170;
-    trill.connect(trillDepth).connect(osc.frequency);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.015);
-    gain.gain.setValueAtTime(volume, start + seconds - 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    osc.connect(gain).connect(this.room!);
-    osc.start(start);
-    trill.start(start);
-    osc.stop(start + seconds);
-    trill.stop(start + seconds);
-    this.noise(3400, seconds, volume * 0.25);
-  }
-
-  /** Buzzer de pavilhão: duas notas graves ligeiramente desafinadas, com volume constante. */
-  private horn(frequency: number, seconds: number, volume: number): void {
-    const ctx = this.context!;
-    const start = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.02);
-    gain.gain.setValueAtTime(volume, start + seconds - 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-    gain.connect(this.room!);
-    for (const detune of [0, 7]) {
-      const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = frequency + detune;
-      osc.connect(gain);
-      osc.start(start);
-      osc.stop(start + seconds);
-    }
+  /** A velocidade do jogo (1, 2 ou 4). */
+  setSpeed(speed: number): void {
+    this.speed = speed;
   }
 
   play(sound: Sound): void {
     if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    if (now - (this.lastPlayed.get(sound) ?? -1) < REPEAT_GAP) return;
+    if (this.active >= VOICE_LIMIT && LOW_PRIORITY.has(sound)) return;
+    this.lastPlayed.set(sound, now);
     switch (sound) {
       case 'bounce': this.shot(this.floor(), 0.13); break;
-      case 'swish': this.duckMusic(); this.shot(this.nets(), 0.14); break;
+      case 'catch': this.shot(this.slaps(0), 0.08); break;
+      case 'swish': this.duckMusic(); this.shot(this.nets(), this.venue === 'street' ? 0.2 : 0.14); break;
       case 'rim':
         // Às vezes bate primeiro na tabela.
         if (Math.random() < 0.35) {
@@ -449,21 +437,29 @@ export class GameAudio {
         } else this.shot(this.rims(), 0.1);
         if (Math.random() < 0.5) this.react('ooh', 0.7, 0.15);
         break;
-      case 'whistle': this.duckMusic(); this.whistle(0.34, 0.09); break;
+      case 'whistle': this.duckMusic(); this.shot(this.whistles(), 0.15); break;
       case 'buzzer':
-        this.horn(150, 1, 0.08);
+        this.duckMusic();
+        this.shot(this.horns(150, 1), 0.33);
         this.clap(0.8);
         break;
-      case 'shotClockBuzzer': this.horn(310, 0.55, 0.07); break;
-      case 'horn': this.horn(205, 0.35, 0.05); break;
-      case 'steal': this.tone('triangle', 500, 900, 0.09, 0.07); break;
-      case 'bump': this.tone('square', 120, 60, 0.07, 0.05); break;
+      case 'shotClockBuzzer': this.duckMusic(); this.shot(this.horns(310, 0.55), 0.27); break;
+      case 'horn': this.shot(this.horns(205, 0.35), 0.17); break;
+      case 'steal':
+        // A palmada na bola, e duas notas a subir: a bola mudou de dono.
+        this.shot(this.slaps(0.5), 0.15);
+        this.shot(this.chimes(77), 0.04, { delay: 0.03 });
+        this.shot(this.chimes(82), 0.04, { delay: 0.09 });
+        break;
+      case 'bump': this.shot(this.thuds(), 0.16); break;
       case 'card':
-        this.tone('square', 660, 660, 0.06, 0.04);
-        this.tone('square', 990, 990, 0.1, 0.04, 0.06);
+        // Si bemol e fá, a quinta do hino.
+        this.shot(this.chimes(82), 0.11);
+        this.shot(this.chimes(89), 0.11, { delay: 0.07 });
         break;
       case 'block':
-        this.tone('square', 160, 80, 0.13, 0.08);
+        this.duckMusic();
+        this.shot(this.slaps(1), 0.22);
         this.react('oh', 0.8);
         break;
       case 'cheer':
@@ -501,17 +497,16 @@ export class GameAudio {
     source.stop(start + seconds);
   }
 
-  /** O chiar de uma sapatilha a travar. */
+  /** O chiar de uma sapatilha a travar, de um lado qualquer do campo. */
   private squeak(volume: number): void {
-    const pitch = 1500 + Math.random() * 1400;
-    this.tone('sine', pitch, pitch * 1.4, 0.06 + Math.random() * 0.05, volume * (0.5 + Math.random() * 0.5));
+    this.shot(this.squeaks(), 1.5 * volume * (0.5 + Math.random() * 0.5), { pan: Math.random() * 1.2 - 0.6 });
   }
 
   /** Ambiente do pavilhão, chamado a cada frame com o relógio em ms. Cada sítio soa diferente:
    * a rua tem vento, trânsito ao longe e uma voz de vez em quando; o pavilhão pequeno e o vazio têm eco e ténis a chiar;
    * a arena tem um burburinho que nunca pára. */
   ambience(now: number): void {
-    if (!this.context || this.muted || now < this.nextAmbience) return;
+    if (!this.context || this.muted || now < this.nextAmbience || this.active >= VOICE_LIMIT - 4) return;
     const crowd = this.crowdLevel;
     const roll = Math.random();
     switch (this.venue) {
@@ -553,9 +548,7 @@ export class GameAudio {
 
   /** Três batidas de palmas certas, como uma claque a puxar pela equipa. */
   private rhythmicClaps(): void {
-    for (const beat of [0, 0.32, 0.64]) {
-      for (let i = 0; i < 8; i++) this.noise(1500 + Math.random() * 2000, 0.03, 0.05 * this.crowdLevel * Math.random() + 0.0002, beat + Math.random() * 0.03);
-    }
+    for (const beat of [0, 0.32, 0.64]) this.shot(this.clapBeats(), 0.3 * this.crowdLevel, { delay: beat + Math.random() * 0.02 });
   }
 }
 

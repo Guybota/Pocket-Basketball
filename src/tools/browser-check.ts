@@ -197,7 +197,7 @@ try {
   if (final.commands.length === 0) check('O jogo visto acaba com o resultado da simulação', final.score[0] === expected.score[0] && final.score[1] === expected.score[1], `${final.score[0]}-${final.score[1]}`);
   else check('O jogo visto reproduz-se com as decisões tomadas', await page.evaluate(() => window.__pocket.replayMatchesCurrent()), `${final.commands.length} decisões: ${final.commands.slice(0, 6).join(', ')}`);
   const heard = await page.evaluate(() => window.__pocket.soundsPlayed());
-  for (const name of ['whistle', 'buzzer', 'horn']) check(`Toca o som "${name}" durante o jogo`, heard.includes(name), heard.join(', '));
+  for (const name of ['whistle', 'buzzer', 'horn', 'catch']) check(`Toca o som "${name}" durante o jogo`, heard.includes(name), heard.join(', '));
   await page.evaluate(() => window.__pocket.playAllSounds());
   check('Os avisos de momentos altos aparecem', final.announced.includes('Afundanço!') && final.announced.includes('Intervalo'), final.announced.join(', '));
   const liveLog = await page.evaluate(() => (window as unknown as { liveLog: string[] }).liveLog);

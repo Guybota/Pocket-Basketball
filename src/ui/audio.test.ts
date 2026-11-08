@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameAudio } from './audio.ts';
 import { MUSIC_THEMES, scheduleSection, sectionLengths, songShape, type Instrument, type MusicKit } from './music.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, bounce, brass, crowd, glock, makeRng, rim, roomImpulse, shout, snare, swish, timpani,
+  ROOMS, SR, applause, babble, backboard, bounce, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  snare, squeak, swish, thud, timpani, whistle,
   type Sample,
 } from './synth.ts';
 
@@ -21,12 +22,13 @@ class FakeNode {
   gain = new FakeParam(); frequency = new FakeParam(); Q = new FakeParam(); delayTime = new FakeParam();
   threshold = new FakeParam(); knee = new FakeParam(); ratio = new FakeParam(); attack = new FakeParam(); release = new FakeParam();
   playbackRate = new FakeParam(); pan = new FakeParam();
-  type = ''; buffer: FakeBuffer | null = null; loop = false;
+  type = ''; buffer: FakeBuffer | null = null; loop = false; onended: (() => void) | null = null;
   readonly kind: string;
   constructor(kind: string, ctx: FakeContext) { this.kind = kind; ctx.nodes.push(this); }
   connect<T>(target: T): T { if (target instanceof FakeNode) this.outputs.push(target); return target; }
   disconnect(target?: FakeNode) { this.outputs = target ? this.outputs.filter(n => n !== target) : []; }
-  start() {} stop() {} setPeriodicWave() {}
+  // Os sons acabam logo, para o limite de vozes não encher nos testes.
+  start() { this.onended?.(); } stop() {} setPeriodicWave() {}
 }
 
 class FakeBuffer {
@@ -85,26 +87,28 @@ function setup() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('o encaminhamento do som', () => {
-  it('tudo passa por um só ganho geral e um compressor antes da saída', () => {
+  it('tudo passa por um só ganho geral, um compressor e um limitador antes da saída', () => {
     const { audio, ctx } = setup();
     audio.music('town');
     const before = ctx.nodes.length;
     audio.play('whistle');
-    const effect = ctx.nodes.slice(before).find(n => n.kind === 'osc')!;
-    expect(path(effect).slice(-5)).toEqual(['gain', 'gain', 'gain', 'compressor', 'destination']);
+    const effect = ctx.nodes.slice(before).find(n => n.kind === 'source')!;
+    // som → volume → sala → efeitos → geral → compressor → limitador → saída
+    expect(path(effect).slice(-7)).toEqual(['gain', 'gain', 'gain', 'gain', 'compressor', 'compressor', 'destination']);
     // Os sons calculados de antemão seguem o mesmo caminho.
-    for (const sound of ['rim', 'bounce', 'swish', 'bigCheer'] as const) {
+    for (const sound of ['rim', 'bounce', 'catch', 'swish', 'bigCheer', 'buzzer', 'horn', 'steal', 'bump', 'card', 'block'] as const) {
       const from = ctx.nodes.length;
       audio.play(sound);
-      for (const source of ctx.nodes.slice(from).filter(n => n.kind === 'source')) expect(path(source).slice(-5), sound).toEqual(path(effect).slice(-5));
+      const sources = ctx.nodes.slice(from).filter(n => n.kind === 'source');
+      expect(sources.length, sound).toBeGreaterThan(0);
+      for (const source of sources) expect(path(source).slice(-5), sound).toEqual(path(effect).slice(-5));
     }
-    // Nada além do compressor liga direto à saída.
+    // Nada além do limitador liga direto à saída.
     expect(ctx.nodes.filter(n => n.outputs.includes(ctx.destination)).map(n => n.kind)).toEqual(['compressor']);
-    const master = path(effect).length - 3;
     const musicNote = ctx.nodes.slice(0, before).find(n => n.kind === 'osc')!;
-    // nota → envelope → tema → música → ducking → geral → compressor → saída
-    expect(path(musicNote)).toHaveLength(8);
-    expect(path(musicNote).slice(-3)).toEqual(path(effect).slice(master));
+    // nota → envelope → tema → música → ducking → geral → compressor → limitador → saída
+    expect(path(musicNote)).toHaveLength(9);
+    expect(path(musicNote).slice(-4)).toEqual(path(effect).slice(-4));
   });
 
   it('os volumes ficam entre 0 e 1 e mute cala o geral sem perder o volume escolhido', () => {
@@ -171,7 +175,7 @@ describe('os temas', () => {
       const rooms = room.outputs.filter(n => n.kind === 'convolver');
       expect(rooms).toHaveLength(1);
       const wet = rooms[0]!.outputs[0]!;
-      expect(path(wet).slice(-3)).toEqual(['gain', 'compressor', 'destination']);
+      expect(path(wet).slice(-4)).toEqual(['gain', 'compressor', 'compressor', 'destination']);
       lengths.push(rooms[0]!.buffer!.length);
       wets.push(wet.gain.value);
       const before = ctx.nodes.length;
@@ -188,10 +192,10 @@ describe('os temas', () => {
     const { audio, ctx } = setup();
     audio.setVenue(3);
     // Os sons escolhem ao acaso (a tabela, o «uuuh»), por isso tocam-se muitas vezes até aparecerem todos.
-    const sounds = ['bounce', 'rim', 'swish', 'cheer', 'bigCheer', 'block', 'buzzer'] as const;
-    for (let i = 0; i < 40; i++) for (const sound of sounds) audio.play(sound);
+    const sounds = ['bounce', 'catch', 'rim', 'swish', 'cheer', 'bigCheer', 'block', 'buzzer', 'shotClockBuzzer', 'horn', 'whistle', 'steal', 'bump', 'card'] as const;
+    for (let i = 0; i < 40; i++, ctx.currentTime += 0.1) for (const sound of sounds) audio.play(sound);
     const made = ctx.buffers.length;
-    for (let i = 0; i < 5; i++) for (const sound of sounds) audio.play(sound);
+    for (let i = 0; i < 5; i++, ctx.currentTime += 0.1) for (const sound of sounds) audio.play(sound);
     expect(ctx.buffers.length).toBe(made);
     // Calado, não toca nada.
     audio.setMuted(true);
@@ -216,13 +220,16 @@ describe('os sons calculados', () => {
     ['tabela', backboard(r()), 0.4], ['rede', swish(r()), 0.42], ['hey', shout('hey', r()), 0], ['uuuh', shout('ooh', r()), 0],
     ['ohhh', shout('oh', r()), 0], ['coro', crowd('hey', 6, r()), 1.3], ['burburinho', babble(3, 1.5, r()), 1.5],
     ['aplausos', applause(10, 1.5, r()), 1.5], ['tarola', snare(r()), 0.3], ['metais', brass(72, r()), 2.6],
-    ['glockenspiel', glock(84, r()), 1.8], ['timbale', timpani(42, r()), 2],
+    ['glockenspiel', glock(84, r()), 1.8], ['timbale', timpani(42, r()), 2], ['tabela de metal', backboard(r(), 'metal'), 0.4],
+    ['rede de corrente', chains(r()), 0.6], ['apito', whistle(0.34, r()), 0.34], ['buzina', horn(150, 1, r()), 1],
+    ['ténis', squeak(r()), 0], ['passe recebido', slap(0, r()), 0.14], ['desarme', slap(1, r()), 0.14], ['encontrão', thud(r()), 0.2],
+    ['toque', chime(82, r()), 0.5], ['claque', clapBeat(6, r()), 0.2],
   ];
 
   it.each(cases)('%s: tamanho certo, sem NaN e com o pico abaixo de 1', (_, sample, seconds) => {
     for (const ch of channels(sample)) {
       if (seconds) expect(ch.length).toBe(Math.round(seconds * SR));
-      else expect(ch.length).toBeGreaterThan(SR * 0.2);
+      else expect(ch.length).toBeGreaterThan(SR * 0.1);
       let peak = 0;
       for (const v of ch) {
         expect(Number.isFinite(v)).toBe(true);
@@ -230,11 +237,14 @@ describe('os sons calculados', () => {
       }
       expect(peak).toBeGreaterThan(0.3);
       expect(peak).toBeLessThan(1);
+      // Sem desvio do zero, e a acabar em silêncio.
+      expect(Math.abs(ch.reduce((sum, v) => sum + v, 0) / ch.length)).toBeLessThan(0.001);
+      expect(Math.abs(ch[ch.length - 1]!)).toBeLessThan(0.001);
     }
   });
 
   it('os sons de pancada decaem, e o alcatrão é mais seco do que a madeira', () => {
-    for (const x of [bounce('wood', r()), rim(r()), backboard(r()), snare(r()), glock(72, r()), timpani(40, r())]) {
+    for (const x of [bounce('wood', r()), rim(r()), backboard(r()), backboard(r(), 'metal'), chains(r()), slap(1, r()), thud(r()), snare(r()), glock(72, r()), timpani(40, r())]) {
       expect(energy(x, 0.8, 1)).toBeLessThan(energy(x, 0, 0.2) / 50);
     }
     const tail = (x: Float32Array) => energy(x, 0.15, 1) / energy(x, 0, 1);

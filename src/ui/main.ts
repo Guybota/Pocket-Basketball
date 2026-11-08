@@ -42,7 +42,7 @@ const MAX_STEPS_PER_FRAME = 40;
 const TIMEOUT_CONFIRM_MS = 3000;
 let timeoutArmed = 0;
 // A ×4 só se calam os sons muito repetidos. Apitos e buzzers continuam, porque dizem o que aconteceu.
-const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump'];
+const QUIET_AT_SPEED: readonly Sound[] = ['bounce', 'bump', 'catch'];
 // Quanto o painel do ecrã aberto precisa, na vertical, quando ele pede a parte de cima mais alta (0 é o normal).
 let menuPanel = 0;
 
@@ -323,6 +323,7 @@ function makeView(kind: GameKind, rivalId: number): void {
     },
     sound: name => {
       soundsPlayed.add(name);
+      audio.setSpeed(speed);
       if (started && !(speed > 2 && QUIET_AT_SPEED.includes(name))) audio.play(name);
     },
   }, [true, false], kind === 'official' ? visitorOf(current) : 1, activeKit(current), undefined, venueColor(kind, rivalId), current.confidence / 100, rivalKitFor(current, rival.name, activeKit(current), guestOf(rivalId)), kind === 'official' && visitorOf(current) === 0 ? clubIdentity(rival.name).emblem : current.emblem, current.emblem, guestOf(rivalId)?.emblem, weatherFor(current.week));
@@ -1114,7 +1115,7 @@ Object.assign(window, {
     /** Toca todos os sons, para confirmar que nenhum dá erro. */
     playAllSounds: () => {
       audio.unlock();
-      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'steal', 'block', 'cheer', 'bigCheer', 'card', 'bump'] as const) audio.play(name);
+      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'catch', 'steal', 'block', 'cheer', 'bigCheer', 'card', 'bump'] as const) audio.play(name);
       for (let v = 0; v <= CLOSED_GYM; v++) {
         audio.setVenue(v);
         for (let i = 0; i < 30; i++) audio.ambience(1e12 + (v * 30 + i) * 1e6);
