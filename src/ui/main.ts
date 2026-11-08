@@ -125,6 +125,9 @@ let ceremonyOn = false;
 /** Para a verificação: o título que o próximo jogo dá, se for ganho (a taça não se levanta numa derrota). */
 let forcedTitle: Title | null = null;
 const CEREMONY_DELAY_MS = 1500;
+// Sem cerimónia, o relatório vem quando o último entra no túnel, mas nunca antes de isto (o «Vitória!») nem depois do máximo.
+const END_MIN_MS = 2500;
+const END_MAX_MS = 12000;
 let resultHtml = '';
 let replay: MatchView | undefined;
 let replayUntil = 0;
@@ -925,15 +928,16 @@ function startCeremony(current: MatchView, title: Title): void {
   speak(`Campeões: ${trophy.name}! Toca no ecrã para continuar.`, 3);
 }
 
-// Esse toque não chega a mais nada: senão carregava no botão que o relatório põe no mesmo sítio.
-const skipCeremony = (event: Event): void => {
-  if (!ceremonyOn || finished) return;
+// Depois do apito final (a cerimónia ou a saída para o balneário), um toque ou uma tecla saltam para o relatório. Esse
+// toque não chega a mais nada: senão carregava no botão que o relatório põe no mesmo sítio.
+const skipEnd = (event: Event): void => {
+  if (endAt === 0 || finished) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   showResult();
 };
-addEventListener('click', skipCeremony, true);
-addEventListener('keydown', skipCeremony, true);
+addEventListener('click', skipEnd, true);
+addEventListener('keydown', skipEnd, true);
 
 function frame(now: number): void {
   // Pedida antes de tudo: um erro a meio de uma imagem não pode parar o jogo de vez.
@@ -973,9 +977,11 @@ function frame(now: number): void {
           endTitle = forcedTitle && current.s.score[0] > current.s.score[1] ? forcedTitle : rivalOf === GUEST_RIVAL ? null : titleWon(club!, endResult);
           forcedTitle = null;
         }
+        // Sem título, todos vão para o balneário; com título, a cerimónia tem a vez.
+        if (!endTitle) current.startExit();
       } else if (endTitle && !ceremonyOn) {
         if (now - endAt > CEREMONY_DELAY_MS) startCeremony(current, endTitle);
-      } else if (ceremonyOn ? current.ceremonyDone() : now - endAt > 2500) showResult();
+      } else if (ceremonyOn ? current.ceremonyDone() : (now - endAt > END_MIN_MS && current.lockerDone()) || now - endAt > END_MAX_MS) showResult();
     } else if (current.s.phase === 'break' && breakAnnounced !== current.s.period) {
       breakAnnounced = current.s.period;
       announce(current.s.period >= 4 ? 'Prolongamento!' : `Fim do período ${current.s.period}`);

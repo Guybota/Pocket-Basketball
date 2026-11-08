@@ -68,7 +68,8 @@ export interface SceneSpec {
   reducedMotion?: boolean;
   /**
    * A cerimónia do troféu depois do apito final, como depois de uma final: a taça, ou "league" para o campeonato da
-   * divisão. Usa-se com {"type": "end"} em `force`, `crop` null e `after` de uns 8 s.
+   * divisão. Usa-se com {"type": "end"} em `force`, `crop` null e `after` de uns 8 s. Sem ela, um cenário que chega ao
+   * apito final mostra a saída de todos para o balneário.
    */
   ceremony?: CupName | 'league';
 }
@@ -310,6 +311,13 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
       const time = (n / fps) * 20 * speed;
       // Depois do apito final a simulação já não anda.
       while (s.tick < start + Math.floor(time) && s.phase !== 'end') view.stepSim();
+      // Parada, a simulação continua a ser chamada, como no jogo: assim o desenho não oscila entre o passo anterior e este.
+      if (s.phase === 'end') view.stepSim();
+      // Depois do apito, como no jogo: com `ceremony`, a cerimónia; sem ela, a saída para o balneário.
+      if (!spec.ceremony && s.phase === 'end' && !ceremonyStarted) {
+        ceremonyStarted = true;
+        view.startExit();
+      }
       if (spec.ceremony && s.phase === 'end' && !ceremonyStarted) {
         ceremonyStarted = true;
         const trophy = titleTrophy(spec.ceremony === 'league' ? { kind: 'league', division } : { kind: 'cup', cup: spec.ceremony });

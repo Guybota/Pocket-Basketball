@@ -611,6 +611,10 @@ try {
     const { score, ceremony } = await ceremonyPage.evaluate(() => window.__pocket.state());
     if (score[0] <= score[1]) {
       check(`Numa derrota (${score.join('-')}) não há cerimónia, mesmo com o título forçado`, !ceremony);
+      // Sem cerimónia, todos vão para o balneário; um toque salta para o relatório.
+      await ceremonyPage.click('#court');
+      await ceremonyPage.waitForTimeout(300);
+      check('Um toque salta a saída para o balneário', await ceremonyPage.evaluate(() => window.__pocket.state().finished));
       continue;
     }
     check('A final ganha acaba com a cerimónia do troféu', ceremony, score.join('-'));

@@ -54,6 +54,10 @@ const LOCKER_INSIDE_Y = -11.6;
 const LOCKER_GAP_SECONDS = 0.28;
 // O passo mais lento de quem vai para o balneário, em m/s.
 const LOCKER_SLOWEST = 1.4;
+// No fim do jogo sem cerimónia: os vencedores festejam isto antes de ir (em segundos de jogo), e os vencidos vão a passo.
+const END_CHEER_SECONDS = 1.2;
+const END_WALK_SPEED = 2;
+const END_CAMERA_SPEED = 2.5;
 // A partir desta altura da bola (m), quem corta um passe tem de saltar.
 const INTERCEPT_JUMP_HEIGHT = 1.9;
 const SWISH_TICKS = 10;
@@ -373,6 +377,8 @@ export class MatchView {
   /** A ida para o balneário ao intervalo: o caminho de cada jogador, suplente e treinador (pela equipa), desde `start`
    * (em tempo de animação), e quando entra o último. */
   private locker: { start: number; end: number; walks: Map<Body | TeamIndex, Walk> } | null = null;
+  /** No fim do jogo sem cerimónia, quando começou a saída para o balneário (`startExit`), em tempo de animação. */
+  private exitStart: number | null = null;
   /** O deslocamento da imagem aproximada, em píxeis do ecrã: os confetes alinham-se pela mesma grelha. */
   private zoomShift: [number, number] = [0, 0];
   private readonly g: CanvasRenderingContext2D;
@@ -516,6 +522,8 @@ export class MatchView {
   private cameraTarget(): [number, number] {
     const { ball } = this.s;
     if (this.ceremony) return [CEREMONY_CENTRE.x, this.camera.tuning.lookY];
+    // No fim, a câmara vai para o meio, onde fica o túnel, e para lá: segue a saída sem andar atrás da bola parada.
+    if (this.s.phase === 'end') return [LOCKER_DOOR_X, this.camera.tuning.lookY];
     // Na paragem olha-se para o banco da casa, inclinado para baixo.
     if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, -1.5];
     // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
@@ -1189,7 +1197,7 @@ export class MatchView {
     const step = this.view(b).steps % 4;
     if (s.phase === 'end') {
       const won = s.score[b.team] > s.score[b.team === 0 ? 1 : 0];
-      return { pose: won ? ((frame + b.slot) % 4 < 2 ? 'cheer0' : 'cheer1') : 'slump', withBall: false };
+      return { pose: won ? this.endCheer(b) : 'slump', withBall: false };
     }
     const override = this.view(b).override;
     // A bola ao alto: primeiro fletem as pernas, e depois saltam de braços no ar.
@@ -1343,7 +1351,7 @@ export class MatchView {
       const cheering = s.tick < this.benchCheerUntil[team] || (s.phase === 'end' && s.score[team] > s.score[team === 0 ? 1 : 0]);
       const inHuddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
       // Ao intervalo, o banco e o treinador também vão para o balneário, pelo túnel, a passo mais rápido; voltam na segunda parte.
-      const toLocker = s.phase === 'break' && s.period === 2;
+      const toLocker = this.locker !== null;
       const speed = COACH_SPEED;
       benchers.forEach((b, i) => {
         if (this.ceremonyHides(b)) return;
@@ -1485,8 +1493,18 @@ export class MatchView {
     // Na cerimónia, quando o troféu sobe, a imagem corta logo para o dobro, sem passar por escalas fracionárias, e a
     // câmara fica parada (com movimento reduzido, desde o início).
     const lifted = this.ceremony !== null && this.realTime - this.ceremony.start >= this.ceremony.lift;
-    const ease = lifted || (this.ceremony && this.reducedMotion) ? 1 : 1 - Math.exp(-simSeconds * 2.2);
-    camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
+    const ease = lifted || (this.ceremony && this.reducedMotion) ? 1 : 1 - Math.exp(-simSeconds * (s.phase === 'end' ? 3 : 2.2));
+    // No fim, perto do sítio, a câmara assenta de vez: senão continuava a rastejar meio píxel de cada vez.
+    // Com movimento reduzido, vai logo para lá.
+    const settled = s.phase === 'end' && (this.reducedMotion || (Math.abs(lookX - camera.lookX) < 0.02 && Math.abs(lookY - camera.lookY) < 0.02));
+    if (settled) {
+      if (camera.lookX !== lookX || camera.lookY !== lookY) camera.aim(lookX, lookY);
+    } else if (s.phase === 'end') {
+      // E vai a passo certo, no máximo END_CAMERA_SPEED m/s de jogo: o salto dos primeiros frames não se vê como um puxão.
+      const most = END_CAMERA_SPEED * simSeconds;
+      const step = (from: number, to: number): number => from + Math.max(-most, Math.min(most, (to - from) * ease));
+      camera.aim(step(camera.lookX, lookX), step(camera.lookY, lookY));
+    } else camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
     const wantZoom = this.holding() || lifted ? 2 : 1;
@@ -1897,7 +1915,7 @@ export class MatchView {
    */
   private updateLocker(): void {
     const { s } = this;
-    if (!(s.phase === 'break' && s.period === 2)) {
+    if (!this.toLocker()) {
       if (this.locker) {
         // De volta, cada um no seu lugar: a segunda parte começa com o banco sentado.
         this.locker = null;
@@ -1920,30 +1938,38 @@ export class MatchView {
       starts.push({ key: team, from: this.coachPos[team] ?? { x: team === 0 ? 8 : 23.7, y: COACH_Y } });
     }
     this.exits.length = 0;
+    // No fim do jogo, quem perdeu vai logo, a passo e de cabeça baixa; quem ganhou festeja primeiro e vai a seguir.
+    const end = s.phase === 'end';
+    const winner = s.score[0] > s.score[1] ? 0 : 1;
     const walks = starts.map(({ key, from }) => {
       const path = [from];
       if (from.y < LOCKER_LANE_Y) path.push({ x: from.x, y: LOCKER_LANE_Y });
       path.push({ x: LOCKER_DOOR_X, y: LOCKER_LANE_Y }, { x: LOCKER_DOOR_X, y: LOCKER_INSIDE_Y });
-      const walk = makeWalk(path, LOCKER_SPEED, RUN_FRAMES);
-      // Quem espera a vez fica como estava: sentado no banco, de pé no campo; o treinador de prancheta.
-      walk.wait = typeof key === 'number' ? 'board' : from.y <= BENCH_Y + 0.1 ? 'sit' : 'idle';
-      return { key, walk };
+      const team = typeof key === 'number' ? key : key.team;
+      const lost = end && team !== winner;
+      const walk = lost ? makeWalk(path, END_WALK_SPEED, WALK_FRAMES) : makeWalk(path, LOCKER_SPEED, RUN_FRAMES);
+      // Quem espera a vez fica como estava: sentado no banco, de pé no campo (a festejar ou cabisbaixo, no fim); o
+      // treinador de prancheta.
+      const seated = from.y <= BENCH_Y + 0.1;
+      walk.wait = typeof key === 'number' ? 'board' : seated ? 'sit' : end ? (lost ? 'slump' : 'cheer0') : 'idle';
+      const earliest = end && !lost ? END_CHEER_SECONDS : 0;
+      return { key, walk, earliest };
     });
-    const arrival = (w: Walk): number => w.length / w.speed;
-    walks.sort((a, b) => (typeof a.key === 'number' ? 1000 : 0) + arrival(a.walk) - (typeof b.key === 'number' ? 1000 : 0) - arrival(b.walk));
+    const arrival = (w: Walk, earliest: number): number => earliest + w.length / w.speed;
+    walks.sort((a, b) => (typeof a.key === 'number' ? 1000 : 0) + arrival(a.walk, a.earliest) - (typeof b.key === 'number' ? 1000 : 0) - arrival(b.walk, b.earliest));
     let door = -Infinity;
-    for (const { walk } of walks) {
-      door = Math.max(arrival(walk), door + LOCKER_GAP_SECONDS);
+    for (const { walk, earliest } of walks) {
+      door = Math.max(arrival(walk, earliest), door + LOCKER_GAP_SECONDS);
       // Para chegar à porta na sua vez, quem está de pé arranca logo, mais devagar (a andar abaixo de 2,6 m/s); só
       // quando nem a passo lento lá chegaria tão tarde, ou quando está sentado, espera antes de arrancar.
-      const speed = walk.length / door;
+      const speed = walk.length / (door - earliest);
       if (walk.wait !== 'sit' && speed >= LOCKER_SLOWEST && speed < walk.speed) {
         walk.speed = speed;
         if (speed < 2.6) Object.assign(walk, { frames: WALK_FRAMES, stride: WALK_STRIDE_METRES });
       } else if (walk.wait !== 'sit' && speed < LOCKER_SLOWEST) {
         Object.assign(walk, { speed: LOCKER_SLOWEST, frames: WALK_FRAMES, stride: WALK_STRIDE_METRES });
       }
-      walk.delay = door - arrival(walk);
+      walk.delay = door - walk.length / walk.speed;
     }
     this.locker = { start: this.animTime, end: door, walks: new Map(walks.map(({ key, walk }) => [key, walk])) };
   }
@@ -1959,12 +1985,28 @@ export class MatchView {
     const at = this.lockerAt(b);
     if (!at) return null;
     const back = at.moving && at.dy < -Math.abs(at.dx);
-    return { x: at.x, y: at.y, pose: at.moving ? at.pose : at.wait, flip: at.dx < 0, back };
+    return { x: at.x, y: at.y, pose: at.moving ? at.pose : at.wait === 'cheer0' ? this.endCheer(b) : at.wait, flip: at.dx < 0, back };
   }
 
-  /** Já entraram todos no túnel (ou não é a ida para o balneário): o intervalo pode abrir. */
+  /** A ida para o balneário: ao intervalo, e no fim do jogo sem cerimónia, depois de `startExit`. */
+  private toLocker(): boolean {
+    const { s } = this;
+    return (s.phase === 'break' && s.period === 2) || (s.phase === 'end' && this.exitStart !== null && this.ceremony === null);
+  }
+
+  /** No fim do jogo sem cerimónia: os vencedores festejam um pouco e todos vão para o balneário, pelo túnel. */
+  startExit(): void {
+    this.exitStart = this.animTime;
+  }
+
+  /** O festejo de um vencedor no fim, ao ritmo da animação, cada um no seu compasso; parado com movimento reduzido. */
+  private endCheer(b: Body): PoseName {
+    return !this.reducedMotion && (Math.floor(this.animTick / 5) + b.slot) % 4 >= 2 ? 'cheer1' : 'cheer0';
+  }
+
+  /** Já entraram todos no túnel (ou não é a ida para o balneário): o intervalo ou o relatório podem abrir. */
   lockerDone(): boolean {
-    if (!(this.s.phase === 'break' && this.s.period === 2)) return true;
+    if (!this.toLocker()) return true;
     return this.locker !== null && this.animTime - this.locker.start >= this.locker.end;
   }
 

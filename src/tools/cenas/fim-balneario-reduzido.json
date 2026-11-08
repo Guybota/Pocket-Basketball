@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "fim-balneario-reduzido",
+  "force": { "type": "end" },
+  "division": 0,
+  "before": 0.5,
+  "after": 12,
+  "crop": null,
+  "zoom": 1,
+  "reducedMotion": true
+}

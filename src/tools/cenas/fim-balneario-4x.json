@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "fim-balneario-4x",
+  "force": { "type": "end" },
+  "division": 2,
+  "before": 0.5,
+  "after": 4,
+  "speed": 4,
+  "crop": null,
+  "zoom": 1
+}
