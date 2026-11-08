@@ -17,7 +17,7 @@ const VENUES: readonly Venue[] = ['street', 'school', 'hall', 'arena', 'closed']
  * A gente de cada pavilhão: o volume da bancada (0 a 1), quantas vozes gritam juntas, quantas pessoas batem palmas e
  * quantas conversam no burburinho; e quanto se ouve da sala. Poucos no bairro, ninguém no jogo-treino.
  */
-const CROWDS: Record<Venue, { level: number; voices: number; claps: number; talkers: number; wet: number }> = {
+export const CROWDS: Record<Venue, { level: number; voices: number; claps: number; talkers: number; wet: number }> = {
   street: { level: 0.25, voices: 3, claps: 5, talkers: 0, wet: 0.1 },
   school: { level: 0.4, voices: 6, claps: 12, talkers: 0, wet: 0.25 },
   hall: { level: 0.7, voices: 10, claps: 24, talkers: 5, wet: 0.2 },

@@ -103,6 +103,9 @@ O ruído partilhado (`noiseBuffer`) e as escolhas no momento de tocar usam `Math
 4. Junta o `case` em `play()`.
 5. Junta o nome a `playAllSounds` em `main.ts`.
 6. Junta o som às listas de `audio.test.ts`: a lista de durações do bloco «synth» e a lista da cache.
+7. Se o som tiver de se ouvir num jogo, junta-o à lista de sons que o `browser-check.ts` exige ouvir (procura `heard.includes`).
+8. Se for um som que repete muito e pouco importante, junta-o a `QUIET_AT_SPEED` em `main.ts` (cala-se a 4×) e a `LOW_PRIORITY` em `audio.ts` (fica por tocar com 24 vozes).
+9. Junta-o ao catálogo `SOUNDS` de `src/tools/sound-wavs.ts`, para se poder ouvir fora do jogo.
 
 ## Lacunas conhecidas
 

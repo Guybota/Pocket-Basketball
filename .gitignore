@@ -4,5 +4,6 @@ dist-check/
 dist-mock/
 *.log
 dist-page
+dist-sounds/
 .claude/*
 !.claude/skills/

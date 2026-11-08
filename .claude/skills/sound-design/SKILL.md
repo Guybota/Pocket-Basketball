@@ -38,8 +38,10 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
    - chiar com um trem de pulsos.
 4. **Desenha em camadas:** ataque (0 a 30 ms, é o que faz o som ler-se), corpo e cauda. Reserva uma faixa de frequências por papel (ver a tabela abaixo).
 5. **Escreve o gerador** com os auxiliares que já existem (`addModes`, `addBurst`, `Biquad`, `normalize`, `between`, `white`, `samples`). Não inventes outra infraestrutura.
-6. **Liga-o:** bolsa, `play()`, `playAllSounds` e testes (passos em `motor.md`).
-7. **Mede** (secção «Verificar sem ouvir»), gera um WAV, envia-o ao utilizador e pede-lhe que ouça. Diz sempre que não ouviste o som.
+6. **Liga-o:** bolsa, `play()`, `playAllSounds`, `QUIET_AT_SPEED`, testes e `browser-check` (passos em `motor.md`).
+   - **Iguala o volume.** O som novo vem normalizado ao pico, por isso o ganho com que toca no jogo muda. Mede o RMS do antigo e do novo e põe ganho novo = ganho antigo × RMS antigo ÷ RMS novo. Sem isto, um som trocado fica o dobro ou metade do que era.
+   - **Mede quanto custa calcular.** Cada bolsa calcula-se num momento livre do browser. No computador, um som não deve passar de cerca de 15 ms (a buzina grave, o mais pesado, leva 12 ms). Num telemóvel lento é 3 a 10 vezes mais, por isso um som mais caro parte-se ou simplifica-se.
+7. **Mede** (secção «Verificar sem ouvir»), grava os WAVs com `npm run sound-wavs -- <som>`, envia-os ao utilizador e pede-lhe que ouça. Diz sempre que não ouviste o som.
 8. **Afina com as palavras do utilizador.** Traduz a queixa num parâmetro (tabela abaixo) e muda uma coisa de cada vez.
 
 ## Princípios de desenho
@@ -75,6 +77,8 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
   A física (`acustica.md`) mostra um aro real a soar até cerca de 1 s. **Num jogo, isso lê-se como sino.** Mantém o aro curto.
 - **A rede soava a soco.** O ataque era de 18 ms e havia cliques e um tremor forte. A correção foi uma subida suave de 30 a 45 ms, ruído agudo sem graves, nenhum clique e um pico de 0,7.
 - **A bola no chão soa igual à bola nas mãos.** Uma versão com o soalho e o «ping» do ar dentro da bola, diferente para madeira e alcatrão, soava mal. Agora a bola no chão e o passe recebido usam a mesma palmada seca (`slap(0)`), e o que muda de campo para campo é a sala (`ROOMS` e o `wet` de `CROWDS`). Não mudes o timbre da bola por pavilhão: muda a sala.
+- **O desvio DC vem dos modos graves.** Os modos que começam numa fase ao acaso deixam o som desviado do zero. O `normalize` tem um passa-alto a 20 Hz que resolve isto em todos os sons; não o tires.
+- **Confirma o contexto antes de propor uma mudança na mistura.** Propus abafar a música na pausa, mas durante o jogo não há música (`audio.music('none')`). Antes de mexer na mistura, vê o que toca de facto nesse ecrã.
 - **Ao ouvido do jogador, a física perde para a legibilidade.** Quando a queixa contradiz a receita física, ganha a queixa.
 
 ### Traduzir queixas em parâmetros
@@ -120,7 +124,10 @@ Um agente não ouve. Mede tudo e diz que não ouviu.
   - fator de crista entre 6 e 20 dB nos impactos;
   - variantes diferentes (correlação < 0,98) mas da mesma família (RMS a ±3 dB);
   - o centróide espectral na faixa do papel.
-- **WAVs para o utilizador:** escreve um script na pasta de rascunho que importa o gerador e grava WAVs a 32 kHz, com 3 variantes seguidas e meio segundo de silêncio entre elas. Junta uma versão com a sala do pavilhão. Envia-os com `SendUserFile` e pede uma reação concreta.
+- **WAVs para o utilizador:** `npm run sound-wavs` lista os sons; `npm run sound-wavs -- apito rede` (ou `todos`) grava em `dist-sounds/` cada som seco, com as variantes seguidas, e dentro das cinco salas (`-rua`, `-escola`, `-pavilhao`, `-arena`, `-vazio`), com o nível de sala de `CROWDS`. Um som novo entra no catálogo `SOUNDS` de `src/tools/sound-wavs.ts`. Envia os WAVs com `SendUserFile` e pede uma reação concreta.
+- **Nos testes de `audio.test.ts`:**
+  - o `AudioContext` falso acaba cada som logo no `start()`, para o limite de vozes não encher;
+  - o mesmo som só toca uma vez em cada 45 ms, por isso avança `ctx.currentTime` entre repetições.
 - **Antes de entregar:**
   - `npm run check`;
   - `npm run browser-check` (é `src/ui/`; no Linux, com `BROWSER_PATH=/opt/pw-browsers/chromium`);
