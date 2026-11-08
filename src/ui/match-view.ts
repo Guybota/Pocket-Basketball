@@ -550,7 +550,7 @@ export class MatchView {
     const { s, camera } = this;
     const near = this.fans.map((f, i) => i).filter(i => this.fans[i]!.front && Math.abs(this.fans[i]!.x - camera.lookX) < 5.5);
     if (near.length === 0) return;
-    this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: s.tick });
+    this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: this.animTick });
   }
 
   /** A próxima frase de um contexto, sem repetir até se esgotarem. */
@@ -2230,7 +2230,8 @@ export class MatchView {
     const { g, s, camera } = this;
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
-      const age = s.tick - b.born;
+      // Pelo relógio da animação: o do jogo para no apito, e o balão ficava no ar a tapar a saída.
+      const age = this.animTick - b.born;
       if (age > 44) {
         this.bubbles.splice(i, 1);
         continue;
