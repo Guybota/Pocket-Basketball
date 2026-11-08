@@ -8,7 +8,8 @@ import { remember } from './cache.ts';
 export { INK };
 
 const SKINS = [['#f2c7a0', '#d9a57c'], ['#c98d5e', '#a9713f'], ['#8d5a36', '#6f4326'], ['#5c3a24', '#472a18']] as const;
-const HAIRS = ['#2a2230', '#5a3a22', '#a8642a', '#e0b94f', '#1b2230', '#7a3a2a'] as const;
+// Cada cabelo fica a pelo menos 0,06 de L (OKLab) de todas as peles e da tinta, para não desaparecer na cabeça nem no contorno.
+const HAIRS = ['#372e3d', '#6e4d34', '#b26d34', '#d9b248', '#2c3345', '#814030'] as const;
 export const KITS = {
   blue: { jersey: '#2b5fd9', shade: '#1d43a3', trim: '#ffffff', shorts: '#f4f4f4' },
   cream: { jersey: '#f4efe0', shade: '#cfc7ae', trim: '#cf3a2c', shorts: '#cf3a2c' },
@@ -68,7 +69,7 @@ const POSES = {
   fallen: (L: number): PoseShape => ({ a: [-6, -8], b: [7, 1], f: [-3, L], g: [3, L - 3] }),
   // A levantar-se: primeiro sentado de mãos no chão, depois de joelhos.
   getup1: (L: number): PoseShape => ({ a: [-5, 5], b: [5, 5], f: [-5, 3], g: [5, 3], jump: 3 - L }),
-  getup2: (L: number): PoseShape => ({ a: [-4, 3], b: [4, 1], f: [-3, 5], g: [3, 5], jump: Math.min(0, 5 - L) }),
+  getup2: (L: number): PoseShape => ({ a: [-4, 3], b: [4, 1], f: [-3, 5], g: [3, 5], jump: 5 - L }),
   // A bola segura com as duas mãos à frente da barriga: na reposição e no lance livre; a rodar a bola, e a correr com ela na mão.
   hold: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [-2, L], g: [2, L], ball: [5, -3] }),
   holdSpin: (L: number): PoseShape => ({ a: [3, 1], b: [5, 3], f: [-2, L], g: [2, L], ball: [5, -5] }),
@@ -77,8 +78,8 @@ const POSES = {
   holdRun2: (L: number): PoseShape => ({ a: [2, 2], b: [4, 2], f: [3, L - 1], g: [-3, L], jump: 1, ball: [5, -4] }),
   holdRun3: (L: number): PoseShape => ({ a: [2, 3], b: [4, 3], f: [1, L], g: [-1, L - 1], ball: [5, -3] }),
   // Antes do lance livre: fletir os joelhos com a bola em baixo, e depois subir.
-  ftDip: (L: number): PoseShape => ({ a: [2, 4], b: [4, 4], f: [-3, L - 1], g: [3, L - 1], jump: -2, ball: [5, -2] }),
-  gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], ball: [5, -9] }),
+  ftDip: (L: number): PoseShape => ({ a: [2, 4], b: [4, 4], f: [-3, L - 2], g: [3, L - 2], jump: -2, ball: [5, -2] }),
+  gather: (L: number): PoseShape => ({ a: [3, -2], b: [4, -3], f: [-2, L - 1], g: [2, L - 1], jump: -1, ball: [5, -9] }),
   shoot: (L: number): PoseShape => ({ a: [1, -7], b: [3, -8], f: [-1, L - 1], g: [2, L - 2], jump: 6, ball: [3, -18] }),
   // O lay-up, em três tempos: o passo de chamada com a bola ao peito e o joelho a subir, o impulso a uma perna com a bola
   // a passar o ombro, e lá em cima o braço esticado a largá-la, com o joelho de fora levantado.
@@ -115,14 +116,15 @@ const POSES = {
   fumble: (L: number): PoseShape => ({ a: [6, 5], b: [8, 3], f: [-3, L], g: [3, L - 1] }),
   cheer0: (L: number): PoseShape => ({ a: [-3, -6], b: [3, -6], f: [-2, L], g: [2, L] }),
   // A bater palmas, de pé: mãos afastadas e mãos juntas à frente do peito.
-  clap0: (L: number): PoseShape => ({ a: [1, -2], b: [-1, -2], f: [-2, L], g: [2, L] }),
-  clap1: (L: number): PoseShape => ({ a: [3, -3], b: [-3, -3], f: [-2, L], g: [2, L] }),
+  clap0: (L: number): PoseShape => ({ a: [-4, -3], b: [4, -3], f: [-2, L], g: [2, L] }),
+  clap1: (L: number): PoseShape => ({ a: [3, 1], b: [-3, 1], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
   // Reações: punhos no ar depois de um cesto decisivo, mãos na cabeça depois de um erro ou de uma falta, cabisbaixo a perder.
   fists: (L: number): PoseShape => ({ a: [-5, -7], b: [5, -7], f: [-2, L], g: [2, L], jump: 2 }),
   handsHead: (L: number): PoseShape => ({ a: [-2, -9], b: [2, -9], f: [-2, L], g: [2, L] }),
-  slump: (L: number): PoseShape => ({ a: [-1, 8], b: [1, 8], f: [-2, L], g: [2, L] }),
+  // Os braços caídos não passam dos pés num tronco curto.
+  slump: (L: number, T = 9): PoseShape => ({ a: [-1, Math.min(8, T + 3)], b: [1, Math.min(8, T + 3)], f: [-2, L], g: [2, L] }),
   // O treinador: a pensar com a mão no queixo, e a apontar para o campo.
   think: (L: number): PoseShape => ({ a: [-2, 5], b: [3, -4], f: [-2, L], g: [2, L] }),
   point: (L: number): PoseShape => ({ a: [-1, 5], b: [8, 0], f: [-2, L], g: [2, L] }),
@@ -221,9 +223,12 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const L = look.legs;
   const T = look.torso;
   const body = BUILDS[look.build];
-  const shape = POSES[pose](L);
+  const shape = POSES[pose](L, T);
   // Camisola marcada com estes dois nomes: o desenho dela só se resolve no fim, quando já se sabe cada píxel.
-  const kit = look.custom ? { ...kitColors(look), jersey: JERSEY_MARK, shade: SHADE_MARK } : KITS[look.kit];
+  // Uma peça da cor da tinta fundia-se com o contorno: fica num azul-noite. As riscas do árbitro são tinta de propósito.
+  const fill = (c: string): string => (c === INK ? '#2c3345' : c);
+  const colors = look.custom ? { ...kitColors(look), jersey: JERSEY_MARK, shade: SHADE_MARK } : KITS[look.kit];
+  const kit = { ...colors, shade: fill(colors.shade), trim: fill(colors.trim), shorts: fill(colors.shorts) };
   const [skin, skinShade] = SKINS[look.skin]!;
   const hair = HAIRS[look.hair]!;
   // De fato ou de fato de treino, as mangas tapam os braços até às mãos e as calças tapam as pernas. O público veste calças.
@@ -239,7 +244,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     const y1 = hipY + dy - 2;
     limb(x0, hipY, x1, y1, body.leg, k => (trousers ? trouserColor : k < 0.5 ? kit.shorts : shaded ? skinShade : skin));
     rect(x1 - 1, y1 + 2, body.leg + 2, 2, look.street ? '#5a4632' : '#f4f4f4');
-    if (!look.street) put(x1 - 1, y1 + 3, kit.jersey);
+    if (!look.street) rect(x1 - 1, y1 + 3, 2, 1, kit.jersey);
   };
   leg(shape.f, hipLeft + 1, true);
   leg(shape.g, hipLeft + body.hips - body.leg - 1, false);
@@ -296,8 +301,11 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   }
   if (!bald && look.style !== 2) {
     rect(headX, headY, 8, 2, hair);
-    put(headX, headY + 2, hair);
-    put(headX + 7, headY + 2, hair);
+    // Debaixo da fita, estes dois píxeis ficavam soltos.
+    if (look.style !== 4) {
+      put(headX, headY + 2, hair);
+      put(headX + 7, headY + 2, hair);
+    }
   }
   if (look.style === 4) rect(headX, headY + 1, 8, 1, kit.trim);
   if (back) {
@@ -324,7 +332,8 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   // A camisola tapa os ombros: o braço só aparece a partir da cava.
   rect(shoulderLeft - 1, top, body.shoulder + 2, 1, kit.jersey);
   rect(shoulderLeft, top + 1, body.shoulder, 1, kit.jersey);
-  put(shoulderRight, top + 1, kit.shade);
+  // Com braços grossos, o braço tapa a coluna de sombra e este píxel ficava solto.
+  if (body.arm === 1) put(shoulderRight, top + 1, kit.shade);
   if (!back) rect(hx - 1, top, 2, 1, skin);
   if (!back && leftCrosses) drawLeftArm();
   if (!back && rightCrosses) drawRightArm();
@@ -351,7 +360,7 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
       const near = (x > 0 && grid[i - 1]) || (x < SPRITE_W - 1 && grid[i + 1]) || (y > 0 && grid[i - SPRITE_W]) || (y < SPRITE_H - 1 && grid[i + SPRITE_W]);
       let color = grid[i] ?? (near ? INK : null);
       if (look.custom && (color === JERSEY_MARK || color === SHADE_MARK)) {
-        const base = usesSecondOnBody(look.custom, x, y, x - shoulderLeft, y - top, body.shoulder, T) ? look.custom.second : look.custom.jersey;
+        const base = fill(usesSecondOnBody(look.custom, x, y, x - shoulderLeft, y - top, body.shoulder, T) ? look.custom.second : look.custom.jersey);
         color = color === JERSEY_MARK ? base : shadeOf(base);
       }
       if (color) {
