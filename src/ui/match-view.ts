@@ -64,7 +64,13 @@ const DUNK_LIFT = 14;
 const SHOT_JUMP_TICKS = 10;
 const SHOT_JUMP_HEIGHT = 8;
 const SHOOT_POSE_FEET = 6;
-const DUNK_FALL_TICKS = 6;
+const DUNK_FALL_TICKS = 3;
+// O afundanço por fases (animacao.md §10): agacha 150 ms, sobe, fica pendurado no aro 60 ms reais, cai a acelerar em
+// 150 ms e aterra a fletir as pernas 100 ms; só depois festeja.
+const DUNK_CROUCH_TICKS = 3;
+const DUNK_HANG_SECONDS = 0.06;
+const DUNK_LAND_TICKS = 2;
+const CHEER_TICKS = 14;
 // Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
 // à altura do aro, quando ele lhe toca.
@@ -112,8 +118,9 @@ interface BodyView {
   stepBack?: number;
   /** Quando saltou ao ressalto: o salto começa antes de a bola chegar, e apanha-se em cima. */
   reboundJump?: number;
-  /** Quando começou o salto do afundanço e quanto dura a subida, até à mão tocar no aro. */
-  dunkJump?: { start: number; up: number };
+  /** O afundanço: quando começou e quanto dura até à mão tocar no aro; a pose da fase em curso; até quando fica pendurado
+   * (em tempo real), onde, e desde quando cai; e como festeja depois de aterrar. */
+  dunkJump?: { start: number; up: number; pose?: PoseName; withBall?: boolean; hangEnd?: number; pin?: Point; fallFrom?: number; cheer?: PoseName };
   /** Onde está o suplente, quando sai do banco para a roda do desconto e volta. */
   huddle?: Point;
   /** Até quando o nome fica por cima dele, depois de ser tocado. */
@@ -214,6 +221,10 @@ export class MatchView {
   private readonly coachPos: (Point | null)[] = [null, null];
   // O relógio das animações: anda com a simulação e, com ela parada, com o tempo real, para ninguém ficar hirto numa pausa.
   private animTime = 0;
+  /** O tempo real, que para na pausa mas não acelera a 2× e 4×: para os efeitos de sensação, como a paragem no aro. */
+  private realTime = 0;
+  /** Quantos segundos de jogo passam por segundo real: 1, 2 ou 4. */
+  private simPerReal = 1;
   private animTick = 0;
   private frameSeconds = 0;
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
@@ -470,11 +481,11 @@ export class MatchView {
           if (!body) break;
           const dunk = e.dunk === true;
           // No lay-up e no step-back não há pose fixa: `poseOf` segue o voo. De costas no poste, lança-se de gancho.
-          if (!e.layup && this.view(body).stepBack !== s.tick) this.view(body).override = { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : SHOT_JUMP_TICKS) };
+          // Quem afunda salta até à mão tocar no aro, no fim do lance, e as poses seguem as fases do salto (`dunkLift`).
+          if (dunk && s.flight?.kind === 'shot') this.view(body).dunkJump = { start: s.tick, up: Math.max(DUNK_CROUCH_TICKS + 2, s.flight.total) };
+          else if (!e.layup && this.view(body).stepBack !== s.tick) this.view(body).override = { pose: dunk ? 'dunk' : s.posting === body ? 'hook' : 'shoot', until: s.tick + (dunk ? 12 : SHOT_JUMP_TICKS) };
           // O lançador sobe e desce num arco e só se mexe quando aterra; a pose dura exatamente o salto.
           if (!e.layup && !dunk && body) this.view(body).shotJump = s.tick;
-          // Quem afunda salta até à mão tocar no aro, no fim do lance.
-          if (dunk && s.flight?.kind === 'shot') this.view(body).dunkJump = { start: s.tick, up: Math.max(4, s.flight.total) };
           // Quem está em cima do lançador salta de braços no ar para o tentar abafar.
           const contester = this.nearestOpponent(body);
           if (contester && (contester.x - body.x) * (contester.x - body.x) + (contester.y - body.y) * (contester.y - body.y) < CONTEST_RANGE * CONTEST_RANGE) this.view(contester).override = { pose: 'block', until: s.tick + 10 };
@@ -482,10 +493,13 @@ export class MatchView {
         }
         case 'made': {
           this.addPoints(e, e.points!);
-          const dunk = body ? this.view(body).override?.pose === 'dunk' : false;
+          const dunk = body ? this.dunking(body) : false;
           this.announceMade(e, body);
           const decisive = s.clock <= 20 || (s.period >= 4 && s.clock < 600 && s.score[e.team] - s.score[e.team === 0 ? 1 : 0] <= e.points! && s.score[e.team] > s.score[e.team === 0 ? 1 : 0]);
-          if (body) this.view(body).override = { pose: decisive ? 'fists' : 'cheer1', until: s.tick + 14 };
+          // Quem afunda só festeja depois de aterrar.
+          const jump = body && this.view(body).dunkJump;
+          if (jump) jump.cheer = decisive ? 'fists' : 'cheer1';
+          else if (body) this.view(body).override = { pose: decisive ? 'fists' : 'cheer1', until: s.tick + CHEER_TICKS };
           if (dunk && body) {
             const beaten = this.nearestOpponent(body);
             if (beaten) this.view(beaten).override = { pose: 'handsHead', until: s.tick + 12 };
@@ -702,17 +716,46 @@ export class MatchView {
     return -SHOOT_POSE_FEET + 4 * (SHOOT_POSE_FEET + SHOT_JUMP_HEIGHT) * t * (1 - t);
   }
 
-  private dunkLift(b: Body, alpha: number): number {
-    const jump = this.view(b).dunkJump;
-    if (!jump) return 0;
-    const t = this.s.tick + alpha - jump.start;
-    if (t < jump.up) return DUNK_LIFT * Math.sqrt(t / jump.up);
-    const down = (t - jump.up) / DUNK_FALL_TICKS;
-    if (down >= 1) {
-      this.view(b).dunkJump = undefined;
-      return 0;
+  /** Se o lance em curso deste jogador é um afundanço. */
+  private dunking(b: Body): boolean {
+    const view = this.view(b);
+    return view.dunkJump !== undefined || view.override?.pose === 'dunk';
+  }
+
+  /** O salto do afundanço, em píxeis, e onde se desenha quem afunda (`x`, `y`, no campo). Agacha-se com a bola, sobe a
+   * abrandar até a mão chegar ao aro no fim do lance, fica pendurado no aro um instante, em tempo real para se ver a
+   * qualquer velocidade e preso ao sítio onde chegou, cai a acelerar e aterra a fletir as pernas. Só então festeja. */
+  private dunkLift(b: Body, alpha: number, x: number, y: number): { lift: number; x: number; y: number } {
+    const view = this.view(b);
+    const jump = view.dunkJump;
+    if (!jump) return { lift: 0, x, y };
+    const now = this.s.tick + alpha;
+    const t = now - jump.start;
+    jump.withBall = t < jump.up;
+    if (t < DUNK_CROUCH_TICKS) {
+      jump.pose = 'gather';
+      return { lift: 0, x, y };
     }
-    return DUNK_LIFT * (1 - down);
+    jump.pose = 'dunk';
+    if (t < jump.up) {
+      const u = (t - DUNK_CROUCH_TICKS) / (jump.up - DUNK_CROUCH_TICKS);
+      return { lift: DUNK_LIFT * (1 - (1 - u) * (1 - u)), x, y };
+    }
+    const pin = (jump.pin ??= { x, y });
+    jump.hangEnd ??= this.realTime + DUNK_HANG_SECONDS;
+    if (this.realTime < jump.hangEnd) return { lift: DUNK_LIFT, ...pin };
+    // A queda começa quando a paragem acabou, e não no frame em que se deu por isso.
+    jump.fallFrom ??= now - (this.realTime - jump.hangEnd) * this.simPerReal * 20;
+    const d = (now - jump.fallFrom) / DUNK_FALL_TICKS;
+    if (d < 1) return { lift: DUNK_LIFT * (1 - d * d), x: pin.x + (x - pin.x) * d, y: pin.y + (y - pin.y) * d };
+    if (d < 1 + DUNK_LAND_TICKS / DUNK_FALL_TICKS) {
+      jump.pose = 'gather';
+      return { lift: 0, x, y };
+    }
+    jump.pose = 'gather';
+    view.dunkJump = undefined;
+    if (jump.cheer) view.override = { pose: jump.cheer, until: this.s.tick + CHEER_TICKS };
+    return { lift: 0, x, y };
   }
 
   /** O salto ao ressalto, em píxeis acima do chão: um arco que começa antes de a bola chegar. */
@@ -761,7 +804,7 @@ export class MatchView {
     this.swishUntil = s.tick + SWISH_TICKS;
     this.swishHoop = hoopX;
     this.benchCheerUntil[e.team] = s.tick + 24;
-    const dunk = this.view(body!).override?.pose === 'dunk';
+    const dunk = this.dunking(body!);
     const loud = e.points === 3 || dunk;
     const worth = this.basketWorth(e, dunk);
     this.excitement = worth;
@@ -970,6 +1013,8 @@ export class MatchView {
       return { pose, withBall: false };
     }
     if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
+    const dunk = this.view(b).dunkJump;
+    if (dunk?.pose) return { pose: dunk.pose, withBall: dunk.withBall === true };
     if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
     // O lay-up acompanha o voo: o passo de chamada, o impulso a uma perna e o braço esticado em cima. A bola vai pela simulação.
     const flight = s.flight;
@@ -1162,6 +1207,7 @@ export class MatchView {
     const { g, s, camera } = this;
     for (let i = this.exits.length - 1; i >= 0; i--) {
       const e = this.exits[i]!;
+      const look = this.view(e.body).look;
       const t = (s.tick + alpha - e.start) / e.ticks;
       if (t >= 1) {
         this.exits.splice(i, 1);
@@ -1169,8 +1215,8 @@ export class MatchView {
       }
       const [sx, sy] = camera.project(e.from.x + (e.to.x - e.from.x) * t, e.from.y + (e.to.y - e.from.y) * t);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
-      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(this.view(e.body).look) });
-      drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.view(e.body).look, sx, sy, e.to.x < e.from.x, true, false) });
+      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(look) });
+      drawables.push({ y: sy, draw: () => drawSprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
 
@@ -1179,6 +1225,8 @@ export class MatchView {
     const { g, s, camera } = this;
     this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
     this.animTime += this.frameSeconds;
+    this.realTime += realSeconds;
+    if (realSeconds > 0 && simSeconds > 0) this.simPerReal = simSeconds / realSeconds;
     this.animTick = Math.floor(this.animTime * 20);
     this.drawn.bodies.clear();
     this.drawn.ball = null;
@@ -1270,7 +1318,8 @@ export class MatchView {
           y = slide.y + (b.y - slide.y) * t;
         }
       }
-      const [sx, sy] = camera.project(x, y);
+      const dunk = this.dunkLift(b, alpha, x, y);
+      const [sx, sy] = camera.project(dunk.x, dunk.y);
       const motion = this.motionOf(b);
       const look = this.view(b).look;
       const { pose, withBall } = this.poseOf(b, motion.moving);
@@ -1280,7 +1329,7 @@ export class MatchView {
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
       const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.back && pose.startsWith('run');
-      const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + this.dunkLift(b, alpha) + this.shotLift(b, alpha);
+      const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
       this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look) });
       return { x: sx, y: sy, lift, pose, withBall, look, flip, back };
     });
@@ -1335,7 +1384,9 @@ export class MatchView {
     const inHands = this.ballInHands();
     const holderOverride = inHands ? this.view(inHands).override : undefined;
     const holderDrawsBall = inHands !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
-    if (!holderDrawsBall) {
+    // No afundanço, a bola vai na mão de quem afunda até ao aro.
+    const dunkerDrawsBall = s.flight?.kind === 'shot' && this.view(s.flight.shooter).dunkJump?.withBall === true && this.drawn.bodies.has(s.flight.shooter);
+    if (!holderDrawsBall && !dunkerDrawsBall) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
       let z = this.ballPrevious.z + (this.ball.z - this.ballPrevious.z) * alpha;
