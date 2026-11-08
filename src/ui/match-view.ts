@@ -56,6 +56,10 @@ const TIP_RISE = 0.45;
 const TIP_HEIGHT = 16;
 // A pose de passe dura pouco: depois, quem passou volta a correr ou a esperar, em vez de deslizar de braços esticados.
 const PASS_POSE_TICKS = 6;
+// A correr, o gesto do passe só dura o instante de soltar a bola (preparar e soltar, 100 ms), para os pés não deslizarem.
+const MOVING_PASS_TICKS = 2;
+// A palmada do desarme: 300 ms no ar, e não 600, depois dos 10 ticks de braços no ar a contestar (animacao.md §10).
+const SWAT_TICKS = 6;
 // O salto ao ressalto: começa estes passos antes de a bola cair, dura isto e sobe até aqui, em píxeis.
 const REBOUND_JUMP_AHEAD = 5;
 const REBOUND_JUMP_TICKS = 12;
@@ -559,7 +563,7 @@ export class MatchView {
           if (body) this.view(body).override = { pose: 'slump', until: s.tick + 10 };
           break;
         case 'block':
-          if (body) this.view(body).override = { pose: 'swat', until: s.tick + 12 };
+          if (body) this.view(body).override = { pose: 'swat', until: s.tick + SWAT_TICKS };
           this.excitedUntil = s.tick + 24;
           if (e.team === this.crowdTeam) this.fansReact(true, 16);
           callbacks.sound('block');
@@ -1086,8 +1090,8 @@ export class MatchView {
     }
     // Quem vai repor leva a bola nas mãos até à linha.
     if (s.phase === 'dead' && s.inbound?.hasBall && s.inbound.passer === b) return { pose: moving ? HOLD_RUN_FRAMES[step]! : 'hold', withBall: true };
-    // A pose de passe só no instante do passe, e só parado: a correr, as pernas continuam a mexer.
-    if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < PASS_POSE_TICKS && !moving) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
+    // A pose de passe só no instante do passe; a correr, só o gesto de soltar, e depois as pernas continuam a mexer.
+    if (s.flight?.kind === 'pass' && s.flight.passer === b && s.flight.ticks < (moving ? MOVING_PASS_TICKS : PASS_POSE_TICKS)) return { pose: s.flight.lob ? 'lob' : this.isBouncePass(s.flight) ? 'bouncePass' : 'pass', withBall: false };
     // No ar à espera do ressalto, de braços esticados.
     const leap = this.view(b).reboundJump;
     if (leap !== undefined && s.tick - leap < REBOUND_JUMP_TICKS) return { pose: 'leap', withBall: false };
