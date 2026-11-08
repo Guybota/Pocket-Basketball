@@ -2,7 +2,7 @@ import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
 import {
-  SR, applause, babble, backboard, bounce, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
+  SR, applause, babble, backboard, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
   squeak, swish, thud, timpani, whistle,
   type Rng, type Room, type Sample, type Shout,
 } from './synth.ts';
@@ -123,7 +123,7 @@ export class GameAudio {
     limiter.release.value = 0.08;
     this.master.connect(compressor).connect(limiter).connect(ctx.destination);
     // Os sons de todos os jogos e as notas dos metais da festa e da entrada.
-    this.warm(() => this.floor('wood'), () => this.floor('asphalt'), () => this.rims(), () => this.boards(), () => this.nets(),
+    this.warm(() => this.rims(), () => this.boards(), () => this.nets(),
       () => this.whistles(), () => this.horns(205, 0.35), () => this.horns(150, 1), () => this.horns(310, 0.55), () => this.slaps(0),
       () => this.slaps(0.5), () => this.slaps(1), () => this.thuds(), () => this.squeaks(),
       () => this.note('snare', 0), ...[72, 78, 84].map(m => () => this.note('brass', m)), () => this.voices('hey'), () => this.voices('oh'));
@@ -293,9 +293,6 @@ export class GameAudio {
     return buffer;
   }
 
-  private floor(surface: 'wood' | 'asphalt' = this.venue === 'street' ? 'asphalt' : 'wood'): AudioBuffer[] {
-    return this.set(`bounce:${surface}`, 3, r => bounce(surface, r));
-  }
   private rims(): AudioBuffer[] { return this.set('rim', 3, rim); }
   /** Na rua a tabela é de metal e a rede de corrente; nos pavilhões, vidro e nylon. */
   private boards(): AudioBuffer[] {
@@ -426,7 +423,8 @@ export class GameAudio {
     if (this.active >= VOICE_LIMIT && LOW_PRIORITY.has(sound)) return;
     this.lastPlayed.set(sound, now);
     switch (sound) {
-      case 'bounce': this.shot(this.floor(), 0.13); break;
+      // A bola no chão soa como nas mãos; cada campo muda-a pela sala (seca na rua, eco no pavilhão vazio).
+      case 'bounce': this.shot(this.slaps(0), 0.13); break;
       case 'catch': this.shot(this.slaps(0), 0.08); break;
       case 'swish': this.duckMusic(); this.shot(this.nets(), this.venue === 'street' ? 0.2 : 0.14); break;
       case 'rim':

@@ -131,27 +131,6 @@ function addPanned(out: Stereo, x: Float32Array, at: number, gain: number, p: nu
 
 // ---------------------------------------------------------------- bola, aro, tabela, rede
 
-/** A bola no chão: o baque da borracha, o soalho, e o «ping» do ar dentro da bola, que é o que a faz soar a bola de basquetebol. */
-export function bounce(floor: 'wood' | 'asphalt', r: Rng): Mono {
-  const out = new Float32Array(samples(0.3));
-  const v = between(r, 0.94, 1.06);
-  const dry = floor === 'asphalt' ? 0.55 : 1;
-  // Cada pancada com pesos um pouco diferentes (±3 dB), para duas seguidas não serem a mesma.
-  const a = (): number => between(r, 0.7, 1.4);
-  addModes(out, [[92 * v, a(), 0.03 * dry], [168 * v, 0.55 * a(), 0.022 * dry], [318 * v, 0.32 * a(), 0.05 * dry], [655 * v, 0.16 * a(), 0.03 * dry]], r);
-  // A cavidade de ar (Katz, Russell): 985, 1581 e 2130 Hz, curta. Também é o que se ouve no altifalante de um telemóvel.
-  const c = between(r, 0.99, 1.01);
-  addModes(out, [[985 * c, 0.6 * a(), between(r, 0.012, 0.02)], [1581 * c, 0.3 * a(), 0.011], [2130 * c, 0.15 * a(), 0.008]], r);
-  if (floor === 'wood') {
-    // As tábuas do pavilhão por cima da caixa de ar.
-    addModes(out, [[140, 0.45 * a(), 0.09], [262, 0.22 * a(), 0.06], [410, 0.1 * a(), 0.04]], r);
-    addBurst(out, r, 0.6, 0.002, new Biquad('lowpass', 2200));
-  } else {
-    addBurst(out, r, 0.9, 0.006, new Biquad('bandpass', 3500, 0.7));
-  }
-  return normalize(out);
-}
-
 /** O aro: um anel de aço com modos inarmónicos que tocam muito, o baque do suporte e o estalo do impacto. */
 export function rim(r: Rng): Mono {
   // Um aro é aço grosso aparafusado à tabela e abafado pela rede: um «clank» curto e baixo, não um sino. Notas
@@ -346,7 +325,8 @@ export function squeak(r: Rng): Mono {
 
 /**
  * A palmada na bola: a pele da mão contra a borracha e um baque curto do ar lá dentro. `force` vai de 0 (receber um
- * passe) a 1 (um desarme de lançamento): mais força, mais forte, mais claro e com mais corpo.
+ * passe, e também a bola a bater no chão, que soa igual) a 1 (um desarme de lançamento): mais força, mais forte,
+ * mais claro e com mais corpo. O que muda de campo para campo é a sala, não o som da bola.
  */
 export function slap(force: number, r: Rng): Mono {
   const out = new Float32Array(samples(0.14));

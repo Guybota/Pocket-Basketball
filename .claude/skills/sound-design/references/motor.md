@@ -1,6 +1,6 @@
 # O motor de som do Pocket Basketball
 
-Retrato do código em novembro de 2026. Confirma as linhas antes de mexer, porque o código muda.
+Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 24 vozes no máximo, o mesmo som no máximo uma vez em cada 45 ms, e a 4× calam-se a bola, o passe e o encontrão e encurtam as reações). Confirma as linhas antes de mexer, porque o código muda.
 
 ## Ficheiros
 
@@ -26,7 +26,8 @@ Retrato do código em novembro de 2026. Confirma as linhas antes de mexer, porqu
   - `person(r)`, que escolhe homem, mulher ou criança;
   - `VOWELS`, a tabela das vogais.
 - **Geradores:**
-  - `bounce(floor)`, `rim`, `backboard` e `swish`;
+  - `slap(force)`: a bola nas mãos e também no chão; `rim`, `backboard(kind)`, `swish` e `chains`;
+  - `whistle`, `horn`, `squeak`, `thud`, `chime` e `clapBeat`;
   - `shout(kind)`, com `crowd`, `babble` e `applause`;
   - `snare`, `brass`, `glock` e `timpani`, para a música;
   - `roomImpulse(room, sr, r)`, a resposta ao impulso de cada sala (`ROOMS`, com rt60, brilho, amortecimento, pré-atraso e primeiras reflexões).
@@ -38,7 +39,7 @@ Retrato do código em novembro de 2026. Confirma as linhas antes de mexer, porqu
 
   | Bolsa | Variantes |
   |---|---|
-  | `bounce:wood` / `bounce:asphalt` | 3 |
+  | `slap:0` (passe e bola no chão), `slap:0.5`, `slap:1` | 3 |
   | `rim` | 3 |
   | `board` | 2 |
   | `swish` | 3 |
@@ -53,7 +54,7 @@ Retrato do código em novembro de 2026. Confirma as linhas antes de mexer, porqu
   ```
   efeitos → room ──────────────────────────→ effectsBus ─┐
               └→ Convolver(sala) → wet ──────┘           │
-  música → musicGain → musicBus → duck ──────────────────┴→ master → compressor(−14 dB, 4:1) → saída
+  música → musicGain → musicBus → duck ──────────────────┴→ master → compressor(−14 dB, 4:1) → limitador(−3 dB, 20:1) → saída
   ```
 
   O `wet` de cada pavilhão está em `CROWDS`. O `duckMusic()` baixa a música para 0.45 durante cerca de meio segundo e só é chamado pela rede, pelo apito e pelo `bigCheer`.
@@ -66,15 +67,14 @@ Retrato do código em novembro de 2026. Confirma as linhas antes de mexer, porqu
 
 | Evento | Como soa hoje |
 |---|---|
-| `bounce`, `swish`, `rim` (às vezes com tabela e «uuh»), `cheer`, `bigCheer` | amostras calculadas de antemão |
-| `whistle`, `buzzer`, `shotClockBuzzer`, `horn`, `steal`, `bump`, `card`, `block` | **ainda são osciladores** do Web Audio |
-| `squeak`, `swell` e `rhythmicClaps` (ambiente) | **ainda são osciladores** ou ruído ao vivo |
+| Todos os eventos de `play()` | amostras calculadas de antemão |
+| `swell` (vento e trânsito da rua) e o sino da rua | **ainda são** ruído ao vivo e osciladores |
 
 O ruído partilhado (`noiseBuffer`) e as escolhas no momento de tocar usam `Math.random`. Isto é permitido na interface, mas não é reproduzível.
 
 ## Velocidade, pausa, separador e silêncio
 
-- **A 4×:** o `bounce` e o `bump` calam-se (`QUIET_AT_SPEED` em `main.ts`). O `card` só toca até 2×. A música e o ambiente não mudam com a velocidade.
+- **A 4×:** o `bounce`, o `catch` e o `bump` calam-se (`QUIET_AT_SPEED` em `main.ts`). O `card` só toca até 2×. A música e o ambiente não mudam com a velocidade.
 - **Em pausa:** não há eventos nem ambiente, mas a música continua.
 - **Separador escondido:** o contexto é suspenso (`setHidden`).
 - **Silêncio:** o master vai a 0 e `play()` e `ambience()` saem logo.
@@ -106,9 +106,6 @@ O ruído partilhado (`noiseBuffer`) e as escolhas no momento de tocar usam `Math
 
 ## Lacunas conhecidas
 
-- **Sem limitador verdadeiro:** o compressor não impede picos acima de 0 dBFS.
-- **Sem limite de vozes nem prioridades.**
-- **Sem regras próprias de som para 2× e 4×**, além de calar dois eventos.
 - **A bancada não reage ao marcador**, como num final apertado.
 - **Sem volume próprio para a bancada.**
 - **O `addBurst` usa sempre `SR`**, ao contrário de `addModes` e `Biquad`, que aceitam outra frequência.

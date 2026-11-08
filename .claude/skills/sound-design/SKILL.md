@@ -74,6 +74,7 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
 
   A física (`acustica.md`) mostra um aro real a soar até cerca de 1 s. **Num jogo, isso lê-se como sino.** Mantém o aro curto.
 - **A rede soava a soco.** O ataque era de 18 ms e havia cliques e um tremor forte. A correção foi uma subida suave de 30 a 45 ms, ruído agudo sem graves, nenhum clique e um pico de 0,7.
+- **A bola no chão soa igual à bola nas mãos.** Uma versão com o soalho e o «ping» do ar dentro da bola, diferente para madeira e alcatrão, soava mal. Agora a bola no chão e o passe recebido usam a mesma palmada seca (`slap(0)`), e o que muda de campo para campo é a sala (`ROOMS` e o `wet` de `CROWDS`). Não mudes o timbre da bola por pavilhão: muda a sala.
 - **Ao ouvido do jogador, a física perde para a legibilidade.** Quando a queixa contradiz a receita física, ganha a queixa.
 
 ### Traduzir queixas em parâmetros

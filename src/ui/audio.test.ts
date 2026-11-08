@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameAudio } from './audio.ts';
 import { MUSIC_THEMES, scheduleSection, sectionLengths, songShape, type Instrument, type MusicKit } from './music.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, bounce, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  ROOMS, SR, applause, babble, backboard, brass, chains, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
   snare, squeak, swish, thud, timpani, whistle,
   type Sample,
 } from './synth.ts';
@@ -216,7 +216,7 @@ describe('os sons calculados', () => {
     return sum;
   };
   const cases: [string, Sample, number][] = [
-    ['bola na madeira', bounce('wood', r()), 0.3], ['bola no alcatrão', bounce('asphalt', r()), 0.3], ['aro', rim(r()), 0.35],
+    ['aro', rim(r()), 0.35],
     ['tabela', backboard(r()), 0.4], ['rede', swish(r()), 0.42], ['hey', shout('hey', r()), 0], ['uuuh', shout('ooh', r()), 0],
     ['ohhh', shout('oh', r()), 0], ['coro', crowd('hey', 6, r()), 1.3], ['burburinho', babble(3, 1.5, r()), 1.5],
     ['aplausos', applause(10, 1.5, r()), 1.5], ['tarola', snare(r()), 0.3], ['metais', brass(72, r()), 2.6],
@@ -243,12 +243,10 @@ describe('os sons calculados', () => {
     }
   });
 
-  it('os sons de pancada decaem, e o alcatrão é mais seco do que a madeira', () => {
-    for (const x of [bounce('wood', r()), rim(r()), backboard(r()), backboard(r(), 'metal'), chains(r()), slap(1, r()), thud(r()), snare(r()), glock(72, r()), timpani(40, r())]) {
+  it('os sons de pancada decaem', () => {
+    for (const x of [slap(0, r()), rim(r()), backboard(r()), backboard(r(), 'metal'), chains(r()), slap(1, r()), thud(r()), snare(r()), glock(72, r()), timpani(40, r())]) {
       expect(energy(x, 0.8, 1)).toBeLessThan(energy(x, 0, 0.2) / 50);
     }
-    const tail = (x: Float32Array) => energy(x, 0.15, 1) / energy(x, 0, 1);
-    expect(tail(bounce('asphalt', r()))).toBeLessThan(tail(bounce('wood', r())));
   });
 
   it('a bancada espalha-se em estéreo, e a mesma semente dá o mesmo som', () => {
