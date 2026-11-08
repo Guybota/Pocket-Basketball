@@ -292,7 +292,8 @@ export const BALANCE = {
   benchRecovery: 0.009,
   benchStrengthFactor: 1,
   periodBreakRecovery: 0.12,
-  subOutFatigue: 0.85,
+  // Sai quando entra no vermelho (energia 30 %, a cor da barra de energia), e não já no fundo dele.
+  subOutFatigue: 0.7,
   maxStintSeconds: 200,
   stintStaggerSeconds: 10,
   subInFatigue: 0.4,

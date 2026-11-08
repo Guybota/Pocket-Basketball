@@ -84,8 +84,10 @@ export function rotate(s: MatchState, team: TeamIndex): void {
       continue;
     }
     // Sair por tempo, e não só por cansaço, faz a resistência contar: quem aguenta mais chega ao fim menos cansado.
+    // As opções de ataque (a primeira e a segunda) não têm limite de tempo: só saem cansadas.
     const stintLimit = seconds(B.maxStintSeconds + slot * B.stintStaggerSeconds);
-    const needsRest = current.fatigue >= B.subOutFatigue || s.tick - current.enteredTick >= stintLimit;
+    const option = s.tactics[team].options?.includes(current.player.name) ?? false;
+    const needsRest = current.fatigue >= B.subOutFatigue || (!option && s.tick - current.enteredTick >= stintLimit);
     if (!fouledOut && !needsRest) continue;
     const candidates = bench.filter(b => b.line.fouls < B.foulOutAt && (fouledOut || b.fatigue <= B.subInFatigue + (b.player.offBall === 'sixthMan' ? B.sixthManSubIn : 0)));
     if (candidates.length === 0) continue;
