@@ -1208,6 +1208,22 @@ export class MatchView {
     for (let i = this.exits.length - 1; i >= 0; i--) {
       const e = this.exits[i]!;
       const look = this.view(e.body).look;
+      // Quem é substituído a meio de um afundanço acaba-o primeiro: fica no aro, cai e aterra, e só depois vai para o banco.
+      const jump = this.view(e.body).dunkJump;
+      if (jump) {
+        e.start = s.tick + alpha;
+        const dunk = this.dunkLift(e.body, alpha, e.from.x, e.from.y);
+        const [dx, dy] = camera.project(dunk.x, dunk.y);
+        const pose = jump.pose ?? 'dunk';
+        const withBall = jump.withBall === true;
+        const flip = this.motionOf(e.body).flip;
+        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: spriteHeight(look) });
+        drawables.push({ y: dy, draw: () => {
+          drawShadow(g, dx, dy);
+          drawSprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall);
+        } });
+        continue;
+      }
       const t = (s.tick + alpha - e.start) / e.ticks;
       if (t >= 1) {
         this.exits.splice(i, 1);
