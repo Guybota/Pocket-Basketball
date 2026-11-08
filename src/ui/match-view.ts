@@ -1809,13 +1809,15 @@ export class MatchView {
         const head = (drawn.y | 0) - Math.round(drawn.lift) - this.poseTop(drawn.pose, this.view(f.body!).look);
         top = head - FLOATER_GAP - height - rise;
         left = (drawn.x | 0) - (width >> 1);
-        // O lado decide-se uma vez, logo no início e a contar com o salto do afundanço que aí vem; senão a palavra saltava
-        // de cima para o lado a meio do salto.
-        if (f.top === undefined && f.beside === undefined && top - (this.view(f.body!).dunkJump ? DUNK_LIFT : 0) < FLOATER_MIN_TOP) f.beside = (drawn.x | 0) + 9 + width <= camera.width - 2 ? 1 : -1;
+        // De início conta-se já com o salto do afundanço que aí vem. Passar para o lado acontece no máximo uma vez, e fica:
+        // senão a palavra saltava de cima para o lado e de volta a meio do salto.
+        const above = Math.min(f.top ?? top, top);
+        const lift = f.top === undefined && this.view(f.body!).dunkJump ? DUNK_LIFT : 0;
+        if (f.beside === undefined && above - lift < FLOATER_MIN_TOP) f.beside = (drawn.x | 0) + 9 + width <= camera.width - 2 ? 1 : -1;
         if (f.beside !== undefined) {
           top = Math.max(FLOATER_MIN_TOP, head);
           left = f.beside > 0 ? (drawn.x | 0) + 9 : (drawn.x | 0) - 9 - width;
-        } else top = f.top = Math.max(2, Math.min(f.top ?? top, top));
+        } else top = f.top = above;
         left = Math.max(2, Math.min(camera.width - width - 2, left));
       } else {
         // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés de quem a disse.
