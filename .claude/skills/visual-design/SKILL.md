@@ -97,7 +97,7 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
   - tremor do ecrã de 1 a 2 píxeis de arte, só em momentos raros como o afundanço;
   - paragem no golpe de 33 a 83 ms, também só em momentos raros;
   - nunca clarões no ecrã inteiro (WCAG 2.3.1).
-- **Efeitos de ecrã contam em tempo real, não em ticks.** O tremor do afundanço conta em ticks, por isso a 4× vira um zumbido; é um problema conhecido, por corrigir.
+- **Efeitos de ecrã contam em tempo real, não em ticks.** O tremor do afundanço dura 200 ms reais, muda de posição 15 vezes por segundo, mexe 1 píxel de arte e desliga-se acima de 2×; a paragem no aro também conta em tempo real (`realTime`).
 - **Movimento reduzido** (`reducedMotion()`): congela o público, tira flashes e tremor, e corta os confetes para 10 a 20 %. A informação continua toda lá.
 - **Contra trocas rápidas:** não troques entre frente e costas, nem entre poses, em menos de 0,5 s (`TURN_LOCK_TICKS`).
 

@@ -71,6 +71,9 @@ const DUNK_CROUCH_TICKS = 3;
 const DUNK_HANG_SECONDS = 0.06;
 const DUNK_LAND_TICKS = 2;
 const CHEER_TICKS = 14;
+// O tremor do afundanço conta em tempo real: 200 ms, a mudar de posição 15 vezes por segundo, 1 píxel de arte para cada lado.
+const SHAKE_SECONDS = 0.2;
+const SHAKE_HZ = 15;
 // Píxeis de boneco por metro de altura da bola: a mão esticada de um jogador de 1,98 m no topo do salto da bola ao alto
 // fica a 46 px dos pés (pernas 7, tronco 7, braço 10, salto da pose 6 e TIP_HEIGHT 16), e é aí que a bola tem de estar,
 // à altura do aro, quando ele lhe toca.
@@ -810,7 +813,7 @@ export class MatchView {
     this.excitement = worth;
     this.excitedUntil = s.tick + Math.round(18 + 40 * worth);
     this.fansReact(e.team === this.crowdTeam, e.team === this.crowdTeam ? Math.round(20 + 50 * worth) : 30, worth);
-    if (dunk) this.shakeUntil = s.tick + 8;
+    if (dunk) this.shakeUntil = this.realTime + SHAKE_SECONDS;
     callbacks.sound('swish');
     callbacks.sound(loud ? 'bigCheer' : 'cheer');
     if (dunk) callbacks.announce('Afundanço!');
@@ -1448,9 +1451,12 @@ export class MatchView {
       g.fillStyle = `rgba(27,34,48,${fade})`;
       g.fillRect(0, 0, camera.width, camera.height);
     }
-    if (!this.reducedMotion && s.tick < this.shakeUntil) {
-      const dx = s.tick % 2 ? 2 : -2;
-      g.canvas.style.transform = `translate(${dx}px, ${s.tick % 3 === 0 ? 1 : -1}px)`;
+    // Acima de 2× o tremor seria um zumbido, e com movimento reduzido não há tremor.
+    if (!this.reducedMotion && this.simPerReal <= 2 && this.realTime < this.shakeUntil) {
+      const phase = Math.floor(this.realTime * SHAKE_HZ);
+      // Um píxel de arte em píxeis CSS: a tela está à escala da arte e o CSS amplia-a.
+      const art = g.canvas.clientWidth > 0 ? g.canvas.clientWidth / g.canvas.width : 1;
+      g.canvas.style.transform = `translate(${(phase % 2 ? 1 : -1) * art}px, ${((phase >> 1) % 2 ? 1 : -1) * art}px)`;
     } else if (g.canvas.style.transform) {
       g.canvas.style.transform = '';
     }
