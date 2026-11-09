@@ -60,6 +60,23 @@ const kick = async (p: Page): Promise<void> => {
   await shot(p, `${OUT}/apresentacao.png`);
   await skipIntro(p);
 };
+/** Só o campo: o botão do canto esconde o painel, o campo não encolhe e fica um desconto sobre ele; outro toque repõe tudo. */
+const checkCourtOnly = async (p: Page, file: string, where: string): Promise<void> => {
+  const measure = (): Promise<{ court: number; panel: boolean; timeout: boolean }> => p.evaluate(() => ({
+    court: document.getElementById('court')!.getBoundingClientRect().width,
+    panel: document.getElementById('panel')!.getClientRects().length > 0,
+    timeout: document.getElementById('courtTimeoutBtn')!.getClientRects().length > 0,
+  }));
+  const before = await measure();
+  await p.click('#courtOnlyBtn');
+  await p.waitForTimeout(150);
+  await shot(p, `${OUT}/${file}-so-campo.png`);
+  const hidden = await measure();
+  await p.click('#courtOnlyBtn');
+  await p.waitForTimeout(150);
+  const back = await measure();
+  check(`${where}, «Só o campo» esconde o painel e mostra o desconto sobre o campo`, before.panel && !before.timeout && !hidden.panel && hidden.timeout && hidden.court >= before.court && back.panel && !back.timeout && back.court === before.court, JSON.stringify({ before, hidden, back }));
+};
 /** Espera por algo, continuando o jogo nos descontos do adversário, que também o param à espera do treinador. */
 const waitThrough = async (p: Page, done: () => Promise<boolean>, timeout = 90_000): Promise<void> => {
   const deadline = Date.now() + timeout;
@@ -162,6 +179,16 @@ try {
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   check('Sem deslocamento horizontal no telemóvel', !overflow);
+  await checkCourtOnly(page, 'telemovel', 'No telemóvel');
+  // O desconto sobre o campo pede-o como o do painel: o primeiro toque arma, o segundo pede.
+  await page.click('#courtOnlyBtn');
+  const timeoutReady = await page.evaluate(() => !(document.getElementById('courtTimeoutBtn') as HTMLButtonElement).disabled);
+  if (timeoutReady) {
+    await page.click('#courtTimeoutBtn');
+    await page.click('#courtTimeoutBtn');
+    check('O desconto sobre o campo pede um desconto', (await page.getAttribute('#courtTimeoutBtn', 'aria-pressed')) === 'true');
+  }
+  await page.click('#courtOnlyBtn');
 
   // Desempenho com o processador 4× mais lento, como aproximação a um telemóvel médio.
   const cdp = await phone.newCDPSession(page);
@@ -1028,6 +1055,7 @@ try {
     await wide.waitForTimeout(200);
     await shot(wide, `${OUT}/landscape-${name}.png`);
     await measureTaps('jogo');
+    await checkCourtOnly(wide, `landscape-${name}`, `Em ${name}`);
     const layout = await wide.evaluate(() => {
       const screen = document.getElementById('screen')!.getBoundingClientRect();
       const panel = document.getElementById('panel')!.getBoundingClientRect();

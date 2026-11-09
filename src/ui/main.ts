@@ -73,6 +73,8 @@ let club: ClubState | null = null;
 let stage: Stage = 'title';
 // Na horizontal, o resultado do jogo abre numa janela ao centro, com o campo a ocupar o ecrã todo por trás.
 let resultOpen = false;
+// No jogo, o painel escondido e o campo com o ecrã todo (o botão do canto).
+let courtOnly = false;
 let townClock: number | null = null;
 let gameKind: GameKind = 'official';
 let rivalOf = 0;
@@ -169,7 +171,7 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 });
 
 function fit(): void {
-  layout.fit({ stage, resultOpen, menuPanel });
+  layout.fit({ stage, resultOpen, menuPanel, courtOnly });
   if (stage === 'town' && club) placeTownUi();
 }
 
@@ -180,7 +182,7 @@ function setStage(next: Stage): void {
   stage = next;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
-  // O botão do ecrã inteiro só aparece no jogo (e na horizontal, pelo CSS).
+  // O botão de esconder o painel só aparece no jogo.
   document.body.classList.toggle('in-match', next === 'match');
   resultOpen = false;
   if (next !== 'match' && next !== 'menu') idle.clear();
@@ -621,6 +623,22 @@ addEventListener('pointerup', () => {
 addEventListener('pointercancel', () => {
   pointerDown = false;
 });
+/** O botão de desconto sobre o campo copia o do painel: o ícone, se está desligado, armado ou pedido. */
+function mirrorTimeout(from: HTMLButtonElement): void {
+  const to = document.getElementById('courtTimeoutBtn') as HTMLButtonElement | null;
+  if (!to) return;
+  const src = (document.getElementById('timeoutIcon') as HTMLImageElement | null)?.getAttribute('src') ?? '';
+  const img = to.querySelector('img')!;
+  if (img.getAttribute('src') !== src) img.src = src;
+  to.disabled = from.disabled;
+  for (const name of ['aria-label', 'aria-pressed', 'title']) {
+    const value = from.getAttribute(name);
+    if (value === null) to.removeAttribute(name); else to.setAttribute(name, value);
+  }
+  if (from.dataset.armed) to.dataset.armed = from.dataset.armed;
+  else delete to.dataset.armed;
+}
+
 /** O botão muda de texto sem ser substituído, para nunca perder um toque. */
 function updateCoachButtons(): void {
   const timeoutButton = document.getElementById('timeoutBtn') as HTMLButtonElement | null;
@@ -638,6 +656,7 @@ function updateCoachButtons(): void {
   if (timeoutArmed) timeoutButton.dataset.armed = 'Pedir desconto? Toca outra vez';
   else delete timeoutButton.dataset.armed;
   if (timeoutArmed) timeoutButton.setAttribute('aria-label', 'Pedir desconto? Toca outra vez');
+  mirrorTimeout(timeoutButton);
 }
 
 function disarmTimeout(): void {
@@ -1256,30 +1275,33 @@ initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
-// Ecrã inteiro, com um botão que só aparece no jogo e na horizontal (CSS), e só onde o browser o deixa: o iPhone não deixa.
-type FullscreenDoc = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
-const fsDoc = document as FullscreenDoc;
-if (document.fullscreenEnabled || fsDoc.webkitFullscreenEnabled) {
-  const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.id = 'fullscreenBtn';
-  button.className = 'icon';
-  const isOn = (): boolean => Boolean(document.fullscreenElement ?? fsDoc.webkitFullscreenElement);
-  const sync = (): void => {
-    const label = isOn() ? 'Sair do ecrã inteiro' : 'Ecrã inteiro';
-    button.innerHTML = `<img class="ink" alt="" src="${controlIcon(isOn() ? 'windowed' : 'fullscreen')}">`;
-    button.setAttribute('aria-label', label);
-    button.title = label;
-  };
-  button.addEventListener('click', () => {
-    if (isOn()) void (document.exitFullscreen?.() ?? fsDoc.webkitExitFullscreen?.());
-    else void (root.requestFullscreen?.() ?? root.webkitRequestFullscreen?.());
-  });
-  document.addEventListener('fullscreenchange', sync);
-  document.addEventListener('webkitfullscreenchange', sync);
-  sync();
-  document.body.append(button);
+// Só o campo: um botão no canto, só no jogo (CSS), esconde o painel; o mesmo botão volta a mostrá-lo. Com o painel escondido,
+// fica sobre o campo um botão de desconto, que faz o mesmo que o do painel (o primeiro toque arma, o segundo pede).
+const courtOnlyButton = document.createElement('button');
+courtOnlyButton.type = 'button';
+courtOnlyButton.id = 'courtOnlyBtn';
+courtOnlyButton.className = 'icon';
+const courtTimeoutButton = document.createElement('button');
+courtTimeoutButton.type = 'button';
+courtTimeoutButton.id = 'courtTimeoutBtn';
+courtTimeoutButton.className = 'icon';
+courtTimeoutButton.innerHTML = '<img class="ink" alt="">';
+courtTimeoutButton.setAttribute('aria-label', 'Desconto de tempo');
+function syncCourtOnly(): void {
+  const label = courtOnly ? 'Mostrar o painel' : 'Só o campo';
+  courtOnlyButton.innerHTML = `<img class="ink" alt="" src="${controlIcon(courtOnly ? 'windowed' : 'fullscreen')}">`;
+  courtOnlyButton.setAttribute('aria-label', label);
+  courtOnlyButton.setAttribute('aria-pressed', String(courtOnly));
+  courtOnlyButton.title = label;
+  document.body.classList.toggle('court-only', courtOnly);
 }
+courtOnlyButton.addEventListener('click', () => {
+  courtOnly = !courtOnly;
+  syncCourtOnly();
+  fit();
+});
+courtTimeoutButton.addEventListener('click', () => document.getElementById('timeoutBtn')?.click());
+syncCourtOnly();
+document.body.append(courtOnlyButton, courtTimeoutButton);
 
 initPwa();

@@ -1251,6 +1251,10 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 }
 
 /* O botão do ecrã inteiro: no canto de cima à esquerda, só no jogo e na horizontal. */
-#fullscreenBtn { display: none; position: fixed; left: 8px; top: 8px; z-index: 6; width: 44px; height: 44px; min-height: 44px; padding: 0; place-items: center; }
-body.landscape.in-match #fullscreenBtn { display: grid; }
-#fullscreenBtn img { width: 32px; height: 32px; image-rendering: pixelated; }
+#courtOnlyBtn, #courtTimeoutBtn { display: none; position: fixed; left: calc(8px + env(safe-area-inset-left, 0px)); top: calc(8px + var(--safe-top) + var(--top-extra)); z-index: 6; width: 44px; height: 44px; min-height: 44px; padding: 0; place-items: center; }
+body.in-match #courtOnlyBtn, body.in-match.court-only #courtTimeoutBtn { display: grid; }
+#courtTimeoutBtn { top: calc(60px + var(--safe-top) + var(--top-extra)); }
+#courtOnlyBtn img, #courtTimeoutBtn img { width: 32px; height: 32px; image-rendering: pixelated; }
+#game.court-only #panel { display: none; }
+#courtTimeoutBtn[data-armed] { background: var(--gold); }
+#courtTimeoutBtn[data-armed]::before { content: attr(data-armed); position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 3px 7px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); pointer-events: none; }
