@@ -91,7 +91,9 @@ export const BALANCE = {
   // O base, ou um organizador, passa-lhe quase sempre, se o lance dele valer pelo menos esta parte do seu.
   guardOpenPassChance: 0.7,
   guardOpenPassValue: 0.8,
-  rollPassFactor: 3,
+  rollPassFactor: 5,
+  // Para que lado do cesto rola o bloqueador (m), ao contrário da penetração.
+  rollSide: 1.8,
   // Quem acabou de receber do organizador lança e ataca mais: é assim que nascem as assistências dele.
   fedShotFactor: 1.8,
   fedSeconds: 2,

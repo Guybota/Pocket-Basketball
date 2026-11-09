@@ -256,8 +256,9 @@ export function updateTargets(s: MatchState): void {
       s.screen.by.targetX = fromU(s, offense, pu);
       s.screen.by.targetY = pv * (s.screen.by.y >= 0 ? 1 : -1);
     } else {
+      // Rola para o cesto pelo lado contrário ao da penetração, para não se cruzar com quem leva a bola.
       s.screen.by.targetX = fromU(s, offense, 2.2);
-      s.screen.by.targetY = 0;
+      s.screen.by.targetY = -s.driveSide * B.rollSide;
     }
   }
   // Isolamentos: quem joga para a opção abre o campo do lado contrário, para lhe deixar o caminho, ou o poste, livres.

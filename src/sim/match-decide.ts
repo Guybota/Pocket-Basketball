@@ -40,7 +40,7 @@ export function shotOdds(s: MatchState, b: Body, pressure: number, extraBonus = 
  * até ao cesto, sem ficar encostado à linha e ao contrário de para onde o defensor já está inclinado. Com pouca técnica lê-se mal. */
 export function driveSide(s: MatchState, h: Body): 1 | -1 {
   const defender = nearestDefender(s, h);
-  if (s.screen && s.screen.on === defender) return s.screen.by.y >= h.y ? 1 : -1;
+  if (s.screen && (s.screen.on === defender || (s.screen.handler === h && s.screen.setAt !== undefined))) return s.screen.by.y >= h.y ? 1 : -1;
   const hoopX = fromU(s, h.team, HOOP_U);
   const score = (side: 1 | -1): number => {
     const py = defender.y + side * B.driveSideGap;
