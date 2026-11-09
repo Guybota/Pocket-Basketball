@@ -1249,3 +1249,10 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
   .srow { grid-template-columns: 20px 24px minmax(0, 1fr) 30px 18px 26px; }
   .srow .gr, .srow.head img:not(.energy) { display: none; }
 }
+
+/* O botão do ecrã inteiro: no canto de cima à esquerda, só na horizontal. */
+#fullscreenBtn { display: none; position: fixed; left: 8px; top: 8px; z-index: 6; width: 44px; height: 44px; min-height: 44px; padding: 0; place-items: center; }
+body.landscape #fullscreenBtn { display: grid; }
+/* Na cidade, o texto da barra de cima chega-se para a direita para não ficar debaixo do botão. */
+body.landscape .town-bar { padding-left: calc(60px / var(--hud-zoom, 1)); }
+#fullscreenBtn img { width: 32px; height: 32px; image-rendering: pixelated; }

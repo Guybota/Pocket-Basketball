@@ -1254,4 +1254,30 @@ initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
+// Ecrã inteiro, com um botão que só aparece na horizontal (CSS) e só onde o browser o deixa: o iPhone não deixa.
+type FullscreenDoc = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
+const fsDoc = document as FullscreenDoc;
+if (document.fullscreenEnabled || fsDoc.webkitFullscreenEnabled) {
+  const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'fullscreenBtn';
+  button.className = 'icon';
+  const isOn = (): boolean => Boolean(document.fullscreenElement ?? fsDoc.webkitFullscreenElement);
+  const sync = (): void => {
+    const label = isOn() ? 'Sair do ecrã inteiro' : 'Ecrã inteiro';
+    button.innerHTML = `<img class="ink" alt="" src="${controlIcon(isOn() ? 'windowed' : 'fullscreen')}">`;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  };
+  button.addEventListener('click', () => {
+    if (isOn()) void (document.exitFullscreen?.() ?? fsDoc.webkitExitFullscreen?.());
+    else void (root.requestFullscreen?.() ?? root.webkitRequestFullscreen?.());
+  });
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+  sync();
+  document.body.append(button);
+}
+
 initPwa();
