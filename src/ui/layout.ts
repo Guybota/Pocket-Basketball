@@ -1,8 +1,6 @@
 // O tamanho e a escala do jogo: vertical ou horizontal, a tela do campo, o painel e a parte de cima dos menus.
 
 const LANDSCAPE_MIN_RATIO = 1.2;
-// Um campo mais alto do que isto mostra céu e chão a mais, e a câmara parece mudar: fica com barras por cima e por baixo.
-const MATCH_MIN_RATIO = 1.1;
 const LANDSCAPE_PANEL_WIDTH = 360;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
@@ -14,6 +12,9 @@ const MENU_STAGE_WIDTH = 360;
 const MENU_STAGE_HEIGHT = 270;
 // O que o painel do título precisa, na vertical: o logótipo, os botões e a frase.
 const TITLE_PANEL_HEIGHT = 300;
+// O campo vê-se sempre com o mesmo enquadramento, em qualquer ecrã e rotação: a câmara tem a distância focal fixa, por isso
+// uma tela maior mostrava mais campo. A tela do jogo é sempre esta, ampliada por um inteiro, com barras no que sobra.
+const MATCH_STAGE_WIDTH = 360;
 const MATCH_STAGE_HEIGHT = 216;
 
 /** A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si. */
@@ -112,20 +113,26 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
       const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
       const stageWidth = innerWidth - panelWidth;
-      const stageHeight = stage === 'match' ? Math.min(viewHeight, stageWidth / MATCH_MIN_RATIO) : viewHeight;
+      const stageHeight = viewHeight;
       // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
       // No jogo, a altura lógica é a da vertical, para a câmara e os bonecos ficarem iguais nos dois esquemas.
-      const scale = stage === 'town' || stage === 'title'
-        ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
-        : Math.ceil((stageHeight * dpr) / (stage === 'match' ? MATCH_STAGE_HEIGHT : LANDSCAPE_ART_HEIGHT)) / dpr;
-      const width = Math.ceil(stageWidth / scale);
-      const height = Math.ceil(stageHeight / scale);
+      const scale = stage === 'match'
+        ? Math.max(1, Math.floor(Math.min(stageWidth / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT) * dpr)) / dpr
+        : stage === 'town' || stage === 'title'
+          ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
+          : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
+      const width = stage === 'match' ? MATCH_STAGE_WIDTH : Math.ceil(stageWidth / scale);
+      const height = stage === 'match' ? MATCH_STAGE_HEIGHT : Math.ceil(stageHeight / scale);
       setCanvasSize(width, height, width * scale, height * scale);
       // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
       const bar = Math.max(0, (viewHeight - height * scale) / 2);
+      const side = Math.max(0, (stageWidth - width * scale) / 2);
       canvas.style.marginTop = `${bar}px`;
+      canvas.style.marginLeft = `${side}px`;
       hud.style.top = `${bar}px`;
       hud.style.bottom = `${bar}px`;
+      hud.style.left = `${side}px`;
+      hud.style.right = `${side}px`;
       game.style.zoom = '';
       game.style.height = '';
       game.style.width = '';
@@ -150,10 +157,16 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
       // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
       const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
-      setCanvasSize(gameWidth, stageHeight, gameWidth, stageHeight);
+      // No jogo, a tela fica com o enquadramento fixo, ao centro; os menus e a cidade usam a largura toda.
+      const canvasWidth = stage === 'match' ? MATCH_STAGE_WIDTH : gameWidth;
+      const side = (gameWidth - canvasWidth) / 2;
+      setCanvasSize(canvasWidth, stageHeight, canvasWidth, stageHeight);
       canvas.style.marginTop = '';
+      canvas.style.marginLeft = side ? `${side}px` : '';
       hud.style.top = '';
       hud.style.bottom = '';
+      hud.style.left = side ? `${side}px` : '';
+      hud.style.right = side ? `${side}px` : '';
       game.style.zoom = String(finalScale);
       game.style.height = `${gameHeight}px`;
       game.style.width = gameWidth === 360 ? '' : `${gameWidth}px`;

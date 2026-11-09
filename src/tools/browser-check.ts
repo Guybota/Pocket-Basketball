@@ -1034,12 +1034,13 @@ try {
       const canvas = document.getElementById('court')!.getBoundingClientRect();
       return {
         fills: Math.abs(screen.width + panel.width - innerWidth) < 2 && Math.abs(panel.height - innerHeight) < 2,
-        canvasCovers: canvas.width >= screen.width - 1 && canvas.height >= screen.height - 1,
+        // O enquadramento é sempre o mesmo: a tela tem 360×216 de arte e cabe no espaço do campo, com barras no que sobra.
+        canvasCovers: canvas.width <= screen.width + 1 && canvas.height <= screen.height + 1 && window.__pocket.state().canvas.width === 360 && window.__pocket.state().canvas.height === 216,
         overflow: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
         art: `${window.__pocket.state().canvas.width}x${window.__pocket.state().canvas.height}`,
       };
     });
-    check(`Em ${name}, o campo e o painel ocupam a janela toda`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
+    check(`Em ${name}, o painel ocupa a janela e o campo tem o enquadramento de sempre`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
     if (name !== 'telemovel-deitado') {
       const benchFits = await wide.evaluate(() => {
         const content = document.getElementById('tabContent')!.getBoundingClientRect();
