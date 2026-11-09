@@ -652,8 +652,7 @@ export class Camera {
 
   /** O enquadramento é igual em qualquer ecrã: mudam só os píxeis disponíveis. */
   /** A posição da câmara: onde está (y, z), para onde olha em repouso e a lente. Afinável, para se experimentarem enquadramentos. */
-  // `track`: quanto a câmara anda ao longo da lateral (1, sobre carris) em vez de rodar para a bola (0).
-  tuning = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL, track: 0.163 };
+  tuning = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL };
 
   setViewport(width: number, height: number): void {
     this.width = width;
@@ -672,7 +671,7 @@ export class Camera {
   aim(lookX: number, lookY = this.tuning.lookY): void {
     this.lookX = lookX;
     this.lookY = lookY;
-    this.cx = 14 + (lookX - 14) * this.tuning.track;
+    this.cx = 14 + (lookX - 14) * 0.163;
     this.cy = this.tuning.cy;
     this.cz = this.tuning.cz;
     const dx = lookX - this.cx;

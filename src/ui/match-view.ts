@@ -521,64 +521,6 @@ export class MatchView {
     return this.s.phase === 'timeout' || (this.s.phase === 'break' && this.s.period !== 2);
   }
 
-  /** PROTÓTIPO: formas de mostrar quem está junto à linha de baixo sem mudar a câmara de sempre. */
-  bottomFit: 'off' | 'tilt-all' | 'tilt-top' | 'mix' | 'zoom' = 'off';
-  /** O ajuste atual: quanto se inclina (m de `lookY`) e quanto se abre a lente (fração). */
-  private fit = { tilt: 0, zoom: 0 };
-  private fitBase: { lookX: number; lookY: number; focal: number } | null = null;
-
-  /** Aplica um ajuste sobre o enquadramento base; sem ajuste, repõe-no. */
-  private applyBottomFit(tilt: number, zoom: number): void {
-    const cam = this.camera;
-    if (tilt === 0 && zoom === 0) {
-      if (this.fitBase) { cam.tune({ focal: this.fitBase.focal }); cam.aim(this.fitBase.lookX, this.fitBase.lookY); }
-      this.fitBase = null;
-      return;
-    }
-    this.fitBase ??= { lookX: cam.lookX, lookY: cam.lookY, focal: cam.tuning.focal };
-    const b = this.fitBase;
-    cam.tune({ focal: b.focal * (1 - zoom) });
-    cam.aim(b.lookX, b.lookY + tilt);
-  }
-
-  /** O ajuste mínimo para os pés de todos ficarem acima da linha 206 do ecrã, e, salvo em `tilt-all`, as cabeças abaixo da 14. */
-  private bottomFitTarget(): { tilt: number; zoom: number } {
-    const none = { tilt: 0, zoom: 0 };
-    if (this.bottomFit === 'off' || this.ceremony || this.holding() || ['intro', 'jump', 'end', 'break'].includes(this.s.phase)) return none;
-    const cam = this.camera;
-    const bodies = [...this.s.court[0], ...this.s.court[1]];
-    const extremes = (tilt: number, zoom: number): [number, number] => {
-      this.applyBottomFit(tilt, zoom);
-      let low = 0, high = 1e9;
-      for (const b of bodies) {
-        const [sx, sy] = cam.project(b.x, b.y);
-        if (sx < -8 || sx > cam.width + 8) continue;
-        low = Math.max(low, sy);
-        high = Math.min(high, cam.project(b.x, b.y, 2)[1]);
-      }
-      return [low, high];
-    };
-    const search = (ok: (v: number) => boolean, max: number): number => {
-      let lo = 0, hi = max;
-      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; if (ok(m)) hi = m; else lo = m; }
-      return hi;
-    };
-    const fits = (tilt: number, zoom: number): boolean => extremes(tilt, zoom)[0] <= 206;
-    let result = none;
-    if (!fits(0, 0)) {
-      const mode = this.bottomFit;
-      if (mode === 'zoom') result = { tilt: 0, zoom: search(z => fits(0, z), 0.5) };
-      else {
-        // Quanto se pode inclinar sem cortar a cabeça de quem está mais em cima (se ninguém já estiver cortado).
-        const topRoom = mode === 'tilt-all' ? 10 : search(t => extremes(t, 0)[1] < 14, 10);
-        const tilt = Math.min(search(t => fits(t, 0), 10), mode === 'tilt-all' ? 10 : topRoom);
-        result = { tilt, zoom: mode === 'mix' && !fits(tilt, 0) ? search(z => fits(tilt, z), 0.15) : 0 };
-      }
-    }
-    this.applyBottomFit(0, 0);
-    return result;
-  }
-
   private cameraTarget(): [number, number] {
     const { ball } = this.s;
     if (this.ceremony) return [CEREMONY_CENTRE.x, this.camera.tuning.lookY];
@@ -1549,7 +1491,6 @@ export class MatchView {
     const time = this.animTime;
     const { theme } = this.textures;
     this.updateLocker();
-    this.applyBottomFit(0, 0);
     const [lookX, lookY] = this.cameraTarget();
     // Na cerimónia, quando o troféu sobe, a imagem corta logo para o dobro, sem passar por escalas fracionárias, e a
     // câmara fica parada (com movimento reduzido, desde o início).
@@ -1566,11 +1507,6 @@ export class MatchView {
       const step = (from: number, to: number): number => from + Math.max(-most, Math.min(most, (to - from) * ease));
       camera.aim(step(camera.lookX, lookX), step(camera.lookY, lookY));
     } else camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
-    const fitTarget = this.bottomFitTarget();
-    const fitEase = 1 - Math.exp(-this.frameSeconds * 2.2);
-    this.fit.tilt += (fitTarget.tilt - this.fit.tilt) * fitEase;
-    this.fit.zoom += (fitTarget.zoom - this.fit.zoom) * fitEase;
-    this.applyBottomFit(this.fit.tilt, this.fit.zoom);
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
     const wantZoom = this.holding() || lifted ? 2 : 1;
