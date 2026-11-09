@@ -180,6 +180,8 @@ function setStage(next: Stage): void {
   stage = next;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
+  // O botão do ecrã inteiro só aparece no jogo (e na horizontal, pelo CSS).
+  document.body.classList.toggle('in-match', next === 'match');
   resultOpen = false;
   if (next !== 'match' && next !== 'menu') idle.clear();
   if (next !== 'title') demo.stop();
@@ -1254,7 +1256,7 @@ initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
-// Ecrã inteiro, com um botão que só aparece na horizontal (CSS) e só onde o browser o deixa: o iPhone não deixa.
+// Ecrã inteiro, com um botão que só aparece no jogo e na horizontal (CSS), e só onde o browser o deixa: o iPhone não deixa.
 type FullscreenDoc = Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
 const fsDoc = document as FullscreenDoc;
 if (document.fullscreenEnabled || fsDoc.webkitFullscreenEnabled) {

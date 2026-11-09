@@ -2,6 +2,8 @@
 
 Jogo de gestão de basquetebol com a estrutura do Nintendo Pocket Football Club. Toda a implementação é feita por agentes (Claude e Codex). Estas regras valem para os dois.
 
+**Na dúvida, pergunta.** Sempre que um pedido não for claro, ou houver mais de uma forma razoável de o cumprir (onde aparece, para quê, em que ecrãs), pergunta ao utilizador antes de fazer, em vez de escolher sozinho.
+
 Lê antes de começar:
 
 - [Pesquisa sobre o original](docs/01-pesquisa-npfc.md)
