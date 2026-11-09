@@ -28,7 +28,7 @@ export interface LayoutState {
   stage: Stage;
   resultOpen: boolean;
   menuPanel: number;
-  /** No jogo, o painel escondido: o campo fica com o ecrã todo. */
+  /** No jogo deitado, o painel escondido: o campo fica com o ecrã todo. */
   courtOnly: boolean;
 }
 
@@ -109,7 +109,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     // O resultado do jogo: na horizontal numa janela larga ao centro, na vertical no ecrã todo, sem o campo.
     game.classList.toggle('result-open', resultOpen && stage === 'match');
     const centred = landscape && resultOpen && stage === 'match';
-    const onlyCourt = courtOnly && stage === 'match' && !resultOpen;
+    const onlyCourt = courtOnly && landscape && stage === 'match' && !resultOpen;
     game.classList.toggle('court-only', onlyCourt);
     if (landscape) {
       // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de 37,5 % da largura.
@@ -168,23 +168,20 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
       // No jogo, o campo pode ter uma ampliação inteira própria, maior do que a do painel (num tablet ao alto, a do painel
       // vem da altura e deixa largura por usar), sem passar de 45 % da altura, para o painel continuar com espaço.
-      // Com o painel escondido, o campo fica com a altura toda, ao meio.
-      const courtScale = Math.max(finalScale, Math.floor(Math.min(innerWidth / MATCH_STAGE_WIDTH, (viewHeight * (onlyCourt ? 1 : 0.45)) / MATCH_STAGE_HEIGHT) * dpr) / dpr);
+      const courtScale = Math.max(finalScale, Math.floor(Math.min(innerWidth / MATCH_STAGE_WIDTH, (viewHeight * 0.45) / MATCH_STAGE_HEIGHT) * dpr) / dpr);
       const courtCss = courtScale / finalScale;
-      const courtHeight = MATCH_STAGE_HEIGHT * courtCss;
-      const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : onlyCourt ? gameHeight : courtHeight;
-      const bar = onlyCourt ? (gameHeight - courtHeight) / 2 : 0;
+      const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT * courtCss;
       // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
       const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
       // No jogo, a tela fica com o enquadramento fixo, ao centro; os menus e a cidade usam a largura toda.
       const canvasWidth = stage === 'match' ? MATCH_STAGE_WIDTH * courtCss : gameWidth;
       const side = (gameWidth - canvasWidth) / 2;
-      if (stage === 'match') setCanvasSize(MATCH_STAGE_WIDTH, MATCH_STAGE_HEIGHT, canvasWidth, courtHeight);
+      if (stage === 'match') setCanvasSize(MATCH_STAGE_WIDTH, MATCH_STAGE_HEIGHT, canvasWidth, stageHeight);
       else setCanvasSize(canvasWidth, stageHeight, canvasWidth, stageHeight);
-      canvas.style.marginTop = bar ? `${bar}px` : '';
+      canvas.style.marginTop = '';
       canvas.style.marginLeft = side ? `${side}px` : '';
-      hud.style.top = bar ? `${bar}px` : '';
-      hud.style.bottom = bar ? `${bar}px` : '';
+      hud.style.top = '';
+      hud.style.bottom = '';
       hud.style.left = side ? `${side}px` : '';
       hud.style.right = side ? `${side}px` : '';
       game.style.zoom = String(finalScale);

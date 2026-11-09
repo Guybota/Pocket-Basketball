@@ -72,6 +72,12 @@ const checkCourtOnly = async (p: Page, file: string, where: string): Promise<voi
   await p.waitForTimeout(150);
   await shot(p, `${OUT}/${file}-so-campo.png`);
   const hidden = await measure();
+  // O desconto sobre o campo pede-o como o do painel: o primeiro toque arma, o segundo pede.
+  if (await p.evaluate(() => !(document.getElementById('courtTimeoutBtn') as HTMLButtonElement).disabled)) {
+    await p.click('#courtTimeoutBtn');
+    await p.click('#courtTimeoutBtn');
+    check(`${where}, o desconto sobre o campo pede um desconto`, (await p.getAttribute('#courtTimeoutBtn', 'aria-pressed')) === 'true');
+  }
   await p.click('#courtOnlyBtn');
   await p.waitForTimeout(150);
   const back = await measure();
@@ -179,16 +185,7 @@ try {
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   check('Sem deslocamento horizontal no telemóvel', !overflow);
-  await checkCourtOnly(page, 'telemovel', 'No telemóvel');
-  // O desconto sobre o campo pede-o como o do painel: o primeiro toque arma, o segundo pede.
-  await page.click('#courtOnlyBtn');
-  const timeoutReady = await page.evaluate(() => !(document.getElementById('courtTimeoutBtn') as HTMLButtonElement).disabled);
-  if (timeoutReady) {
-    await page.click('#courtTimeoutBtn');
-    await page.click('#courtTimeoutBtn');
-    check('O desconto sobre o campo pede um desconto', (await page.getAttribute('#courtTimeoutBtn', 'aria-pressed')) === 'true');
-  }
-  await page.click('#courtOnlyBtn');
+  check('No telemóvel ao alto não há botão «Só o campo»', await page.evaluate(() => document.getElementById('courtOnlyBtn')!.getClientRects().length === 0));
 
   // Desempenho com o processador 4× mais lento, como aproximação a um telemóvel médio.
   const cdp = await phone.newCDPSession(page);

@@ -182,7 +182,7 @@ function setStage(next: Stage): void {
   stage = next;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
-  // O botão de esconder o painel só aparece no jogo.
+  // O botão de esconder o painel só aparece no jogo (e na horizontal, pelo CSS).
   document.body.classList.toggle('in-match', next === 'match');
   resultOpen = false;
   if (next !== 'match' && next !== 'menu') idle.clear();
@@ -1275,7 +1275,7 @@ initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
-// Só o campo: um botão no canto, só no jogo (CSS), esconde o painel; o mesmo botão volta a mostrá-lo. Com o painel escondido,
+// Só o campo: um botão no canto, só no jogo e na horizontal (CSS), esconde o painel; o mesmo botão volta a mostrá-lo. Com o painel escondido,
 // fica sobre o campo um botão de desconto, que faz o mesmo que o do painel (o primeiro toque arma, o segundo pede).
 const courtOnlyButton = document.createElement('button');
 courtOnlyButton.type = 'button';
