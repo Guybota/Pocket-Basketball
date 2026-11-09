@@ -224,6 +224,7 @@ export function updateTargets(s: MatchState): void {
           if (distance(big.x, big.y, big.targetX, big.targetY) < B.screenArriveRange) {
             sc.x = big.x;
             sc.y = big.y;
+            sc.setAt = s.tick;
           }
         }
         if (sc.x !== undefined && sc.y !== undefined) {

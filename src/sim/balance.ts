@@ -70,6 +70,7 @@ export const BALANCE = {
   screenAhead: 1.3,
   screenSide: 0.8,
   screenArriveRange: 0.35,
+  screenHoldSeconds: 0.4,
   // Livre e à distância, ninguém fica a segurar a bola.
   openPressure: 0.25,
   // Em cada posse, a equipa escolhe a jogada pelo foco do ataque: [livre, pick-and-roll, bloqueios sem bola].

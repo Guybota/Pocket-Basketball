@@ -253,10 +253,10 @@ export interface MatchState {
   posting: Body | null;
   /**
    * Quem está a fazer um bloqueio nesta jogada, e em quem. O bloqueio direto (`handler`, quem tem a bola) fica o mesmo até a
-   * bola mudar de mãos: começa em `since`, o bloqueador vai para o lado do defensor e, quando chega, fica parado em (`x`, `y`)
-   * até rolar.
+   * bola mudar de mãos: começa em `since`, o bloqueador vai para a frente do portador e, quando chega (`setAt`), fica parado
+   * em (`x`, `y`) até rolar.
    */
-  screen: { by: Body; on: Body; handler?: Body; x?: number; y?: number; since?: number } | null;
+  screen: { by: Body; on: Body; handler?: Body; x?: number; y?: number; since?: number; setAt?: number } | null;
   inbound: Inbound | null;
   jump: JumpBall | null;
   /** A trajetória da bola depois de um falhanço, e onde vai cair. */

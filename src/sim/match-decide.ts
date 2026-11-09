@@ -285,9 +285,11 @@ export function decide(s: MatchState): void {
   // Conta o que acabar primeiro, a posse ou o período: no fim do período lança-se antes do apito, mesmo de longe.
   const shotSeconds = Math.min(s.shotClock, s.clock) / seconds(1);
 
-  // No bloqueio direto, quem tem a bola espera, a driblar, que o grande chegue ao sítio; nunca mais do que um bocado.
+  // No bloqueio direto, quem tem a bola espera, a driblar, que o grande chegue ao sítio (nunca mais do que um bocado), e ainda
+  // um instante depois de ele lá estar, para o bloqueio se ver antes de o usar.
   const sc = s.screen;
-  if (sc?.handler === h && sc.x === undefined && !s.driving && shotSeconds > B.screenWaitShotSeconds && s.tick - sc.since! < seconds(B.screenWaitSeconds)) return;
+  if (sc?.handler === h && !s.driving && shotSeconds > B.screenWaitShotSeconds
+    && (sc.setAt === undefined ? s.tick - sc.since! < seconds(B.screenWaitSeconds) : s.tick - sc.setAt < seconds(B.screenHoldSeconds))) return;
 
   if (u > B.shootingRangeU) {
     const runners = teammates.filter(b => toU(s, b.team, b.x) <= B.aheadPassRangeU && pressureOn(s, b) < 0.2);

@@ -62,8 +62,12 @@ const POSES = {
   postStep1: (L: number): PoseShape => ({ a: [-6, 1], b: [5, 3], f: [-2, L - 3], g: [5, L - 2], jump: -2, ball: [8, L - 5] }),
   // Quem defende o poste: agachado, encostado, com os braços para a frente a fazer força.
   brace: (L: number): PoseShape => ({ a: [4, 0], b: [6, 1], f: [-4, L - 2], g: [3, L - 2], jump: -2 }),
-  // O bloqueio: pés bem abertos e braços junto ao peito.
-  screen: (L: number): PoseShape => ({ a: [-2, 1], b: [2, 1], f: [-4, L], g: [4, L] }),
+  // O bloqueio: base larga, joelhos fletidos e os braços cruzados em baixo, à frente da cintura; parado como um poste.
+  screen: (L: number): PoseShape => ({ a: [6, 5], b: [-6, 5], f: [-5, L - 1], g: [5, L - 1], jump: -1 }),
+  // Quem bate no bloqueio: trava de mãos à frente do peito e o pé de trás a recuar.
+  bump: (L: number): PoseShape => ({ a: [4, 0], b: [6, -1], f: [-5, L], g: [2, L - 2] }),
+  // Quem rola para o cesto pede a bola com uma mão no ar; as pernas são as da corrida (`legs`).
+  callBall: (L: number): PoseShape => ({ a: [-3, 3], b: [2, -14], f: [-2, L], g: [2, L] }),
   // A queda: duas fases a ir abaixo e o corpo no chão, de braços abertos e uma perna dobrada. Estas três desenham-se inclinadas (ver LEAN).
   fallA: (L: number): PoseShape => ({ a: [-5, -3], b: [5, -2], f: [-2, L], g: [3, L - 2] }),
   fallB: (L: number): PoseShape => ({ a: [-6, -5], b: [6, -4], f: [-1, L - 1], g: [4, L - 3] }),

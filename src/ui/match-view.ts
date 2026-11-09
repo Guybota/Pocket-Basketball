@@ -66,7 +66,7 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
-const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$)/;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$|callBall$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
@@ -105,7 +105,7 @@ const STRIKE_TICKS = 8;
 // O lançamento em suspensão começa por recolher a bola: 150 ms (animacao.md §10).
 const GATHER_TICKS = 3;
 // As poses de andar: as outras, feitas a andar, levam as pernas da corrida (`legs`), para os pés não deslizarem.
-const LOCOMOTION = /^(run|dribRun|holdRun|slide|postStep|layup|fall|stumble|ankle|getup)/;
+const LOCOMOTION = /^(run|dribRun|holdRun|slide|postStep|layup|fall|stumble|ankle|getup|screen$|bump$)/;
 // As poses de festejo têm um saltinho fixo; a correr, levam as pernas da corrida na mesma.
 const CHEERS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists']);
 // O tremor do afundanço conta em tempo real: 200 ms, a mudar de posição 15 vezes por segundo, 1 píxel de arte para cada lado.
@@ -117,6 +117,8 @@ const SHAKE_HZ = 15;
 const BALL_PX_PER_METRE = 46 / 3.05;
 /** Quanto dura cada nuvem de poeira atrás de quem sprinta, em passos da simulação. */
 const PUFF_TICKS = 14;
+// Quem bate num bloqueio trava durante 300 ms (6 ticks), para o choque se ler sem texto.
+const BUMP_TICKS = 6;
 const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
@@ -198,6 +200,9 @@ interface BodyView {
   stepAt: number;
   /** Se o último frame o desenhou numa pose de andar, ou com as pernas da corrida. */
   striding?: boolean;
+  /** O último `screenCooldownUntil` visto, e o tick em que bateu num bloqueio por causa dele. */
+  screenHit?: number;
+  bumpAt?: number;
 }
 interface Floater {
   label: string;
@@ -1147,6 +1152,16 @@ export class MatchView {
     for (const b of [...s.court[0], ...s.court[1]]) {
       this.walk(this.view(b), b);
       const m = this.motionOf(b);
+      // A simulação marca o choque com o bloqueio ao pôr um novo `screenCooldownUntil`: trava, e levanta-se pó entre os dois.
+      const view = this.view(b);
+      if (b.screenCooldownUntil !== view.screenHit) {
+        view.screenHit = b.screenCooldownUntil;
+        const by = s.screen?.on === b ? s.screen.by : undefined;
+        if (by && b.screenCooldownUntil > s.tick) {
+          view.bumpAt = s.tick;
+          this.puffs.push({ x: (b.x + by.x) / 2, y: (b.y + by.y) / 2, born: s.tick, side: b.x < by.x ? 1 : -1 });
+        }
+      }
       if (m.moving && s.tick % 4 === b.slot % 4 && isSprinting(s, b)) {
         const prev = this.view(b).prev;
         this.puffs.push({ x: prev.x, y: prev.y, born: s.tick, side: (s.tick >> 2) % 2 ? 1 : -1 });
@@ -1217,6 +1232,8 @@ export class MatchView {
       return { pose, withBall: false };
     }
     if (b.stunnedUntil > s.tick) return { pose: b.stunKind === 'ankle' ? (frame % 2 ? 'ankle1' : 'ankle0') : 'stumble', withBall: false };
+    const bumpAt = this.view(b).bumpAt;
+    if (bumpAt !== undefined && s.tick - bumpAt < BUMP_TICKS) return { pose: 'bump', withBall: false };
     const dunk = this.view(b).dunkJump;
     if (dunk?.pose) return { pose: dunk.pose, withBall: dunk.withBall === true };
     if (override && override.until > s.tick) return { pose: override.pose, withBall: override.withBall === true };
@@ -1264,8 +1281,15 @@ export class MatchView {
     const inFront = man !== undefined && Math.hypot(b.x - hoopX, b.y) < Math.hypot(man.x - hoopX, man.y);
     const guarding = man !== undefined && inFront && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
     if (moving && guarding) return { pose: step < 2 ? 'slide0' : 'slide1', withBall: false };
+    // O bloqueio direto: posto, o bloqueador fica plantado; quando o portador arranca, no pick-and-roll rola a pedir a bola.
+    const sc = s.screen;
+    if (sc?.handler && sc.by === b && sc.handler === s.holder) {
+      if (!s.driving && sc.x !== undefined) return { pose: 'screen', withBall: false };
+      if (s.driving && s.play === 'pickRoll') return { pose: 'callBall', withBall: false };
+    }
     if (moving) return { pose: RUN_FRAMES[step]!, withBall: false };
-    if (s.screen?.by === b) return { pose: 'screen', withBall: false };
+    // O bloqueio sem bola mexe-se com o defensor; só se planta quando está parado.
+    if (sc && !sc.handler && sc.by === b) return { pose: 'screen', withBall: false };
     // Na paragem, junto ao banco, bebe-se água à vez.
     if (s.phase === 'break' || s.phase === 'timeout') return { pose: ((this.animTick >> 5) + b.slot) % 3 === 0 ? 'drink' : 'idle', withBall: false };
     return { pose: guarding ? 'defend' : 'idle', withBall: false };
@@ -1610,7 +1634,9 @@ export class MatchView {
       // A cabeça fica para o lado da queda; quem cai de barriga para baixo mostra as costas.
       // No poste, os dois ficam virados para fora do cesto: o atacante de costas para ele, o defensor de frente para o atacante.
       const postFacing = pose.startsWith('post') || pose === 'brace' ? camera.project(this.attackedHoop(s.offense), 0)[0] > sx : null;
-      const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? motion.flip;
+      // Quem bate no bloqueio fica virado para o bloqueador.
+      const bumpFacing = pose === 'bump' && s.screen ? camera.project(s.screen.by.x, s.screen.by.y)[0] < sx : null;
+      const flip = falling ? camera.project(b.x + b.fallHead, b.y)[0] < camera.project(b.x, b.y)[0] : postFacing ?? bumpFacing ?? motion.flip;
       // De costas só a andar, a deslizar em defesa, de pé, no crossover, a esticar os braços ou a saltar e agarrar a bola; o que se desenha tem o seu próprio bloqueio, para a troca entre
       // estas poses (do drible para a corrida, do salto para a corrida) não virar o boneco antes do tempo.
       const backable = BACK_POSES.test(pose);
