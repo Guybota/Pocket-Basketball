@@ -521,6 +521,52 @@ export class MatchView {
     return this.s.phase === 'timeout' || (this.s.phase === 'break' && this.s.period !== 2);
   }
 
+  /** PROTÓTIPO: formas de mostrar quem está junto à linha de baixo sem mudar a câmara de sempre. */
+  bottomFit: 'off' | 'tilt-all' | 'tilt-play' | 'zoom' | 'rise' = 'off';
+  private fitK = 0;
+  private fitBase: { lookX: number; lookY: number; focal: number; cz: number } | null = null;
+
+  /** Aplica a correção `k` (0 a 1) sobre o enquadramento base; com 0 repõe-no. */
+  private applyBottomFit(k: number): void {
+    const cam = this.camera;
+    if (k === 0) {
+      if (this.fitBase) { cam.tune({ focal: this.fitBase.focal, cz: this.fitBase.cz }); cam.aim(this.fitBase.lookX, this.fitBase.lookY); }
+      this.fitBase = null;
+      return;
+    }
+    this.fitBase ??= { lookX: cam.lookX, lookY: cam.lookY, focal: cam.tuning.focal, cz: cam.tuning.cz };
+    const b = this.fitBase;
+    if (this.bottomFit === 'zoom') cam.tune({ focal: b.focal * (1 - 0.5 * k) });
+    if (this.bottomFit === 'rise') cam.tune({ cz: b.cz + 16 * k });
+    cam.aim(b.lookX, b.lookY + (this.bottomFit.startsWith('tilt') ? 10 * k : 0));
+  }
+
+  /** A correção mínima para os pés de quem conta ficarem acima da linha 206 do ecrã. */
+  private bottomFitTarget(): number {
+    if (this.bottomFit === 'off' || this.ceremony || this.holding() || ['intro', 'jump', 'end', 'break'].includes(this.s.phase)) return 0;
+    const cam = this.camera;
+    const { ball, holder } = this.s;
+    const bodies = [...this.s.court[0], ...this.s.court[1]].filter(b =>
+      this.bottomFit !== 'tilt-play' || b === holder || (b.x - ball.x) * (b.x - ball.x) + (b.y - ball.y) * (b.y - ball.y) < 16);
+    const lowest = (k: number): number => {
+      this.applyBottomFit(k);
+      let max = 0;
+      for (const b of bodies) {
+        const [sx, sy] = cam.project(b.x, b.y);
+        if (sx > -8 && sx < cam.width + 8) max = Math.max(max, sy);
+      }
+      return max;
+    };
+    let k = 0;
+    if (lowest(0) > 206) {
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; if (lowest(m) > 206) lo = m; else hi = m; }
+      k = hi;
+    }
+    this.applyBottomFit(0);
+    return k;
+  }
+
   private cameraTarget(): [number, number] {
     const { ball } = this.s;
     if (this.ceremony) return [CEREMONY_CENTRE.x, this.camera.tuning.lookY];
@@ -1491,6 +1537,7 @@ export class MatchView {
     const time = this.animTime;
     const { theme } = this.textures;
     this.updateLocker();
+    this.applyBottomFit(0);
     const [lookX, lookY] = this.cameraTarget();
     // Na cerimónia, quando o troféu sobe, a imagem corta logo para o dobro, sem passar por escalas fracionárias, e a
     // câmara fica parada (com movimento reduzido, desde o início).
@@ -1507,6 +1554,8 @@ export class MatchView {
       const step = (from: number, to: number): number => from + Math.max(-most, Math.min(most, (to - from) * ease));
       camera.aim(step(camera.lookX, lookX), step(camera.lookY, lookY));
     } else camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
+    this.fitK += (this.bottomFitTarget() - this.fitK) * (1 - Math.exp(-this.frameSeconds * 2.2));
+    this.applyBottomFit(this.fitK);
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
     const wantZoom = this.holding() || lifted ? 2 : 1;
