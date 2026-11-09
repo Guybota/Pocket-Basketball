@@ -109,7 +109,12 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       // Com 37,5 %, uma janela de 1920×1080 chega ao ×2: os ícones do painel ficam com píxeis inteiros, em vez de ×1,75.
       // Nunca abaixo de 1: no telemóvel deitado, encolher deixava os botões abaixo de 44 px e os ícones a escalas partidas.
       // O painel fica com a altura da janela e as listas deslizam.
-      const ui = Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
+      const comfortable = Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
+      // No jogo, o campo primeiro: a maior ampliação inteira que cabe com o painel no mínimo, e o painel fica com o que sobra.
+      const courtFirst = Math.floor(Math.min((innerWidth - LANDSCAPE_PANEL_WIDTH) / MATCH_STAGE_WIDTH, viewHeight / MATCH_STAGE_HEIGHT) * dpr) / dpr;
+      const ui = stage === 'match' && !centred && courtFirst >= 1
+        ? Math.max(1, Math.min(comfortable, Math.floor(((innerWidth - courtFirst * MATCH_STAGE_WIDTH) * 4) / LANDSCAPE_PANEL_WIDTH) / 4))
+        : comfortable;
       // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
       const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
       const stageWidth = innerWidth - panelWidth;
@@ -154,13 +159,18 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       const menuHeight = menuPanel > 0 ? Math.max(MENU_STAGE_HEIGHT, Math.floor(gameHeight - menuPanel)) : MENU_STAGE_HEIGHT;
       // No título, a cidade fica com o que o logótipo e os botões não usam.
       const titleHeight = Math.max(MATCH_STAGE_HEIGHT, Math.floor(gameHeight - TITLE_PANEL_HEIGHT));
-      const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT;
+      // No jogo, o campo pode ter uma ampliação inteira própria, maior do que a do painel (num tablet ao alto, a do painel
+      // vem da altura e deixa largura por usar), sem passar de 45 % da altura, para o painel continuar com espaço.
+      const courtScale = Math.max(finalScale, Math.floor(Math.min(innerWidth / MATCH_STAGE_WIDTH, (viewHeight * 0.45) / MATCH_STAGE_HEIGHT) * dpr) / dpr);
+      const courtCss = courtScale / finalScale;
+      const stageHeight = stage === 'town' ? Math.floor(gameHeight) : stage === 'menu' ? menuHeight : stage === 'title' ? titleHeight : MATCH_STAGE_HEIGHT * courtCss;
       // A cidade e o jogo esticam até às bordas: a escala fica inteira, mas o campo e o painel ganham a largura que sobrava dos lados.
       const gameWidth = Math.max(360, Math.floor(innerWidth / finalScale));
       // No jogo, a tela fica com o enquadramento fixo, ao centro; os menus e a cidade usam a largura toda.
-      const canvasWidth = stage === 'match' ? MATCH_STAGE_WIDTH : gameWidth;
+      const canvasWidth = stage === 'match' ? MATCH_STAGE_WIDTH * courtCss : gameWidth;
       const side = (gameWidth - canvasWidth) / 2;
-      setCanvasSize(canvasWidth, stageHeight, canvasWidth, stageHeight);
+      if (stage === 'match') setCanvasSize(MATCH_STAGE_WIDTH, MATCH_STAGE_HEIGHT, canvasWidth, stageHeight);
+      else setCanvasSize(canvasWidth, stageHeight, canvasWidth, stageHeight);
       canvas.style.marginTop = '';
       canvas.style.marginLeft = side ? `${side}px` : '';
       hud.style.top = '';
