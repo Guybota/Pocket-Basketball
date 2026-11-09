@@ -182,7 +182,8 @@ export function updateTargets(s: MatchState): void {
       b.targetY = s.holder.y + ((0 - s.holder.y) / dist) * B.screenDistance;
     }
   }
-  s.screen = null;
+  // O bloqueio direto dura enquanto a bola estiver nas mãos de quem o recebeu; os outros recalculam-se a cada passo.
+  if (s.screen && !(s.screen.handler && s.screen.handler === s.holder && s.phase === 'live' && !s.flight)) s.screen = null;
   if (s.holder && s.phase === 'live') {
     const h = s.holder;
     const hu = toU(s, offense, h.x);
@@ -192,19 +193,45 @@ export function updateTargets(s: MatchState): void {
       const defender = nearestDefender(s, h);
       helper.targetX = fromU(s, offense, hu - B.pressHelpDistance);
       helper.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, h.y + (defender.y > h.y ? -2.5 : 2.5)));
-    } else if (hu <= B.shootingRangeU && !s.driving) {
+    } else if (hu <= B.screenStartU && !s.driving) {
       // Se a opção saiu numa troca a meio da posse, a jogada deixa de ser para ela.
       if (s.playFor && s.playFor.slot < 0) s.playFor = null;
       const pf = s.playFor;
       // O grande de serviço para os bloqueios: o mais alto que não seja quem tem a bola nem a opção.
       const biggest = (except: readonly Body[]): Body => lowest(s.court[offense].filter(b => !except.includes(b)), b => -b.player.height)!;
-      if ((s.play === 'pickRoll' && (!pf || pf === h)) || (s.play === 'pickPop' && pf && pf !== h)) {
-        // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola para o cesto; no pick-and-pop abre para o arco.
+      const direct = (s.play === 'pickRoll' && (!pf || pf === h)) || (s.play === 'pickPop' && pf && pf !== h);
+      if (direct && !s.screen && hu >= B.screenMinU && s.shotClock > seconds(B.screenWaitShotSeconds)) {
+        // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola depois para o cesto; no
+        // pick-and-pop abre para o arco.
         const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 4 ? 3 : 4]!;
-        const on = nearestDefender(s, h);
-        big.targetX = on.x + (on.x - h.x) * 0.3;
-        big.targetY = on.y + (on.y - h.y) * 0.3;
-        s.screen = { by: big, on };
+        s.screen = { by: big, on: nearestDefender(s, h), handler: h, since: s.tick };
+      }
+      if (s.screen?.handler === h && !s.driving) {
+        const sc = s.screen;
+        const { by: big, on } = sc;
+        if (sc.x === undefined || sc.y === undefined) {
+          // A caminho, o sítio é onde fica quem defende o portador: entre ele e o cesto, e um pouco para o meio do campo.
+          // Segue o portador até o grande lá chegar; o defensor bloqueado é o que estiver mais perto do portador nessa altura.
+          const hoopX = fromU(s, offense, HOOP_U);
+          const g = distance(h.x, h.y, hoopX, 0) || 1;
+          const [fx, fy] = [(hoopX - h.x) / g, -h.y / g];
+          let [px, py] = [-fy, fx];
+          if (py * h.y > 0) [px, py] = [-px, -py];
+          big.targetX = h.x + fx * B.screenAhead + px * B.screenSide;
+          big.targetY = h.y + fy * B.screenAhead + py * B.screenSide;
+          sc.on = nearestDefender(s, h);
+          // Chegado, fica ali parado: é aí que o defensor bate.
+          if (distance(big.x, big.y, big.targetX, big.targetY) < B.screenArriveRange) {
+            sc.x = big.x;
+            sc.y = big.y;
+          }
+        }
+        if (sc.x !== undefined && sc.y !== undefined) {
+          big.targetX = sc.x;
+          big.targetY = sc.y;
+        }
+      } else if (hu > B.shootingRangeU) {
+        // Os outros bloqueios só se montam ao alcance de lançamento.
       } else if (s.play === 'screens' && pf !== h) {
         // Bloqueio sem bola: um grande bloqueia o defensor do lançador, que se desmarca para um sítio aberto do arco.
         const shooter = pf ?? s.court[offense][h.slot === 1 ? 0 : 1]!;
@@ -219,7 +246,7 @@ export function updateTargets(s: MatchState): void {
       }
     }
   }
-  if (s.driving && s.screen && s.screen.on === nearestDefender(s, s.holder!)) {
+  if (s.driving && s.screen?.handler === s.holder) {
     if (s.play === 'pickPop') {
       // Abre para o arco, do lado de onde está, à espera do passe para lançar.
       const [pu, pv] = ARC_SPOTS[1]!;

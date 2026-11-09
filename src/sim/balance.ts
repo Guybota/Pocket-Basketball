@@ -58,7 +58,18 @@ export const BALANCE = {
   // Jogadas: o bloqueio conta quando o bloqueador está a esta distância do defensor; com ele posto, a penetração apetece mais.
   screenSetRange: 1.4,
   screenPressureFactor: 0.5,
-  pickRollDrive: 1.4,
+  pickRollDrive: 2.2,
+  // O bloqueio direto monta-se a partir desta distância do cesto (no arco ou acima), nunca debaixo dele (depois de um ressalto).
+  screenStartU: 14,
+  screenMinU: 6,
+  // Quem tem a bola espera pelo bloqueio, a driblar, até este tempo; e nunca com menos disto no relógio de posse.
+  screenWaitSeconds: 5,
+  screenWaitShotSeconds: 4,
+  // O sítio do bloqueio direto: à frente do portador, para o cesto, e para o lado do meio do campo (m). Perto disto dele, o
+  // bloqueador para: o bloqueio está posto.
+  screenAhead: 1.3,
+  screenSide: 0.8,
+  screenArriveRange: 0.35,
   // Livre e à distância, ninguém fica a segurar a bola.
   openPressure: 0.25,
   // Em cada posse, a equipa escolhe a jogada pelo foco do ataque: [livre, pick-and-roll, bloqueios sem bola].
@@ -79,7 +90,7 @@ export const BALANCE = {
   // O base, ou um organizador, passa-lhe quase sempre, se o lance dele valer pelo menos esta parte do seu.
   guardOpenPassChance: 0.7,
   guardOpenPassValue: 0.8,
-  rollPassFactor: 2,
+  rollPassFactor: 3,
   // Quem acabou de receber do organizador lança e ataca mais: é assim que nascem as assistências dele.
   fedShotFactor: 1.8,
   fedSeconds: 2,

@@ -285,6 +285,10 @@ export function decide(s: MatchState): void {
   // Conta o que acabar primeiro, a posse ou o período: no fim do período lança-se antes do apito, mesmo de longe.
   const shotSeconds = Math.min(s.shotClock, s.clock) / seconds(1);
 
+  // No bloqueio direto, quem tem a bola espera, a driblar, que o grande chegue ao sítio; nunca mais do que um bocado.
+  const sc = s.screen;
+  if (sc?.handler === h && sc.x === undefined && !s.driving && shotSeconds > B.screenWaitShotSeconds && s.tick - sc.since! < seconds(B.screenWaitSeconds)) return;
+
   if (u > B.shootingRangeU) {
     const runners = teammates.filter(b => toU(s, b.team, b.x) <= B.aheadPassRangeU && pressureOn(s, b) < 0.2);
     // Quem já vai sozinho para o cesto recebe a bola quase sempre, antes dos outros.
@@ -391,7 +395,7 @@ export function decide(s: MatchState): void {
     const free = freeMates[i]!;
     // O organizador só puxa pelos colegas que têm um lançamento melhor do que o dele, ou que estão livres: um base estrela também carrega a equipa.
     const better = passValues[i]! >= shootValue || free;
-    weights[3 + i]! *= optionFactor(s, b) * (s.playFor === b ? B.playPassFactor : 1) * (creator && better ? B.creatorPassFactor * (rolling ? B.rollPassFactor : 1) : 1) * (free ? B.openTeammatePass : 1);
+    weights[3 + i]! *= optionFactor(s, b) * (s.playFor === b ? B.playPassFactor : 1) * (creator && better ? B.creatorPassFactor : 1) * (rolling ? B.rollPassFactor : 1) * (free ? B.openTeammatePass : 1);
   });
   const choice = weightedIndex(s.rng, weights);
   if (choice === 0) shoot(s, h);
