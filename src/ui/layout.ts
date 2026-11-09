@@ -2,6 +2,9 @@
 
 const LANDSCAPE_MIN_RATIO = 1.2;
 const LANDSCAPE_PANEL_WIDTH = 360;
+// No jogo deitado, o painel pode estreitar até aqui (com a letra igual) se isso deixar o campo subir uma ampliação inteira:
+// num iPad deitado, o campo passa de 2,5× a 3×.
+const LANDSCAPE_PANEL_MIN = 280;
 // Altura máxima da arte no computador: quanto menor, mais gordos os píxeis.
 const LANDSCAPE_ART_HEIGHT = 290;
 // A cidade tem mais detalhe do que o campo, por isso usa píxeis mais pequenos.
@@ -111,12 +114,12 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       // O painel fica com a altura da janela e as listas deslizam.
       const comfortable = Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
       // No jogo, o campo primeiro: a maior ampliação inteira que cabe com o painel no mínimo, e o painel fica com o que sobra.
-      const courtFirst = Math.floor(Math.min((innerWidth - LANDSCAPE_PANEL_WIDTH) / MATCH_STAGE_WIDTH, viewHeight / MATCH_STAGE_HEIGHT) * dpr) / dpr;
-      const ui = stage === 'match' && !centred && courtFirst >= 1
-        ? Math.max(1, Math.min(comfortable, Math.floor(((innerWidth - courtFirst * MATCH_STAGE_WIDTH) * 4) / LANDSCAPE_PANEL_WIDTH) / 4))
-        : comfortable;
-      // Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
-      const panelWidth = stage === 'town' || centred ? 0 : LANDSCAPE_PANEL_WIDTH * ui;
+      const courtFirst = Math.floor(Math.min((innerWidth - LANDSCAPE_PANEL_MIN) / MATCH_STAGE_WIDTH, viewHeight / MATCH_STAGE_HEIGHT) * dpr) / dpr;
+      const fitted = stage === 'match' && !centred && courtFirst >= 1;
+      const left = innerWidth - courtFirst * MATCH_STAGE_WIDTH;
+      const ui = fitted ? Math.max(1, Math.min(comfortable, Math.floor((left * 4) / LANDSCAPE_PANEL_WIDTH) / 4)) : comfortable;
+      // Largura do painel em píxeis do ecrã. Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
+      const panelWidth = stage === 'town' || centred ? 0 : fitted ? Math.min(LANDSCAPE_PANEL_WIDTH * ui, Math.max(LANDSCAPE_PANEL_MIN, left)) : LANDSCAPE_PANEL_WIDTH * ui;
       const stageWidth = innerWidth - panelWidth;
       const stageHeight = viewHeight;
       // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
@@ -144,7 +147,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
       screen.style.width = `${stageWidth}px`;
       screen.style.height = `${viewHeight}px`;
       panel.style.zoom = String(ui);
-      panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : LANDSCAPE_PANEL_WIDTH}px`;
+      panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : panelWidth / ui}px`;
       panel.style.height = centred ? '' : `${viewHeight / ui}px`;
       panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
       screen.style.setProperty('--hud-zoom', String(ui));
