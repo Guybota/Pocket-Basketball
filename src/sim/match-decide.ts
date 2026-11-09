@@ -379,7 +379,7 @@ export function decide(s: MatchState): void {
     (onTheLine ? 0 : 1) * cube(shootValue) * B.shootWeight * urgency * (odds.points === 3 ? style.three * (1 + B.tacticThree * tactics.spacing) : style.shoot) * (1 + B.tacticPaceShoot * tactics.pace),
     // Livre, ninguém fica a segurar a bola; com o bloqueio posto, apetece penetrar.
     B.holdWeight * style.hold * (1 - B.tacticPaceHold * tactics.pace) * (pressure < B.openPressure ? B.openHoldFactor : 1),
-    cube(driveValue) * B.driveWeight * style.drive * (1 - B.tacticInsideDrive * tactics.spacing) * (s.screen?.on === nearestDefender(s, h) ? B.pickRollDrive : 1),
+    cube(driveValue) * B.driveWeight * style.drive * (1 - B.tacticInsideDrive * tactics.spacing) * (s.screen?.on === nearestDefender(s, h) || (s.screen?.handler === h && s.screen.setAt !== undefined) ? B.pickRollDrive : 1),
     ...passValues.map((value, i) => cube(value) * B.passWeight * style.pass * (1 - B.tacticPacePass * tactics.pace) * (h.slot >= 3 && u > B.outletU && (teammates[i]!.slot === 0 || teammates[i]!.player.offBall === 'leaker') ? B.outletBoost : 1)),
   ];
   // As opções de ataque lançam e penetram mais e recebem mais a bola; na jogada montada para uma delas, ainda mais.

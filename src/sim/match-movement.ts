@@ -12,6 +12,8 @@ export function checkScreenHit(s: MatchState): void {
   const screen = s.screen;
   if (!screen || s.phase !== 'live') return;
   const { by, on } = screen;
+  // O bloqueio direto só trava depois de posto: a caminho, o grande ainda está a correr.
+  if (screen.handler && screen.x === undefined) return;
   if (s.tick < on.screenCooldownUntil || on.stunnedUntil > s.tick || distance(by.x, by.y, on.x, on.y) >= B.screenContactRange) return;
   on.screenCooldownUntil = s.tick + seconds(B.screenHitCooldownSeconds);
   const strength = by.player.attributes.strength;

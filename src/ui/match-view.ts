@@ -66,7 +66,7 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
-const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$|callBall$)/;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$|callBall$|bump$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
@@ -105,7 +105,7 @@ const STRIKE_TICKS = 8;
 // O lançamento em suspensão começa por recolher a bola: 150 ms (animacao.md §10).
 const GATHER_TICKS = 3;
 // As poses de andar: as outras, feitas a andar, levam as pernas da corrida (`legs`), para os pés não deslizarem.
-const LOCOMOTION = /^(run|dribRun|holdRun|slide|postStep|layup|fall|stumble|ankle|getup|screen$|bump$)/;
+const LOCOMOTION = /^(run|dribRun|holdRun|slide|postStep|layup|fall|stumble|ankle|getup|screen$)/;
 // As poses de festejo têm um saltinho fixo; a correr, levam as pernas da corrida na mesma.
 const CHEERS: ReadonlySet<PoseName> = new Set(['cheer0', 'cheer1', 'fists']);
 // O tremor do afundanço conta em tempo real: 200 ms, a mudar de posição 15 vezes por segundo, 1 píxel de arte para cada lado.
@@ -1159,7 +1159,8 @@ export class MatchView {
         const by = s.screen?.on === b ? s.screen.by : undefined;
         if (by && b.screenCooldownUntil > s.tick) {
           view.bumpAt = s.tick;
-          this.puffs.push({ x: (b.x + by.x) / 2, y: (b.y + by.y) / 2, born: s.tick, side: b.x < by.x ? 1 : -1 });
+          // Nos pés do defensor, do lado de fora: à frente das pernas dos dois, para se ver.
+          this.puffs.push({ x: b.x, y: b.y + (b.y >= by.y ? 0.3 : -0.3), born: s.tick, side: b.x < by.x ? 1 : -1 });
         }
       }
       if (m.moving && s.tick % 4 === b.slot % 4 && isSprinting(s, b)) {

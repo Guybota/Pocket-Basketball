@@ -58,7 +58,7 @@ export const BALANCE = {
   // Jogadas: o bloqueio conta quando o bloqueador está a esta distância do defensor; com ele posto, a penetração apetece mais.
   screenSetRange: 1.4,
   screenPressureFactor: 0.5,
-  pickRollDrive: 2.2,
+  pickRollDrive: 3.5,
   // O bloqueio direto monta-se a partir desta distância do cesto (no arco ou acima), nunca debaixo dele (depois de um ressalto).
   screenStartU: 14,
   screenMinU: 6,
