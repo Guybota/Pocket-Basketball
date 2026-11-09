@@ -205,7 +205,7 @@ export function updateTargets(s: MatchState): void {
       if (direct && !s.screen && hu >= B.screenMinU && s.shotClock > seconds(B.screenWaitShotSeconds)) {
         // Bloqueio direto: o grande vem bloquear o defensor do portador. No pick-and-roll rola depois para o cesto; no
         // pick-and-pop abre para o arco.
-        const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 4 ? 3 : 4]!;
+        const big = s.play === 'pickPop' ? pf! : pf ? biggest([h]) : s.court[offense][h.slot === 3 ? 4 : 3]!;
         s.screen = { by: big, on: nearestDefender(s, h), handler: h, since: s.tick };
       }
       if (s.screen?.handler === h && !s.driving) {
