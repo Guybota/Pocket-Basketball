@@ -2,7 +2,9 @@
 // jogada fora do jogo, com cada frame numerado, e medem o que se pode medir em código. Correm na página anim.html,
 // chamados por `npm run review -- <descrição.json>`.
 import { createMatch, simulateMatch, step, type MatchState } from '../sim/match.ts';
-import type { Body, MatchEvent } from '../sim/match-types.ts';
+import type { Body, MatchEvent, Play } from '../sim/match-types.ts';
+import { fromU, toU } from '../sim/match-core.ts';
+import { BALANCE } from '../sim/balance.ts';
 import { INK } from './art/palette.ts';
 import { text, textWidth } from './art/font.ts';
 import { ALL_POSES, drawSprite, lookOf, type KitName, type Look, type PoseName } from './art/sprites.ts';
@@ -45,7 +47,15 @@ export interface SceneSpec {
    * balão, procura o primeiro passe; quem passa é o ator e quem recebe aparece sempre. As marcas `dunk` e `layup` são do
    * evento `shot`, mas também se aceitam no `made`: {"type":"made","dunk":true} é o cesto de um afundanço.
    */
-  force: (Partial<MatchEvent> & { type: MatchEvent['type'] }) | { type: 'pass'; lob?: boolean };
+  force?: (Partial<MatchEvent> & { type: MatchEvent['type'] }) | { type: 'pass'; lob?: boolean };
+  /**
+   * Montar uma jogada em vez de esperar que aconteça (em vez de `force`): no primeiro ataque organizado do jogo (bola na mão,
+   * a menos de 10 m do cesto), a posse passa a ser a jogada `play` ('free', 'pickRoll', 'pickPop', 'screens', 'iso',
+   * 'postIso'), e daí a simulação continua a sério. `holder` e `playFor` são postos (1 a 5) de quem ataca. `attackers` e
+   * `defenders` põem os jogadores, pela ordem dos postos, em [u, v]: u metros a partir da linha de fundo atacada, v metros
+   * para o lado (positivo para baixo no ecrã quando se ataca para a direita). O ator do recorte é quem fica com a bola.
+   */
+  setup?: { play: Play; holder?: number; playFor?: number; attackers?: [number, number][]; defenders?: [number, number][] };
   division?: number;
   week?: number;
   /** Uma semente fixa; sem ela, procura-se a primeira em que o evento acontece. */
@@ -229,10 +239,48 @@ type Frame = {
   camera: [number, number];
 };
 
+/** O primeiro ataque organizado: bola na mão, sem nada no ar, a menos de 10 m do cesto atacado. */
+function setupReady(s: MatchState): boolean {
+  return s.phase === 'live' && s.holder !== null && s.flight === null && toU(s, s.offense, s.holder.x) <= BALANCE.shootingRangeU;
+}
+
+/** Monta a jogada do cenário na posse em curso; devolve quem fica com a bola. */
+function applySetup(s: MatchState, setup: NonNullable<SceneSpec['setup']>): Body {
+  const team = s.offense;
+  const place = (bodies: Body[], spots: [number, number][] | undefined): void => spots?.forEach(([u, v], i) => {
+    const b = bodies[i];
+    if (!b) return;
+    b.x = b.targetX = fromU(s, team, u);
+    b.y = b.targetY = v;
+  });
+  place(s.court[team], setup.attackers);
+  place(s.court[team === 0 ? 1 : 0], setup.defenders);
+  const holder = setup.holder ? s.court[team][setup.holder - 1]! : s.holder!;
+  s.holder = holder;
+  s.ball.x = holder.x;
+  s.ball.y = holder.y;
+  s.play = setup.play;
+  s.playFor = setup.playFor ? s.court[team][setup.playFor - 1]! : null;
+  s.driving = false;
+  s.screen = null;
+  return holder;
+}
+
 /** A primeira semente (de 1 a 300) em que o evento acontece no primeiro jogo da época, e o próprio evento. */
 function findEvent(spec: SceneSpec): Found | null {
   const division = spec.division ?? 2;
-  const force = spec.force;
+  if (spec.setup) {
+    const seed = spec.seed ?? 1;
+    const club = newClub(seed, division);
+    const s = createMatch(clubTeam(club), opponentOf(club), weekSeed(club), [true, false]);
+    while (!setupReady(s)) {
+      if (s.phase === 'end') return null;
+      step(s);
+    }
+    const holder = applySetup(s, spec.setup);
+    return { seed, event: { type: 'turnover', tick: s.tick, period: s.period, clock: 0, team: holder.team, player: holder.player.name } };
+  }
+  const force = spec.force!;
   for (let seed = spec.seed ?? 1; seed <= (spec.seed ?? 300); seed++) {
     const club = newClub(seed, division);
     if (force.type === 'pass') {
@@ -270,8 +318,9 @@ function findEvent(spec: SceneSpec): Found | null {
  * segundo de jogo e cada frame desenha-se com a fração que falta). Devolve os frames, a folha de contacto e as medidas.
  */
 export function scene(spec: SceneSpec): { seed: number; tick: number; frames: string[]; sheet: string; timeline: unknown[]; warnings: string[] } | { error: string } {
+  if (!spec.force && !spec.setup) return { error: 'O cenário precisa de `force` (esperar por um evento) ou de `setup` (montar uma jogada)' };
   const found = findEvent(spec);
-  if (!found) return { error: `O evento ${JSON.stringify(spec.force)} não acontece em nenhuma das sementes procuradas` };
+  if (!found) return { error: spec.setup ? 'O jogo acabou sem um ataque organizado onde montar a jogada' : `O evento ${JSON.stringify(spec.force)} não acontece em nenhuma das sementes procuradas` };
   const record = (): { frames: string[]; canvases: HTMLCanvasElement[]; timeline: Frame[]; eventFrame: number } => {
     const division = spec.division ?? 2;
     const club = newClub(found.seed, division);
@@ -284,8 +333,14 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
     const { camera } = view as unknown as { camera: { project(x: number, y: number): [number, number] } };
     const fps = spec.fps ?? 30;
     const speed = spec.speed ?? 1;
-    const start = Math.max(0, found.event.tick - Math.round((spec.before ?? 0.5) * 20));
+    const start = Math.max(0, found.event.tick - Math.round((spec.before ?? (spec.setup ? 0 : 0.5)) * 20));
     while (s.tick < start) view.stepSim();
+    // A jogada montada: no mesmo passo em que a procura a montou, e um passo a seguir, para o desenho não interpolar do sítio antigo.
+    if (spec.setup) {
+      applySetup(s, spec.setup);
+      view.stepSim();
+      view.snapCamera();
+    }
     const actor = s.bodies.find(b => b.player.name === found.event.player && b.team === found.event.team) ?? null;
     if (actor && (spec.defenders !== undefined || spec.attackers !== undefined)) {
       const receiver = s.bodies.find(b => b.player.name === found.receiver && b.team === actor.team);
@@ -295,7 +350,7 @@ export function scene(spec: SceneSpec): { seed: number; tick: number; frames: st
       const shown = new Set([...fixed, ...near(1 - actor.team, spec.defenders ?? 5), ...near(actor.team, (spec.attackers ?? 5) - fixed.length)]);
       view.visible = b => shown.has(b);
     }
-    const total = Math.round(((spec.before ?? 0.5) + (spec.after ?? 2.5)) * fps);
+    const total = Math.round(((spec.before ?? (spec.setup ? 0 : 0.5)) + (spec.after ?? 2.5)) * fps);
     const crop = spec.crop === undefined ? ([160, 120] as const) : spec.crop;
     const out = document.createElement('canvas');
     out.width = crop ? crop[0] : canvas.width;

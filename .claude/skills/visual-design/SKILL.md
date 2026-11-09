@@ -187,6 +187,7 @@ O revisor:
 - **Cenário de teste** (`"kind": "scene"`):
   - **O que se escolhe:**
     - `force`, o evento que tem de acontecer, com os campos do `MatchEvent`, por exemplo `{"type": "move", "move": "powerDunk"}` ou `{"type": "made", "points": 3}`. Para um passe, `{"type": "pass"}`, ou `{"type": "pass", "lob": true}` para um em balão: quem passa é o ator, e quem recebe aparece sempre;
+    - `setup`, em vez de `force`, para montar uma jogada sem esperar que aconteça num jogo: no primeiro ataque organizado, a posse passa a ser a jogada `play` (`free`, `pickRoll`, `pickPop`, `screens`, `iso` ou `postIso`) e a simulação continua daí. `holder` e `playFor` são postos de 1 a 5, e `attackers` e `defenders` dentro do `setup` põem os jogadores em `[u, v]`, metros a partir da linha de fundo atacada e para o lado. Há cenas prontas em `src/tools/cenas/jogada-*.json`;
     - `attackers` e `defenders`, quantos atacantes (o ator incluído) e quantos defesas se veem, os mais perto do ator. Os outros e o árbitro não se desenham. Para um passe ou uma jogada de equipa, põe 2 ou mais atacantes;
     - `division`, `week`, `before`, `after`, `fps` (30), `speed`, `crop` (null para o campo inteiro) e `reducedMotion`.
   - **O que grava:**
