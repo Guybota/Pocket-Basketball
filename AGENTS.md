@@ -10,6 +10,7 @@ Lê antes de começar:
 - [Plano e fases](docs/02-plano-desenvolvimento.md)
 - [Estudo visual](docs/03-estudo-visual.html)
 - [Análise visual e charme, antes da Fase 5](docs/05-analise-visual-charme.md)
+- [Referências do Calciobit A](docs/referencias/calciobit/README.md): imagens etiquetadas por ecrã, fluxos de UI e câmara do jogo de gestão de futebol para telemóvel. Consulta antes de desenhar menus, fluxos ou a câmara. Servem só de referência.
 
 ## Comandos
 
