@@ -184,6 +184,7 @@ function setStage(next: Stage): void {
   // Ao voltar à cidade, o foco regressa ao botão que a deixou (o leitor de ecrã não fica perdido no início da página).
   if (stage === 'town' && next !== 'town') townFocus = document.activeElement?.id ?? '';
   stage = next;
+  if (next !== 'town') towerOpen = false;
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
   // O botão de esconder o painel só aparece no jogo (e na horizontal, pelo CSS).
@@ -230,18 +231,20 @@ function importFile(): void {
 }
 
 let townFocus = '';
+// A nota da Torre fica aberta quando a cidade se volta a desenhar (ao medir o ecrã, ao fechar o teclado).
+let towerOpen = false;
 function placeTownUi(): void {
   const current = club!;
   const back = townUi.contains(document.activeElement) ? document.activeElement!.id : townFocus;
   townFocus = '';
   townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveStatus.failed);
-  if (back) document.getElementById(back)?.focus({ preventScroll: true });
   const note = (text: string): void => {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
   };
   element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => {
+    towerOpen = true;
     note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
     const showCopy = (): void => {
       const { text, stale } = lastExportNote(club!);
@@ -256,6 +259,8 @@ function placeTownUi(): void {
     element('settingsBtn').addEventListener('click', () => openSettings(audio));
     element('importBtn').addEventListener('click', importFile);
   });
+  if (towerOpen) element('towerChip').click();
+  if (back) document.getElementById(back)?.focus({ preventScroll: true });
   element('airportChip').addEventListener('click', () => openMenu('airport'));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));
   element('officeBtn').addEventListener('click', () => openMenu('office'));

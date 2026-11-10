@@ -241,6 +241,9 @@ try {
 
   // O ciclo de uma semana, como um jogador o faria, com o clube guardado a sério.
   const season = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
+  // O Edge sem janela diz que partilha ficheiros, mas a folha de partilha nunca acaba: o exportar faz uma transferência.
+  const noShare = (): void => void Object.defineProperty(Navigator.prototype, 'canShare', { value: undefined });
+  await season.addInitScript(noShare);
   const coach = await season.newPage();
   const coachProblems: string[] = [];
   coach.on('pageerror', error => {
@@ -763,6 +766,7 @@ try {
   // O Aeroporto: exportar a nossa equipa, importar a de outra pessoa e jogar o amigável até ao fim.
   // Num clube a sério, para se ver que tudo fica guardado; acabado de criar, está na pré-época, numa semana livre.
   const airportContext = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
+  await airportContext.addInitScript(noShare);
   const airport = await airportContext.newPage();
   const airportProblems: string[] = [];
   airport.on('pageerror', error => airportProblems.push(error.message));
