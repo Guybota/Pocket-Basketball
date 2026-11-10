@@ -28,7 +28,7 @@ Golo de combo: marcador «0-6» com 6 amarelo por cima e as cartas e nome do com
 
 ![golo-03.jpg](golo-03.jpg)
 
-Golo: marcador grande «3-0» a aparecer com a palavra «ゴール!!» em vermelho e branco por cima; emblemas das equipas.
+Golo: marcador grande «3-0» a aparecer com a palavra «ゴール!!» em vermelho e branco por cima; emblemas das equipas. O «ゴール!!» é uma legenda do youtuber, não do jogo (ver [camara-e-estilo.md](../../camara-e-estilo.md)).
 
 - Etiquetas: placar, relogio, emblemas, numeros-grandes, texto-golo
 - Qualidade: boa
