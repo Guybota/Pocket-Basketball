@@ -147,7 +147,7 @@ const browser = await chromium.launch({
 });
 
 try {
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const phone = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
   const page = await phone.newPage();
   const problems: string[] = [];
   page.on('pageerror', error => problems.push(error.message));
@@ -185,7 +185,15 @@ try {
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   check('Sem deslocamento horizontal no telemóvel', !overflow);
-  check('No telemóvel ao alto não há botão «Só o campo»', await page.evaluate(() => document.getElementById('courtOnlyBtn')!.getClientRects().length === 0));
+  // Só na horizontal: ao alto, o aviso para rodar tapa tudo e o jogo não anda.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  const uprightTick = await page.evaluate(() => window.__pocket.state().tick);
+  await page.waitForTimeout(500);
+  check('Ao alto aparece o aviso para rodar o ecrã e o jogo não anda', await page.evaluate(t => document.getElementById('rotateHint')!.getClientRects().length > 0 && window.__pocket.state().tick === t, uprightTick));
+  await shot(page, `${OUT}/rodar-ecra.png`);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(200);
 
   // Desempenho com o processador 4× mais lento, como aproximação a um telemóvel médio.
   const cdp = await phone.newCDPSession(page);
@@ -232,7 +240,7 @@ try {
   check('Sem erros na página', problems.length === 0, problems.join(' | '));
 
   // O ciclo de uma semana, como um jogador o faria, com o clube guardado a sério.
-  const season = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const season = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
   const coach = await season.newPage();
   const coachProblems: string[] = [];
   coach.on('pageerror', error => {
@@ -657,7 +665,7 @@ try {
   check('Sem erros na cerimónia', ceremonyProblems.length === 0, ceremonyProblems.join(' | '));
 
   // As definições: abrem no título e na Torre, guardam-se à parte do clube e ficam depois de recarregar.
-  const prefsContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const prefsContext = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
   const prefs = await prefsContext.newPage();
   const prefsProblems: string[] = [];
   prefs.on('pageerror', error => prefsProblems.push(error.message));
@@ -754,7 +762,7 @@ try {
 
   // O Aeroporto: exportar a nossa equipa, importar a de outra pessoa e jogar o amigável até ao fim.
   // Num clube a sério, para se ver que tudo fica guardado; acabado de criar, está na pré-época, numa semana livre.
-  const airportContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true });
+  const airportContext = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true });
   const airport = await airportContext.newPage();
   const airportProblems: string[] = [];
   airport.on('pageerror', error => airportProblems.push(error.message));
@@ -1151,8 +1159,8 @@ try {
   check('Sem erros com os atalhos', keyProblems.length === 0, keyProblems.join(' | '));
   await keysContext.close();
 
-  // O tamanho de referência, 360×640: os ecrãs principais cabem na largura e não dão erros.
-  const reference = await browser.newContext({ viewport: { width: 360, height: 640 }, hasTouch: true });
+  // O tamanho de referência, 640×360: os ecrãs principais cabem na largura e não dão erros.
+  const reference = await browser.newContext({ viewport: { width: 640, height: 360 }, hasTouch: true });
   const small = await reference.newPage();
   const smallProblems: string[] = [];
   small.on('pageerror', error => smallProblems.push(error.message));
@@ -1177,7 +1185,7 @@ try {
   await small.click('.back');
   await small.click('#arenaChip');
   await small.waitForTimeout(150);
-  check('Em 360x640, «Bola ao alto» está todo à vista no balneário, sem deslizar', await fullyVisible(small, '#kickoffBtn'));
+  check('Em 640x360, «Bola ao alto» está todo à vista no balneário, sem deslizar', await fullyVisible(small, '#kickoffBtn'));
   await visit('balneario');
   await small.click('[data-squad="pre"]');
   await visit('plantel');
@@ -1189,14 +1197,14 @@ try {
   await skipIntro(small);
   await small.waitForTimeout(600);
   await visit('jogo');
-  check('Em 360x640, os ecrãs principais cabem na largura', smallFits.length === 0, smallFits.join(', '));
-  check('Em 360x640, os alvos de toque têm pelo menos 44×44 px (34 px de altura nas linhas de lista)', smallTaps.length === 0, smallTaps.join(' | '));
-  check('Em 360x640, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
+  check('Em 640x360, os ecrãs principais cabem na largura', smallFits.length === 0, smallFits.join(', '));
+  check('Em 640x360, os alvos de toque têm pelo menos 44×44 px (34 px de altura nas linhas de lista)', smallTaps.length === 0, smallTaps.join(' | '));
+  check('Em 640x360, sem erros', smallProblems.length === 0, smallProblems.join(' | '));
   await reference.close();
 
   // Textos com acentos no campo: o nome por cima de um jogador, um balão da bancada e uma palavra a flutuar.
   // Os acentos sobem 3 linhas acima da letra; as caixas têm de os conter. As capturas são para ver a olho.
-  for (const [name, width, height] of [['360', 360, 640], ['deitado', 1280, 720]] as const) {
+  for (const [name, width, height] of [['640', 640, 360], ['deitado', 1280, 720]] as const) {
     const context = await browser.newContext({ viewport: { width, height } });
     const accents = await context.newPage();
     await accents.goto(`${url}?semente=11&divisao=2`);
