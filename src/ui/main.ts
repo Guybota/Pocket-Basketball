@@ -91,6 +91,8 @@ let speed = 1;
 const STILL_FRAME_MS = 1000 / 30 - 2;
 let lastStillDraw = 0;
 let paused = false;
+// Com o ecrã ao alto o jogo não se vê (há só o aviso para rodar), por isso também não anda.
+const upright = matchMedia('(orientation: portrait)');
 let pauseRequested = false;
 /** Uma paragem em que o jogo espera pelo treinador: desconto, ou fim de período sem ser o intervalo. */
 const holdOpen = (s: MatchState): boolean => s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
@@ -971,7 +973,7 @@ function frame(now: number): void {
   lastFrame = now;
   let simSeconds = 0;
   const current = view;
-  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen()) {
+  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen() && !upright.matches) {
     simSeconds = elapsed * speed;
     accumulator += simSeconds * TICKS_PER_SECOND;
     let steps = 0;

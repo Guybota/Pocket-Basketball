@@ -117,7 +117,7 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
   - mudanças de ecrã até 400 ms.
 - **Ações frequentes a 1 ou 2 toques.** Os nomes nas tabelas abrem o jogador ou a equipa.
 - **Acessibilidade:** o foco entra em cada ecrã novo; botões de ícone com `aria-label` e `title`; imagens com `alt`; uma mensagem no `#live` a cada 3 s, no máximo; atalhos em `keys.ts`.
-- **Testa em 360×640** (tem de caber), em 844×390 deitado, em 1280×720 e em 1920×1080. Testa também com letra grande e alto contraste.
+- **Testa em 640×360** (tem de caber), em 844×390 (telemóvel deitado), em 1280×720 e em 1920×1080. O jogo é só na horizontal. Testa também com letra grande e alto contraste.
 
 ## Cor
 

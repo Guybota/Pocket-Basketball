@@ -47,7 +47,7 @@ Um teste automático faz cumprir as regras de proibição e de importação.
 
 - A interface lê o estado da simulação e só a muda pelos comandos do treinador (`requestTimeout`, `resumeMatch`, `holdMatch`, `queueSubstitution`, `cancelSubstitution`, `setAutoRotation`, `setTactics`). Ficam registados em `commands`, para o jogo se poder repetir.
 - Só `step()` faz o jogo avançar.
-- Há dois esquemas: vertical (360×640, com o campo por cima do painel) e horizontal (o campo ao lado do painel), escolhido pela proporção da janela. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
+- O jogo é só na horizontal, como o Calciobit: o campo fica ao lado do painel. Com o ecrã ao alto aparece um aviso para o rodar e o jogo para. O tamanho mais pequeno a suportar é 640×360. A arte é sempre escalada por múltiplos inteiros de píxeis do ecrã.
 - Toda a arte é gerada por código. Os sons são sintetizados, por isso não há ficheiros de áudio.
 - Para criar ou afinar sons segue o skill [sound-design](.claude/skills/sound-design/SKILL.md), que tem as diretrizes e a pesquisa de acústica, síntese e mistura.
 - Para arte, animação, pixel art, cor, ícones, emblemas e interface segue o skill [visual-design](.claude/skills/visual-design/SKILL.md). Qualquer animação ou asset visual novo passa pela revisão de um agente revisor, como lá se descreve.

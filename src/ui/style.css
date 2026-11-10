@@ -1249,6 +1249,10 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
   .srow { grid-template-columns: 20px 24px minmax(0, 1fr) 30px 18px 26px; }
   .srow .gr, .srow.head img:not(.energy) { display: none; }
 }
+/* No painel mais estreito (280 px, o telemóvel deitado), os seis botões do treinador só chegam aos 44 px com menos folga. */
+@container (max-width: 300px) {
+  .coachbar { gap: 2px; padding-left: 3px; padding-right: 3px; }
+}
 
 /* O botão do ecrã inteiro: no canto de cima à esquerda, só no jogo e na horizontal. */
 #courtOnlyBtn, #courtTimeoutBtn { display: none; position: fixed; left: calc(8px + env(safe-area-inset-left, 0px)); top: 8px; z-index: 6; width: 44px; height: 44px; min-height: 44px; padding: 0; place-items: center; }
@@ -1258,3 +1262,12 @@ body.landscape.in-match #courtOnlyBtn, body.landscape.in-match.court-only #court
 #game.court-only #panel { display: none; }
 #courtTimeoutBtn[data-armed] { background: var(--gold); }
 #courtTimeoutBtn[data-armed]::before { content: attr(data-armed); position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 3px 7px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); pointer-events: none; }
+
+/* Só na horizontal: com o ecrã ao alto, tudo fica escondido por trás de um aviso para rodar. */
+#rotateHint { display: none; }
+@media (orientation: portrait) {
+  #rotateHint { display: flex; position: fixed; inset: 0; z-index: 100; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #1b2230; color: var(--paper); font: 400 24px/1.2 var(--ui-sm); text-align: center; padding: 24px; }
+  .rotate-phone { width: 44px; height: 76px; border: 4px solid var(--paper); border-radius: 8px; animation: rotate-phone 2.4s steps(1, end) infinite; }
+}
+@keyframes rotate-phone { 0%, 45% { transform: rotate(0deg); } 50%, 100% { transform: rotate(-90deg); } }
+html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
