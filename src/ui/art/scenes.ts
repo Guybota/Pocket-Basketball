@@ -593,11 +593,12 @@ function sceneActors(kind: SceneKind, roster: readonly Player[], kit: ClubKit, r
   actors.push({ i: MASSAGE.i + 1.4, j: MASSAGE.j + MASSAGE.b + 0.7, z: 0, pose: beat(500) ? 'pass' : 'idle', look: physio, flip: false, back: false, ball: false });
   if (kind === 'lockerPre') {
     // Antes do jogo: há quem aqueça, quem se concentre, quem vá buscar as coisas ao cacifo.
-    sit(SEATS_A[0]!, seatJ, 0);
-    sit(SEATS_A[2]!, seatJ, 1);
-    sit(SEATS_A[4]!, seatJ, 2);
-    sit(benchI, SEATS_B[0]!, 3);
-    sit(benchI, SEATS_B[2]!, 4);
+    // De pé à frente dos bancos, a saltitar no sítio: antes do jogo ninguém se senta (ao intervalo, sentam-se todos).
+    stand(SEATS_A[0]!, BENCH_A.j + BENCH_A.b + 0.9, 0, beat(420) ? 'idle' : 'clap0');
+    stand(SEATS_A[2]!, BENCH_A.j + BENCH_A.b + 0.9, 1, beat(520, 0.5) ? 'cheer0' : 'idle');
+    stand(SEATS_A[4]!, BENCH_A.j + BENCH_A.b + 0.9, 2, beat(460, 0.2) ? 'idle' : 'clap1');
+    stand(BENCH_B.i + BENCH_B.a + 0.9, SEATS_B[0]!, 3, beat(600, 0.7) ? 'idle' : 'cheer0');
+    stand(BENCH_B.i + BENCH_B.a + 0.9, SEATS_B[2]!, 4, beat(380, 0.3) ? 'clap0' : 'idle');
     stand(10.7, 2.7, 5, 'idle', false, true);
     stand(9, 9.6, 6, beat(650) ? 'cheer0' : 'cheer1');
     stand(13, 13, 7, beat(260) ? 'drib0' : 'drib1', false, false, true);

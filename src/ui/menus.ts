@@ -92,6 +92,8 @@ let cupView: CupName = 'federation';
 // Quem fica, enquanto se decidem as renovações.
 let keep = new Set<string>();
 let marketPick = 0;
+// A resposta da secretária depois de contratar ou propor, e o dinheiro que sobrava antes, para o ver a descer.
+let marketNote: { line: string; from: number } | null = null;
 // Vender pede dois toques: o segundo confirma.
 let selling = false;
 let kitEditing = 'home';
@@ -126,6 +128,16 @@ const ICON_BALL = iconFrom(['..oxoo..', '.ooxooo.', 'xoxooxox', 'ooxxxxoo', 'xox
 const ICON_SQUAD = iconFrom(['.xx...xx.', 'x##x.x##x', 'x##x.x##x', '.xx...xx.', 'x##x.x##x', 'x##x.x##x', 'x##x.x##x'], '#2b5fd9', null, 14);
 const ICON_TACTICS = iconFrom(['xxxxxxxxxx', 'x#o#####xx', 'x#########', 'x##x#o####', 'x###x#####', 'x####x####', 'x#####o##x', 'xxxxxxxxxx'], '#17737a', null, 14);
 const ICON_KIT = iconFrom(['..xx..xx..', '.x##xx##x.', 'x########x', 'xxx####xxx', '..x####x..', '..x####x..', '..xxxxxx..'], '#e8622a', null, 14);
+// As opções do escritório, em botões redondos: pasta, taça, emblema, moeda, haltere, estrela, livro e porta.
+const ICON_BOARD = iconFrom(['...xxxx...', '..x....x..', 'xxxxxxxxxx', 'x########x', 'x########x', 'xxxxooxxxx', 'x########x', 'x########x', 'xxxxxxxxxx'], '#8a5a2b', null, 14);
+const ICON_TROPHY = iconFrom(['xxxxxxxxxx', 'x#x####x#x', 'x#x####x#x', '.xx####xx.', '..x####x..', '...x##x...', '....xx....', '...x##x...', '..xxxxxx..'], '#f2c230', null, 14);
+const ICON_EMBLEM = iconFrom(['xxxxxxxxx', 'x#######x', 'xooooooox', 'x#######x', 'x#######x', '.x#####x.', '..x###x..', '...xxx...'], '#2b5fd9', null, 14);
+const ICON_MONEY = iconFrom(['..xxxxx..', '.x#####x.', 'x##xxx##x', 'x##x####x', 'x##xxx##x', 'x####x##x', 'x##xxx##x', '.x#####x.', '..xxxxx..'], '#f2c230', null, 14);
+const ICON_GYM = iconFrom(['xx......xx', 'x#x....x#x', 'x#xxxxxx#x', 'x########x', 'x#xxxxxx#x', 'x#x....x#x', 'xx......xx'], '#8f93a0', null, 14);
+const ICON_STAR = iconFrom(['....x....', '...x#x...', '...x#x...', 'xxxx#xxxx', 'x#######x', '.x#####x.', '..x###x..', '.x##x##x.', '.xx...xx.'], '#f2c230', null, 14);
+const ICON_BOOK = iconFrom(['.xxxxxxxx', 'x#######x', 'x#######x', 'x#ooooo#x', 'x#######x', 'x#######x', 'xxxxxxxxx', 'x.......x', 'xxxxxxxxx'], '#17737a', null, 14);
+const ICON_DOOR = iconFrom(['.xxxxxx.', 'x######x', 'x######x', 'x######x', 'x####o#x', 'x######x', 'x######x', 'xxxxxxxx'], '#b8481c', null, 14);
+const OFFICE_ICONS: Record<OfficeItem, string> = { board: ICON_BOARD, trophies: ICON_TROPHY, facilities: ICON_GYM, records: ICON_STAR, history: ICON_BOOK, reset: ICON_DOOR };
 const ICON_GO = iconFrom(['..........', '.xxxxxx.xx', 'x######x#x', 'x##xx##xxx', 'x##xx##x..', 'x######x..', '.xxxxxx...'], '#ffffff', null, 14);
 
 /* ---------- Pedaços de ecrã ---------- */
@@ -321,14 +333,21 @@ function reportScreen(): Rendered {
     combo?.onBall ? `Com bola passa a ${ON_BALL_INFO[combo.onBall].name}` : '',
     combo && !combo.move && !combo.offBall && !combo.onBall ? `${combo.name}: estas cartas juntas valem mais do que separadas` : '',
   ].filter(Boolean).map(line => `<div class="learned">${line}</div>`).join('');
-  const heroCards = cards.map((id, n) => `<img class="fx-card" style="--x:${place[cards.length === 2 ? n * 2 : n]! * (cards.length === 1 ? 0 : 1)}px" alt="${CARDS[id].name}" src="${cardImage(id, CARDS[id].category)}">`).join('');
+  const xs = cards.map((_, n) => place[cards.length === 2 ? n * 2 : n]! * (cards.length === 1 ? 0 : 1));
+  // As cartas entram uma a uma; depois uma bola de luz passa por elas, da primeira à última, antes de se juntarem.
+  const heroCards = cards.map((id, n) => `<img class="fx-card" style="--x:${xs[n]}px;--d:${n * 0.35}s" alt="${CARDS[id].name}" src="${cardImage(id, CARDS[id].category)}">`).join('');
+  const orb = `<i class="fx-orb" style="--x0:${xs[0]}px;--x1:${xs[Math.floor(xs.length / 2)]}px;--x2:${xs[xs.length - 1]}px"></i>`;
+  // Os raios têm a cor da categoria que mais aparece nas cartas do combo (num empate, a da primeira).
+  const counts = cards.map(id => cards.filter(other => CARDS[other].category === CARDS[id].category).length);
+  const ray = CATEGORY_INFO[CARDS[cards[counts.indexOf(Math.max(...counts))]!].category].color;
   const sparks = Array.from({ length: 12 }, (_, n) => `<i class="fx-spark" style="--dx:${Math.round(Math.cos((n / 12) * Math.PI * 2) * 150)}px;--dy:${Math.round(Math.sin((n / 12) * Math.PI * 2) * 110)}px"></i>`).join('');
   return {
     top: combo
       ? `<button type="button" class="combofx" data-act="skipFx" aria-label="Ver já o resultado">
-          <span class="fx-rays"></span>
+          <span class="fx-rays" style="--ray:${ray}"></span>
           <canvas id="fxScene" class="fx-scene" width="90" height="50"></canvas>
           ${heroCards}
+          ${orb}
           ${sparks}
           <span class="fx-flash"></span>
           <span class="fx-text"><span class="k">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</span><span class="n">${esc(combo.name)}</span><span class="cs">${cards.map(id => `<img alt="" src="${cardImage(id, CARDS[id].category)}">`).join('')}</span></span>
@@ -482,6 +501,22 @@ function marketCard(entry: MarketEntry): string {
 }
 
 /** O mercado: o que está à venda esta semana e as propostas à espera. */
+/** O dinheiro que sobra desce até ao valor novo depois de contratar, em menos de um segundo. */
+function countMoney(): void {
+  const el = document.getElementById('marketMoney');
+  if (!el) return;
+  const from = Number(el.dataset.from);
+  const to = Number(el.textContent);
+  if (from === to || reducedMotion()) return;
+  const start = performance.now();
+  const tick = (now: number): void => {
+    const t = Math.min(1, (now - start) / 700);
+    el.textContent = String(Math.round(from + (to - from) * (1 - (1 - t) * (1 - t))));
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 function marketScreen(): Rendered {
   const list = marketList(club);
   const pick = list[Math.min(marketPick, list.length - 1)] ?? null;
@@ -493,7 +528,7 @@ function marketScreen(): Rendered {
   return {
     top: inside(pick ? marketCard(pick) : '<div class="note"><header><b>Mercado</b></header><div class="inner"><div class="quote">Esta semana não há ninguém à venda.</div></div></div>'),
     bottom: `<div class="thead"><span>Pos</span><span></span><span>${transferWindowOpen(club) ? 'À venda esta semana' : 'Só jogadores livres: o prazo passou'}</span><span></span>${attributeHead}<span class="num">Alt</span></div>
-      <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}<div class="starters plain"><span>Mercado</span><span>Sobra ${surplus(club)} mil</span></div>${rows || emptyState('Esta semana não aparece ninguém. A lista muda todas as semanas: volta na próxima.', 'secretary')}</div>
+      <div class="scroll growrows">${offers ? `<div class="starters plain"><span>Propostas à espera</span></div>${offers}` : ''}${marketNote ? say('secretary', 'happy', marketNote.line) : ''}<div class="starters plain"><span>Mercado</span><span>Sobra <b id="marketMoney" data-from="${marketNote?.from ?? surplus(club)}">${surplus(club)}</b> mil</span></div>${rows || emptyState('Esta semana não aparece ninguém. A lista muda todas as semanas: volta na próxima.', 'secretary')}</div>
       ${bar(backBtn('office'), `<button type="button" class="primary" data-act="offer" ${canOffer ? '' : 'disabled'}>${pick === null ? 'Nada' : pick.clubId === null ? 'Contratar' : 'Propor'}</button>`)}`,
   };
 }
@@ -928,7 +963,7 @@ function officeScreen(): Rendered {
     facilities: facilitiesHtml(club),
     reset: `<div class="note"><header><b>Treinar outro clube</b></header><div class="inner"><div class="quote">Perdes o ${esc(club.team.name)}, na semana ${club.week}, assim que criares o novo clube. Os teus troféus vão contigo.</div><button type="button" id="resetYes" data-act="newClub">Escolher novo clube</button><button type="button" id="resetNo" data-office="board">Ficar com este clube</button></div></div>`,
   };
-  const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}" style="grid-template-columns:1fr auto"><span>${label}</span><small>${note}</small></button>`;
+  const officeBar = ([id, label, note]: [OfficeItem, string, string]): string => `<button type="button" class="mbar" data-office="${id}" aria-pressed="${officeItem === id}"><img alt="" src="${OFFICE_ICONS[id]}"><span>${label}</span><small>${note}</small></button>`;
   const items: [OfficeItem, string, string][] = [
     ['board', 'Direção', 'Confiança e objetivo'],
     ['trophies', 'Troféus e prémios', `${trophyList(club).filter(t => t.won).length} na vitrina`],
@@ -939,7 +974,7 @@ function officeScreen(): Rendered {
   ];
   return {
     top: officeItem === 'board' ? officeScene() : inside(details[officeItem]),
-    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-squad="office" style="grid-template-columns:1fr auto"><span>Plantel</span><small>Titulares, banco e vendas</small></button><button type="button" class="mbar" data-go="emblem" style="grid-template-columns:1fr auto"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit" style="grid-template-columns:1fr auto"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market" style="grid-template-columns:1fr auto"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
+    bottom: `<div class="matchhead"><span>Escritório</span><b>${esc(club.team.name)}</b></div><div class="menu tight">${items.slice(0, 2).map(officeBar).join('')}<button type="button" class="mbar" data-squad="office"><img alt="" src="${ICON_SQUAD}"><span>Plantel</span><small>Titulares, banco e vendas</small></button><button type="button" class="mbar" data-go="emblem"><img alt="" src="${ICON_EMBLEM}"><span>Emblema</span><small>Forma, cores e símbolo</small></button><button type="button" class="mbar" data-act="editKit"><img alt="" src="${ICON_KIT}"><span>Equipamentos</span><small>Desenho e cores</small></button><button type="button" class="mbar" data-go="market"><img alt="" src="${ICON_MONEY}"><span>Mercado</span><small>${club.offers.length ? `${club.offers.length} ${club.offers.length === 1 ? 'proposta' : 'propostas'} à espera` : `Sobra ${surplus(club)} mil`}</small></button>${items.slice(2).map(officeBar).join('')}</div>${bar(backBtn('town'))}`,
   };
 }
 
@@ -947,6 +982,9 @@ const SCREENS: Record<Screen, () => Rendered> = {
   create: createScreen, market: marketScreen, renewals: renewalsScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
   offers: offersScreen, airport: airportScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
 };
+
+/** A cena por trás das fichas de cada ecrã; undefined é o balneário. Sem entrada, o escritório (o plantel aberto no balneário fica no balneário). */
+const BACKDROPS: Partial<Record<Screen, SceneKind | undefined>> = { train: 'gym', trainCards: 'gym', combos: 'gym', report: 'gym', rival: undefined, offers: 'gym' };
 
 /** Um padrão de bolas muito discreto atrás das fichas, feito aqui. */
 let patternUrl = '';
@@ -988,7 +1026,12 @@ function render(): void {
   const scroll = panel.querySelector('.scroll')?.scrollTop ?? 0;
   host.tallTop(screen === 'kit' ? 450 : screen === 'kitEdit' ? 450 : screen === 'create' ? 290 : screen === 'pre' ? 470 : 0);
   const { top, bottom, after } = SCREENS[screen]();
-  top_.innerHTML = top;
+  // Ecrã único: as fichas e as notas ficam numa janela por cima da cena do sítio, escurecida; os ecrãs com cena própria
+  // (balneário, escritório, quadro tático, vitrina…) já a têm. O escritório e o balneário mostram as opções em botões redondos.
+  const backdrop = top.includes('class="full"') ? '' : fullCanvas('scene', screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : 'office');
+  top_.innerHTML = backdrop + top;
+  top_.classList.toggle('backdrop', backdrop !== '');
+  panel.classList.toggle('hub', screen === 'office' || screen === 'pre');
   top_.style.backgroundImage = `url(${pattern()})`;
   panel.innerHTML = bottom;
   const nextScroll = panel.querySelector('.scroll');
@@ -1004,6 +1047,7 @@ function go(next: GoTo): void {
     return;
   }
   if (next === 'tactics') tacticsBack = screen === 'tactics' ? tacticsBack : screen;
+  if (next !== 'market') marketNote = null;
   // O balneário, antes do jogo e ao intervalo, tem o seu tema.
   if (next === 'pre') host.music('locker');
   // Mudar de ecrã leva o foco para dentro do novo; voltar a um ecrã devolve-o ao botão de onde se saiu.
@@ -1221,9 +1265,14 @@ function onClick(event: Event): void {
     render();
   } else if (data.act === 'offer') {
     const entry = marketList(club)[marketPick];
-    if (entry) commit(makeOffer(club, entry));
+    const before = surplus(club);
+    if (entry) {
+      commit(makeOffer(club, entry));
+      marketNote = { from: before, line: entry.clubId === null ? `${entry.player.name} assinou: já está no plantel. Sobram ${surplus(club)} mil.` : `Mandei a proposta ao ${club.clubs[entry.clubId]!.name}. A resposta chega até ao fim da semana.` };
+    }
     marketPick = 0;
     render();
+    countMoney();
   } else if (data.cancelOffer) {
     commit(cancelOffer(club, data.cancelOffer));
     render();
@@ -1390,7 +1439,7 @@ function drawTrainingFx(canvas: HTMLCanvasElement, now: number): void {
   const age = now - fxStarted;
   const g = canvas.getContext('2d')!;
   g.clearRect(0, 0, canvas.width, canvas.height);
-  if (age > 1150 && !reducedMotion()) return;
+  if (age > 2450 && !reducedMotion()) return;
   const look = lookFor(club.team.roster[lastTraining.index]!);
   lastTraining.cards.forEach((id, n) => {
     const poses = TRAINING_POSES[CARDS[id].category];

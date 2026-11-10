@@ -56,6 +56,12 @@ São erros do que já existe, não ideias novas. Estão por ordem de gravidade. 
 > - **4.** Um botão tocado fica a tinta, ou a papel nos botões escuros, pelo menos 120 ms. No mapa, o edifício tocado ganha uma seta dourada.
 > - **5.** Na apresentação, as faixas dos dois clubes mostram casa ou fora, o lugar na liga e a forma. A bola ao alto tem um grande plano a 2×, sem o marcador.
 > - **Ficaram de fora:** a foto de equipa no escritório e a apresentação do adversário como clube noutros ecrãs.
+>
+> **Feitas a 10 de novembro de 2026, à noite:** o jogo passou a um só ecrã, como o Calciobit, e ficaram feitas as outras lacunas de interface.
+> - **Ecrã único:** no jogo, o campo ocupa o ecrã, os botões do treinador são redondos à direita e o painel é uma janela aberta pelo INFO. Nos menus, a cena ocupa o ecrã e as fichas e as listas abrem em janelas. O escritório e o balneário têm botões redondos com legenda.
+> - **Lacunas altas:** 1 (momentos grandes, com a imagem parada e o resultado grande), 3 (falta com grande plano e faixa), 6 (câmara mais calma, por experimentar a jogar) e 7 (cartas do combo ao lado do aviso).
+> - **Lacunas médias e baixas:** 8 a 23, menos as bandeiras no pavilhão em semana de jogo (17 ficou só com a pergunta do adjunto) e o «Rever» oferecido durante o jogo (9 ficou com o filme do jogo no relatório).
+
 
 
 1. **Nenhum cesto é maior do que os outros.** Um afundanço de força decisivo tem o mesmo aviso de 1,8 s e o mesmo «+2» de um cesto qualquer, e tudo acaba antes da reposição. A câmara também não reage a nenhum cesto. O golo do Calciobit funciona porque é raro e para o jogo ([resultado-entra-golo-sofrido](../calciobit/sequencias/golo-festejo/resultado-entra-golo-sofrido/README.md)).

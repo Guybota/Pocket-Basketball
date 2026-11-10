@@ -12,12 +12,20 @@ export interface Hud {
   reset: () => void;
 }
 
+/** Quanto dura o piscar do número de quem marcou. */
+const SCORE_FLASH_MS = 600;
+
 /** O marcador é HTML: a letra fica nítida a qualquer tamanho e só muda quando algo muda. */
 export function createHud(hud: HTMLElement): Hud {
   let shown = '';
+  // O número de quem marcou pisca uma vez na cor da equipa. Guarda-se quando subiu, para o piscar continuar onde ia
+  // quando o marcador se reescreve (o relógio muda a cada segundo).
+  let lastScore: [number, number] | null = null;
+  const flashAt: [number, number] = [-Infinity, -Infinity];
   return {
     reset: () => {
       shown = '';
+      lastScore = null;
     },
     update: (view, homeEmblem) => {
       const { s } = view;
@@ -26,15 +34,24 @@ export function createHud(hud: HTMLElement): Hud {
       const shotClock = s.phase === 'live' || s.phase === 'pass' ? Math.max(0, Math.ceil(s.shotClock / TICKS_PER_SECOND)) : null;
       const carrierName = carrier ? carrier.player.name : '';
       const carrierPos = carrier ? slotCode(carrier.slot) : '';
-      const next = [s.score[0], s.score[1], period, clockText(s.clock), shotClock, carrierName, carrier?.team, s.teams[0].short, s.teams[1].short].join('|');
+      const now = performance.now();
+      // Num momento grande, o marcador só muda quando o número novo troca no centro.
+      const score = view.shownScore();
+      if (lastScore) for (const i of [0, 1] as const) if (score[i] > lastScore[i]) flashAt[i] = now;
+      lastScore = [score[0], score[1]];
+      const points = (i: 0 | 1): string => {
+        const age = now - flashAt[i];
+        return age < SCORE_FLASH_MS ? `<b class="points flash team-${i}" style="animation-delay:-${Math.round(age)}ms">${score[i]}</b>` : `<b class="points">${score[i]}</b>`;
+      };
+      const next = [score[0], score[1], period, now - flashAt[0] < SCORE_FLASH_MS, now - flashAt[1] < SCORE_FLASH_MS, clockText(s.clock), shotClock, carrierName, carrier?.team, s.teams[0].short, s.teams[1].short].join('|');
       if (next === shown) return;
       shown = next;
       const urgent = shotClock !== null && shotClock <= 3;
       hud.innerHTML = `<div class="scorebug">
       <span class="side team-0"><img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(homeEmblem)}">${escapeHtml(s.teams[0].short)}</span>
-      <b class="points">${s.score[0]}</b>
+      ${points(0)}
       <span class="time"><small>${period}</small>${clockText(s.clock)}</span>
-      <b class="points">${s.score[1]}</b>
+      ${points(1)}
       <span class="side team-1">${escapeHtml(s.teams[1].short)}<img class="emblem" alt="" style="width:14px;height:14px" src="${emblemImage(clubIdentity(s.teams[1].name).emblem)}"></span>
       <span class="shot-clock${urgent ? ' urgent' : ''}">${shotClock ?? '-'}</span>
     </div>

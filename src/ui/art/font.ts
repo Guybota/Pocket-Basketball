@@ -7,7 +7,7 @@ export const FONT: Record<string, string> = {
   // Com acento, mais três linhas por cima (o acento, inclinado, em duas, e um espaço); a cedilha é uma linha por baixo.
   Á: '12025755', À: '42025755', Â: '25025755', Ã: '07025755', É: '12074647', Ê: '25074647', Í: '12072227',
   Ó: '12025552', Ô: '25025552', Õ: '07025552', Ú: '12055557', Ç: '344436',
-  ':': '02020', '-': '00700', '+': '02720', '.': '00002', ' ': '00000', '!': '22202', '?': '71202',
+  ':': '02020', '-': '00700', '+': '02720', '.': '00002', ' ': '00000', '!': '22202', '?': '71202', '/': '11244', ',': '00024',
 };
 
 // Letras mais largas do que 3 píxeis: em 3×5 o «%» não tem espaço para os dois pontos e a barra, e lia-se como um X.

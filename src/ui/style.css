@@ -63,9 +63,8 @@ body {
   margin: 0;
   user-select: none;
   -webkit-user-select: none;
-  background-color: var(--paint-dk);
-  background-image: conic-gradient(var(--paint-dkr) 25%, transparent 0 50%, var(--paint-dkr) 0 75%, transparent 0);
-  background-size: 64px 64px;
+  /* Num só ecrã, o fundo da página só se vê na cortina entre ecrãs e por trás do resultado: o azul escuro do jogo. */
+  background-color: var(--ink);
   display: flex;
   justify-content: center;
   overflow: hidden;
@@ -123,6 +122,10 @@ body {
 .scorebug .side.team-1 i { background: var(--paper); box-shadow: inset 0 -6px 0 var(--away); }
 
 .scorebug .points { background: var(--paper); color: var(--ink); font-weight: 400; min-width: 30px; text-align: center; }
+/* Quem marcou: o número pisca uma vez na cor da equipa (uma só vez, 0,6 s, longe do limite de 3 clarões por segundo). */
+.scorebug .points.flash { animation: score-flash .6s steps(1) both; }
+@keyframes score-flash { 0% { background: var(--team); color: var(--team-ink); } 50% { background: var(--paper); color: var(--ink); } 100% { background: var(--paper); color: var(--ink); } }
+html.reduce-motion .scorebug .points.flash { animation: none; }
 
 .scorebug .time { background: var(--ink-2); padding: 0 6px; font-variant-numeric: tabular-nums; }
 
@@ -183,6 +186,17 @@ body {
 }
 
 html.reduce-motion #banner.show { animation: none; }
+/* «Repetição» pisca a 1 Hz: diz sem ler que não é ao vivo. */
+#banner.replay { animation: replay-blink 1s steps(1) infinite; }
+@keyframes replay-blink { 50% { visibility: hidden; } }
+html.reduce-motion #banner.replay { animation: none; }
+.film-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--line); font: 400 15px/1.1 var(--ui-sm); }
+.film-row .when { color: var(--muted); }
+.film-row b { font-weight: 400; color: var(--ball-ink); }
+.film-row button.quiet { min-height: 34px; }
+/* As cartas do combo de um movimento especial antes do nome, ao tamanho da arte (40×44), com píxeis inteiros. */
+#banner .move-cards { display: inline-flex; gap: 4px; margin: 2px 12px 0 -6px; vertical-align: middle; }
+#banner .move-cards img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }
 
 /* As faixas dos clubes na apresentação: debaixo do marcador, a da casa encostada à esquerda e a de fora à direita.
  * Entram a abrandar depois da cortina do ecrã (a de fora 100 ms depois) e saem a acelerar, cada uma pelo seu lado, em degraus como o aviso. */
@@ -544,13 +558,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 .end-actions { flex: none; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); border-top: 3px solid var(--ink); }
 .end-actions.two { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; }
 /* Transições: a cortina entre ecrãs, as cartas a entrar e a nota a subir. */
-#game.stage-in { animation: stage-in .18s ease-out; }
-@keyframes stage-in { from { opacity: .35; } to { opacity: 1; } }
+#game.stage-in { animation: stage-in .38s ease-out; }
+#game.stage-in-slow { animation: stage-in .9s ease-out; }
+/* O fundo da página é a tinta do jogo: a cortina passa por esse azul escuro, não pelo preto. */
+@keyframes stage-in { from { opacity: 0; } 30% { opacity: 0; } to { opacity: 1; } }
 .found-card img { animation: card-in .35s both; }
 @keyframes card-in { from { opacity: 0; transform: rotateY(90deg); } to { opacity: 1; transform: none; } }
 .gainrow > .gr:nth-of-type(2) { animation: grade-pop .4s .25s both; }
 @keyframes grade-pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
-html.reduce-motion :is(#game.stage-in, .found-card img, .gainrow > .gr:nth-of-type(2)) { animation: none; }
+html.reduce-motion :is(#game.stage-in, #game.stage-in-slow, .found-card img, .gainrow > .gr:nth-of-type(2)) { animation: none; }
 /* A apresentação antes do jogo: os cinco de cada lado entram um a um. */
 .intro { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); color: var(--paper); }
 .intro-head { text-align: center; font: 400 22px/1 var(--display); color: var(--gold); }
@@ -584,6 +600,8 @@ html.reduce-motion .intro-row { animation: none; }
 }
 
 #drop img { display: block; width: 40px; height: 44px; image-rendering: pixelated; }
+/* No jogo, a coluna redonda do treinador ocupa a borda direita: a carta encontrada aparece ao lado dela. */
+body.in-match #drop { right: 72px; }
 
 .club-week { display: grid; justify-items: center; gap: 2px; text-align: center; }
 
@@ -669,6 +687,10 @@ button.quiet { align-self: center; padding: 2px 12px; background: transparent; b
 .town-match { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); zoom: var(--hud-zoom, 1); display: grid; grid-template-columns: auto auto auto auto auto; align-items: center; column-gap: 6px; padding: 4px 8px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); font: 400 15px/1 var(--small); white-space: nowrap; pointer-events: none; }
 
 .town-match .emblem { width: 24px; height: 24px; }
+/* Um ressalto vertical em degraus, sem escala: a letra fica sempre nítida. */
+.town-match.bounce { animation: card-bounce .45s steps(1) both; }
+@keyframes card-bounce { 0% { transform: translate(-50%, -16px); opacity: 0; } 20% { transform: translate(-50%, -8px); opacity: 1; } 40% { transform: translate(-50%, 0); } 60% { transform: translate(-50%, 3px); } 80% { transform: translate(-50%, -1px); } 100% { transform: translate(-50%, 0); } }
+html.reduce-motion .town-match.bounce { animation: none; }
 
 .town-match small { grid-column: 1 / -1; text-align: center; margin-top: 2px; font: 400 15px/1 var(--small); opacity: 0.8; }
 
@@ -967,6 +989,10 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .cityp { flex: 1; min-height: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
 .cityp p { margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); }
 /* Quem fala, com cara: a secretária, o adjunto e o presidente. */
+/* As falas entram num fundido curto (speech.ts escreve-as letra a letra). */
+.say { animation: say-in .2s ease-out both; }
+@keyframes say-in { from { opacity: 0; } to { opacity: 1; } }
+html.reduce-motion .say { animation: none; }
 .say { flex: none; display: grid; grid-template-columns: 40px 1fr; gap: 6px; align-items: center; margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); color: var(--ink); text-align: left; }
 .say img { display: block; width: 40px; height: 40px; image-rendering: pixelated; border: 2px solid var(--ink); background: #8fd0e6; }
 .say b { display: block; font-weight: 400; color: var(--ball-ink); }
@@ -1021,11 +1047,16 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 /* O combo: as três cartas juntam-se no meio, há um clarão e aparece o nome. Sem animação, vê-se logo o fim. */
 .combofx { position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; min-height: 0; border: 0; box-shadow: none; background: #241a45; overflow: hidden; color: #fff; }
 .combofx:active { transform: none; box-shadow: none; }
-.fx-rays { position: absolute; inset: -40%; background: repeating-conic-gradient(#8a5cdc 0 11.25deg, #7246c4 0 22.5deg); animation: fx-rays-in .3s 1.15s both, fx-spin 14s linear 1.15s infinite; }
-.fx-card { position: absolute; left: 50%; top: 50%; width: 80px; height: 88px; margin: -44px 0 0 -40px; image-rendering: pixelated; border: 2px solid var(--ink); opacity: 0; animation: fx-gather 1.25s cubic-bezier(.5, 0, .9, .4) both; }
-.fx-flash { position: absolute; inset: 0; background: #fff; opacity: 0; animation: fx-flash .55s 1.05s both; }
-.fx-spark { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; background: var(--gold); opacity: 0; animation: fx-spark .7s 1.15s ease-out both; }
-.fx-text { position: absolute; inset: 0; display: grid; justify-items: center; align-content: center; gap: 6px; text-align: center; animation: fx-text .4s 1.35s both; }
+/* O combo leva cerca de 3,5 s: as cartas entram uma a uma (0–1 s), a bola de luz passa por elas (1–1,9 s), juntam-se
+ * (1,9–2,5 s) e vem o clarão, os raios na cor da categoria que domina, as faíscas e o nome. Um toque salta tudo. */
+.fx-rays { position: absolute; inset: -40%; background: repeating-conic-gradient(color-mix(in srgb, var(--ray, #7246c4) 75%, #fff) 0 11.25deg, var(--ray, #7246c4) 0 22.5deg); animation: fx-rays-in .3s 2.5s both, fx-spin 14s linear 2.5s infinite; }
+.fx-card { position: absolute; left: 50%; top: 50%; width: 80px; height: 88px; margin: -44px 0 0 -40px; image-rendering: pixelated; border: 2px solid var(--ink); opacity: 0; animation: fx-enter .3s var(--d) ease-out both, fx-gather .6s 1.9s cubic-bezier(.5, 0, .9, .4) forwards; }
+.fx-orb { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #fff; box-shadow: 0 0 0 3px var(--gold); opacity: 0; animation: fx-orb .9s 1s steps(9) both; }
+@keyframes fx-enter { from { opacity: 0; transform: translateX(var(--x)) translateY(-40px); } to { opacity: 1; transform: translateX(var(--x)); } }
+@keyframes fx-orb { 0% { opacity: 1; transform: translateX(var(--x0)); } 45% { opacity: 1; transform: translateX(var(--x1)); } 90% { opacity: 1; transform: translateX(var(--x2)); } 100% { opacity: 0; transform: translateX(var(--x2)); } }
+.fx-flash { position: absolute; inset: 0; background: #fff; opacity: 0; animation: fx-flash .55s 2.4s both; }
+.fx-spark { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; background: var(--gold); opacity: 0; animation: fx-spark .7s 2.5s ease-out both; }
+.fx-text { position: absolute; inset: 0; display: grid; justify-items: center; align-content: center; gap: 6px; text-align: center; animation: fx-text .4s 2.7s both; }
 .fx-text .k { color: var(--gold); }
 .fx-scene { position: absolute; left: 50%; top: 1%; width: 180px; height: 100px; margin-left: -90px; image-rendering: pixelated; pointer-events: none; }
 .combofx.done .fx-scene { display: none; }
@@ -1040,7 +1071,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 @keyframes fx-gather {
   /* Sem rodar: as cartas inclinadas partiam a grelha de píxeis. */
   0% { opacity: 1; transform: translateX(var(--x)); }
-  30% { opacity: 1; transform: translateX(var(--x)) translateY(-8px); }
+  25% { opacity: 1; transform: translateX(var(--x)) translateY(-8px); }
   80% { opacity: 1; transform: translateX(0); }
   100% { opacity: 0; transform: translateX(0) scale(.5); }
 }
@@ -1049,12 +1080,12 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 @keyframes fx-spin { to { transform: rotate(360deg); } }
 @keyframes fx-spark { 0% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
 @keyframes fx-text { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
-.after.delayed { animation: fx-after .3s 1.4s both; }
+.after.delayed { animation: fx-after .3s 2.8s both; }
 @keyframes fx-after { from { opacity: 0; } to { opacity: 1; } }
 .after.done { animation: none; }
-.combofx.done .fx-card, .combofx.done .fx-spark, .combofx.done .fx-flash { animation: none; opacity: 0; }
+.combofx.done .fx-card, .combofx.done .fx-spark, .combofx.done .fx-flash, .combofx.done .fx-orb { animation: none; opacity: 0; }
 .combofx.done .fx-rays, .combofx.done .fx-text { animation: none; opacity: 1; }
-html.reduce-motion :is(.fx-card, .fx-spark, .fx-flash) { animation: none; opacity: 0; }
+html.reduce-motion :is(.fx-card, .fx-spark, .fx-flash, .fx-orb) { animation: none; opacity: 0; }
 html.reduce-motion .after.delayed { animation: none; }
 html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 
@@ -1166,8 +1197,8 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .trainpop .box { width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 4px 4px 0 var(--ink); }
 /* Num combo, a caixa fica em baixo e sem o véu escuro, para o nome do combo continuar à vista e legível por cima dela. */
 .trainpop.delayed { align-items: flex-end; background: none; }
-.trainpop.delayed:not(.done) { animation: fx-after .3s 1.4s both, fx-pop-wait 1.7s both; }
-.trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 1.7s; }
+.trainpop.delayed:not(.done) { animation: fx-after .3s 2.8s both, fx-pop-wait 3.1s both; }
+.trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 3.1s; }
 @keyframes fx-pop-wait { from, 99% { pointer-events: none; } to { pointer-events: auto; } }
 
 /* A ficha de um clube na federação: treinador, épocas e mapa de jogo, e por baixo o plantel. */
@@ -1291,13 +1322,25 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 }
 
 /* O botão do ecrã inteiro: no canto de cima à esquerda, só no jogo e na horizontal. */
-#courtOnlyBtn, #courtTimeoutBtn { display: none; position: fixed; left: calc(8px + env(safe-area-inset-left, 0px)); top: 8px; z-index: 6; width: 44px; height: 44px; min-height: 44px; padding: 0; place-items: center; }
-body.landscape.in-match #courtOnlyBtn, body.landscape.in-match.court-only #courtTimeoutBtn { display: grid; }
-#courtTimeoutBtn { top: 60px; }
-#courtOnlyBtn img, #courtTimeoutBtn img { width: 32px; height: 32px; image-rendering: pixelated; }
-#game.court-only #panel { display: none; }
-#courtTimeoutBtn[data-armed] { background: var(--gold); }
-#courtTimeoutBtn[data-armed]::before { content: attr(data-armed); position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 3px 7px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); pointer-events: none; }
+/* Ecrã único no jogo, como no Calciobit: o campo ocupa o ecrã todo; a barra do treinador é uma coluna de botões redondos
+ * à direita, e o painel uma janela por cima do campo, aberta pelo INFO, pelas trocas ou pelas táticas. A apresentação e o
+ * intervalo, que não têm barra do treinador, aparecem sempre na janela. */
+#game.floating #panel { position: fixed; right: 84px; z-index: 5; border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgb(0 0 0 / 0.4); }
+#game.court-only:not(.window-open) #panel:has(.coachbar) { background: none; border-color: transparent; box-shadow: none; pointer-events: none; }
+#game.court-only:not(.window-open) #panel:has(.coachbar) > :not(.coachbar) { visibility: hidden; }
+#game.court-only #panel .coachbar { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); flex-direction: column; align-items: center; gap: 8px; padding: 0; background: none; border: 0; pointer-events: auto; }
+#game.court-only #panel .coachbar .icon { flex: none; width: 56px; height: 56px; min-height: 56px; border-radius: 50%; border-width: 3px; box-shadow: 2px 3px 0 var(--ink); }
+#game.court-only #panel .coachbar .icon img { width: 32px; height: 32px; }
+/* Em cima, pequenos, os que mexem no relógio e no som; em baixo, ao alcance do polegar, os do treinador. */
+#game.court-only #panel .coachbar :is(#pauseBtn, #speedBtn, #muteBtn) { width: 46px; height: 46px; min-height: 46px; }
+#game.court-only #panel .coachbar #timeoutBtn { margin-top: auto; }
+/* Num telemóvel deitado os sete cabem na altura: 44 px, o mínimo para o dedo. */
+@media (max-height: 460px) {
+  #game.court-only #panel .coachbar { gap: 5px; top: 6px; bottom: 6px; }
+  #game.court-only #panel .coachbar .icon, #game.court-only #panel .coachbar :is(#pauseBtn, #speedBtn, #muteBtn) { width: 44px; height: 44px; min-height: 44px; }
+  #game.court-only #panel { right: 64px; }
+}
+#game.court-only #panel .coachbar #timeoutBtn[data-armed]::before { content: attr(data-armed); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 3px 7px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); pointer-events: none; }
 
 /* Só na horizontal: com o ecrã ao alto, tudo fica escondido por trás de um aviso para rodar. */
 #rotateHint { display: none; }
@@ -1307,3 +1350,52 @@ body.landscape.in-match #courtOnlyBtn, body.landscape.in-match.court-only #court
 }
 @keyframes rotate-phone { 0%, 45% { transform: rotate(0deg); } 50%, 100% { transform: rotate(-90deg); } }
 html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
+
+/* ---------- Menus em ecrã único, no estilo do Calciobit ---------- */
+/* Sem os botões redondos do jogo à direita, a janela do painel encosta à borda. */
+#game.floating:not(.court-only) #panel { right: 12px; }
+/* Num ecrã estreito, a janela encosta à direita com a altura toda, como o painel de antes, mas por cima da cena. */
+#game.floating.docked:not(.court-only) #panel { top: 0; right: 0; border-width: 0 0 0 3px; box-shadow: none; }
+/* As fichas e as notas numa janela à esquerda da do painel, por cima da cena do sítio, escurecida. */
+#game.floating #topUi .patterned { left: var(--back-space, 0px); right: var(--window-space, 0px); }
+#topUi.backdrop canvas#scene { filter: brightness(0.45) saturate(0.8); }
+/* Voltar: um botão redondo no canto de cima à esquerda, em todos os menus. */
+#game.floating:not(.court-only, .docked) #panel .actions button.back, #panel.hub .actions button.back { position: fixed; left: calc(12px + env(safe-area-inset-left, 0px)); top: 12px; z-index: 6; flex: none; width: 56px; height: 56px; min-height: 56px; padding: 0; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); color: transparent; font-size: 0; box-shadow: 2px 3px 0 var(--ink); }
+#game.floating:not(.court-only, .docked) #panel .actions button.back::before, #panel.hub .actions button.back::before { content: '‹'; font: 400 46px/1 var(--display); color: var(--ink); }
+#game.floating:not(.court-only, .docked) #panel .actions:not(:has(> :not(.back))), #panel.hub .actions:not(:has(> :not(.back))) { padding: 0; border: 0; min-height: 0; background: none; }
+
+/* O escritório e o balneário: a cena inteira, as opções em botões redondos com legenda à direita, o título ao lado do
+ * voltar, a fala em baixo à esquerda e a ação principal em baixo à direita. */
+#game.floating #panel.hub { background: none; border-color: transparent; box-shadow: none; pointer-events: none; }
+#panel.hub > * { pointer-events: auto; }
+#panel.hub .matchhead { position: fixed; left: 80px; top: 18px; z-index: 6; gap: 12px; padding: 6px 12px; font: 400 18px/1 var(--ui); border: 2px solid var(--ink); }
+#panel.hub .say { position: fixed; left: 12px; bottom: 12px; z-index: 6; width: min(56vw, 620px); background: rgb(27 34 48 / 0.9); color: var(--paper); border: 2px solid var(--ink); border-left: 4px solid var(--gold); }
+#panel.hub .say b { color: var(--gold); }
+#panel.hub .menu { position: fixed; right: 12px; top: 12px; z-index: 6; display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-rows: auto; gap: 6px 8px; padding: 0; background: none; overflow: visible; align-content: start; }
+#panel.hub .mbar { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 84px; min-height: 0; padding: 0; background: none !important; border: 0; border-radius: 0; box-shadow: none !important; }
+#panel.hub .mbar img { box-sizing: content-box; width: 28px; height: 28px; padding: 12px; background: var(--paper); border: 3px solid var(--ink); border-radius: 50%; box-shadow: 2px 3px 0 var(--ink); }
+#panel.hub .mbar[aria-pressed="true"] img, #panel.hub .mbar.tap img { background: var(--gold); }
+#panel.hub .mbar.go img { background: var(--ball-fill); }
+/* O foco: o anel ouro com tinta à volta, para se ver tanto na parede clara como na madeira. */
+#panel.hub .mbar:focus-visible { outline: none; }
+#panel.hub .mbar:focus-visible img { outline: 3px solid var(--gold); outline-offset: 1px; box-shadow: 0 0 0 7px var(--ink); }
+#panel.hub .mbar span { font: 400 15px/1 var(--ui-sm); color: var(--paper); text-align: center; text-shadow: 1px 1px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink); }
+#panel.hub .mbar small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#panel.hub .actions { position: static; padding: 0; border: 0; background: none; min-height: 0; }
+#panel.hub .actions .primary { position: fixed; right: 12px; bottom: 12px; z-index: 6; width: 260px; height: 64px; min-height: 64px; font-size: 26px; }
+@media (max-height: 460px) {
+  #panel.hub .menu { gap: 3px 6px; top: 8px; }
+  #panel.hub .mbar img { padding: 8px; }
+  #panel.hub .mbar span { font-size: 13px; }
+  #panel.hub .actions .primary { height: 52px; min-height: 52px; width: 220px; font-size: 22px; }
+}
+/* No escritório, a nota da direção fica à esquerda, debaixo do título, sem tapar os botões redondos. */
+#game.floating #topUi .tnote { left: var(--note-left, 8px); right: var(--hub-space, 8px); top: var(--note-top, 8px); max-width: none; }
+/* Em 640×360 o escritório tem dez botões: em três colunas de quatro, para a última fila caber. */
+@media (max-height: 380px) { #panel.hub .menu { grid-template-rows: repeat(4, auto); } }
+/* Com a janela do jogo aberta, a carta encontrada passa para a esquerda, para não a tapar. */
+#game.window-open #drop { right: auto; left: 6px; }
+/* O combo do treino fica entre o voltar e a janela, como as fichas. */
+#game.floating #topUi .combofx { left: var(--back-space, 0px); right: var(--window-space, 0px); width: auto; }
+/* Na repetição, a janela é só um cartão pequeno com o título e o botão: o campo fica à vista. */
+#game.floating #panel:has(.replay-card) { height: auto !important; }

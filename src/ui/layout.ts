@@ -24,7 +24,7 @@ export interface LayoutState {
   stage: Stage;
   resultOpen: boolean;
   menuPanel: number;
-  /** No jogo deitado, o painel escondido: o campo fica com o ecrã todo. */
+  /** O campo com o ecrã todo e o painel numa janela por cima (o jogo é sempre assim; o resultado vai ao centro). */
   courtOnly: boolean;
 }
 
@@ -104,6 +104,9 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     const centred = resultOpen && stage === 'match';
     const onlyCourt = courtOnly && stage === 'match' && !resultOpen;
     game.classList.toggle('court-only', onlyCourt);
+    // Ecrã único, no jogo e nos menus: a cena tem o ecrã todo e o painel é uma janela por cima.
+    const floating = onlyCourt || stage === 'menu';
+    game.classList.toggle('floating', floating);
     // O painel cresce com a janela, em quartos: numa janela larga de computador fica maior e legível, sem passar de 37,5 % da largura.
     // Com 37,5 %, uma janela de 1920×1080 chega ao ×2: os ícones do painel ficam com píxeis inteiros, em vez de ×1,75.
     // Nunca abaixo de 1: no telemóvel deitado, encolher deixava os botões abaixo de 44 px e os ícones a escalas partidas.
@@ -111,11 +114,11 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     const comfortable = Math.max(1, Math.min(Math.floor((innerWidth * 4) / 960) / 4, Math.floor((viewHeight * 4) / 540) / 4));
     // No jogo, o campo primeiro: a maior ampliação inteira que cabe com o painel no mínimo, e o painel fica com o que sobra.
     const courtFirst = Math.floor(Math.min((innerWidth - LANDSCAPE_PANEL_MIN) / MATCH_STAGE_WIDTH, viewHeight / MATCH_STAGE_HEIGHT) * dpr) / dpr;
-    const fitted = stage === 'match' && !centred && courtFirst >= 1;
+    const fitted = stage === 'match' && !centred && !onlyCourt && courtFirst >= 1;
     const left = innerWidth - courtFirst * MATCH_STAGE_WIDTH;
     const ui = fitted ? Math.max(1, Math.min(comfortable, Math.floor((left * 4) / LANDSCAPE_PANEL_WIDTH) / 4)) : comfortable;
     // Largura do painel em píxeis do ecrã. Na cidade não há painel: o mapa é o menu e ocupa a janela toda.
-    const panelWidth = stage === 'town' || centred || onlyCourt ? 0 : fitted ? Math.min(LANDSCAPE_PANEL_WIDTH * ui, Math.max(LANDSCAPE_PANEL_MIN, left)) : LANDSCAPE_PANEL_WIDTH * ui;
+    const panelWidth = stage === 'town' || centred || floating ? 0 : fitted ? Math.min(LANDSCAPE_PANEL_WIDTH * ui, Math.max(LANDSCAPE_PANEL_MIN, left)) : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     const stageHeight = viewHeight;
     // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
@@ -143,12 +146,34 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     screen.style.width = `${stageWidth}px`;
     screen.style.height = `${viewHeight}px`;
     panel.style.zoom = String(ui);
-    panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : panelWidth / ui}px`;
-    panel.style.height = centred ? '' : `${viewHeight / ui}px`;
+    // Nos menus, a ficha fica à esquerda da janela do painel. Com espaço, a janela flutua com margens e o voltar é um botão
+    // redondo no canto; num ecrã estreito (telemóvel deitado, 640×360), a janela encosta à direita com a altura toda e o
+    // voltar fica na barra dela, para a ficha ter a largura de antes.
+    const windowWidth = LANDSCAPE_PANEL_WIDTH * ui;
+    const roomy = stage !== 'menu' || innerWidth - windowWidth - 26 - 76 >= MENU_STAGE_WIDTH * 1.25;
+    game.classList.toggle('docked', !roomy);
+    const windowSpace = roomy ? windowWidth + 26 : windowWidth + 3;
+    const backSpace = roomy && stage === 'menu' ? 76 : 0;
+    // No jogo, a janela do painel fica por cima do campo, com a largura de sempre e um pouco menos do que a altura do ecrã.
+    panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : floating ? LANDSCAPE_PANEL_WIDTH : panelWidth / ui}px`;
+    // No jogo, a janela começa debaixo do marcador, para nunca o tapar.
+    const windowTop = onlyCourt ? bar + (viewHeight < 460 ? 40 : 46) * ui : floating && roomy ? 12 : 0;
+    panel.style.top = floating ? `${windowTop / ui}px` : '';
+    panel.style.height = centred ? '' : `${(floating && (roomy || onlyCourt) ? viewHeight - windowTop - 12 : viewHeight) / ui}px`;
     panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
     screen.style.setProperty('--hud-zoom', String(ui));
-    const topZoom = Math.max(1, Math.floor(Math.min(stageWidth / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
+    // A escala da parte de cima vem do espaço da ficha, como quando a ficha e o painel ficavam lado a lado.
+    const cardSpace = stage === 'menu' ? stageWidth - windowSpace - backSpace : stageWidth;
+    const topZoom = Math.max(1, Math.floor(Math.min(cardSpace / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
     setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom);
+    // O espaço do voltar e o que a janela do painel tapa à direita, nas unidades da parte de cima.
+    screen.style.setProperty('--back-space', `${Math.ceil(backSpace / topZoom)}px`);
+    // A nota do escritório começa depois do voltar e debaixo do título, que crescem com o zoom do painel.
+    screen.style.setProperty('--note-left', `${Math.ceil((84 * ui) / topZoom)}px`);
+    // As colunas de botões redondos do escritório, à direita: duas, ou três num ecrã baixo.
+    screen.style.setProperty('--hub-space', `${Math.ceil((((viewHeight < 380 ? 3 : 2) * 92 + 20) * ui) / topZoom)}px`);
+    screen.style.setProperty('--note-top', `${Math.ceil((66 * ui) / topZoom)}px`);
+    screen.style.setProperty('--window-space', `${Math.ceil(windowSpace / topZoom)}px`);
   }
 
   return { fit, topSize: () => topSize };

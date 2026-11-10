@@ -318,6 +318,48 @@ export function introScreen(view: MatchView, label: string): string {
     <div class="end-actions"><button type="button" class="primary" id="introSkip">Bola ao alto</button></div>`;
 }
 
+/** As linhas do filme do jogo, cada uma com um botão para rever o lance. */
+function filmRows(s: MatchState): string {
+  const moments = gameMoments(s);
+  if (!moments.length) return '';
+  return `<div class="section-head plain"><span>O filme do jogo</span></div>${moments.map(m => `<div class="film-row"><span class="when">${m.when}</span><span class="what">${escapeHtml(m.label)}</span><b>${m.score}</b><button type="button" class="quiet" data-replay-tick="${m.tick}" aria-label="Rever: ${escapeHtml(m.label)}">Rever</button></div>`).join('')}`;
+}
+
+export interface GameMoment {
+  tick: number;
+  label: string;
+  when: string;
+  score: string;
+}
+
+/**
+ * O filme do jogo: os lances que o mudaram, por ordem. As últimas três vezes que alguém passou para a frente, o fim do
+ * maior parcial (de 8 pontos ou mais) e o último cesto; no máximo cinco, sem repetir o mesmo instante.
+ */
+export function gameMoments(s: MatchState): GameMoment[] {
+  const score: [number, number] = [0, 0];
+  let leader: 0 | 1 | null = null;
+  let run = { team: 0 as 0 | 1, points: 0 };
+  let best: GameMoment & { points: number } = { tick: -1, label: '', when: '', score: '', points: 0 };
+  const leads: GameMoment[] = [];
+  let last: GameMoment | null = null;
+  const when = (period: number, clock: number): string => `${period > 4 ? 'Prol.' : `${period}.º per.`} ${clockText(clock)}`;
+  for (const e of s.events) {
+    if (e.type !== 'made' && e.type !== 'freeThrowMade') continue;
+    const team = e.team as 0 | 1;
+    score[team] += e.points ?? 1;
+    run = run.team === team ? { team, points: run.points + (e.points ?? 1) } : { team, points: e.points ?? 1 };
+    const moment = (label: string): GameMoment => ({ tick: e.tick, label, when: when(e.period, e.clock), score: `${score[0]}-${score[1]}` });
+    const now: 0 | 1 | null = score[0] > score[1] ? 0 : score[1] > score[0] ? 1 : null;
+    if (now !== null && now !== leader) leads.push(moment(`${e.player ?? s.teams[team].short} põe ${s.teams[team].short} à frente`));
+    leader = now ?? leader;
+    if (run.points >= 8 && run.points > best.points) best = { ...moment(`Parcial de ${run.points}-0 de ${s.teams[team].short}`), points: run.points };
+    last = moment(`Último cesto: ${e.player ?? s.teams[team].short}`);
+  }
+  const picked = [...leads.slice(-3), ...(best.points ? [best] : []), ...(last ? [last] : [])];
+  return picked.filter((m, i) => picked.findIndex(o => o.tick === m.tick) === i).sort((a, b) => a.tick - b.tick).slice(-5).map(({ tick, label, when, score }) => ({ tick, label, when, score }));
+}
+
 /** O instante do cesto que decidiu o jogo: a última vez que o vencedor passou para a frente, ou o último cesto. */
 export function decisiveTick(s: MatchState): number {
   let a = 0;
@@ -377,6 +419,7 @@ export function resultScreen(view: MatchView, cards: readonly CardId[], league: 
     <div class="section-head plain"><span>O que decidiu o jogo</span></div>
     <ul class="reasons">${resultReasons(s).map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
     ${league}
+    ${filmRows(s)}
     <div class="section-head plain"><span>Cartas ganhas</span><span>${cards.length}</span></div>
     ${foundCards(cards)}
     ${periodTable(view)}

@@ -35,6 +35,7 @@ import { createLayout, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
 import { exportClub, importClub, lastExportNote, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
 import { holdTap, initTouch } from './touch.ts';
+import { initSpeech } from './speech.ts';
 import { TITLE_STAGE_SECONDS, drawTitleStage, type TitleStageInfo } from './title-stage.ts';
 import { initKeys } from './keys.ts';
 
@@ -75,7 +76,8 @@ let stage: Stage = 'title';
 // Na horizontal, o resultado do jogo abre numa janela ao centro, com o campo a ocupar o ecrã todo por trás.
 let resultOpen = false;
 // No jogo, o painel escondido e o campo com o ecrã todo (o botão do canto).
-let courtOnly = false;
+// No jogo, o campo ocupa o ecrã todo e o painel é uma janela por cima, que o INFO, as trocas e as táticas abrem.
+let matchWindow = false;
 let townClock: number | null = null;
 let gameKind: GameKind = 'official';
 let rivalOf = 0;
@@ -135,13 +137,22 @@ let titleStage: { at: number; info: TitleStageInfo } | null = null;
 let forcedTitle: Title | null = null;
 const CEREMONY_DELAY_MS = 1500;
 // Sem cerimónia, não se espera que saiam todos: festejam e começam a sair, o ecrã escurece e vem o relatório.
+// No apito final, um grande plano curto dos jogadores (vencedores de braços no ar, vencidos de cabeça baixa) antes da saída.
+const END_CLOSE_MS = 1300;
 const END_FADE_AT_MS = 3000;
 const END_FADE_MS = 700;
 let resultHtml = '';
 let replay: MatchView | undefined;
 let replayUntil = 0;
 let replayAccumulator = 0;
-const REPLAY_SPEED = 0.5;
+const REPLAY_SPEED = 0.4;
+// A repetição começa 2 s antes do cesto e abranda nos últimos 0,8 s, quando a bola vai no ar.
+const REPLAY_LEAD_TICKS = 40;
+const REPLAY_SLOW_TICKS = 16;
+const REPLAY_FADE_MS = 300;
+let replayTick = 0;
+let replayStart = 0;
+let replayEnding = 0;
 const townExtras = newClub(1);
 const demo = createDemo(context, () => club ?? townExtras, () => stage === 'title');
 const soundsPlayed = new Set<Sound>();
@@ -182,7 +193,7 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 });
 
 function fit(): void {
-  layout.fit({ stage, resultOpen, menuPanel, courtOnly });
+  layout.fit({ stage, resultOpen, menuPanel, courtOnly: true });
   // As faixas da apresentação ficam no mesmo retângulo que o marcador: o do campo.
   for (const side of ['top', 'left', 'right'] as const) introBarsBox.style[side] = hudElement.style[side];
   // Medir o canvas apaga-o: a cena desenha-se já na imagem seguinte, sem esperar pela vez das 30 por segundo.
@@ -195,7 +206,12 @@ function setStage(next: Stage): void {
   // Ao voltar à cidade, o foco regressa ao botão que a deixou (o leitor de ecrã não fica perdido no início da página).
   if (stage === 'town' && next !== 'town') townFocus = document.activeElement?.id ?? '';
   stage = next;
-  if (next !== 'town') towerOpen = false;
+  if (next !== 'town') {
+    towerOpen = false;
+    askingArena = false;
+  }
+  // A classe dos menus com botões redondos não pode ir para o jogo: lá o painel é uma janela com fundo.
+  if (next !== 'menu') panel.classList.remove('hub');
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
   keepAwake(next === 'match');
   // O botão de esconder o painel só aparece no jogo (e na horizontal, pelo CSS).
@@ -208,9 +224,12 @@ function setStage(next: Stage): void {
   // Durante o jogo não há música: ouve-se o pavilhão.
   else if (next === 'match') audio.music('none');
   // Uma cortina curta entre ecrãs, em vez de uma troca seca.
-  game.classList.remove('stage-in');
+  // Uma cortina pelo azul escuro do jogo: curta nos menus, mais lenta ao entrar no jogo e ao voltar dele à cidade, para o
+  // dia de jogo pesar mais.
+  const slow = next === 'match' || (stage === 'match' && next === 'town');
+  game.classList.remove('stage-in', 'stage-in-slow');
   void game.offsetWidth;
-  game.classList.add('stage-in');
+  game.classList.add(slow ? 'stage-in-slow' : 'stage-in');
   game.classList.toggle('city-home', next === 'town');
   townUi.hidden = next !== 'town';
   topUi.hidden = next !== 'menu';
@@ -268,20 +287,48 @@ function importFile(): void {
 }
 
 let townFocus = '';
+let bouncedWeek = '';
+// A pergunta do adjunto antes do jogo fica aberta quando a cidade se redesenha, como a nota da Torre.
+let askingArena = false;
 // A nota da Torre fica aberta quando a cidade se volta a desenhar (ao medir o ecrã, ao fechar o teclado).
 let towerOpen = false;
+/** Na semana de jogo, ir para o pavilhão é um momento: o adjunto pergunta primeiro, com sim e não. */
+function askArena(): void {
+  const note = document.querySelector('.town-note');
+  if (!club || !currentGame(club) || !note) {
+    openArena();
+    return;
+  }
+  askingArena = true;
+  towerOpen = false;
+  note.innerHTML = `${say('assistant', 'happy', `Esta semana há jogo contra o ${opponentOf(club).name}. Vamos para o pavilhão?`)}<div class="tower-actions"><button type="button" id="arenaYes">Sim, vamos</button><button type="button" class="quiet" id="arenaNo">Ainda não</button></div>`;
+  element('arenaYes').addEventListener('click', openArena);
+  element('arenaNo').addEventListener('click', () => {
+    askingArena = false;
+    placeTownUi();
+  });
+  element('arenaYes').focus();
+}
+
 function placeTownUi(): void {
   const current = club!;
   const back = townUi.contains(document.activeElement) ? document.activeElement!.id : townFocus;
   townFocus = '';
   townUi.innerHTML = townOverlay(current, townPlaces(canvas.width, canvas.height), saveStatus.failed);
+  // O cartão do próximo jogo entra com um ressalto, uma vez por semana (a cidade redesenha-se muitas vezes).
+  const week = `${current.season}-${current.week}`;
+  if (bouncedWeek !== week) {
+    bouncedWeek = week;
+    townUi.querySelector('.town-match')?.classList.add('bounce');
+  }
   const note = (text: string): void => {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
   };
-  element('arenaChip').addEventListener('click', openArena);
+  element('arenaChip').addEventListener('click', askArena);
   element('towerChip').addEventListener('click', () => {
     towerOpen = true;
+    askingArena = false;
     note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
     const showCopy = (): void => {
       const { text, stale } = lastExportNote(club!);
@@ -297,6 +344,7 @@ function placeTownUi(): void {
     element('importBtn').addEventListener('click', importFile);
   });
   if (towerOpen) element('towerChip').click();
+  if (askingArena) askArena();
   if (back) document.getElementById(back)?.focus({ preventScroll: true });
   element('airportChip').addEventListener('click', () => openMenu('airport'));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));
@@ -312,15 +360,16 @@ function placeTownUi(): void {
   });
 }
 
-function announce(message: string): void {
+function announce(message: string, cards?: readonly CardId[]): void {
   announced.add(message);
-  banner.textContent = message;
+  banner.innerHTML = cards ? `<span class="move-cards">${cards.map(c => `<img alt="" src="${cardImage(c, CARDS[c].category)}">`).join('')}</span>${escapeHtml(message)}` : escapeHtml(message);
   banner.hidden = false;
   // Recomeçar a animação de entrada, mesmo que já houvesse um aviso no ecrã.
   banner.classList.remove('show');
   void banner.offsetWidth;
   banner.classList.add('show');
-  bannerUntil = view!.s.tick + ANNOUNCE_TICKS;
+  // Um movimento especial fica até ao fim da jogada; os outros avisos, o tempo de sempre.
+  bannerUntil = view!.s.tick + (cards ? ANNOUNCE_TICKS * 2 : ANNOUNCE_TICKS);
   speak(message, 1);
 }
 
@@ -567,6 +616,7 @@ function matchControls(): string {
       <button type="button" id="timeoutBtn" class="icon" aria-label="Desconto de tempo" title="Desconto de tempo"><img class="ink" id="timeoutIcon" alt="" src="${clockIcon(view?.s.timeoutsLeft[0] ?? 0)}"></button>
       <button type="button" id="subsBtn" class="icon" aria-pressed="${subsOpen}" aria-label="Trocas" title="Trocas"><img alt="" src="${subsIcon()}"></button>
       <button type="button" id="matchTacticsBtn" class="icon" aria-pressed="${tacticsOpen}" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>
+      <button type="button" id="infoBtn" class="icon" aria-pressed="${matchWindow}" aria-label="Banco, estatísticas, liga, relato e cartas" title="Informação"><img class="ink" alt="" src="${controlIcon('stats')}"></button>
     </div>`;
 }
 
@@ -586,6 +636,8 @@ function bindControls(): void {
   panel.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => {
     button.addEventListener('click', () => {
       tab = button.dataset.tab as PanelTab;
+      // Escolher um separador (também pelas teclas 1 a 5) abre a janela do painel.
+      matchWindow = true;
       cardBody = null;
       tacticsOpen = false;
       showMatch();
@@ -615,6 +667,7 @@ function bindControls(): void {
 }
 
 function refreshContent(): void {
+  syncMatchWindow();
   const content = document.getElementById('tabContent');
   // Não mexer no painel durante um toque, senão o botão desaparece antes de o clique acabar.
   if (!content || pointerDown) return;
@@ -670,22 +723,6 @@ addEventListener('pointerup', () => {
 addEventListener('pointercancel', () => {
   pointerDown = false;
 });
-/** O botão de desconto sobre o campo copia o do painel: o ícone, se está desligado, armado ou pedido. */
-function mirrorTimeout(from: HTMLButtonElement): void {
-  const to = document.getElementById('courtTimeoutBtn') as HTMLButtonElement | null;
-  if (!to) return;
-  const src = (document.getElementById('timeoutIcon') as HTMLImageElement | null)?.getAttribute('src') ?? '';
-  const img = to.querySelector('img')!;
-  if (img.getAttribute('src') !== src) img.src = src;
-  to.disabled = from.disabled;
-  for (const name of ['aria-label', 'aria-pressed', 'title']) {
-    const value = from.getAttribute(name);
-    if (value === null) to.removeAttribute(name); else to.setAttribute(name, value);
-  }
-  if (from.dataset.armed) to.dataset.armed = from.dataset.armed;
-  else delete to.dataset.armed;
-}
-
 /** O botão muda de texto sem ser substituído, para nunca perder um toque. */
 function updateCoachButtons(): void {
   const timeoutButton = document.getElementById('timeoutBtn') as HTMLButtonElement | null;
@@ -703,7 +740,6 @@ function updateCoachButtons(): void {
   if (timeoutArmed) timeoutButton.dataset.armed = 'Pedir desconto? Toca outra vez';
   else delete timeoutButton.dataset.armed;
   if (timeoutArmed) timeoutButton.setAttribute('aria-label', 'Pedir desconto? Toca outra vez');
-  mirrorTimeout(timeoutButton);
 }
 
 function disarmTimeout(): void {
@@ -734,7 +770,7 @@ document.addEventListener('pointerdown', () => {
 
 panel.addEventListener('click', event => {
   if (menusOpen()) return;
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], [data-option-slot], [data-option-set], [data-option-cancel], [data-option-clear], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-player], [data-card], [data-pick], [data-rotation], [data-subs-close], [data-tactic], [data-option-slot], [data-option-set], [data-option-cancel], [data-option-clear], #timeoutBtn, #subsBtn, #matchTacticsBtn, #matchTacticsClose, #infoBtn');
   if (!target || (target as HTMLButtonElement).disabled) return;
   pointerDown = false;
   // As opções de ataque também se mudam a meio do jogo, e ficam registadas como as outras táticas.
@@ -770,6 +806,15 @@ panel.addEventListener('click', event => {
     disarmTimeout();
     requestTimeout(s, 0);
     refreshContent();
+    return;
+  }
+  if (target.id === 'infoBtn') {
+    // Fecha também as trocas e as táticas: a janela fecha-se toda com o mesmo botão.
+    matchWindow = !(matchWindow || subsOpen || tacticsOpen);
+    subsOpen = false;
+    tacticsOpen = false;
+    cardBody = null;
+    showMatch();
     return;
   }
   if (target.id === 'matchTacticsBtn' || target.id === 'matchTacticsClose') {
@@ -842,7 +887,13 @@ panel.addEventListener('click', event => {
   }
 });
 
+/** A janela do painel, por cima do campo: aberta pelo INFO, pelas trocas, pelas táticas ou por uma ficha de jogador. */
+function syncMatchWindow(): void {
+  game.classList.toggle('window-open', matchWindow || subsOpen || tacticsOpen || cardBody !== null);
+}
+
 function showMatch(): void {
+  syncMatchWindow();
   panel.innerHTML = matchControls();
   bindControls();
   refreshContent();
@@ -896,10 +947,14 @@ function beginPlay(): void {
 }
 
 /** A repetição: o jogo volta a correr só com as decisões do treinador, até três segundos antes do lance, e mostra-se em câmara lenta. */
-function startReplay(): void {
+function startReplay(at?: number): void {
   const { s } = view!;
-  const tick = decisiveTick(s);
-  const from = Math.max(0, tick - 60);
+  const tick = at ?? decisiveTick(s);
+  // Começa dois segundos antes do cesto, a velocidade normal; só abranda no fim, quando a bola voa.
+  const from = Math.max(0, tick - REPLAY_LEAD_TICKS);
+  replayTick = tick;
+  replayStart = performance.now();
+  replayEnding = 0;
   const state = replayMatch(s.teams[0], s.teams[1], s.seed, s.controlled, s.commands, s.visitor, from);
   let live = false;
   replay = new MatchView(context, s.teams[0], s.teams[1], s.seed, gameKind === 'practice' ? CLOSED_GYM : club!.division, {
@@ -911,13 +966,15 @@ function startReplay(): void {
   }, s.controlled, s.visitor, activeKit(club!), state, venueColor(gameKind, rivalOf), club!.confidence / 100, rivalKitFor(club!, s.teams[1].name, activeKit(club!), guestOf(rivalOf)), s.visitor === 0 ? clubIdentity(s.teams[1].name).emblem : club!.emblem, club!.emblem, guestOf(rivalOf)?.emblem, weatherFor(club!.week));
   live = true;
   replay.snapCamera();
-  replayUntil = tick + 30;
+  // Fica cerca de um segundo no cesto, em câmara lenta, antes de sair.
+  replayUntil = tick + 8;
   replayAccumulator = 0;
   announce('Repetição');
+  banner.classList.add('replay');
   bannerUntil = Infinity;
   resultOpen = false;
   fit();
-  panel.innerHTML = `<div class="result"><div class="winner">O lance decisivo</div><p class="hint">Em câmara lenta, três segundos antes do cesto que decidiu o jogo.</p></div>
+  panel.innerHTML = `<div class="result replay-card"><div class="winner">${at === undefined ? 'O lance decisivo' : 'Rever o lance'}</div><p class="hint">Dois segundos antes do cesto, e em câmara lenta no fim.</p></div>
     <div class="end-actions"><button type="button" id="replayBack">Voltar ao resultado</button></div>`;
   element('replayBack').addEventListener('click', endReplay);
 }
@@ -925,6 +982,7 @@ function startReplay(): void {
 function endReplay(): void {
   replay = undefined;
   banner.hidden = true;
+  banner.classList.remove('replay');
   // O resultado já se viu a subir: ao voltar da repetição fica parado.
   showResultPanel(false);
 }
@@ -935,7 +993,8 @@ function showResultPanel(count = true): void {
   panel.innerHTML = `${resultHtml}
     <div class="end-actions two"><button type="button" id="replayBtn">Rever o lance</button><button type="button" class="primary" id="againBtn">Continuar</button></div>`;
   element('againBtn').addEventListener('click', showClub);
-  element('replayBtn').addEventListener('click', startReplay);
+  element('replayBtn').addEventListener('click', () => startReplay());
+  panel.querySelectorAll<HTMLElement>('[data-replay-tick]').forEach(button => button.addEventListener('click', () => startReplay(Number(button.dataset.replayTick))));
   if (count) countUp(panel.querySelectorAll<HTMLElement>('.final-score b'));
 }
 
@@ -1051,7 +1110,7 @@ function frame(now: number): void {
   lastFrame = now;
   let simSeconds = 0;
   const current = view;
-  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen() && !upright.matches) {
+  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen() && !upright.matches && !current.momentHold()) {
     simSeconds = elapsed * speed;
     accumulator += simSeconds * TICKS_PER_SECOND;
     let steps = 0;
@@ -1086,14 +1145,14 @@ function frame(now: number): void {
           endTitle = forcedTitle && current.s.score[0] > current.s.score[1] ? forcedTitle : rivalOf === GUEST_RIVAL ? null : titleWon(club!, endResult);
           forcedTitle = null;
         }
-        // Sem título, todos vão para o balneário; com título, a cerimónia tem a vez.
-        if (!endTitle) current.startExit();
+        // Sem título, todos vão para o balneário depois do grande plano do apito; com título, a cerimónia tem a vez.
       } else if (endTitle && !ceremonyOn) {
         if (now - endAt > CEREMONY_DELAY_MS) startCeremony(current, endTitle);
       } else if (ceremonyOn) {
         if (!titleStage && current.ceremonyDone()) startTitleStage(now);
         else if (titleStage && now - titleStage.at > TITLE_STAGE_SECONDS * 1000) showResult();
       } else {
+        if (now - endAt > END_CLOSE_MS) current.startExit();
         current.endFade = reducedMotion() ? 0 : Math.min(1, Math.max(0, (now - endAt - END_FADE_AT_MS) / END_FADE_MS));
         if (now - endAt > END_FADE_AT_MS + END_FADE_MS) showResult();
       }
@@ -1127,6 +1186,13 @@ function frame(now: number): void {
     }
   }
   if (started && !paused && !finished && stage === 'match') audio.ambience(now);
+  // Ao intervalo, o botão «Segunda parte» mostra quanto falta para o jogo recomeçar sozinho.
+  const halfLabel = document.querySelector('#secondHalfBtn span');
+  const left = idle.left();
+  if (halfLabel && left !== null) {
+    const label = `Segunda parte (${Math.ceil(left / 1000)} s)`;
+    if (halfLabel.textContent !== label) halfLabel.textContent = label;
+  }
   flushLive(now);
   const courtLabel = stage === 'match' && current ? `Jogo: ${current.s.teams[0].short} ${current.s.score[0]} – ${current.s.score[1]} ${current.s.teams[1].short}, ${periodName(current.s.period)}, ${clockText(current.s.clock)}` : stage === 'town' ? 'Mapa da cidade' : 'Pocket Basketball';
   if (canvas.getAttribute('aria-label') !== courtLabel) canvas.setAttribute('aria-label', courtLabel);
@@ -1135,13 +1201,20 @@ function frame(now: number): void {
   const start = performance.now();
   hudElement.hidden = stage !== 'match' || replay !== undefined || (titleStage !== null && !finished) || (view?.closeUp() ?? false);
   if (replay) {
-    replayAccumulator += Math.min(0.5, rawElapsed) * REPLAY_SPEED * TICKS_PER_SECOND;
+    // Velocidade normal até perto do cesto; câmara lenta no voo da bola e no cesto. Entra e sai por um fundido de 0,3 s.
+    const slow = replay.s.tick >= replayTick - REPLAY_SLOW_TICKS;
+    const rate = slow ? REPLAY_SPEED : 1;
+    replayAccumulator += Math.min(0.5, rawElapsed) * rate * TICKS_PER_SECOND;
     while (replayAccumulator >= 1 && replay.s.tick < replayUntil && replay.s.phase !== 'end') {
       replay.stepSim();
       replayAccumulator -= 1;
     }
-    if (replay.s.tick >= replayUntil || replay.s.phase === 'end') endReplay();
-    else replay.render(Math.min(1, replayAccumulator), elapsed * REPLAY_SPEED);
+    if ((replay.s.tick >= replayUntil || replay.s.phase === 'end') && !replayEnding) replayEnding = now;
+    const fadeIn = Math.max(0, 1 - (now - replayStart) / REPLAY_FADE_MS);
+    const fadeOut = replayEnding ? Math.min(1, (now - replayEnding) / REPLAY_FADE_MS) : 0;
+    replay.endFade = reducedMotion() ? 0 : Math.max(fadeIn, fadeOut);
+    if (replayEnding && (reducedMotion() || now - replayEnding >= REPLAY_FADE_MS)) endReplay();
+    else replay.render(Math.min(1, replayAccumulator), elapsed * rate);
   } else if (demo.frame(elapsed)) {
     // A demonstração do título já se desenhou.
   } else if ((stage === 'town' || stage === 'title' || stage === 'menu') && now - lastStillDraw < STILL_FRAME_MS) {
@@ -1356,37 +1429,10 @@ Object.assign(window, {
 });
 
 initTouch();
+initSpeech();
 initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
 
-// Só o campo: um botão no canto, só no jogo e na horizontal (CSS), esconde o painel; o mesmo botão volta a mostrá-lo. Com o painel escondido,
-// fica sobre o campo um botão de desconto, que faz o mesmo que o do painel (o primeiro toque arma, o segundo pede).
-const courtOnlyButton = document.createElement('button');
-courtOnlyButton.type = 'button';
-courtOnlyButton.id = 'courtOnlyBtn';
-courtOnlyButton.className = 'icon';
-const courtTimeoutButton = document.createElement('button');
-courtTimeoutButton.type = 'button';
-courtTimeoutButton.id = 'courtTimeoutBtn';
-courtTimeoutButton.className = 'icon';
-courtTimeoutButton.innerHTML = '<img class="ink" alt="">';
-courtTimeoutButton.setAttribute('aria-label', 'Desconto de tempo');
-function syncCourtOnly(): void {
-  const label = courtOnly ? 'Mostrar o painel' : 'Só o campo';
-  courtOnlyButton.innerHTML = `<img class="ink" alt="" src="${controlIcon(courtOnly ? 'windowed' : 'fullscreen')}">`;
-  courtOnlyButton.setAttribute('aria-label', label);
-  courtOnlyButton.setAttribute('aria-pressed', String(courtOnly));
-  courtOnlyButton.title = label;
-  document.body.classList.toggle('court-only', courtOnly);
-}
-courtOnlyButton.addEventListener('click', () => {
-  courtOnly = !courtOnly;
-  syncCourtOnly();
-  fit();
-});
-courtTimeoutButton.addEventListener('click', () => document.getElementById('timeoutBtn')?.click());
-syncCourtOnly();
-document.body.append(courtOnlyButton, courtTimeoutButton);
 
 initPwa();

@@ -9,6 +9,7 @@ import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchS
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
+import { COMBOS, type CardId } from '../sim/training.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
@@ -58,6 +59,9 @@ const LOCKER_SLOWEST = 1.4;
 const END_CHEER_SECONDS = 1.2;
 const END_WALK_SPEED = 2;
 const END_CAMERA_SPEED = 2.5;
+// Com a bola a correr: a câmara segue mais devagar (antes 2,2), sem deixar a bola a mais disto do centro.
+const CAMERA_CALM_RATE = 1.3;
+const CAMERA_BALL_SLACK = 5;
 // A partir desta altura da bola (m), quem corta um passe tem de saltar.
 const INTERCEPT_JUMP_HEIGHT = 1.9;
 const SWISH_TICKS = 10;
@@ -132,6 +136,13 @@ export const ANNOUNCE_TICKS = 36;
 // A cerimónia do troféu, em tempo real (animacao.md §7 e §10): os vencedores correm para o meio campo e o capitão
 // levanta o troféu quando todos lá estão (no mínimo ao fim de CEREMONY_LIFT_SECONDS), a subir e descer a cada
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
+// O momento grande: a imagem parada e o resultado grande a meio do campo, no máximo três vezes por jogo.
+const BIG_MOMENTS_MAX = 3;
+// A falta: o grande plano dura isto em tempo real, e a faixa com o nome um pouco mais.
+const FOUL_ZOOM_SECONDS = 1.2;
+const FOUL_STRIP_SECONDS = 2;
+const BIG_HOLD_SECONDS = 1.4;
+const BIG_SHOW_SECONDS = 2.2;
 const CEREMONY_LIFT_SECONDS = 1.6;
 const CEREMONY_AFTER_LIFT = 5.9;
 const CEREMONY_PUMP_SECONDS = 0.3;
@@ -227,7 +238,8 @@ interface Floater {
 export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
 
 export interface ViewCallbacks {
-  announce(message: string): void;
+  /** Um aviso grande; `cards`, num movimento especial, são as cartas do combo que o ensinou. */
+  announce(message: string, cards?: readonly CardId[]): void;
   sound(name: Sound): void;
   event(e: MatchEvent): void;
 }
@@ -318,6 +330,14 @@ export class MatchView {
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   private moveAnnouncedAt = -Infinity;
+  private moveTeam: TeamIndex | null = null;
+  // Os momentos grandes: um a três cestos por jogo param a imagem um instante, com o resultado grande a meio do campo.
+  private bigScore: { team: TeamIndex; start: number; before: [number, number]; after: [number, number]; card: string } | null = null;
+  private bigMoments = 0;
+  // A falta tem o seu momento: um grande plano curto sobre quem a fez e uma faixa com o nome e as faltas que leva.
+  private foulMoment: { body: Body; start: number; label: string } | null = null;
+  // Entre os lances livres o grande plano não sai: fica até um pouco depois do último.
+  private freeThrowUntil = -Infinity;
   // Quantas frases de cada contexto já se disseram, para a bancada não se repetir.
   private readonly crowdSaid = new Map<CrowdMood, number>();
   private readonly crowdSeed: number;
@@ -545,7 +565,11 @@ export class MatchView {
     const secondHalf = this.s.period >= 3;
     const attacksRight = (this.s.offense === 0) !== secondHalf;
     const lookY = this.camera.tuning.lookY;
-    return [Math.max(5.4, Math.min(22.6, ball.x + (attacksRight ? 3 : -3))), lookY];
+    // Só se olha à frente quando o ataque já passou o meio campo: na transição a câmara segue a bola sem saltar 6 m para o
+    // outro lado a cada mudança de posse, que era o que a fazia correr e rodar a cada ataque.
+    const settled = attacksRight ? ball.x > COURT_LENGTH / 2 + 2 : ball.x < COURT_LENGTH / 2 - 2;
+    const ahead = settled ? (attacksRight ? 3 : -3) : 0;
+    return [Math.max(5.4, Math.min(22.6, ball.x + ahead)), lookY];
   }
 
   private findBody(e: MatchEvent): Body | undefined {
@@ -729,7 +753,12 @@ export class MatchView {
           callbacks.sound('whistle');
           this.refereeSignal('FALTA');
           // Quem fez a falta protesta, e o treinador dele também.
-          if (body) this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
+          if (body) {
+            this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
+            const name = body.player.name.toUpperCase();
+            const fouls = body.line.fouls;
+            this.foulMoment = { body, start: this.realTime, label: fouls >= B.foulOutAt ? `${name} SAI: ${fouls} FALTAS` : `FALTA DE ${name} - ${fouls} ${fouls === 1 ? 'FALTA' : 'FALTAS'}` };
+          }
           this.coachUpsetUntil[e.team] = s.tick + 12;
           if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('foul'));
           break;
@@ -773,8 +802,10 @@ export class MatchView {
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
           callbacks.sound('bigCheer');
-          callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
+          // As cartas do combo que ensina o movimento ficam ao lado do nome: liga-se o treino ao que se vê.
+          callbacks.announce(`${MOVE_INFO[e.move!].name}!`, COMBOS.find(c => c.move === e.move)?.cards);
           this.moveAnnouncedAt = s.tick;
+          this.moveTeam = e.team;
           break;
         case 'knockdown':
           callbacks.sound('bump');
@@ -999,6 +1030,82 @@ export class MatchView {
       const lead = s.score[e.team] - s.score[e.team === 0 ? 1 : 0];
       if (lead > 0 && lead <= e.points!) callbacks.announce('Reviravolta!');
     }
+    // Um momento grande é um movimento especial que dá cesto, um cesto sobre o apito, ou no fim uma reviravolta ou um triplo
+    // que empata. O cesto normal fica como está: o momento vale por ser raro.
+    const late = s.period >= 4 && s.clock < 600;
+    const lead = s.score[e.team] - s.score[e.team === 0 ? 1 : 0];
+    const moved = this.moveTeam === e.team && s.tick - this.moveAnnouncedAt <= ANNOUNCE_TICKS * 2;
+    // Um cesto sobre o apito só conta com o jogo por decidir; os movimentos especiais deixam sempre um momento para o fim.
+    const close = Math.abs(lead) <= 8;
+    const big = (moved && this.bigMoments < BIG_MOMENTS_MAX - 1) || (s.clock <= 20 && close) || (late && lead > 0 && lead <= e.points!) || (late && lead === 0 && e.points === 3);
+    if (big && this.bigMoments < BIG_MOMENTS_MAX) {
+      this.bigMoments++;
+      const before: [number, number] = [s.score[0], s.score[1]];
+      before[e.team] -= e.points!;
+      // A ficha de quem marcou, por baixo do resultado: o nome, os pontos de hoje e quem passou.
+      const card = body ? `${body.player.name.toUpperCase()} - ${body.line.points} PONTOS${e.other ? `, ASSISTE ${e.other.toUpperCase()}` : ''}` : '';
+      this.bigScore = { team: e.team, start: this.realTime, before, after: [s.score[0], s.score[1]], card };
+    }
+  }
+
+  /** O resultado que o marcador deve mostrar: num momento grande, o antigo até o número novo trocar no centro. */
+  shownScore(): readonly [number, number] {
+    const b = this.bigScore;
+    return b && !this.reducedMotion && this.realTime - b.start < 0.33 ? b.before : this.s.score;
+  }
+
+  /** Num momento grande, a imagem fica parada um instante: o jogo só volta a andar depois disto. */
+  momentHold(): boolean {
+    return this.bigScore !== null && this.realTime - this.bigScore.start < BIG_HOLD_SECONDS;
+  }
+
+  /**
+   * O resultado grande a meio do campo, como no golo do Calciobit: entra com o resultado antigo, o número de quem marcou
+   * troca 0,33 s depois, maior e a ouro, e assenta em dois degraus de escala inteira. Some de uma vez.
+   */
+  private drawBigScore(): void {
+    const b = this.bigScore;
+    if (!b) return;
+    const t = this.realTime - b.start;
+    if (t >= BIG_SHOW_SECONDS) {
+      this.bigScore = null;
+      return;
+    }
+    const { g, camera } = this;
+    const still = this.reducedMotion;
+    const swapped = still || t >= 0.33;
+    const score = swapped ? b.after : b.before;
+    const grow = still || !swapped ? 0 : t < 0.5 ? 2 : t < 0.62 ? 1 : 0;
+    const base = 6;
+    const parts = [String(score[0]), '-', String(score[1])];
+    const gap = base * 2;
+    // A linha mede-se à escala base, para os números parados não mexerem; o que cresce cresce à volta do seu centro.
+    const widths = parts.map(p => textWidth(p, base));
+    const total = widths.reduce((a, w) => a + w, 0) + gap * 2;
+    let x = (camera.width - total) >> 1;
+    const midY = Math.round(camera.height * 0.4);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    parts.forEach((p, i) => {
+      const hot = swapped && i === b.team * 2;
+      const scale = hot ? base + grow : base;
+      const px = x - ((textWidth(p, scale) - widths[i]!) >> 1);
+      const y = midY - Math.round((5 * scale) / 2);
+      // Contorno de tinta: o mesmo texto deslocado um píxel de arte para cada lado.
+      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]] as const) text(g, p, px + dx, y + dy, INK, scale);
+      text(g, p, px, y, hot ? GOLD[0] : '#f8f0d8', scale);
+      x += widths[i]! + gap;
+    });
+    if (swapped && b.card) {
+      const w = textWidth(b.card) + 16;
+      const cx = (camera.width - w) >> 1;
+      const cy = midY + Math.round((5 * base) / 2) + 10;
+      g.fillStyle = INK;
+      // 24 de altura e a letra 9 abaixo do topo: cabem os acentos por cima e a cedilha por baixo, como na faixa da cerimónia.
+      g.fillRect(cx, cy, w, 24);
+      text(g, b.card, cx + 8, cy + 9, '#f8f0d8');
+    }
+    g.restore();
   }
 
   private attackedHoop(team: TeamIndex): number {
@@ -1541,21 +1648,42 @@ export class MatchView {
       const most = END_CAMERA_SPEED * simSeconds;
       const step = (from: number, to: number): number => from + Math.max(-most, Math.min(most, (to - from) * ease));
       camera.aim(step(camera.lookX, lookX), step(camera.lookY, lookY));
-    } else camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
+    } else if (s.phase === 'intro' || s.phase === 'jump' || this.holding() || this.ceremony) {
+      camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
+    } else {
+      // Com a bola a correr, a câmara anda mais devagar, como no Calciobit, mas a bola nunca fica a mais de
+      // CAMERA_BALL_SLACK metros do centro da imagem.
+      const calm = 1 - Math.exp(-simSeconds * CAMERA_CALM_RATE);
+      const x = camera.lookX + (lookX - camera.lookX) * calm;
+      camera.aim(Math.max(s.ball.x - CAMERA_BALL_SLACK, Math.min(s.ball.x + CAMERA_BALL_SLACK, x)), camera.lookY + (lookY - camera.lookY) * calm);
+    }
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
     // Na bola ao alto, como num grande plano: corte seco para o dobro sobre o círculo, e recuo em ~0,3 s quando a bola é tocada.
     const tipping = s.phase === 'jump';
-    if (tipping) this.jumpZoom = true;
-    const wantZoom = this.holding() || lifted || tipping ? 2 : 1;
+    // No apito final, até a saída ou a cerimónia começarem, um grande plano de quem está à volta da bola.
+    const ending = s.phase === 'end' && this.ceremony === null && this.exitStart === null;
+    // Um lance livre com o jogo apertado no fim é o par do penálti: grande plano de quem lança, com o nome e a conta de hoje.
+    const shooter = s.phase === 'freeThrow' && s.freeThrow && !s.freeThrow.returning && s.period >= 4 && s.clock < 1200 && Math.abs(s.score[0] - s.score[1]) <= 5 ? s.freeThrow.shooter : null;
+    // Enquanto lança, a faixa fica parada a meio do fundido de entrada; quando acaba, sai como a da falta.
+    if (shooter) {
+      const name = shooter.player.name;
+      const tries = s.events.filter(e => (e.type === 'freeThrowMade' || e.type === 'freeThrowMissed') && e.team === shooter.team && e.player === name);
+      const made = tries.filter(e => e.type === 'freeThrowMade').length;
+      this.freeThrowUntil = this.realTime + 1.5;
+      this.foulMoment = { body: shooter, start: this.realTime - 0.3, label: `LANCE LIVRE: ${name.toUpperCase()} - ${made}/${tries.length} HOJE` };
+    }
+    const fouling = this.foulMoment !== null && (this.realTime - this.foulMoment.start < FOUL_ZOOM_SECONDS || this.realTime < this.freeThrowUntil) && !this.holding();
+    if (tipping || fouling || ending) this.jumpZoom = true;
+    const wantZoom = this.holding() || lifted || tipping || fouling || ending ? 2 : 1;
     this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * (this.jumpZoom ? 10 : 4)));
     // O recuo da bola ao alto acaba mais cedo, a 5 % do fim: são ~0,3 s com escalas fracionárias, e não meio segundo.
-    if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || tipping || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
+    if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || tipping || fouling || ending || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
     if (this.zoom === 1) this.jumpZoom = false;
     if (this.zoom > 1.001) {
       g.imageSmoothingEnabled = false;
       // Na cerimónia, o centro é o grupo com o troféu por cima; na bola ao alto, os dois saltadores com a bola por cima.
-      const [px, py] = this.ceremony ? this.ceremonyFocus() : this.jumpZoom ? this.jumpFocus() : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
+      const [px, py] = this.ceremony ? this.ceremonyFocus() : this.jumpZoom ? (s.phase === 'end' ? this.ballFocus() : this.foulMoment && this.s.phase !== 'jump' ? this.foulFocus(this.foulMoment.body) : this.jumpFocus()) : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
       const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
@@ -1770,6 +1898,8 @@ export class MatchView {
     this.drawBubbles();
     this.drawForecast();
     this.drawCeremony();
+    this.drawBigScore();
+    this.drawFoulStrip();
     const fade = Math.max(this.endFade, s.phase === 'break' && s.period === 2 ? Math.max(0, 1 - (2 * s.timer) / (B.periodBreakSeconds * 20)) : Math.max(0, (this.fadeInUntil - s.tick - alpha) / FADE_IN_TICKS));
     if (fade > 0) {
       g.fillStyle = `rgba(27,34,48,${fade})`;
@@ -1843,7 +1973,47 @@ export class MatchView {
 
   /** Em grande plano na bola ao alto: o marcador sai, senão tapava a bola lá em cima. */
   closeUp(): boolean {
-    return this.jumpZoom;
+    return this.jumpZoom && this.s.phase === 'jump';
+  }
+
+  /** O centro do grande plano do apito final: a bola, onde estão os jogadores. */
+  private ballFocus(): [number, number] {
+    // O meio dos dez em campo: no apito a bola pode estar solta longe deles.
+    const on = [...this.s.court[0], ...this.s.court[1]];
+    const [x, y] = this.camera.project(on.reduce((a, b) => a + b.x, 0) / on.length, on.reduce((a, b) => a + b.y, 0) / on.length);
+    return [x, y - 14];
+  }
+
+  /** O centro do grande plano de uma falta: quem a fez, com a cabeça no meio. */
+  private foulFocus(body: Body): [number, number] {
+    const [x, y] = this.camera.project(body.x, body.y);
+    return [x, y - 14];
+  }
+
+  /** A faixa da falta: escura e translúcida, em baixo, com o nome; entra e sai num fundido de 0,3 s. */
+  private drawFoulStrip(): void {
+    const f = this.foulMoment;
+    if (!f) return;
+    const t = this.realTime - f.start;
+    if (t >= FOUL_STRIP_SECONDS) {
+      this.foulMoment = null;
+      return;
+    }
+    const { g, camera } = this;
+    const fade = this.reducedMotion ? 1 : Math.min(1, t / 0.3, (FOUL_STRIP_SECONDS - t) / 0.3);
+    const w = textWidth(f.label) + 24;
+    const x = (camera.width - w) >> 1;
+    const y = camera.height - 52;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 0.88 * fade;
+    g.fillStyle = INK;
+    g.fillRect(x, y, w, 24);
+    g.globalAlpha = fade;
+    g.fillStyle = GOLD[1];
+    g.fillRect(x, y, 3, 24);
+    text(g, f.label, x + 14, y + 9, '#f8f0d8');
+    g.restore();
   }
 
   /** O centro do grande plano da bola ao alto: o meio campo, um pouco acima, para a bola caber quando sobe. */
@@ -2051,7 +2221,7 @@ export class MatchView {
 
   /** No fim do jogo sem cerimónia: os vencedores festejam um pouco e todos vão para o balneário, pelo túnel. */
   startExit(): void {
-    this.exitStart = this.animTime;
+    this.exitStart ??= this.animTime;
   }
 
   /** O festejo de um vencedor no fim, ao ritmo da animação, cada um no seu compasso; parado com movimento reduzido. */
@@ -2276,6 +2446,8 @@ export class MatchView {
 
   /** Os balões da bancada: por cima de um adepto da primeira fila, e desaparecem passados dois segundos. */
   private drawBubbles(): void {
+    // Nos grandes planos, os balões da bancada ficavam a 2× e saíam do ecrã: guardam-se para o plano largo.
+    if (this.jumpZoom) return;
     const { g, s, camera } = this;
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;

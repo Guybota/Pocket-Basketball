@@ -42,6 +42,16 @@ declare global {
 }
 
 const OUT = 'dist-check';
+/** Na semana de jogo, o pavilhão pergunta primeiro pelo adjunto: responde «Sim, vamos». */
+const toArena = async (p: Page): Promise<void> => {
+  await p.click('#arenaChip');
+  if (await p.locator('#arenaYes').count()) await p.click('#arenaYes');
+};
+
+/** No jogo, o painel é uma janela fechada até se tocar no INFO: abre-a, se ainda não estiver aberta. */
+const openPanel = (p: Page): Promise<void> => p.evaluate(() => {
+  if (getComputedStyle(document.getElementById('tabContent')!).visibility !== 'visible') document.getElementById('infoBtn')!.click();
+});
 mkdirSync(OUT, { recursive: true });
 const failures: string[] = [];
 const firstMatch = (seed: number, division: number) => {
@@ -54,7 +64,7 @@ const skipIntro = async (p: Page): Promise<void> => {
   await p.click('#introSkip');
 };
 const kick = async (p: Page): Promise<void> => {
-  await p.click('#arenaChip');
+  await toArena(p);
   await p.click('#kickoffBtn');
   await p.waitForTimeout(700);
   await shot(p, `${OUT}/apresentacao.png`);
@@ -62,28 +72,27 @@ const kick = async (p: Page): Promise<void> => {
   // As faixas dos clubes saem com a bola ao alto.
   await p.waitForFunction(() => document.querySelectorAll('.intro-bar').length === 0, undefined, { timeout: 2000 }).catch(() => {});
 };
-/** Só o campo: o botão do canto esconde o painel, o campo não encolhe e fica um desconto sobre ele; outro toque repõe tudo. */
-const checkCourtOnly = async (p: Page, file: string, where: string): Promise<void> => {
-  const measure = (): Promise<{ court: number; panel: boolean; timeout: boolean }> => p.evaluate(() => ({
-    court: document.getElementById('court')!.getBoundingClientRect().width,
-    panel: document.getElementById('panel')!.getClientRects().length > 0,
-    timeout: document.getElementById('courtTimeoutBtn')!.getClientRects().length > 0,
-  }));
-  const before = await measure();
-  await p.click('#courtOnlyBtn');
+/**
+ * Ecrã único: o campo ocupa o ecrã, os botões do treinador são uma coluna à direita e o painel está fechado; o INFO
+ * abre-o numa janela por cima do campo, sem tapar a coluna. Deixa a janela aberta.
+ */
+const checkSingleScreen = async (p: Page, file: string, where: string): Promise<void> => {
+  const measure = (): Promise<{ window: boolean; columnFits: boolean; clear: boolean }> => p.evaluate(() => {
+    const buttons = [...document.querySelectorAll<HTMLElement>('.coachbar .icon')].map(b => b.getBoundingClientRect());
+    const content = document.getElementById('tabContent')!;
+    const box = document.getElementById('panel')!.getBoundingClientRect();
+    return {
+      window: getComputedStyle(content).visibility === 'visible',
+      columnFits: buttons.length === 7 && buttons.every(r => r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth && r.width >= 44 && r.height >= 44),
+      clear: buttons.every(r => r.left >= box.right - 1),
+    };
+  });
+  const closed = await measure();
+  await p.click('#infoBtn');
   await p.waitForTimeout(150);
-  await shot(p, `${OUT}/${file}-so-campo.png`);
-  const hidden = await measure();
-  // O desconto sobre o campo pede-o como o do painel: o primeiro toque arma, o segundo pede.
-  if (await p.evaluate(() => !(document.getElementById('courtTimeoutBtn') as HTMLButtonElement).disabled)) {
-    await p.click('#courtTimeoutBtn');
-    await p.click('#courtTimeoutBtn');
-    check(`${where}, o desconto sobre o campo pede um desconto`, (await p.getAttribute('#courtTimeoutBtn', 'aria-pressed')) === 'true');
-  }
-  await p.click('#courtOnlyBtn');
-  await p.waitForTimeout(150);
-  const back = await measure();
-  check(`${where}, «Só o campo» esconde o painel e mostra o desconto sobre o campo`, before.panel && !before.timeout && !hidden.panel && hidden.timeout && hidden.court >= before.court && back.panel && !back.timeout && back.court === before.court, JSON.stringify({ before, hidden, back }));
+  await shot(p, `${OUT}/${file}-janela.png`);
+  const open = await measure();
+  check(`${where}, a coluna do treinador cabe no ecrã e o INFO abre o painel por cima do campo sem a tapar`, !closed.window && closed.columnFits && open.window && open.columnFits && open.clear, JSON.stringify({ closed, open }));
 };
 /** Espera por algo, continuando o jogo nos descontos do adversário, que também o param à espera do treinador. */
 const waitThrough = async (p: Page, done: () => Promise<boolean>, timeout = 90_000): Promise<void> => {
@@ -208,6 +217,7 @@ try {
 
   check('O campo diz o resultado e o tempo ao leitor de ecrã', /^Jogo: \S+ \d+ – \d+ \S+, (\d\.º período|prolongamento), \d+:\d\d$/.test(await page.locator('#court').getAttribute('aria-label') ?? ''), await page.locator('#court').getAttribute('aria-label') ?? '');
   // Separadores: as setas passam de um ao outro, e o conteúdo é o painel do separador escolhido.
+  await openPanel(page);
   await page.focus('[data-tab="bench"]');
   await page.keyboard.press('ArrowRight');
   check('As setas mudam de separador e levam o foco', await page.evaluate(() => {
@@ -405,6 +415,9 @@ try {
   const arenaBox = await coach.evaluate(() => window.__pocket.townBox('arena'));
   const courtBox = (await coach.locator('#court').boundingBox())!;
   await coach.mouse.click(courtBox.x + courtBox.width * (arenaBox.x0 + arenaBox.x1) / 2, courtBox.y + courtBox.height * (arenaBox.y0 + arenaBox.y1) / 2);
+  // Na semana de jogo o adjunto pergunta primeiro; noutra semana abre logo as propostas.
+  await coach.waitForSelector('#kickoffBtn, [data-offer], #arenaYes');
+  if (await coach.locator('#arenaYes').count()) await coach.click('#arenaYes');
   await coach.waitForSelector('#kickoffBtn, [data-offer]');
   check('Tocar no pavilhão abre o pavilhão', true);
   await coach.click('.back');
@@ -433,7 +446,7 @@ try {
   await shot(coach, `${OUT}/taticas.png`);
   await coach.click('.back');
   await coach.click('.back');
-  await coach.click('#arenaChip');
+  await toArena(coach);
   await shot(coach, `${OUT}/balneario.png`);
   await coach.click('[data-go="rival"]');
   await coach.click('[data-target="0"]');
@@ -457,6 +470,7 @@ try {
   const checkedTactics = await coach.evaluate(() => window.__pocket.state().tactics!);
   check('As táticas mudam-se durante o jogo', checkedTactics.pressure === 1 && checkedTactics.spacing === 1);
   check('As táticas mudadas a meio do jogo não ficam no clube', await coach.evaluate(() => window.__pocket.club()!.tactics.pressure !== 1));
+  await openPanel(coach);
   await coach.click('[data-tab="cards"]');
   await coach.evaluate(() => window.__pocket.setSpeedRaw(8));
   await coach.waitForFunction(() => window.__pocket.found().length > 0, undefined, { timeout: 60_000 });
@@ -545,7 +559,7 @@ try {
   await coach.evaluate(() => window.__pocket.fastForward(3));
   check('A semana 14 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 14 && !document.getElementById('practiceBtn')));
   await shot(coach, `${OUT}/semana-livre.png`);
-  await coach.click('#arenaChip');
+  await toArena(coach);
   await coach.waitForSelector('[data-offer]');
   await shot(coach, `${OUT}/propostas.png`);
   await coach.click('[data-offer-kind="friendly"]');
@@ -636,13 +650,13 @@ try {
   check('Sem erros nos playoffs', playoffProblems.length === 0, playoffProblems.join(' | '));
 
   // A cerimónia do troféu depois de uma final: só num jogo ganho, aparece com o apito final e salta-se com um toque. O
-  // resultado no browser depende das paragens que a verificação fecha, por isso tenta-se até 3 clubes fortes: numa
+  // resultado no browser depende das paragens que a verificação fecha, por isso tenta-se até 6 clubes: numa
   // derrota confirma-se que não há cerimónia, e no primeiro jogo ganho vê-se a cerimónia.
   const ceremonyPage = await phone.newPage();
   const ceremonyProblems: string[] = [];
   ceremonyPage.on('pageerror', error => ceremonyProblems.push(error.message));
   let ceremonySeen = false;
-  for (const [seed, division] of [[12, 1], [11, 1], [10, 0]] as const) {
+  for (const [seed, division] of [[12, 1], [11, 1], [10, 0], [21, 2], [7, 2], [3, 0]] as const) {
     await ceremonyPage.goto(`${url}?semente=${seed}&divisao=${division}`);
     await ceremonyPage.waitForFunction(() => window.__pocket !== undefined);
     await ceremonyPage.evaluate(() => window.__pocket.forceTitle({ kind: 'cup', cup: 'federation' }));
@@ -760,7 +774,7 @@ try {
   await practice.goto(`${url}?semente=31&divisao=1&semana=1`);
   await practice.waitForFunction(() => window.__pocket !== undefined);
   const beforePractice = await practice.evaluate(() => window.__pocket.club()!);
-  await practice.click('#arenaChip');
+  await toArena(practice);
   check('Na pré-época o pavilhão abre as propostas, com particulares', await practice.locator('[data-offer-kind="friendly"]').isEnabled());
   await practice.click('[data-offer="2"]');
   await shot(practice, `${OUT}/jogo-treino-proposta.png`);
@@ -976,6 +990,7 @@ try {
   await moments.goto(`${url}?semente=21&divisao=2`);
   await moments.waitForFunction(() => window.__pocket !== undefined);
   await kick(moments);
+  await openPanel(moments);
   await moments.click('.row[data-player]');
   await moments.waitForSelector('.card');
   await shot(moments, `${OUT}/ficha-1.png`);
@@ -1073,7 +1088,7 @@ try {
     check(`Em ${name}, os menus cabem na janela`, await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight));
     await wide.click('.back');
     await wide.click('.back');
-    await wide.click('#arenaChip');
+    await toArena(wide);
     await wide.waitForTimeout(150);
     await shot(wide, `${OUT}/landscape-${name}-balneario.png`);
     check(`Em ${name}, «Bola ao alto» está todo à vista no balneário`, await fullyVisible(wide, '#kickoffBtn'));
@@ -1085,20 +1100,21 @@ try {
     await wide.waitForTimeout(200);
     await shot(wide, `${OUT}/landscape-${name}.png`);
     await measureTaps('jogo');
-    await checkCourtOnly(wide, `landscape-${name}`, `Em ${name}`);
+    await checkSingleScreen(wide, `landscape-${name}`, `Em ${name}`);
     const layout = await wide.evaluate(() => {
       const screen = document.getElementById('screen')!.getBoundingClientRect();
       const panel = document.getElementById('panel')!.getBoundingClientRect();
       const canvas = document.getElementById('court')!.getBoundingClientRect();
       return {
-        fills: Math.abs(screen.width + panel.width - innerWidth) < 2 && Math.abs(panel.height - innerHeight) < 2,
+        // O campo tem o ecrã todo; o painel é uma janela por cima, dentro do ecrã.
+        fills: Math.abs(screen.width - innerWidth) < 2 && panel.bottom <= innerHeight && panel.top >= 0,
         // O enquadramento é sempre o mesmo: a tela tem 360×216 de arte e cabe no espaço do campo, com barras no que sobra.
         canvasCovers: canvas.width <= screen.width + 1 && canvas.height <= screen.height + 1 && window.__pocket.state().canvas.width === 360 && window.__pocket.state().canvas.height === 216,
         overflow: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
         art: `${window.__pocket.state().canvas.width}x${window.__pocket.state().canvas.height}`,
       };
     });
-    check(`Em ${name}, o painel ocupa a janela e o campo tem o enquadramento de sempre`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
+    check(`Em ${name}, o campo ocupa o ecrã com o enquadramento de sempre e a janela cabe`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
     if (name !== 'telemovel-deitado') {
       const benchFits = await wide.evaluate(() => {
         const content = document.getElementById('tabContent')!.getBoundingClientRect();
@@ -1140,6 +1156,10 @@ try {
   await keys.keyboard.press('Escape');
   await keys.waitForSelector('#arenaChip');
   await keys.keyboard.press('p');
+  // O adjunto pergunta se vamos para o pavilhão, com o «Sim» já escolhido: Enter responde.
+  await keys.waitForSelector('#arenaYes');
+  check('P pergunta se vamos para o pavilhão, com o sim já escolhido', await keys.evaluate(() => document.activeElement?.id === 'arenaYes'));
+  await keys.keyboard.press('Enter');
   await keys.waitForSelector('#kickoffBtn');
   await keys.keyboard.press('Enter');
   await keys.waitForSelector('#introSkip');
@@ -1208,7 +1228,7 @@ try {
   await small.click('#officeBtn');
   await visit('escritorio');
   await small.click('.back');
-  await small.click('#arenaChip');
+  await toArena(small);
   await small.waitForTimeout(150);
   check('Em 640x360, «Bola ao alto» está todo à vista no balneário, sem deslizar', await fullyVisible(small, '#kickoffBtn'));
   await visit('balneario');
@@ -1234,7 +1254,7 @@ try {
     const accents = await context.newPage();
     await accents.goto(`${url}?semente=11&divisao=2`);
     await accents.waitForFunction(() => window.__pocket !== undefined);
-    await accents.click('#arenaChip');
+    await toArena(accents);
     await accents.click('#kickoffBtn');
     await skipIntro(accents);
     await accents.evaluate(() => window.__pocket.pauseAt('pass', 2));
