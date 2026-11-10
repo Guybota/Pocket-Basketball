@@ -127,6 +127,8 @@ const FADE_IN_TICKS = 20;
 // onde estão a faixa e o marcador.
 const FLOATER_GAP = 3;
 const FLOATER_MIN_TOP = 40;
+// Quanto tempo fica um aviso no ecrã (o mesmo que bannerUntil em main.ts).
+export const ANNOUNCE_TICKS = 36;
 // A cerimónia do troféu, em tempo real (animacao.md §7 e §10): os vencedores correm para o meio campo e o capitão
 // levanta o troféu quando todos lá estão (no mínimo ao fim de CEREMONY_LIFT_SECONDS), a subir e descer a cada
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
@@ -315,6 +317,7 @@ export class MatchView {
   private readonly poseTops = new Map<string, number>();
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
+  private moveAnnouncedAt = -Infinity;
   // Quantas frases de cada contexto já se disseram, para a bancada não se repetir.
   private readonly crowdSaid = new Map<CrowdMood, number>();
   private readonly crowdSeed: number;
@@ -557,6 +560,8 @@ export class MatchView {
     const { s, camera } = this;
     const near = this.fans.map((f, i) => i).filter(i => this.fans[i]!.front && Math.abs(this.fans[i]!.x - camera.lookX) < 5.5);
     if (near.length === 0) return;
+    // Um balão de cada vez: o novo substitui o anterior, que senão ficava tapado por ele.
+    this.bubbles.length = 0;
     this.bubbles.push({ label, fan: near[(s.tick * 7919 + this.bubbles.length * 131) % near.length]!, born: this.animTick });
   }
 
@@ -767,6 +772,7 @@ export class MatchView {
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
           callbacks.sound('bigCheer');
           callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
+          this.moveAnnouncedAt = s.tick;
           break;
         case 'knockdown':
           callbacks.sound('bump');
@@ -982,7 +988,8 @@ export class MatchView {
     if (dunk) this.shakeUntil = this.realTime + SHAKE_SECONDS;
     callbacks.sound('swish');
     callbacks.sound(loud ? 'bigCheer' : 'cheer');
-    if (dunk) callbacks.announce('Afundanço!');
+    // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada.
+    if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS) callbacks.announce('Afundanço!');
     if (s.clock <= 20) {
       callbacks.announce('Sobre o apito!');
       this.excitedUntil = s.tick + 60;
@@ -2262,7 +2269,8 @@ export class MatchView {
       const fan = this.fans[b.fan]!;
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
-      this.speech(b.label, fx, Math.max(28, (fy | 0) - spriteHeight(fan.look) - 24 - (i % 3) * 6) - Math.min(4, age));
+      // A caixa começa 7 píxeis acima do texto, e nunca acima da linha do marcador, que a tapava.
+      this.speech(b.label, fx, Math.max(FLOATER_MIN_TOP + 7, (fy | 0) - spriteHeight(fan.look) - 24 - Math.min(4, age)));
     }
   }
 

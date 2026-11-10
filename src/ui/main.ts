@@ -21,7 +21,7 @@ import { GUEST_RIVAL } from './airport.ts';
 import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
 import { TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
-import { MatchView, type Sound } from './match-view.ts';
+import { ANNOUNCE_TICKS, MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
@@ -174,6 +174,8 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 
 function fit(): void {
   layout.fit({ stage, resultOpen, menuPanel, courtOnly });
+  // Medir o canvas apaga-o: a cena desenha-se já na imagem seguinte, sem esperar pela vez das 30 por segundo.
+  lastStillDraw = 0;
   if (stage === 'town' && club) placeTownUi();
 }
 
@@ -276,7 +278,7 @@ function announce(message: string): void {
   banner.classList.remove('show');
   void banner.offsetWidth;
   banner.classList.add('show');
-  bannerUntil = view!.s.tick + 36;
+  bannerUntil = view!.s.tick + ANNOUNCE_TICKS;
   speak(message, 1);
 }
 
@@ -866,17 +868,18 @@ function startReplay(): void {
 function endReplay(): void {
   replay = undefined;
   banner.hidden = true;
-  showResultPanel();
+  // O resultado já se viu a subir: ao voltar da repetição fica parado.
+  showResultPanel(false);
 }
 
-function showResultPanel(): void {
+function showResultPanel(count = true): void {
   resultOpen = true;
   fit();
   panel.innerHTML = `${resultHtml}
     <div class="end-actions two"><button type="button" id="replayBtn">Rever o lance</button><button type="button" class="primary" id="againBtn">Continuar</button></div>`;
   element('againBtn').addEventListener('click', showClub);
   element('replayBtn').addEventListener('click', startReplay);
-  countUp(panel.querySelectorAll<HTMLElement>('.final-score b'));
+  if (count) countUp(panel.querySelectorAll<HTMLElement>('.final-score b'));
 }
 
 /** Os números sobem até ao valor, em menos de um segundo. */

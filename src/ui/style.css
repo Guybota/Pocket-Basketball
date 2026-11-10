@@ -1128,8 +1128,8 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 /* O resultado do treino: uma janela ao centro do ecrã, por cima da ficha e das cartas. */
 .trainpop { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 8px; background: rgba(27, 34, 48, .45); }
 .trainpop .box { width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 4px 4px 0 var(--ink); }
-/* Num combo, a caixa fica em baixo para o nome do combo continuar à vista por cima dela. */
-.trainpop.delayed { align-items: flex-end; }
+/* Num combo, a caixa fica em baixo e sem o véu escuro, para o nome do combo continuar à vista e legível por cima dela. */
+.trainpop.delayed { align-items: flex-end; background: none; }
 .trainpop.delayed:not(.done) { animation: fx-after .3s 1.4s both, fx-pop-wait 1.7s both; }
 .trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 1.7s; }
 @keyframes fx-pop-wait { from, 99% { pointer-events: none; } to { pointer-events: auto; } }
