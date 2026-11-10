@@ -39,7 +39,7 @@ O Pocket Basketball já tem a mesma câmara de base e a mesma secura nos jogos n
 
 ## Defeitos encontrados
 
-São erros do que já existe, não ideias novas. Estão por ordem de gravidade.
+São erros do que já existe, não ideias novas. Estão por ordem de gravidade. **Os cinco foram corrigidos no commit c0b0899** e confirmados numa gravação nova; as sequências mostram ainda o estado de antes.
 
 1. **A barra do marcador tapa os balões da bancada.** Durante o jogo só se lê o início das frases («ISS…», «JÁ VIMOS P…»), e dois balões seguidos tapam-se um ao outro. Só na repetição, sem barra, se lê a frase inteira. As palavras do jogo já ficam por baixo da barra (`FLOATER_MIN_TOP`), mas os balões não ([afundanco-tremor-e-aviso](sequencias/cesto-festejo/afundanco-tremor-e-aviso/README.md), frame 30).
 2. **A cena chega um frame depois do painel.** Ao abrir o mapa, o escritório ou o balneário, o primeiro frame mostra o painel sobre um buraco escuro ([cidade-escritorio-mercado](sequencias/menus-transicoes/cidade-escritorio-mercado/README.md), frames 3–4; [cidade-para-pavilhao](sequencias/menus-transicoes/cidade-para-pavilhao/README.md), frames 6–7).
