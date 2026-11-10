@@ -3,7 +3,7 @@ import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import { shadeOf, type ClubKit, type Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
+import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, COURT_LENGTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
 import { INK } from './art/palette.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
@@ -391,6 +391,8 @@ export class MatchView {
   private exitStart: number | null = null;
   /** O deslocamento da imagem aproximada, em píxeis do ecrã: os confetes alinham-se pela mesma grelha. */
   private zoomShift: [number, number] = [0, 0];
+  // A bola ao alto entra num corte seco a 2× e sai num recuo rápido, até a imagem voltar ao normal.
+  private jumpZoom = false;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
@@ -1425,7 +1427,8 @@ export class MatchView {
         const walking = step > 0.006;
         const seated = !ringSpot && dist < 0.01;
         const [sx, sy] = camera.project(pos.x, pos.y);
-        const pose: PoseName = cheering && seated ? (Math.floor(s.tick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : seated ? 'sit' : walking ? RUN_FRAMES[Math.floor(time * 6) % 4]! : 'idle';
+        // Pelo relógio da imagem e não pelo do jogo: depois do apito final o jogo para, e os suplentes continuam a saltar.
+        const pose: PoseName = cheering && seated ? (Math.floor(this.animTick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : seated ? 'sit' : walking ? RUN_FRAMES[Math.floor(time * 6) % 4]! : 'idle';
         const flip = walking ? dx < 0 : HUDDLE_CENTRE[team][0] < pos.x;
         this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(this.view(b).look), world: { ...pos } });
         drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.view(b).look, sx, sy, flip, false, false) });
@@ -1541,13 +1544,18 @@ export class MatchView {
     } else camera.aim(camera.lookX + (lookX - camera.lookX) * ease, camera.lookY + (lookY - camera.lookY) * ease);
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
-    const wantZoom = this.holding() || lifted ? 2 : 1;
-    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * 4));
-    if (Math.abs(this.zoom - wantZoom) < 0.01 || this.ceremony) this.zoom = wantZoom;
+    // Na bola ao alto, como num grande plano: corte seco para o dobro sobre o círculo, e recuo em ~0,3 s quando a bola é tocada.
+    const tipping = s.phase === 'jump';
+    if (tipping) this.jumpZoom = true;
+    const wantZoom = this.holding() || lifted || tipping ? 2 : 1;
+    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * (this.jumpZoom ? 10 : 4)));
+    // O recuo da bola ao alto acaba mais cedo, a 5 % do fim: são ~0,3 s com escalas fracionárias, e não meio segundo.
+    if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || tipping || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
+    if (this.zoom === 1) this.jumpZoom = false;
     if (this.zoom > 1.001) {
       g.imageSmoothingEnabled = false;
-      // Na cerimónia, o centro é o grupo com o troféu por cima.
-      const [px, py] = this.ceremony ? this.ceremonyFocus() : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
+      // Na cerimónia, o centro é o grupo com o troféu por cima; na bola ao alto, os dois saltadores com a bola por cima.
+      const [px, py] = this.ceremony ? this.ceremonyFocus() : this.jumpZoom ? this.jumpFocus() : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
       const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
@@ -1831,6 +1839,17 @@ export class MatchView {
   /** A cerimónia já acabou, ou nunca começou: é a hora do relatório. */
   ceremonyDone(): boolean {
     return this.ceremony === null || this.realTime - this.ceremony.start >= this.ceremony.lift + CEREMONY_AFTER_LIFT;
+  }
+
+  /** Em grande plano na bola ao alto: o marcador sai, senão tapava a bola lá em cima. */
+  closeUp(): boolean {
+    return this.jumpZoom;
+  }
+
+  /** O centro do grande plano da bola ao alto: o meio campo, um pouco acima, para a bola caber quando sobe. */
+  private jumpFocus(): [number, number] {
+    const [x, y] = this.camera.project(COURT_LENGTH / 2, 0);
+    return [x, y - 16];
   }
 
   /** O ponto do ecrã no centro da aproximação: o grupo, com o troféu por cima. */

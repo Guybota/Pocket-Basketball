@@ -34,4 +34,28 @@ export function initTouch(): void {
     }, 450);
   });
   for (const type of ['pointerup', 'pointercancel', 'scroll'] as const) document.addEventListener(type, hideTip, true);
+  // Resposta ao toque: no instante em que o dedo chega, o botão fica a tinta, e assim fica pelo menos TAP_MS, mesmo num toque rápido.
+  document.addEventListener('pointerdown', event => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('button:not(:disabled), [role="tab"]');
+    if (button) holdTap(button);
+  }, true);
 }
+
+/** Marca um elemento como tocado até o dedo sair, e pelo menos TAP_MS; `released` corre quando a marca sai. */
+export function holdTap(element: HTMLElement, released: () => void = () => {}): void {
+  const since = performance.now();
+  element.classList.add('tap');
+  const release = (): void => {
+    document.removeEventListener('pointerup', release, true);
+    document.removeEventListener('pointercancel', release, true);
+    window.setTimeout(() => {
+      element.classList.remove('tap');
+      released();
+    }, Math.max(0, TAP_MS - (performance.now() - since)));
+  };
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('pointercancel', release, true);
+}
+
+/** Quanto tempo, no mínimo, um botão tocado fica marcado. */
+export const TAP_MS = 120;

@@ -5,7 +5,7 @@ import type { TownPlace } from './art/town.ts';
 import { leagueIcon } from './art/leagues.ts';
 import { emptyState, foundCards, objectiveResult } from './club-screens.ts';
 import { clubIdentity } from './art/identity.ts';
-import { emblemImage } from './art/kit.ts';
+import { emblemImage, type Emblem } from './art/kit.ts';
 import { PLAYER_CLUB, cupRoundName, cupStatus, currentGame, currentSeries, leaguePosition, leagueTable, opponentOf, playoffFormat, totalCards, type ClubState, type MatchResult, type SeasonRecord, weeksToNextGame } from './club.ts';
 import { PLAYOFF_FORMATS, seriesWins } from '../sim/playoff.ts';
 import { energyColor, escapeHtml } from './panel.ts';
@@ -206,4 +206,49 @@ export function firedHtml(club: ClubState): string {
     <p class="hint">O ${escapeHtml(club.team.name)} despediu-te na semana ${club.week} da época ${club.season}.</p>
     <button type="button" class="primary" id="firedNewClub">Treinar outro clube</button>
   </div>`;
+}
+
+/** Os últimos cinco resultados de um clube na liga desta época, do mais antigo para o mais recente. */
+export function leagueForm(club: ClubState, id: number): ('V' | 'D')[] {
+  const form: ('V' | 'D')[] = [];
+  for (const round of club.rounds) {
+    for (const f of round) {
+      if (f.score && (f.home === id || f.away === id)) form.push((f.home === id) === (f.score[0] > f.score[1]) ? 'V' : 'D');
+    }
+  }
+  return form.slice(-5);
+}
+
+export interface IntroSide {
+  /** O número do clube na liga, ou null se não é da nossa liga (taças, amigáveis, jogo-treino). */
+  id: number | null;
+  name: string;
+  emblem: Emblem;
+  home: boolean;
+  team: 0 | 1;
+}
+
+/**
+ * As faixas dos dois clubes por cima do campo, na apresentação: a da casa entra pela esquerda, a de fora pela direita,
+ * um pouco depois. Cada uma diz casa ou fora, o lugar na liga e os últimos resultados, se já houver jogos.
+ */
+export function introBars(club: ClubState, sides: readonly [IntroSide, IntroSide]): string {
+  const table = leagueTable(club);
+  const bar = (side: IntroSide, n: number): string => {
+    const at = side.id === null ? -1 : table.findIndex(row => row.club === side.id);
+    const played = at >= 0 && table[at]!.played > 0;
+    const where = side.home ? 'Casa' : 'Fora';
+    const detail = played ? `${where} · ${at + 1}.º na ${divisionName(club.division)}` : where;
+    const form = played ? leagueForm(club, side.id!) : [];
+    const formHtml = form.length ? `<span class="ib-form" role="img" aria-label="Últimos jogos: ${form.map(r => (r === 'V' ? 'vitória' : 'derrota')).join(', ')}">${form.map(r => `<em class="${r === 'V' ? 'won' : 'lost'}">${r}</em>`).join('')}</span>` : '';
+    return `<div class="intro-bar team-${side.team} ${n === 0 ? 'from-left' : 'from-right'}"><i></i><img class="emblem" alt="" src="${emblemImage(side.emblem)}"><span class="ib-text"><b>${escapeHtml(side.name)}</b><small>${detail}</small></span>${formHtml}</div>`;
+  };
+  const ordered = sides[0].home ? sides : [sides[1], sides[0]] as const;
+  return ordered.map(bar).join('');
+}
+
+/** A tabela da liga no relatório de um título: a final, se a época acabou; senão a de agora, já sem ninguém que nos apanhe. */
+export function titleStandings(club: ClubState): string {
+  const record = club.seasonReport;
+  return `<div class="section-head plain"><span>${record ? 'Classificação final' : 'Classificação'}</span></div>${tableRows(club, record ? record.table : leagueTable(club), record ? record.division : club.division)}`;
 }

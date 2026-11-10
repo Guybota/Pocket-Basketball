@@ -51,6 +51,13 @@ São erros do que já existe, não ideias novas. Estão por ordem de gravidade. 
 
 ### Alta
 
+> **Feitas a 10 de novembro de 2026:** as lacunas 2, 4 e 5.
+> - **2.** Depois da cerimónia vem um palco próprio: o placar do pavilhão acende a prova, o clube e o troféu, linha a linha, e segue-se a foto de equipa. Os suplentes saltam no banco, e o relatório diz «Campeões» e mostra a tabela num título da liga.
+> - **4.** Um botão tocado fica a tinta, ou a papel nos botões escuros, pelo menos 120 ms. No mapa, o edifício tocado ganha uma seta dourada.
+> - **5.** Na apresentação, as faixas dos dois clubes mostram casa ou fora, o lugar na liga e a forma. A bola ao alto tem um grande plano a 2×, sem o marcador.
+> - **Ficaram de fora:** a foto de equipa no escritório e a apresentação do adversário como clube noutros ecrãs.
+
+
 1. **Nenhum cesto é maior do que os outros.** Um afundanço de força decisivo tem o mesmo aviso de 1,8 s e o mesmo «+2» de um cesto qualquer, e tudo acaba antes da reposição. A câmara também não reage a nenhum cesto. O golo do Calciobit funciona porque é raro e para o jogo ([resultado-entra-golo-sofrido](../calciobit/sequencias/golo-festejo/resultado-entra-golo-sofrido/README.md)).
    - *Ideia:* reservar um «momento grande» a um a três cestos por jogo: um movimento especial que dá cesto, um cesto sobre o apito, uma reviravolta ou um triplo de empate no fim.
    - Nesse momento, a reposição espera cerca de 2 s e a imagem fica parada um instante. O resultado aparece grande a meio do campo, com o número novo maior e na cor da equipa, e assenta.

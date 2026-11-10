@@ -11,7 +11,7 @@ import { clubTeam, newClub, opponentOf, visitorOf, weekSeed, type ClubState } fr
 
 interface Pocket {
   hashFor(seed: number, division: number): string;
-  state(): { ceremony: boolean; phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[]; tactics: { pressure: number; spacing: number; pace: number } | null };
+  state(): { ceremony: boolean; titleStage: boolean; phase: string; tick: number; period: number; score: [number, number]; started: boolean; finished: boolean; announced: string[]; canvas: { width: number; height: number }; demo: number | null; ball: { x: number; y: number; z: number } | null; commands: string[]; tactics: { pressure: number; spacing: number; pace: number } | null };
   setSpeedRaw(value: number): void;
   townBox(place: string): { x0: number; y0: number; x1: number; y1: number };
   runningDribblePoses(): string[];
@@ -59,6 +59,8 @@ const kick = async (p: Page): Promise<void> => {
   await p.waitForTimeout(700);
   await shot(p, `${OUT}/apresentacao.png`);
   await skipIntro(p);
+  // As faixas dos clubes saem com a bola ao alto.
+  await p.waitForFunction(() => document.querySelectorAll('.intro-bar').length === 0, undefined, { timeout: 2000 }).catch(() => {});
 };
 /** Só o campo: o botão do canto esconde o painel, o campo não encolhe e fica um desconto sobre ele; outro toque repõe tudo. */
 const checkCourtOnly = async (p: Page, file: string, where: string): Promise<void> => {
@@ -306,6 +308,14 @@ try {
   const townStats = await coach.evaluate(() => window.__pocket.renderStats());
   await townCdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   check('Desenhar a cidade demora menos de 16 ms com CPU 4× mais lento', townStats.meanMs < 16, `${townStats.meanMs.toFixed(1)} ms em ${townStats.frames} frames`);
+  // Resposta ao toque: com o dedo em cima, a etiqueta fica a tinta e o edifício ganha a seta; ao largar, tudo volta.
+  await coach.dispatchEvent('#arenaChip', 'pointerdown');
+  await coach.waitForTimeout(60);
+  check('Uma etiqueta tocada fica marcada', await coach.evaluate(() => document.getElementById('arenaChip')!.classList.contains('tap')));
+  await coach.locator('.screen').screenshot({ path: `${OUT}/cidade-toque.png` });
+  await coach.dispatchEvent('#arenaChip', 'pointerup');
+  await coach.waitForTimeout(250);
+  check('Ao largar, a marca sai', await coach.evaluate(() => !document.getElementById('arenaChip')!.classList.contains('tap')));
   await coach.click('#towerChip');
   check('A torre responde pela secretária', ((await coach.locator('#staffNote').textContent()) ?? '').includes('torre'));
   const towerCopy = async (): Promise<string> => (await coach.locator('#towerCopy').textContent()) ?? '';
@@ -657,9 +667,20 @@ try {
     await ceremonyPage.waitForTimeout(3500);
     await shot(ceremonyPage, `${OUT}/cerimonia-trofeu.png`);
     check('A cerimónia continua sem relatório até ao toque', !(await ceremonyPage.evaluate(() => window.__pocket.state().finished)));
+    // Um toque passa ao palco do título: o placar acende linha a linha e depois vem a foto de equipa.
     await ceremonyPage.click('#court');
     await ceremonyPage.waitForTimeout(300);
-    check('Um toque salta a cerimónia para o relatório', await ceremonyPage.evaluate(() => window.__pocket.state().finished && !window.__pocket.state().ceremony));
+    check('Um toque na cerimónia passa ao palco do título', await ceremonyPage.evaluate(() => window.__pocket.state().titleStage && !window.__pocket.state().finished));
+    check('No palco do título não há marcador', await ceremonyPage.evaluate(() => document.getElementById('hud')!.hidden === true));
+    await ceremonyPage.waitForTimeout(2700);
+    await shot(ceremonyPage, `${OUT}/titulo-placar.png`);
+    await ceremonyPage.waitForTimeout(1400);
+    await shot(ceremonyPage, `${OUT}/titulo-foto.png`);
+    await ceremonyPage.click('#court');
+    await ceremonyPage.waitForTimeout(300);
+    check('Um toque no palco salta para o relatório', await ceremonyPage.evaluate(() => window.__pocket.state().finished && !window.__pocket.state().ceremony));
+    const headline = (await ceremonyPage.locator('.result .winner').textContent()) ?? '';
+    check('O relatório de um título diz «Campeões»', headline.startsWith('Campeões'), headline);
     await shot(ceremonyPage, `${OUT}/cerimonia-depois.png`);
     ceremonySeen = true;
     break;

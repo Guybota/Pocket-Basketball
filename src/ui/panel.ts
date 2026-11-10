@@ -363,7 +363,8 @@ export function resultReasons(s: MatchState): string[] {
   return candidates.filter(([value]) => value * sign > 0).sort((x, y) => y[0] * sign - x[0] * sign).slice(0, 3).map(([, text]) => text);
 }
 
-export function resultScreen(view: MatchView, cards: readonly CardId[], league: string): string {
+/** O relatório do jogo; `headline`, num título, toma o lugar de «Ganha …». */
+export function resultScreen(view: MatchView, cards: readonly CardId[], league: string, headline?: string): string {
   const { s } = view;
   const winner: 0 | 1 = s.score[0] > s.score[1] ? 0 : 1;
   const top = s.bodies
@@ -372,7 +373,7 @@ export function resultScreen(view: MatchView, cards: readonly CardId[], league: 
   const l = top.line;
   return `<div class="result">
     <div class="final-score">${crest(view, 0, 32)}<b>${s.score[0]}</b><span>-</span><b>${s.score[1]}</b>${crest(view, 1, 32)}</div>
-    <div class="winner">Ganha ${escapeHtml(s.teams[winner].name)}</div>
+    <div class="winner">${escapeHtml(headline ?? `Ganha ${s.teams[winner].name}`)}</div>
     <div class="section-head plain"><span>O que decidiu o jogo</span></div>
     <ul class="reasons">${resultReasons(s).map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
     ${league}

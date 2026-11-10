@@ -184,6 +184,33 @@ body {
 
 html.reduce-motion #banner.show { animation: none; }
 
+/* As faixas dos clubes na apresentação: debaixo do marcador, a da casa encostada à esquerda e a de fora à direita.
+ * Entram a abrandar depois da cortina do ecrã (a de fora 100 ms depois) e saem a acelerar, cada uma pelo seu lado, em degraus como o aviso. */
+#introBars { position: absolute; left: 0; right: 0; top: 0; margin-top: 42px; zoom: var(--hud-zoom, 1); display: grid; gap: 4px; pointer-events: none; overflow: hidden; padding: 0 0 4px; }
+.intro-bar { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: calc(100% - 12px); height: 30px; padding-right: 8px; background: var(--ink); color: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35); white-space: nowrap; }
+.intro-bar.from-left { justify-self: start; animation: bar-in-left 0.28s steps(2) 0.2s both; }
+.intro-bar.from-right { justify-self: end; flex-direction: row-reverse; padding: 0 0 0 8px; animation: bar-in-right 0.28s steps(2) 0.3s both; }
+.intro-bar i { align-self: stretch; width: 6px; background: var(--team); }
+.intro-bar.team-1 i { background: var(--paper); box-shadow: inset 0 -10px 0 var(--away); }
+.intro-bar .emblem { width: 22px; height: 22px; }
+.intro-bar .ib-text { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
+.intro-bar.from-right .ib-text { align-items: flex-end; }
+.intro-bar .ib-text b { font: 400 18px/1 var(--ui); overflow: hidden; text-overflow: ellipsis; }
+.intro-bar .ib-text small { font: 400 13px/1 var(--ui-sm); color: var(--gold); }
+.ib-form { display: flex; gap: 2px; }
+.ib-form em { width: 14px; height: 18px; font: 400 15px/18px var(--ui-sm); font-style: normal; text-align: center; }
+.ib-form em.won { background: var(--good); color: var(--ink); }
+.ib-form em.lost { background: var(--bad); color: #fff; }
+#introBars.out .intro-bar.from-left { animation: bar-out-left 0.24s steps(2) both; }
+#introBars.out .intro-bar.from-right { animation: bar-out-right 0.24s steps(2) both; }
+/* A curva está nos passos: a entrada anda muito no início e pouco no fim, a saída ao contrário; dois degraus por troço. */
+@keyframes bar-in-left { 0% { transform: translateX(calc(-100% - 12px)); } 25% { transform: translateX(calc(-45% - 6px)); } 50% { transform: translateX(-18%); } 75% { transform: translateX(-5%); } 100% { transform: none; } }
+@keyframes bar-in-right { 0% { transform: translateX(calc(100% + 12px)); } 25% { transform: translateX(calc(45% + 6px)); } 50% { transform: translateX(18%); } 75% { transform: translateX(5%); } 100% { transform: none; } }
+@keyframes bar-out-left { 25% { transform: translateX(-5%); } 50% { transform: translateX(-18%); } 75% { transform: translateX(calc(-45% - 6px)); } 100% { transform: translateX(calc(-100% - 12px)); } }
+@keyframes bar-out-right { 25% { transform: translateX(5%); } 50% { transform: translateX(18%); } 75% { transform: translateX(calc(45% + 6px)); } 100% { transform: translateX(calc(100% + 12px)); } }
+html.reduce-motion .intro-bar, html.reduce-motion #introBars.out .intro-bar { animation: none; }
+body:not(.in-match) #introBars { display: none; }
+
 #panel { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--paper); }
 
 #game.landscape #panel { flex: none; border-left: 3px solid var(--ink); }
@@ -221,6 +248,15 @@ button[aria-pressed="true"]:not(.gcard, .swatch), [role="tab"][aria-selected="tr
 .gcard[aria-pressed="true"], .swatch[aria-pressed="true"] { outline: 3px solid var(--gold); outline-offset: 1px; box-shadow: 0 0 0 5px var(--ink); }
 
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+
+/* Resposta ao toque: no instante do toque, o botão inverte para tinta (touch.ts tira a marca 120 ms depois, no mínimo).
+ * As cartas e as amostras de cor guardam o fundo, que é a própria informação, e ficam só com o contorno. */
+button.tap:not(.gcard, .swatch), [role="tab"].tap { background: var(--ink) !important; color: var(--paper) !important; }
+button.tap:not(.gcard, .swatch) img.ink { filter: invert(1); }
+button.tap:is(.gcard, .swatch) { outline: 3px solid var(--ink); outline-offset: 1px; }
+/* Os botões que já são escuros (voltar, separadores do jogo) invertem para papel, senão a marca não se via. */
+.actions button.back.tap, .tabs button.tap { background: var(--paper) !important; color: var(--ink) !important; }
+.actions button.back.tap img.ink { filter: none !important; }
 
 button.primary { background: var(--ball-fill); color: #fff; width: 100%; font-size: 20px; }
 

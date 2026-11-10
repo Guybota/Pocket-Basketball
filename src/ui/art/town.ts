@@ -608,6 +608,22 @@ export function townBoxes(width: number, height: number, division: number): Reco
   };
 }
 
+// A seta por cima do edifício tocado: ouro com contorno de tinta e uma linha de brilho, a apontar para baixo. 13×9 píxeis de arte.
+const GOLD_MARKER = { g: '#f2c230', w: '#fbe38a', d: '#c99a14' } as const;
+const PLACE_MARKER = ['kkkkkkkkkkkkk', 'kwwwwwwwwwwwk', 'kgggggggggddk', '.kgggggggddk.', '..kgggggddk..', '...kgggddk...', '....kggdk....', '.....kdk.....', '......k......'];
+
+/** Marca o edifício tocado com uma seta dourada por cima da caixa dele, sem sair da janela. */
+export function drawPlaceMarker(g: Pixels, width: number, height: number, division: number, place: TownPlace): void {
+  const box = townBoxes(width, height, division)[place];
+  const x0 = Math.round(((box.x0 + box.x1) / 2) * width) - 6;
+  // Um terço abaixo do cimo da caixa, com a ponta no telhado: o cimo da caixa tem folga e ficava atrás do cartão do jogo.
+  const y0 = Math.max(0, Math.round((box.y0 * 0.67 + box.y1 * 0.33) * height) - PLACE_MARKER.length);
+  PLACE_MARKER.forEach((row, j) => [...row].forEach((c, i) => {
+    if (c === '.') return;
+    g.fillStyle = c === 'k' ? INK : GOLD_MARKER[c as 'g' | 'w' | 'd'];
+    g.fillRect(x0 + i, y0 + j, 1, 1);
+  }));
+}
 /** Qual o edifício debaixo do dedo. Os da frente ganham aos de trás quando as caixas se cruzam. */
 export function townHit(width: number, height: number, division: number, fx: number, fy: number): TownPlace | null {
   const boxes = townBoxes(width, height, division);

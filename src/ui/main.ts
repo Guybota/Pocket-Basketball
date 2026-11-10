@@ -9,18 +9,18 @@ import { cardImage } from './art/cards.ts';
 import { CLOSED_GYM } from './art/court.ts';
 import { emblemImage, isLight } from './art/kit.ts';
 import { lookOf } from './art/sprites.ts';
-import { drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
+import { drawPlaceMarker, drawTown, townBoxes, townHit, townPlaces, weatherFor, type TownPlace } from './art/town.ts';
 import { GameAudio, MUSIC_THEMES } from './audio.ts';
 import { applySettings, openSettings, reducedMotion, updateSettings, watchSystemMotion } from './settings.ts';
 import { tacticValue, tacticsControls } from './club-screens.ts';
-import { activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
+import { PLAYER_CLUB, activeKit, careerOf, clubColor, clubTeam, currentFixture, currentGame, finishMatch, forecast, liveOtherGames, rivalTeam, finishPractice, firstHalfOver, newClub, opponentOf, skipWeek, visitorOf, weekSeed, type ClubState, type MatchResult, type SeasonRecord } from './club.ts';
 import { titleTrophy, titleWon, type Title } from './trophies.ts';
 import { closeMenus, initMenus, menuFrame, menusOpen, menusResized, openArena, openCreate, openHalf, openMenu, openRenewals, rivalKitFor, showTopNote, showTopScene, type GameKind } from './menus.ts';
 import { PRESEASON_WEEKS } from '../sim/league.ts';
 import { GUEST_RIVAL } from './airport.ts';
 import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
-import { TOWER_NOTE, firedHtml, matchLeagueSummary, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
+import { TOWER_NOTE, firedHtml, introBars, matchLeagueSummary, titleStandings, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
 import { ANNOUNCE_TICKS, MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
@@ -34,7 +34,8 @@ import { createIdleResume } from './idle.ts';
 import { createLayout, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
 import { exportClub, importClub, lastExportNote, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
-import { initTouch } from './touch.ts';
+import { holdTap, initTouch } from './touch.ts';
+import { TITLE_STAGE_SECONDS, drawTitleStage, type TitleStageInfo } from './title-stage.ts';
 import { initKeys } from './keys.ts';
 
 const DROP_TICKS = 50;
@@ -128,6 +129,8 @@ let endAt = 0;
 let endResult: MatchResult | null = null;
 let endTitle: Title | null = null;
 let ceremonyOn = false;
+// Depois da cerimónia, o palco do título: o placar a acender e a foto de equipa, antes do relatório.
+let titleStage: { at: number; info: TitleStageInfo } | null = null;
 /** Para a verificação: o título que o próximo jogo dá, se for ganho (a taça não se levanta numa derrota). */
 let forcedTitle: Title | null = null;
 const CEREMONY_DELAY_MS = 1500;
@@ -154,6 +157,12 @@ topUi.id = 'topUi';
 topUi.hidden = true;
 screen_.append(topUi);
 
+// As faixas dos dois clubes na apresentação, por cima do campo e debaixo do marcador.
+const introBarsBox = document.createElement('div');
+introBarsBox.id = 'introBars';
+introBarsBox.setAttribute('aria-hidden', 'true');
+screen_.append(introBarsBox);
+let introBarsTimer = 0;
 const drop = document.createElement('div');
 drop.id = 'drop';
 drop.hidden = true;
@@ -174,6 +183,8 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 
 function fit(): void {
   layout.fit({ stage, resultOpen, menuPanel, courtOnly });
+  // As faixas da apresentação ficam no mesmo retângulo que o marcador: o do campo.
+  for (const side of ['top', 'left', 'right'] as const) introBarsBox.style[side] = hudElement.style[side];
   // Medir o canvas apaga-o: a cena desenha-se já na imagem seguinte, sem esperar pela vez das 30 por segundo.
   lastStillDraw = 0;
   if (stage === 'town' && club) placeTownUi();
@@ -206,6 +217,33 @@ function setStage(next: Stage): void {
   fit();
 }
 
+const TOWN_CHIPS: Record<TownPlace, string> = { arena: 'arenaChip', office: 'officeBtn', training: 'trainBtn', federation: 'federationBtn', tower: 'towerChip', airport: 'airportChip' };
+// O edifício tocado, com a seta por cima enquanto o dedo lá está (e pelo menos TAP_MS).
+let townPress: TownPlace | null = null;
+
+/** Qual o edifício debaixo de um toque no mapa. */
+function townPlaceAt(event: MouseEvent): TownPlace | null {
+  const rect = canvas.getBoundingClientRect();
+  return townHit(canvas.width, canvas.height, club!.division, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+}
+
+// Tocar num edifício ou na etiqueta dele marca os dois: a etiqueta fica a tinta e o edifício ganha a seta.
+document.addEventListener('pointerdown', event => {
+  if (stage !== 'town' || !club) return;
+  const target = event.target as HTMLElement;
+  const chipId = target.closest('button')?.id;
+  const place = target === canvas ? townPlaceAt(event) : (Object.keys(TOWN_CHIPS) as TownPlace[]).find(p => TOWN_CHIPS[p] === chipId) ?? null;
+  if (!place) return;
+  const chip = document.getElementById(TOWN_CHIPS[place]);
+  if (target === canvas && chip) holdTap(chip);
+  townPress = place;
+  lastStillDraw = 0;
+  holdTap(document.createElement('i'), () => {
+    if (townPress === place) townPress = null;
+    lastStillDraw = 0;
+  });
+}, true);
+
 /** Tocar num edifício é o mesmo que tocar na etiqueta dele. */
 canvas.addEventListener('click', event => {
   const rect = canvas.getBoundingClientRect();
@@ -215,9 +253,8 @@ canvas.addEventListener('click', event => {
     return;
   }
   if (stage !== 'town' || !club) return;
-  const place = townHit(canvas.width, canvas.height, club.division, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
-  const chips: Record<TownPlace, string> = { arena: 'arenaChip', office: 'officeBtn', training: 'trainBtn', federation: 'federationBtn', tower: 'towerChip', airport: 'airportChip' };
-  if (place) document.getElementById(chips[place])?.click();
+  const place = townPlaceAt(event);
+  if (place) document.getElementById(TOWN_CHIPS[place])?.click();
 });
 
 function importFile(): void {
@@ -368,6 +405,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   endResult = null;
   endTitle = null;
   ceremonyOn = false;
+  titleStage = null;
   replay = undefined;
 }
 
@@ -830,6 +868,14 @@ function showIntro(): void {
   const current = club!;
   const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : rivalOf === GUEST_RIVAL ? 'Amigável' : 'Particular';
   panel.innerHTML = introScreen(view!, label);
+  clearTimeout(introBarsTimer);
+  introBarsBox.classList.remove('out');
+  const { s } = view!;
+  const rivalId = gameKind === 'practice' || rivalOf < 0 ? null : rivalOf;
+  introBarsBox.innerHTML = gameKind === 'practice' ? '' : introBars(current, [
+    { id: gameKind === 'official' ? PLAYER_CLUB : null, name: s.teams[0].name, emblem: current.emblem, home: s.visitor === 1, team: 0 },
+    { id: gameKind === 'official' ? rivalId : null, name: s.teams[1].name, emblem: guestOf(rivalOf)?.emblem ?? clubIdentity(s.teams[1].name).emblem, home: s.visitor === 0, team: 1 },
+  ]);
   audio.music('entrance');
   element('introSkip').addEventListener('click', beginPlay);
   clearTimeout(introTimer);
@@ -840,6 +886,12 @@ function beginPlay(): void {
   if (started) return;
   clearTimeout(introTimer);
   started = true;
+  // As faixas saem a acelerar, cada uma pelo lado por onde entrou.
+  introBarsBox.classList.add('out');
+  introBarsTimer = window.setTimeout(() => {
+    introBarsBox.innerHTML = '';
+    introBarsBox.classList.remove('out');
+  }, reducedMotion() ? 0 : 260);
   showMatch();
 }
 
@@ -936,6 +988,7 @@ function showHalfSubs(): void {
 
 function showResult(): void {
   finished = true;
+  titleStage = null;
   banner.hidden = true;
   drop.hidden = true;
   const result = endResult ?? (gameKind === 'practice' ? finishPractice(club!, view!.s, found) : finishMatch(club!, view!.s, found, liveLeague?.others ?? [], rivalOf === GUEST_RIVAL));
@@ -948,7 +1001,10 @@ function showResult(): void {
   if (hurt.length) speak(hurt.join(' '), 3);
   const { score } = view!.s;
   audio.music(score[0] > score[1] ? 'win' : 'loss');
-  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice', rivalOf === GUEST_RIVAL)}`);
+  // Num título, o relatório diz «Campeões» e, se foi a liga, mostra a tabela.
+  const title = endTitle && score[0] > score[1] ? titleTrophy(endTitle) : null;
+  const standings = endTitle?.kind === 'league' && title ? titleStandings(club) : '';
+  resultHtml = resultScreen(view!, result.cards, `${say('assistant', ...assistantResult(score[0] > score[1], score[0] - score[1], gameKind === 'practice'))}${injuries}${matchLeagueSummary(result, gameKind === 'practice', rivalOf === GUEST_RIVAL)}${standings}`, title ? `Campeões: ${title.name}!` : undefined);
   showResultPanel();
 }
 
@@ -962,13 +1018,27 @@ function startCeremony(current: MatchView, title: Title): void {
   speak(`Campeões: ${trophy.name}! Toca no ecrã para continuar.`, 3);
 }
 
+/** O palco do título, no lugar do campo: o clarão, o placar com a prova, o clube e o troféu, e a foto de equipa. */
+function startTitleStage(now: number): void {
+  if (!endTitle || !view) return;
+  const trophy = titleTrophy(endTitle);
+  const { s } = view;
+  const captain = s.court[0].reduce((best, b) => (b.line.points > best.line.points ? b : best));
+  const squad = [captain, ...s.bodies.filter(b => b.team === 0 && b !== captain)].map(b => view!.lookFor(b));
+  drop.hidden = true;
+  titleStage = { at: now, info: { competition: trophy.name.toUpperCase(), club: s.teams[0].name, emblem: club!.emblem, trophy: trophy.kind, season: club!.season, squad } };
+  speak(`${trophy.name}: o placar do pavilhão e a foto de equipa. Toca para ver o relatório.`, 3);
+}
+
 // Depois do apito final (a cerimónia ou a saída para o balneário), um toque ou uma tecla saltam para o relatório. Esse
 // toque não chega a mais nada: senão carregava no botão que o relatório põe no mesmo sítio.
 const skipEnd = (event: Event): void => {
   if (endAt === 0 || finished) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  showResult();
+  // Na cerimónia, o toque passa ao palco do título; no palco, ao relatório.
+  if (ceremonyOn && !titleStage) startTitleStage(performance.now());
+  else showResult();
 };
 addEventListener('click', skipEnd, true);
 addEventListener('keydown', skipEnd, true);
@@ -1021,7 +1091,8 @@ function frame(now: number): void {
       } else if (endTitle && !ceremonyOn) {
         if (now - endAt > CEREMONY_DELAY_MS) startCeremony(current, endTitle);
       } else if (ceremonyOn) {
-        if (current.ceremonyDone()) showResult();
+        if (!titleStage && current.ceremonyDone()) startTitleStage(now);
+        else if (titleStage && now - titleStage.at > TITLE_STAGE_SECONDS * 1000) showResult();
       } else {
         current.endFade = reducedMotion() ? 0 : Math.min(1, Math.max(0, (now - endAt - END_FADE_AT_MS) / END_FADE_MS));
         if (now - endAt > END_FADE_AT_MS + END_FADE_MS) showResult();
@@ -1062,7 +1133,7 @@ function frame(now: number): void {
   if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
   if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
   const start = performance.now();
-  hudElement.hidden = stage !== 'match' || replay !== undefined;
+  hudElement.hidden = stage !== 'match' || replay !== undefined || (titleStage !== null && !finished) || (view?.closeUp() ?? false);
   if (replay) {
     replayAccumulator += Math.min(0.5, rawElapsed) * REPLAY_SPEED * TICKS_PER_SECOND;
     while (replayAccumulator >= 1 && replay.s.tick < replayUntil && replay.s.phase !== 'end') {
@@ -1089,9 +1160,12 @@ function frame(now: number): void {
       poster: '',
       festive: club !== null && club.week <= 2 && (club.history.at(-1)?.outcome === 'champion' || (club.history.at(-1)?.cups.length ?? 0) > 0),
     }, weatherFor(club?.week ?? 1));
+    if (townPress && club && stage === 'town') drawPlaceMarker(context, canvas.width, canvas.height, club.division, townPress);
   } else if (stage === 'menu') {
     lastStillDraw = now;
     menuFrame(now);
+  } else if (current && titleStage && !finished) {
+    drawTitleStage(context, canvas.width, canvas.height, (now - titleStage.at) / 1000, titleStage.info, reducedMotion());
   } else if (current) {
     // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
     current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
@@ -1224,6 +1298,7 @@ Object.assign(window, {
     },
     state: () => ({
       ceremony: ceremonyOn && !finished,
+      titleStage: titleStage !== null && !finished,
       phase: view?.s.phase ?? 'none',
       puffs: view?.puffCount() ?? 0,
       commands: view?.s.commands.map(c => `${c.kind}@${c.tick}`) ?? [],
