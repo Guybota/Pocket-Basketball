@@ -115,4 +115,4 @@ Sequências: [sorteio-zoom-e-fade](sequencias/jogo-camara/sorteio-zoom-e-fade/RE
 - **Posições com cor fixa:** GK roxo ou rosa, DF vermelho, MF laranja ou amarelo, FW azul.
 - **Tipografia:** sem serifa e branca, com contorno nos títulos. Os títulos usam faixas vermelhas com letras douradas. Na cerimónia o painel é o ecrã gigante do estádio, verde-claro na liga e cinzento-escuro na taça, e só a palavra do título é dourada ([painel-trofeu-liga](sequencias/entrada-saida/painel-trofeu-liga/README.md)).
 - **Logótipo:** amarelo e vermelho, com contorno preto.
-- **Vertical:** há gravações em vertical, com o marcador ao longo do lado ([jogo/camara-geral](jogo/camara-geral/README.md)). O jogo funciona deitado e de pé.
+- **Só na horizontal:** o jogo corre sempre com o telemóvel deitado, em todos os ecrãs (cidade, menus e jogo). As imagens que parecem verticais são gravações de lado, com o texto rodado, não um esquema vertical.
