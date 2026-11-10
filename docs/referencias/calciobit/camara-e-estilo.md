@@ -55,4 +55,4 @@ Tirado das imagens soltas das [pastas de jogo](jogo/) e de [menu](menu/). Como n
 - **Posições com cor fixa:** GK roxo ou rosa, DF vermelho, MF laranja ou amarelo, FW azul.
 - **Tipografia:** sem serifa e branca, com contorno nos títulos. Os títulos e as cerimónias usam faixas vermelhas com letras douradas.
 - **Logótipo:** amarelo e vermelho, com contorno preto.
-- **Vertical:** há gravações em vertical, com o marcador ao longo do lado ([jogo/camara-geral](jogo/camara-geral/README.md)). O jogo funciona deitado e de pé.
+- **Só na horizontal:** o jogo corre sempre com o telemóvel deitado, em todos os ecrãs (cidade, menus e jogo). As imagens que parecem verticais são gravações de lado, com o texto rodado, não um esquema vertical.
