@@ -14,7 +14,7 @@ O mesmo levantamento que se fez ao Calciobit A em [../calciobit/sequencias/](../
 
 - **O vídeo só tem imagens quando o ecrã muda.** O browser manda uma imagem a cada mudança, até 25 por segundo. Um ecrã parado não deixa imagens, por isso as sequências a 30 fps têm frames repetidos e um fundido muito curto pode não se ver. As durações estão certas; os agentes confirmaram-nas imagem a imagem e no código.
 - **Os toques são do script.** Um clique automático dura poucos milissegundos, por isso a falta de resposta ao toque nos botões tem de ser confirmada com o dedo.
-- **Ficou por gravar:** o roubo e o desarme com o jogo a correr (saíram congelados ou cortados), um choque com alguém no chão, o fim de um desconto, uma derrota, um jogo fora, o prolongamento, «Passar a semana» a sério, perguntas sim/não, o esquema vertical e o som.
+- **Ficou por gravar:** o roubo e o desarme com o jogo a correr (saíram congelados ou cortados), um choque com alguém no chão, o fim de um desconto, uma derrota, um jogo fora, o prolongamento, «Passar a semana» a sério, perguntas sim/não e o som. O esquema vertical saiu do jogo depois desta gravação.
 
 ## Sequências
 

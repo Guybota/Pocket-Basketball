@@ -104,6 +104,6 @@ São erros do que já existe, não ideias novas. Estão por ordem de gravidade.
 - **Fim do jogo:** uma derrota, um jogo fora e o prolongamento.
 - **Cerimónia:** a cerimónia da taça, e a de liga a 10 fps.
 - **Menus:** «Passar a semana» a sério, uma pergunta sim/não, a troca de separadores na federação, cartas novas depois de um jogo e uma contratação a outro clube.
-- **Ainda sem gravação:** o esquema vertical e o som.
+- **Ainda sem gravação:** o som. O esquema vertical já não existe: o jogo passou a ser só horizontal, como o Calciobit.
 
 Para gravar de novo, acrescenta-se o percurso em `src/tools/sequences.ts` e corre-se `npm run sequences`.
