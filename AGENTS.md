@@ -11,6 +11,7 @@ Lê antes de começar:
 - [Estudo visual](docs/03-estudo-visual.html)
 - [Análise visual e charme, antes da Fase 5](docs/05-analise-visual-charme.md)
 - [Referências do Calciobit A](docs/referencias/calciobit/README.md): imagens etiquetadas por ecrã, fluxos de UI e câmara do jogo de gestão de futebol para telemóvel. Consulta antes de desenhar menus, fluxos ou a câmara. Servem só de referência.
+- [Pocket Basketball contra o Calciobit](docs/referencias/pocket-basketball/comparacao-calciobit.md): o nosso jogo gravado em sequências e comparado com o Calciobit, com os defeitos e as lacunas por prioridade. Para gravar de novo: `npm run sequences`.
 
 ## Comandos
 
