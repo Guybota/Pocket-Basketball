@@ -9,12 +9,14 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 - **[fluxos-ui.md](fluxos-ui.md):** o caminho entre ecrãs, que botões há em cada menu e a ordem antes, durante e depois de um jogo.
 - **[camara-e-estilo.md](camara-e-estilo.md):** a câmara do jogo, o marcador, os golos e o estilo visual (cores, molduras, tipografia).
 - **Uma pasta por ecrã**, em `menu/`, `jogo/` e `cena/`. Cada uma tem um `README.md` com cada imagem, a descrição, as etiquetas e a origem, mais uma `_folha.jpg` com todas as imagens juntas. Para um agente, a folha basta para ver o ecrã de uma vez.
+- **[sequencias/](#sequências):** 36 sequências de frames tiradas dos vídeos, com as animações, os movimentos de câmara e as transições. Cada uma tem uma `_folha.jpg` numerada e um `README.md` frame a frame.
 - **[catalogo-completo.jsonl](catalogo-completo.jsonl):** as 1141 imagens classificadas, incluindo as que não ficaram aqui, com a ligação à miniatura original no YouTube. Uma linha JSON por imagem: `categoria`, `ecra`, `etiquetas`, `descricao`, `qualidade`, `overlay`, `video`, `miniatura`.
 
 ## Como foi feito (e os limites)
 
 - Em 10 de novembro de 2026, 18 pesquisas no YouTube deram 369 vídeos do Calciobit A, com os do 3DS e do GBA deixados de fora.
-- **Não há vídeos nem animações.** O YouTube não deixa a sessão na nuvem descarregar vídeos. Usaram-se só as imagens públicas de cada vídeo: a capa e três frames automáticos a 25 %, 50 % e 75 % da duração. Por isso não há sequências de animação nem movimentos de câmara, só momentos soltos. A origem de cada imagem leva o segundo aproximado do vídeo, para se ver o movimento lá.
+- **Imagens soltas:** o YouTube não deixou a sessão na nuvem descarregar vídeos. Para as pastas de ecrã usaram-se só as imagens públicas de cada vídeo: a capa e três frames automáticos a 25 %, 50 % e 75 % da duração. A origem de cada imagem leva o segundo aproximado do vídeo.
+- **Sequências:** as animações, os movimentos de câmara e as transições vieram depois, de vídeos descarregados num computador local (ver [Sequências](#sequências)).
 - Das 1476 imagens tiraram-se as quase iguais e ficaram 1141. Quatro agentes classificaram-nas pela taxonomia abaixo.
 - Aqui ficaram as 420 melhores: sem capas e, fora dos menus, sem texto do youtuber por cima, com no máximo duas por vídeo em cada ecrã. Estão reduzidas a 800×450.
 - A classificação foi feita pelas miniaturas. Algum texto japonês pequeno pode estar mal lido, e as fronteiras entre ecrãs vizinhos (camara-geral e interface-durante-jogo, golo e festejo) são uma decisão de quem classificou.
@@ -24,6 +26,79 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 - **Por ecrã:** usa as tabelas abaixo, ou abre a `_folha.jpg` da pasta.
 - **Por etiqueta:** usa a tabela de etiquetas, ou procura no catálogo, por exemplo `grep '"placar"' catalogo-completo.jsonl`.
 - **Nomes dos ficheiros:** `<ecra>/<ecra>-NN.jpg`. O número só ordena: as primeiras de cada pasta são as de melhor qualidade.
+
+## Sequências
+
+Sequências de frames tiradas dos vídeos, para estudar o que as imagens soltas não mostram: animações, movimentos de câmara e transições entre ecrãs. Foram extraídas em 10 de novembro de 2026 de 17 vídeos de oito canais, descarregados a 720p e apagados no fim.
+
+- **Organização:** `sequencias/<area>/<nome>/`, com `frame-0001.jpg`… a 640×360, uma `_folha.jpg` com os frames numerados e um `README.md`.
+- **README de cada sequência:** o que acontece frame a frame, a duração, o fps e a origem, com a ligação ao segundo do vídeo e as etiquetas.
+- **fps:** 10 para movimentos de câmara e transições, 30 para animações curtas. Para medir uma duração, conta os frames e divide pelo fps.
+- **Total:** 36 sequências, cerca de 32 MB. As conclusões estão em [fluxos-ui.md](fluxos-ui.md) e [camara-e-estilo.md](camara-e-estilo.md).
+
+### Jogo e câmara
+
+Em [sequencias/jogo-camara/](sequencias/jogo-camara/): como a câmara segue a bola, os grandes planos, a repetição e os penáltis.
+
+| Sequência | Duração | fps | Frames | Folha |
+|---|---|---|---|---|
+| [Canto: zoom para a bandeirola e cruzamento](sequencias/jogo-camara/canto-grande-plano-e-cruzamento/README.md) | 3,4 s | 10 | 34 | [ver](sequencias/jogo-camara/canto-grande-plano-e-cruzamento/_folha.jpg) |
+| [Cartão amarelo: corte, zoom, faixa e saída pelo preto](sequencias/jogo-camara/cartao-amarelo-zoom-e-saida/README.md) | 5,2 s | 10 | 52 | [ver](sequencias/jogo-camara/cartao-amarelo-zoom-e-saida/_folha.jpg) |
+| [Cartão vermelho: corte e zoom para o árbitro](sequencias/jogo-camara/cartao-vermelho-corte/README.md) | 2,8 s | 10 | 28 | [ver](sequencias/jogo-camara/cartao-vermelho-corte/_folha.jpg) |
+| [Fora de jogo: fiscal de linha, preto e repetição com a linha](sequencias/jogo-camara/fora-de-jogo-fiscal-e-linha/README.md) | 5,6 s | 10 | 56 | [ver](sequencias/jogo-camara/fora-de-jogo-fiscal-e-linha/_folha.jpg) |
+| [Desempate por penáltis: entrada e câmara fixa](sequencias/jogo-camara/penaltis-entrada-desempate/README.md) | 3,4 s | 10 | 34 | [ver](sequencias/jogo-camara/penaltis-entrada-desempate/_folha.jpg) |
+| [Penálti: remate com a câmara fixa](sequencias/jogo-camara/penaltis-remate-camara-fixa/README.md) | 3,5 s | 10 | 35 | [ver](sequencias/jogo-camara/penaltis-remate-camara-fixa/_folha.jpg) |
+| [Do plano largo ao plano diagonal, sem corte](sequencias/jogo-camara/plano-largo-para-diagonal/README.md) | 3,0 s | 10 | 30 | [ver](sequencias/jogo-camara/plano-largo-para-diagonal/_folha.jpg) |
+| [Pontapé de saída: corte, zoom e saída pelo zoom-out](sequencias/jogo-camara/pontape-de-saida-corte-e-zoom-out/README.md) | 2,8 s | 10 | 28 | [ver](sequencias/jogo-camara/pontape-de-saida-corte-e-zoom-out/_folha.jpg) |
+| [Repetição de golo: «REPLAY» a piscar e saída pelo preto](sequencias/jogo-camara/repeticao-golo-saida/README.md) | 3,8 s | 10 | 38 | [ver](sequencias/jogo-camara/repeticao-golo-saida/_folha.jpg) |
+| [Sorteio: corte, zoom e corte a preto](sequencias/jogo-camara/sorteio-zoom-e-fade/README.md) | 3,7 s | 10 | 37 | [ver](sequencias/jogo-camara/sorteio-zoom-e-fade/_folha.jpg) |
+
+### Golo e festejo
+
+Em [sequencias/golo-festejo/](sequencias/golo-festejo/): o resultado gigante, a claque, a repetição do golo, os festejos e as habilidades especiais.
+
+| Sequência | Duração | fps | Frames | Folha |
+|---|---|---|---|---|
+| [Claque depois de um golo marcado](sequencias/golo-festejo/claque-golo-marcado/README.md) | 4,9 s | 10 | 49 | [ver](sequencias/golo-festejo/claque-golo-marcado/_folha.jpg) |
+| [Claque depois de um golo sofrido](sequencias/golo-festejo/claque-golo-sofrido/README.md) | 4,4 s | 10 | 44 | [ver](sequencias/golo-festejo/claque-golo-sofrido/_folha.jpg) |
+| [Festejo em fila com mergulho](sequencias/golo-festejo/festejo-mergulho-em-fila/README.md) | 5,3 s | 10 | 53 | [ver](sequencias/golo-festejo/festejo-mergulho-em-fila/_folha.jpg) |
+| [Festejo com zoom: saltos de braços no ar](sequencias/golo-festejo/festejo-zoom-saltos/README.md) | 3,4 s | 10 | 34 | [ver](sequencias/golo-festejo/festejo-zoom-saltos/_folha.jpg) |
+| [Habilidade num canto: duas cartas e um nome curto](sequencias/golo-festejo/habilidade-banana-canto/README.md) | 0,77 s | 30 | 23 | [ver](sequencias/golo-festejo/habilidade-banana-canto/_folha.jpg) |
+| [Habilidade especial: as cartas e o nome a escrever-se](sequencias/golo-festejo/habilidade-entrada-cartas-nome/README.md) | 1,0 s | 30 | 30 | [ver](sequencias/golo-festejo/habilidade-entrada-cartas-nome/_folha.jpg) |
+| [Regresso ao jogo e ficha do marcador](sequencias/golo-festejo/regresso-ficha-marcador/README.md) | 3,8 s | 10 | 38 | [ver](sequencias/golo-festejo/regresso-ficha-marcador/_folha.jpg) |
+| [Resultado gigante: entrada e troca do algarismo](sequencias/golo-festejo/resultado-entra-golo-sofrido/README.md) | 1,13 s | 30 | 34 | [ver](sequencias/golo-festejo/resultado-entra-golo-sofrido/_folha.jpg) |
+
+### Entrada e saída
+
+Em [sequencias/entrada-saida/](sequencias/entrada-saida/): a antevisão, o túnel, o alinhamento, o intervalo, o fim do jogo e a cerimónia do título.
+
+| Sequência | Duração | fps | Frames | Folha |
+|---|---|---|---|---|
+| [Alinhamento até ao sorteio](sequencias/entrada-saida/alinhamento-ate-ao-sorteio/README.md) | 2,6 s | 10 | 26 | [ver](sequencias/entrada-saida/alinhamento-ate-ao-sorteio/_folha.jpg) |
+| [Antevisão: as faixas entram](sequencias/entrada-saida/antevisao-faixas-entram/README.md) | 2,0 s | 10 | 20 | [ver](sequencias/entrada-saida/antevisao-faixas-entram/_folha.jpg) |
+| [Antevisão: as faixas saem para a esquerda](sequencias/entrada-saida/antevisao-faixas-saem/README.md) | 2,4 s | 10 | 24 | [ver](sequencias/entrada-saida/antevisao-faixas-saem/_folha.jpg) |
+| [Apito final do jogo do título](sequencias/entrada-saida/apito-final-titulo/README.md) | 5,8 s | 10 | 58 | [ver](sequencias/entrada-saida/apito-final-titulo/_folha.jpg) |
+| [Fim de jogo normal: passagem para o resumo](sequencias/entrada-saida/fim-para-resumo/README.md) | 4,5 s | 10 | 45 | [ver](sequencias/entrada-saida/fim-para-resumo/_folha.jpg) |
+| [Intervalo: ida ao balneário e regresso](sequencias/entrada-saida/intervalo-balneario-e-regresso/README.md) | 7,4 s | 10 | 74 | [ver](sequencias/entrada-saida/intervalo-balneario-e-regresso/_folha.jpg) |
+| [Do mapa ao túnel «LIVE»](sequencias/entrada-saida/mapa-para-tunel-live/README.md) | 3,0 s | 10 | 30 | [ver](sequencias/entrada-saida/mapa-para-tunel-live/_folha.jpg) |
+| [Mosaico «WE ARE THE CHAMPIONS»](sequencias/entrada-saida/mosaico-we-are-the-champions/README.md) | 2,4 s | 10 | 24 | [ver](sequencias/entrada-saida/mosaico-we-are-the-champions/_folha.jpg) |
+| [Painel do título no ecrã gigante (liga)](sequencias/entrada-saida/painel-trofeu-liga/README.md) | 8,0 s | 10 | 80 | [ver](sequencias/entrada-saida/painel-trofeu-liga/_folha.jpg) |
+
+### Menus e transições
+
+Em [sequencias/menus-transicoes/](sequencias/menus-transicoes/): as mudanças de ecrã, a resposta ao toque, o mapa da cidade, a ficha, o treino com cartas e o mercado.
+
+| Sequência | Duração | fps | Frames | Folha |
+|---|---|---|---|---|
+| [Taxa de apoio a subir, mapa e entrada no escritório](sequencias/menus-transicoes/apoio-adeptos-e-entrar-escritorio/README.md) | 3,8 s | 10 | 38 | [ver](sequencias/menus-transicoes/apoio-adeptos-e-entrar-escritorio/_folha.jpg) |
+| [Mapa da cidade: avançar a semana até à semana de jogo](sequencias/menus-transicoes/cidade-avancar-semana/README.md) | 2,3 s | 10 | 23 | [ver](sequencias/menus-transicoes/cidade-avancar-semana/_folha.jpg) |
+| [Do mapa da cidade à federação (N.LEAGUE) e o menu de separador](sequencias/menus-transicoes/cidade-entrar-federacao/README.md) | 1,9 s | 10 | 19 | [ver](sequencias/menus-transicoes/cidade-entrar-federacao/_folha.jpg) |
+| [Do escritório ao mapa e do mapa ao treino](sequencias/menus-transicoes/escritorio-cidade-treino/README.md) | 4,6 s | 10 | 46 | [ver](sequencias/menus-transicoes/escritorio-cidade-treino/_folha.jpg) |
+| [Ficha do jogador: fechar uma e abrir outra](sequencias/menus-transicoes/ficha-jogador-fechar-abrir/README.md) | 1,3 s | 30 | 39 | [ver](sequencias/menus-transicoes/ficha-jogador-fechar-abrir/_folha.jpg) |
+| [Mercado: a secretária responde e o adjunto toma a palavra](sequencias/menus-transicoes/mercado-resposta-secretaria/README.md) | 2,8 s | 10 | 28 | [ver](sequencias/menus-transicoes/mercado-resposta-secretaria/_folha.jpg) |
+| [Regresso ao mapa da cidade e o cartão do próximo jogo](sequencias/menus-transicoes/regresso-cidade-proximo-jogo/README.md) | 2,3 s | 10 | 23 | [ver](sequencias/menus-transicoes/regresso-cidade-proximo-jogo/_folha.jpg) |
+| [Treino: três cartas fazem um combo e abrem o «SPECIAL MENU»](sequencias/menus-transicoes/treino-combo-cartas-special-menu/README.md) | 8,9 s | 10 | 89 | [ver](sequencias/menus-transicoes/treino-combo-cartas-special-menu/_folha.jpg) |
+| [Treino: «SPECIAL MENU» descoberto](sequencias/menus-transicoes/treino-special-menu-descoberto/README.md) | 2,8 s | 10 | 28 | [ver](sequencias/menus-transicoes/treino-special-menu-descoberto/_folha.jpg) |
 
 ## Ecrãs
 ### Menus e ecrãs de gestão
