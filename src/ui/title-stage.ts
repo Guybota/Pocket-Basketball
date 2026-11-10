@@ -31,9 +31,10 @@ const PAPER = '#f8f0d8';
  * Desenha o palco `t` segundos depois de começar, na tela inteira do campo. O corte da cerimónia clara para o placar
  * escuro já marca a entrada; só a foto tem um flash, dentro da moldura e a meia força. Com movimento reduzido, nem esse.
  */
-export function drawTitleStage(g: CanvasRenderingContext2D, W: number, H: number, t: number, info: TitleStageInfo, still: boolean): void {
+export function drawTitleStage(g: CanvasRenderingContext2D, W: number, H: number, t: number, info: TitleStageInfo, still: boolean, art = 1): void {
   g.save();
-  g.setTransform(1, 0, 0, 1, 0, 0);
+  // `art`: píxeis da tela por píxel de arte (no jogo, a tela tem a resolução do ecrã).
+  g.setTransform(art, 0, 0, art, 0, 0);
   g.imageSmoothingEnabled = false;
   if (t < TITLE_BOARD_SECONDS) drawBoard(g, W, H, t, info, still);
   else drawPhoto(g, W, H, info, still ? FLASH_SECONDS : t - TITLE_BOARD_SECONDS);

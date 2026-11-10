@@ -27,6 +27,9 @@ import {
   type PoseName,
 } from './art/sprites.ts';
 
+/** Quantos píxeis da tela há por píxel de arte (o layout escreve-o na tela do jogo; nas outras é 1). */
+const artScaleOf = (canvas: HTMLCanvasElement): number => Math.max(1, Math.round(Number(canvas.dataset.artScale ?? 1)));
+
 const HOOP_LEFT = 1.575;
 const HOOP_RIGHT = 26.425;
 const RUN_FRAMES: readonly PoseName[] = ['run0', 'run1', 'run2', 'run1'];
@@ -413,6 +416,8 @@ export class MatchView {
   private zoomShift: [number, number] = [0, 0];
   // A bola ao alto entra num corte seco a 2× e sai num recuo rápido, até a imagem voltar ao normal.
   private jumpZoom = false;
+  // Píxeis da tela por píxel de arte: no jogo a tela tem a resolução do ecrã, e a arte amplia-se por este inteiro.
+  private art = 1;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
@@ -428,9 +433,10 @@ export class MatchView {
     this.textures = courtTextures(division, venue, centreEmblem, weather);
     const roll = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
     this.humor = { dogAt: division === 0 && roll(1) < 0.35 ? Math.floor(600 + roll(2) * 3000) : null, pigeon: roll(3) < 0.25, sleeper: roll(4) < 0.6, blowout: 25 };
-    this.image = g.createImageData(g.canvas.width, g.canvas.height);
+    this.art = artScaleOf(g.canvas);
+    this.image = g.createImageData(g.canvas.width / this.art, g.canvas.height / this.art);
     this.pixels = new Uint32Array(this.image.data.buffer);
-    this.camera.setViewport(g.canvas.width, g.canvas.height);
+    this.camera.setViewport(g.canvas.width / this.art, g.canvas.height / this.art);
     for (const b of this.s.bodies) {
       this.views.set(b, {
         look: b.team === 0 ? { ...lookOf(b.player, 'blue'), custom: homeKit } : { ...lookOf(b.player, 'cream'), custom: awayKit },
@@ -531,18 +537,19 @@ export class MatchView {
   /** Chamado quando a janela muda de tamanho. */
   resize(): void {
     const { canvas } = this.g;
-    this.image = this.g.createImageData(canvas.width, canvas.height);
+    this.art = artScaleOf(canvas);
+    this.image = this.g.createImageData(canvas.width / this.art, canvas.height / this.art);
     this.pixels = new Uint32Array(this.image.data.buffer);
-    this.camera.setViewport(canvas.width, canvas.height);
+    this.camera.setViewport(canvas.width / this.art, canvas.height / this.art);
     if (this.fence) this.fence = this.fenceLayer();
   }
 
   private fenceLayer(): { image: ImageData; pixels: Uint32Array; canvas: HTMLCanvasElement } {
-    const { canvas } = this.g;
-    const image = this.g.createImageData(canvas.width, canvas.height);
+    const { width, height } = this.camera;
+    const image = this.g.createImageData(width, height);
     const layer = document.createElement('canvas');
-    layer.width = canvas.width;
-    layer.height = canvas.height;
+    layer.width = width;
+    layer.height = height;
     return { image, pixels: new Uint32Array(image.data.buffer), canvas: layer };
   }
 
@@ -1085,7 +1092,7 @@ export class MatchView {
     let x = (camera.width - total) >> 1;
     const midY = Math.round(camera.height * 0.4);
     g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.setTransform(this.art, 0, 0, this.art, 0, 0);
     parts.forEach((p, i) => {
       const hot = swapped && i === b.team * 2;
       const scale = hot ? base + grow : base;
@@ -1501,8 +1508,8 @@ export class MatchView {
         const held = this.ceremonyPlace(b);
         if (held) {
           const [hx, hy] = camera.project(held.x, held.y);
-          this.drawn.bodies.set(b, { x: hx, y: hy, lift: 0, pose: held.pose, height: spriteHeight(this.view(b).look), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
-          drawables.push({ y: hy, draw: () => drawSprite(g, held.pose, this.view(b).look, hx, hy, held.flip, held.back, false, held.legs) });
+          this.drawn.bodies.set(b, { x: hx, y: hy, lift: 0, pose: held.pose, height: this.tall(this.view(b).look, hy), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
+          drawables.push({ y: hy, draw: () => this.sprite(g, held.pose, this.view(b).look, hx, hy, held.flip, held.back, false, held.legs) });
           return;
         }
         const locker = toLocker ? this.lockerAt(b) : null;
@@ -1512,8 +1519,8 @@ export class MatchView {
           const [lx, ly] = camera.project(locker.x, locker.y);
           const pose: PoseName = locker.moving ? locker.pose : locker.wait;
           const back = locker.moving && locker.dy < -Math.abs(locker.dx);
-          this.drawn.bodies.set(b, { x: lx, y: ly, lift: 0, pose, height: spriteHeight(this.view(b).look), world: { x: locker.x, y: locker.y }, back });
-          drawables.push({ y: ly, draw: () => drawSprite(g, pose, this.view(b).look, lx, ly, locker.dx < 0, back, false) });
+          this.drawn.bodies.set(b, { x: lx, y: ly, lift: 0, pose, height: this.tall(this.view(b).look, ly), world: { x: locker.x, y: locker.y }, back });
+          drawables.push({ y: ly, draw: () => this.sprite(g, pose, this.view(b).look, lx, ly, locker.dx < 0, back, false) });
           return;
         }
         if (leaving.has(b)) return;
@@ -1537,8 +1544,8 @@ export class MatchView {
         // Pelo relógio da imagem e não pelo do jogo: depois do apito final o jogo para, e os suplentes continuam a saltar.
         const pose: PoseName = cheering && seated ? (Math.floor(this.animTick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : seated ? 'sit' : walking ? RUN_FRAMES[Math.floor(time * 6) % 4]! : 'idle';
         const flip = walking ? dx < 0 : HUDDLE_CENTRE[team][0] < pos.x;
-        this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(this.view(b).look), world: { ...pos } });
-        drawables.push({ y: sy, draw: () => drawSprite(g, pose, this.view(b).look, sx, sy, flip, false, false) });
+        this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose, height: this.tall(this.view(b).look, sy), world: { ...pos } });
+        drawables.push({ y: sy, draw: () => this.sprite(g, pose, this.view(b).look, sx, sy, flip, false, false) });
       });
       const coachLocker = toLocker ? this.lockerAt(team) : null;
       if (coachLocker) {
@@ -1547,8 +1554,8 @@ export class MatchView {
         const pose: PoseName = coachLocker.moving ? coachLocker.pose : coachLocker.wait;
         const back = coachLocker.moving && coachLocker.dy < -Math.abs(coachLocker.dx);
         drawables.push({ y: ly, draw: () => {
-          drawShadow(g, lx, ly);
-          drawSprite(g, pose, this.coaches[team], lx, ly, coachLocker.dx < 0, back, false);
+          this.shadow(g, lx, ly);
+          this.sprite(g, pose, this.coaches[team], lx, ly, coachLocker.dx < 0, back, false);
         } });
         continue;
       }
@@ -1576,8 +1583,8 @@ export class MatchView {
       drawables.push({
         y: cy,
         draw: () => {
-          drawShadow(g, cx, cy);
-          drawSprite(g, coachPose, this.coaches[team], cx, cy, walking && dx < 0, false, false);
+          this.shadow(g, cx, cy);
+          this.sprite(g, coachPose, this.coaches[team], cx, cy, walking && dx < 0, false, false);
         },
       });
     }
@@ -1598,10 +1605,10 @@ export class MatchView {
         const pose = jump.pose ?? 'dunk';
         const withBall = jump.withBall === true;
         const flip = this.motionOf(e.body).flip;
-        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y } });
+        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: this.tall(look, dy), world: { x: dunk.x, y: dunk.y } });
         drawables.push({ y: dy, draw: () => {
-          drawShadow(g, dx, dy);
-          drawSprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall);
+          this.shadow(g, dx, dy);
+          this.sprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall, undefined, dy);
         } });
         continue;
       }
@@ -1613,8 +1620,8 @@ export class MatchView {
       const world = { x: e.from.x + (e.to.x - e.from.x) * t, y: e.from.y + (e.to.y - e.from.y) * t };
       const [sx, sy] = camera.project(world.x, world.y);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
-      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: spriteHeight(look), world });
-      drawables.push({ y: sy, draw: () => drawSprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
+      this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: this.tall(look, sy), world });
+      drawables.push({ y: sy, draw: () => this.sprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
 
@@ -1680,18 +1687,19 @@ export class MatchView {
     // O recuo da bola ao alto acaba mais cedo, a 5 % do fim: são ~0,3 s com escalas fracionárias, e não meio segundo.
     if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || tipping || fouling || ending || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
     if (this.zoom === 1) this.jumpZoom = false;
+    // A arte amplia-se sem suavizar; só os bonecos (drawSprite) ligam a suavização, e voltam a desligá-la.
+    g.imageSmoothingEnabled = false;
     if (this.zoom > 1.001) {
-      g.imageSmoothingEnabled = false;
       // Na cerimónia, o centro é o grupo com o troféu por cima; na bola ao alto, os dois saltadores com a bola por cima.
       const [px, py] = this.ceremony ? this.ceremonyFocus() : this.jumpZoom ? (s.phase === 'end' ? this.ballFocus() : this.foulMoment && this.s.phase !== 'jump' ? this.foulFocus(this.foulMoment.body) : this.jumpFocus()) : camera.project(HUDDLE_CENTRE[0][0], HUDDLE_CENTRE[0][1]);
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
       const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
       this.zoomShift = [Math.round(tx), Math.round(ty)];
-      g.setTransform(z, 0, 0, z, this.zoomShift[0], this.zoomShift[1]);
+      g.setTransform(z * this.art, 0, 0, z * this.art, this.zoomShift[0] * this.art, this.zoomShift[1] * this.art);
     } else {
       this.zoomShift = [0, 0];
-      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.setTransform(this.art, 0, 0, this.art, 0, 0);
     }
     // Num momento grande levantam-se quase todos (imagens 3 e 4, pessoas diferentes a cada batida); num pequeno, poucos (1 e 2).
     const excited = s.tick < this.excitedUntil;
@@ -1713,7 +1721,7 @@ export class MatchView {
     }
     // Com a imagem aproximada, ou com a câmara parada, o chão passa por uma tela à parte: `putImageData` ignora a aproximação,
     // `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai direto, que é uma cópia a menos.
-    if (this.zoom > 1.001 || !fresh) {
+    if (this.zoom > 1.001 || !fresh || this.art > 1) {
       if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
         this.scene = document.createElement('canvas');
         this.scene.width = camera.width;
@@ -1754,7 +1762,7 @@ export class MatchView {
       if (held) {
         const look = held.trophy ? { ...this.view(b).look, trophy: held.trophy } : this.view(b).look;
         const [sx, sy] = camera.project(held.x, held.y);
-        this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose: held.pose, height: spriteHeight(look), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
+        this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose: held.pose, height: this.tall(look, sy), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
         return { x: sx, y: sy, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: held.back, legs: held.legs };
       }
       const prev = this.view(b).prev;
@@ -1792,7 +1800,7 @@ export class MatchView {
       }
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.drawnBack && backable;
       const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
-      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: spriteHeight(look), world: { x: dunk.x, y: dunk.y }, back });
+      this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: this.tall(look, sy), world: { x: dunk.x, y: dunk.y }, back });
       // Um gesto de pés no chão feito a andar leva as pernas da corrida: os braços e a bola são do gesto, os pés andam.
       // O agachamento do afundanço não: esse fica preso ao sítio (`dunkLift`).
       const crouching = this.view(b).dunkJump !== undefined && this.view(b).dunkJump!.pin === undefined;
@@ -1820,7 +1828,7 @@ export class MatchView {
     }
     // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
     if (theme.reflection > 0) {
-      for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection, p.legs);
+      for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection, p.legs, this.depth(p.y));
     }
     // A poeira fica no chão, atrás de quem a levantou: sobe, abre e esbate-se.
     for (const q of this.puffs) {
@@ -1846,8 +1854,8 @@ export class MatchView {
       drawables.push({
         y: p.y,
         draw: () => {
-          drawShadow(g, p.x, p.y);
-          drawSprite(g, p.pose, p.look, p.x, p.y - p.lift, p.flip, p.back, p.withBall, p.legs);
+          this.shadow(g, p.x, p.y);
+          this.sprite(g, p.pose, p.look, p.x, p.y - p.lift, p.flip, p.back, p.withBall, p.legs, p.y);
         },
       });
     }
@@ -1880,7 +1888,7 @@ export class MatchView {
       drawables.push({
         y: ballLayer,
         draw: () => {
-          drawShadow(g, gx, gy, 3);
+          this.shadow(g, gx, gy, 3);
           this.trail.forEach(([tx, ty], i) => {
             g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
             g.fillRect((tx | 0) - 1, (ty | 0) - 1, 3, 3);
@@ -1909,12 +1917,12 @@ export class MatchView {
     if (!this.reducedMotion && this.simPerReal <= 2 && this.realTime < this.shakeUntil) {
       const phase = Math.floor(this.realTime * SHAKE_HZ);
       // Um píxel de arte em píxeis CSS: a tela está à escala da arte e o CSS amplia-a.
-      const art = g.canvas.clientWidth > 0 ? g.canvas.clientWidth / g.canvas.width : 1;
+      const art = g.canvas.clientWidth > 0 ? g.canvas.clientWidth / this.camera.width : 1;
       g.canvas.style.transform = `translate(${(phase % 2 ? 1 : -1) * art}px, ${((phase >> 1) % 2 ? 1 : -1) * art}px)`;
     } else if (g.canvas.style.transform) {
       g.canvas.style.transform = '';
     }
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.setTransform(this.art, 0, 0, this.art, 0, 0);
   }
 
   /**
@@ -1976,6 +1984,27 @@ export class MatchView {
     return this.jumpZoom && this.s.phase === 'jump';
   }
 
+  /** O tamanho de um boneco com os pés na linha `y`: só numa tela ampliada, onde dá para o desenhar a qualquer tamanho. */
+  private depth(y: number): number {
+    return this.art > 1 ? this.camera.depthScale(y) : 1;
+  }
+
+  /** Um boneco no mundo, maior ou mais pequeno com a distância. */
+  private sprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, feet = y): void {
+    // `feet`: num salto, o tamanho vem do chão, onde está a sombra, e não da altura a que o boneco vai.
+    drawSprite(g, pose, look, x, y, flip, back, withBall, legs, this.depth(feet));
+  }
+
+  /** A altura de um boneco com os pés na linha `y`, já com o tamanho da distância: para o que fica por cima da cabeça. */
+  private tall(look: Look, y: number): number {
+    return Math.round(spriteHeight(look) * this.depth(y));
+  }
+
+  /** A sombra de um boneco, do tamanho dele. */
+  private shadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 7): void {
+    drawShadow(g, x, y, Math.max(2, Math.round(radius * this.depth(y))));
+  }
+
   /** O centro do grande plano do apito final: a bola, onde estão os jogadores. */
   private ballFocus(): [number, number] {
     // O meio dos dez em campo: no apito a bola pode estar solta longe deles.
@@ -2005,7 +2034,7 @@ export class MatchView {
     const x = (camera.width - w) >> 1;
     const y = camera.height - 52;
     g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.setTransform(this.art, 0, 0, this.art, 0, 0);
     g.globalAlpha = 0.88 * fade;
     g.fillStyle = INK;
     g.fillRect(x, y, w, 24);
@@ -2088,7 +2117,7 @@ export class MatchView {
       this.callbacks.sound('bigCheer');
     }
     g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.setTransform(this.art, 0, 0, this.art, 0, 0);
     const { width: W, height: H } = camera;
     const still = this.reducedMotion;
     const z = Math.round(this.zoom);
@@ -2238,7 +2267,7 @@ export class MatchView {
       if (!focus.includes(s.teams[1].roster.indexOf(b.player))) continue;
       const prev = this.view(b).prev;
       const [x, y] = camera.project(prev.x + (b.x - prev.x) * alpha, prev.y + (b.y - prev.y) * alpha);
-      const top = (y | 0) - spriteHeight(this.view(b).look) - 4;
+      const top = (y | 0) - this.tall(this.view(b).look, y) - 4;
       g.fillStyle = '#1b2230';
       g.fillRect((x | 0) - 4, top - 5, 9, 2);
       g.fillRect((x | 0) - 3, top - 3, 7, 2);
@@ -2262,7 +2291,7 @@ export class MatchView {
       if (sx < -20 || sx > camera.width + 20) continue;
       const beat = this.reducedMotion ? o.phase : (s.tick >> 2) + o.phase;
       const pose: PoseName = cheering ? (beat % 2 ? 'cheer0' : 'cheer1') : ((s.tick >> 4) + o.phase) % 7 === 0 ? 'cheer0' : 'idle';
-      drawSprite(g, pose, o.look, sx | 0, sy | 0, o.flip, false, false);
+      this.sprite(g, pose, o.look, sx | 0, sy | 0, o.flip, false, false);
     }
   }
 
@@ -2303,9 +2332,9 @@ export class MatchView {
       drawables.push({
         y: sy,
         draw: () => {
-          drawShadow(g, sx, sy);
-          drawSprite(g, pose, mascot, sx | 0, y, dancing && beat % 8 >= 4, false, false);
-          drawMascotHead(g, kind, mascot.custom!, sx | 0, y - spriteHeight(mascot));
+          this.shadow(g, sx, sy);
+          this.sprite(g, pose, mascot, sx | 0, y, dancing && beat % 8 >= 4, false, false);
+          drawMascotHead(g, kind, mascot.custom!, sx | 0, y - this.tall(mascot, y));
         },
       });
     }
@@ -2323,10 +2352,10 @@ export class MatchView {
         drawables.push({
           y: oy,
           draw: () => {
-            drawShadow(g, ox, oy);
-            drawSprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
+            this.shadow(g, ox, oy);
+            this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
             if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
-            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, Math.max(28, (oy | 0) - spriteHeight(look) - 22));
+            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, Math.max(28, (oy | 0) - this.tall(look, oy) - 22));
           },
         });
       }
@@ -2334,7 +2363,7 @@ export class MatchView {
         drawables.push({
           y: dy,
           draw: () => {
-            drawShadow(g, dx, dy, 4);
+            this.shadow(g, dx, dy, 4);
             drawDog(g, dx | 0, dy | 0, dog.dx < 0, dog.moving ? beat : this.animTick >> 3, !dog.moving);
           },
         });
@@ -2415,8 +2444,8 @@ export class MatchView {
       if (i === asleep) {
         // Numa goleada, alguém dorme sentado: a cabeça cai de vez em quando e os «Z» sobem.
         const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
-        drawSprite(g, 'sit', f.look, sx | 0, (sy | 0) + nod, f.flip, false, false);
-        const top = (sy | 0) - spriteHeight(f.look);
+        this.sprite(g, 'sit', f.look, sx | 0, (sy | 0) + nod, f.flip, false, false);
+        const top = (sy | 0) - this.tall(f.look, sy);
         for (let k = 0; k < 3; k++) {
           const p = this.reducedMotion ? k / 3 : ((this.animTick + k * 14) % 42) / 42;
           const zx = (sx | 0) + 3 + Math.round(p * 6);
@@ -2432,10 +2461,10 @@ export class MatchView {
       const beat = this.reducedMotion ? f.phase : (s.tick >> 2) + f.phase;
       const claps = f.phase % 3 === 2;
       const pose: PoseName = cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
-      drawSprite(g, pose, f.look, sx | 0, sy | 0, f.flip, false, false);
+      this.sprite(g, pose, f.look, sx | 0, sy | 0, f.flip, false, false);
       // Na entrada, com a confiança alta, muitos trazem bandeira.
       if (f.flag || (this.forecast?.confident && s.phase === 'intro' && f.phase % 3 === 0)) {
-        const top = (sy | 0) - spriteHeight(f.look) - (pose === 'sit' ? 2 : 10);
+        const top = (sy | 0) - this.tall(f.look, sy) - (pose === 'sit' ? 2 : 10);
         g.fillStyle = '#5a4632';
         g.fillRect((sx | 0) + 5, top, 1, 18);
         g.fillStyle = this.flagColor;
@@ -2461,7 +2490,7 @@ export class MatchView {
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
       // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
       // A caixa começa 7 píxeis acima do texto, e nunca acima da linha do marcador, que a tapava.
-      this.speech(b.label, fx, Math.max(FLOATER_MIN_TOP + 7, (fy | 0) - spriteHeight(fan.look) - 24 - Math.min(4, age)));
+      this.speech(b.label, fx, Math.max(FLOATER_MIN_TOP + 7, (fy | 0) - this.tall(fan.look, fy) - 24 - Math.min(4, age)));
     }
   }
 
@@ -2540,10 +2569,11 @@ export class MatchView {
         // A palavra segue quem fez o movimento, por cima do ponto mais alto da pose, e sobe devagar. Sem espaço em cima,
         // por baixo da faixa do marcador, encosta-se ao lado dele: nunca por cima do corpo.
         const look = this.view(f.body!).look;
-        const head = (drawn.y | 0) - Math.round(drawn.lift) - this.poseTop(drawn.pose, look);
+        const k = this.depth(drawn.y);
+        const head = (drawn.y | 0) - Math.round(drawn.lift) - Math.round(this.poseTop(drawn.pose, look) * k);
         // Num afundanço conta-se já com o ponto mais alto que aí vem: a pose de afundar no topo do salto, junto ao aro.
         const hoopGround = camera.project(this.attackedHoop(f.body!.team), 0)[1] | 0;
-        const peak = f.dunk ? Math.min(head, hoopGround - DUNK_LIFT - this.poseTop('dunk', look), (drawn.y | 0) - DUNK_LIFT - this.poseTop('dunk', look)) : head;
+        const peak = f.dunk ? Math.min(head, hoopGround - DUNK_LIFT - Math.round(this.poseTop('dunk', look) * k), (drawn.y | 0) - DUNK_LIFT - Math.round(this.poseTop('dunk', look) * k)) : head;
         // Por cima, à direita ou à esquerda decide-se uma vez, no primeiro frame, onde tapar menos os outros bonecos; e a
         // palavra depois só sobe: nunca salta de sítio.
         if (f.top === undefined) f.beside = this.floaterSide(f.body!, drawn.x | 0, drawn.y | 0, peak, peak - FLOATER_GAP - height, Math.max(FLOATER_MIN_TOP, head), width, height);
@@ -2580,7 +2610,7 @@ export class MatchView {
     const prev = this.view(holder).prev;
     const [x, y] = camera.project(prev.x + (holder.x - prev.x) * alpha, prev.y + (holder.y - prev.y) * alpha);
     const bob = (s.tick >> 3) % 2;
-    drawCarrierArrow(g, x, y - spriteHeight(this.view(holder).look) - 3 - bob);
+    drawCarrierArrow(g, x, y - this.tall(this.view(holder).look, y) - 3 - bob);
     this.drawTargets(alpha);
   }
 
@@ -2605,7 +2635,7 @@ export class MatchView {
     let bestDistance = 18;
     for (const b of [...s.court[0], ...s.court[1]]) {
       const [sx, sy] = camera.project(b.x, b.y);
-      const d = Math.hypot(sx - px, sy - spriteHeight(this.view(b).look) / 2 - py);
+      const d = Math.hypot(sx - px, sy - this.tall(this.view(b).look, sy) / 2 - py);
       if (d < bestDistance) {
         bestDistance = d;
         best = b;
@@ -2632,7 +2662,7 @@ export class MatchView {
       const w = textWidth(label, 1) + 4;
       const left = Math.max(1, Math.min(camera.width - w - 1, (x | 0) - (w >> 1)));
       // A caixa tem espaço por cima das letras para os acentos (Simão, Gonçalves) e por baixo para a cedilha.
-      const top = Math.max(1, (y | 0) - spriteHeight(this.view(b).look) - 14);
+      const top = Math.max(1, (y | 0) - this.tall(this.view(b).look, y) - 14);
       g.fillStyle = b.team === 0 ? '#2b5fd9' : '#cf3a2c';
       g.fillRect(left, top, w, 11);
       g.fillStyle = '#1b2230';

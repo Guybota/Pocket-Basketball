@@ -431,8 +431,29 @@ function leaned(source: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
   return canvas;
 }
 
-/** Desenha um boneco. Com `legs`, as pernas vêm dessa pose (um passo da corrida) e o resto de `pose`. */
-export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName): void {
+// O boneco ampliado por um inteiro, com píxeis inteiros, para ser esticado ou encolhido a seguir sem ficar desfocado.
+// Cada um ocupa ~100 KB a 4×: guardam-se só os 200 mais recentes (~20 MB).
+const enlarged = new Map<string, HTMLCanvasElement>();
+function enlarge(key: string, sprite: HTMLCanvasElement, n: number): HTMLCanvasElement {
+  const id = `${key}|${n}`;
+  const known = enlarged.get(id);
+  if (known) return known;
+  const big = document.createElement('canvas');
+  big.width = sprite.width * n;
+  big.height = sprite.height * n;
+  const g = big.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(sprite, 0, 0, big.width, big.height);
+  return remember(enlarged, id, big, ENLARGED_LIMIT);
+}
+const ENLARGED_LIMIT = 200;
+
+/**
+ * Desenha um boneco. Com `legs`, as pernas vêm dessa pose (um passo da corrida) e o resto de `pose`. Com `scale`, o
+ * boneco fica maior ou mais pequeno com a distância, como no Calciobit: o mesmo desenho, ampliado primeiro com píxeis
+ * inteiros e depois ajustado ao tamanho certo, por isso só as bordas ficam um pouco suaves.
+ */
+export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, scale = 1): void {
   if (legs === pose) legs = undefined;
   const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}|${look.trophy ?? ''}`;
   const lean = legs ? undefined : LEAN[pose];
@@ -447,8 +468,22 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
     const half = sprite.width >> 1;
     g.save();
     g.translate(x | 0, (y | 0) - Math.round((lean / 90) * 3));
+    if (scale !== 1) g.scale(scale, scale);
     if (flip) g.scale(-1, 1);
     g.drawImage(sprite, -half - Math.round((lean / 90) * 12), -half);
+    g.restore();
+    return;
+  }
+  if (scale !== 1) {
+    // Os píxeis do ecrã por píxel de arte, na tela onde se desenha: o boneco amplia-se primeiro por esse inteiro.
+    // No máximo 4×: nos grandes planos a tela vai a 10× e cada pose ampliada ocupava mais de meio megabyte.
+    const n = Math.max(1, Math.min(4, Math.round(Math.abs(g.getTransform().a))));
+    const texture = n > 1 ? enlarge(key, sprite, n) : sprite;
+    g.save();
+    g.imageSmoothingEnabled = true;
+    g.translate(x | 0, y | 0);
+    if (flip) g.scale(-1, 1);
+    g.drawImage(texture, -ANCHOR_X * scale, -ANCHOR_Y * scale, sprite.width * scale, sprite.height * scale);
     g.restore();
     return;
   }
@@ -474,12 +509,12 @@ export function drawShadow(g: CanvasRenderingContext2D, x: number, y: number, ra
 }
 
 /** O reflexo no chão polido é o próprio boneco, virado ao contrário e quase transparente. */
-export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, strength: number, legs?: PoseName): void {
+export function drawReflection(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, strength: number, legs?: PoseName, scale = 1): void {
   g.save();
   g.globalAlpha = strength;
   g.translate(0, (y | 0) * 2 + 1);
   g.scale(1, -1);
-  drawSprite(g, pose, look, x, y, flip, back, false, legs);
+  drawSprite(g, pose, look, x, y, flip, back, false, legs, scale);
   g.restore();
 }
 

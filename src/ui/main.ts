@@ -268,7 +268,9 @@ canvas.addEventListener('click', event => {
   const rect = canvas.getBoundingClientRect();
   // Durante o jogo, tocar num jogador mostra-lhe o nome por cima.
   if (stage === 'match' && view && !replay) {
-    view.tapAt(((event.clientX - rect.left) / rect.width) * canvas.width, ((event.clientY - rect.top) / rect.height) * canvas.height);
+    // Em píxeis de arte: no jogo a tela tem a resolução do ecrã.
+    const art = Number(canvas.dataset.artScale ?? 1);
+    view.tapAt(((event.clientX - rect.left) / rect.width) * (canvas.width / art), ((event.clientY - rect.top) / rect.height) * (canvas.height / art));
     return;
   }
   if (stage !== 'town' || !club) return;
@@ -1238,7 +1240,8 @@ function frame(now: number): void {
     lastStillDraw = now;
     menuFrame(now);
   } else if (current && titleStage && !finished) {
-    drawTitleStage(context, canvas.width, canvas.height, (now - titleStage.at) / 1000, titleStage.info, reducedMotion());
+    const art = Number(canvas.dataset.artScale ?? 1);
+    drawTitleStage(context, canvas.width / art, canvas.height / art, (now - titleStage.at) / 1000, titleStage.info, reducedMotion(), art);
   } else if (current) {
     // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
     current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
@@ -1382,7 +1385,8 @@ Object.assign(window, {
       started,
       finished,
       announced: [...announced],
-      canvas: { width: canvas.width, height: canvas.height },
+      // A tela em píxeis de arte (no jogo, a da tela verdadeira é maior: a resolução do ecrã).
+      canvas: { width: canvas.width / Number(canvas.dataset.artScale ?? 1), height: canvas.height / Number(canvas.dataset.artScale ?? 1) },
       replay: replay ? { tick: replay.s.tick, until: replayUntil, phase: replay.s.phase } : null,
       demo: demo.tick(),
       ball: view ? { ...view.s.ball } : null,

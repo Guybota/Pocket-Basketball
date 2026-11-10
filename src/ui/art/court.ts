@@ -803,6 +803,20 @@ export class Camera {
   }
   }
 
+  /**
+   * O tamanho de um boneco com os pés na linha `sy` do ecrã, em relação a um no meio do campo: como no Calciobit, os de
+   * trás ficam mais pequenos e os da frente maiores. É a raiz da relação das distâncias ao chão, e não a relação em si: a
+   * nossa câmara é mais funda, e a perspetiva toda deixava os de trás com metade do tamanho (o Calciobit fica-se por ~70 %).
+   */
+  depthScale(sy: number): number {
+    // A distância ao chão ao longo da linha `row` é inversa a isto (ver drawScene): o raio desce mais depressa perto.
+    const drop = (row: number): number => -(this.fwd[2] * this.focal + this.up[2] * (this.height / 2 - row - 0.5));
+    const near = drop(sy);
+    const middle = drop(this.project(this.lookX, 0)[1]);
+    if (near <= 0 || middle <= 0) return 1;
+    return Math.max(0.65, Math.min(1.35, Math.sqrt(near / middle)));
+  }
+
   project(x: number, y: number, z = 0): [number, number] {
     const rx = x - this.cx;
     const ry = y - this.cy;

@@ -130,7 +130,11 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
         : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     const width = stage === 'match' ? MATCH_STAGE_WIDTH : Math.ceil(stageWidth / scale);
     const height = stage === 'match' ? MATCH_STAGE_HEIGHT : Math.ceil(stageHeight / scale);
-    setCanvasSize(width, height, width * scale, height * scale);
+    // No jogo, a tela tem a resolução do ecrã: a arte amplia-se por este inteiro, e os bonecos podem ter qualquer tamanho,
+    // maiores à frente e mais pequenos atrás, como no Calciobit. Nos outros ecrãs, a tela é da arte e o CSS amplia-a.
+    const artScale = stage === 'match' ? Math.max(1, Math.min(6, Math.round(scale * dpr))) : 1;
+    canvas.dataset.artScale = String(artScale);
+    setCanvasSize(width * artScale, height * artScale, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
     const bar = Math.max(0, (viewHeight - height * scale) / 2);
     const side = Math.max(0, (stageWidth - width * scale) / 2);

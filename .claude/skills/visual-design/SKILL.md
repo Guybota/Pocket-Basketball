@@ -25,7 +25,7 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
 
 - **Original.** Nada copiado nem parecido com recursos de outros jogos (Nintendo, Kairosoft e outros) nem com marcas reais: logótipos da NBA ou da FIBA, emblemas de clubes reais. Cuidado, por exemplo, com leão verde e branco, águia vermelha ou dragão azul e branco. Estuda-se a abordagem, não o resultado.
 - **Desenhado por código e determinista.** O que varia sai de uma semente: o hash do nome, do emblema, da semana ou do jogo. Na arte não se usa `Math.random`; a exceção atual são os flashes de fotografia. Fora de `src/sim/` podes usar `Math.sin` e funções parecidas.
-- **Escala inteira, sempre.** A arte desenha-se a 1× e mostra-se a múltiplos inteiros, com `imageSmoothingEnabled = false` e `image-rendering: pixelated`. Proibido:
+- **Escala inteira, com uma exceção.** A arte desenha-se a 1× e mostra-se a múltiplos inteiros, com `imageSmoothingEnabled = false` e `image-rendering: pixelated`. A exceção, por decisão do dono: no jogo, a tela tem a resolução do ecrã e os bonecos do mundo (jogadores, bancos, público) têm o tamanho da distância à câmara, como no Calciobit (`drawSprite(…, scale)` com `Camera.depthScale`). O desenho amplia-se primeiro por um inteiro e só depois se ajusta, por isso só as bordas ficam suaves. Tudo o resto continua a escala inteira. Proibido:
   - escalas fracionárias;
   - `rotate` (exceto os frames de queda que já existem);
   - `stroke` e `arc` com anti-aliasing;
