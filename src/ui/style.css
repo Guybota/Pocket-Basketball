@@ -1361,7 +1361,8 @@ html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
 #topUi.backdrop canvas#scene { filter: brightness(0.45) saturate(0.8); }
 /* Voltar: um botão redondo no canto de cima à esquerda, em todos os menus. */
 #game.floating:not(.court-only, .docked) #panel .actions button.back, #panel.hub .actions button.back { position: fixed; left: calc(12px + env(safe-area-inset-left, 0px)); top: 12px; z-index: 6; flex: none; width: 56px; height: 56px; min-height: 56px; padding: 0; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); color: transparent; font-size: 0; box-shadow: 2px 3px 0 var(--ink); }
-#game.floating:not(.court-only, .docked) #panel .actions button.back::before, #panel.hub .actions button.back::before { content: '‹'; font: 400 46px/1 var(--display); color: var(--ink); }
+/* No botão redondo, a seta fica a tinta sobre o papel (na barra escura é que se inverte). */
+#game.floating:not(.court-only, .docked) #panel .actions button.back img.ink, #panel.hub .actions button.back img.ink { filter: none; width: 32px; height: 32px; }
 #game.floating:not(.court-only, .docked) #panel .actions:not(:has(> :not(.back))), #panel.hub .actions:not(:has(> :not(.back))) { padding: 0; border: 0; min-height: 0; background: none; }
 
 /* O escritório e o balneário: a cena inteira, as opções em botões redondos com legenda à direita, o título ao lado do

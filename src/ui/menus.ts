@@ -152,7 +152,9 @@ const dot = (p: Player): string => `<i class="edot${p.injuryWeeks ? ' hurt' : p.
 /** A etiqueta do lugar na lista: os cinco papéis em campo, e os suplentes. */
 const slotBadge = (index: number): string => `<span class="ppos ppos-${slotCode(index)}">${slotCode(index)}</span>`;
 const bar = (...buttons: string[]): string => `<div class="actions">${buttons.join('')}</div>`;
-const backBtn = (to: GoTo): string => `<button type="button" class="back" data-go="${to}">‹ Voltar</button>`;
+// O voltar é sempre o mesmo: o ícone da seta em pixel art, redondo no canto (ou na barra, num ecrã estreito).
+const backButton = (attr: string): string => `<button type="button" class="icon back" ${attr} aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`;
+const backBtn = (to: GoTo): string => backButton(`data-go="${to}"`);
 const chevrons = (potential: number): string => {
   const on = Math.round((potential / 100) * 12);
   return `<div class="chevrons">${Array.from({ length: 12 }, (_, n) => `<i class="${n < on ? 'on' : ''}${n < on && n >= 8 ? ' hot' : ''}"></i>`).join('')}</div>`;
@@ -256,7 +258,7 @@ function trainScreen(): Rendered {
     bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}<span class="num">Alt</span>`)}
       <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('') + heightStar(p.height))}</div>
       ${totalCards(club) === 0 ? emptyState('Não há cartas para treinar. Ganham-se nos jogos: a jornada, um particular ou um jogo-treino.') : ''}
-      ${bar(`<button type="button" class="icon back" data-go="town" aria-label="Voltar" title="Voltar"><img class="ink" alt="" src="${controlIcon('back')}"></button>`, `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
+      ${bar(backBtn('town'), `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
   };
 }
 
@@ -718,7 +720,7 @@ function kitEditScreen(): Rendered {
         <div><span>Desenho da camisola</span><div class="patterns">${KIT_PATTERNS.map(([id, label]) => `<button type="button" data-kit-pattern="${id}" aria-pressed="${kit.pattern === id}"><img alt="" src="${kitImage({ ...kit, pattern: id })}"><span>${label}</span></button>`).join('')}</div></div>
         <div class="hint">${kitClash(kit, rivalKitFor(club, currentRival().name, kit, guestGame ? club.guest : null)) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
       </div>
-      ${bar(`<button type="button" class="back" data-go="${kitEditBack}">‹ Voltar</button>`)}`,
+      ${bar(backButton(`data-go="${kitEditBack}"`))}`,
     after: paintWardrobe,
   };
 }
@@ -745,7 +747,7 @@ function emblemScreen(): Rendered {
         <div><span>Cores</span><div class="chips4 three">${parts.map(([id, label]) => chip('data-em-part', id, label, emblem[id], emblemPart === id)).join('')}</div>${swatches('data-em-color', emblem[emblemPart])}</div>
         <div><span>Contorno</span>${choices('data-em-border', EMBLEM_BORDER_LIST, emblem.border ?? 'ink')}</div>
       </div>
-      ${bar(`<button type="button" class="back" data-go="${emblemBack}">‹ Voltar</button>`)}`,
+      ${bar(backButton(`data-go="${emblemBack}"`))}`,
   };
 }
 
@@ -934,7 +936,7 @@ function trophyScreen(): Rendered {
     top: `${fullCanvas('shelf')}<div class="tnote"><b>${esc(t.won ? t.name : `${t.name} (por ganhar)`)}</b><span>${esc(t.detail)}</span></div>`,
     bottom: `<div class="matchhead"><span>Carreira do treinador</span><b>${won} de ${trophies.length} troféus e prémios</b></div>
       <div class="scroll">${won === 0 ? emptyState('A vitrina ainda está vazia. Cada título, taça e prémio que ganhares fica aqui, e vai contigo para outro clube.', 'secretary') : ''}${trophies.map((item, n) => `<button type="button" class="trow" data-trophy="${n}" aria-pressed="${selectedTrophy === n}"><i class="${item.won ? 'yes' : ''}"></i><span>${esc(item.won ? item.name : '???')}</span><small>${item.won ? 'Ganho' : 'Por ganhar'}</small></button>`).join('')}</div>
-      ${bar('<button type="button" class="back" data-office="board">‹ Voltar</button>')}`,
+      ${bar(backButton('data-office="board"'))}`,
     after: () => drawShelf(element<HTMLCanvasElement>('shelf'), trophies),
   };
 }
