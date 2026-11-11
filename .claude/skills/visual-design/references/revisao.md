@@ -281,7 +281,7 @@ Página só para verificação, servida pelo Vite. Expõe `window.__anim` com:
 
 - `poseSheet()`: **já é uma folha de sprites.** Todas as 24 poses de `POSE_NAMES` (de `idle` a `slump`) para três jogadores (aparências de `lookOf` de três jogadores do plantel), cada uma em quatro variantes: de frente, de frente com bola, de costas, virado com bola. Células de 40 px, fundo `#56767a`, desenhadas com `drawSprite` a 1×. **Não tem rótulos nem números**, nem versão ampliada, e a lista `POSE_NAMES` está escrita à mão (não segue `POSES` automaticamente, por isso uma pose nova pode ficar de fora).
 - `moveStrip(move, frames)`: encontra uma semente onde o movimento acontece (`seedFor`, procura 120 sementes de `newClub(seed, 3)`), cria um `MatchView` numa tela de 360×216, avança até ao tick do evento, e grava `frames` imagens **uma por passo da simulação** (20 por segundo, `render(1, 0.05)`), recortadas 240×160 à volta do ator e coladas numa tira. Devolve também quantos rótulos flutuantes havia.
-- `venueShot`, `townShot`, `humorShot`: pavilhões, cidade e os momentos de humor forçados (`view.humor.pigeon = true`, `dogAt`, `sleeper`, mascote no desconto de tempo com `requestTimeout`).
+- `venueShot`, `townShot`, `humorShot`: pavilhões, cidade e os momentos de humor forçados (`view.humor.pigeon = true`, `dogAt`, `sleeper`).
 
 ### 6.2 `src/tools/anim-check.ts`
 

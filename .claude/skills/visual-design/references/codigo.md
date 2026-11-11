@@ -105,7 +105,7 @@ Retrato do código em novembro de 2026. As linhas mudam; confirma-as antes de me
   - o lançamento deixa um rasto de 6 quadrados dourados.
 - **Câmara:** segue com `1-exp(-s·2.2)`.
 - **Efeitos:**
-  - pó, pontos e nomes de jogadas a flutuar, flashes de fotografia, tremor no afundanço, balões de fala, etiquetas de nome, cão, pombo e mascote;
+  - pó, pontos e nomes de jogadas a flutuar, flashes de fotografia, tremor no afundanço, balões de fala, etiquetas de nome, cão e pombo;
   - na cidade: neve, luzes de Natal e janelas à noite;
   - nas cenas: vapor e uma lâmpada a piscar;
   - no CSS: `banner-in steps(4)` e os efeitos dos combos.

@@ -31,12 +31,14 @@ const VOICE_LIMIT = 24;
 const LOW_PRIORITY: ReadonlySet<Sound> = new Set(['bounce', 'catch', 'bump', 'steal']);
 /** O mesmo som dentro deste tempo (s) toca uma vez só: a 4× há eventos colados que soavam a metralhadora. */
 const REPEAT_GAP = 0.045;
+/** O burburinho da bancada passa por um passa-baixo aqui (Hz): de longe, as vozes não se percebem. */
+const MURMUR_CUTOFF = 1600;
 
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar. Os da bola, da bancada e dos
 // instrumentos calculam-se uma vez (synth.ts) para AudioBuffers, com algumas variantes, e depois só se tocam: os do
 // pavilhão quando se escolhe o pavilhão, os outros ao destrancar o som, nos momentos livres do browser.
-// Não há um ruído fixo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos, e na arena
-// de pedaços de burburinho encadeados.
+// Não há um ruído fixo de fundo: ruído filtrado sem parar soa a mar. O ambiente vem de sons curtos e soltos, e no pavilhão
+// e na arena de pedaços de burburinho encadeados, abafados como gente ao longe.
 //
 // Encaminhamento (criado em unlock):
 //   efeitos → room ─────────────────────────→ effectsBus ──────┐
@@ -56,7 +58,8 @@ export class GameAudio {
   private crowdLevel = 0.6;
   private venue: Venue = 'hall';
   private nextAmbience = 0;
-  private nextMurmur = 0;
+  /** Quando entra o próximo pedaço de cada corrente de burburinho (ver `keepMurmur`). */
+  private murmurAt = [0, 0];
   private theme: MusicTheme = 'none';
   /** O tema a retomar quando acaba uma vinheta com `resume`. */
   private resumeTheme: MusicTheme = 'none';
@@ -322,7 +325,20 @@ export class GameAudio {
   }
   private murmur(): AudioBuffer[] {
     const { talkers } = CROWDS[this.venue];
-    return this.set(`babble:${talkers}`, 2, r => babble(talkers, 2.4, r));
+    return this.set(`babble:${talkers}:far`, 3, r => babble(talkers, 2.4, r, MURMUR_CUTOFF));
+  }
+
+  /** O rumor dos pavilhões grandes nunca pára: cada corrente encadeia pedaços de burburinho que se sobrepõem, e a arena tem
+   * duas, desfasadas, para soar a muita gente e não a meia dúzia de vozes soltas. */
+  private keepMurmur(now: number): void {
+    const streams = this.venue === 'arena' ? 2 : this.venue === 'hall' ? 1 : 0;
+    for (let i = 0; i < streams; i++) {
+      // Quem esteve parado (pausa, menus) recomeça já, com a segunda corrente a meio da primeira.
+      if (now - this.murmurAt[i]! > 3000) this.murmurAt[i] = now + i * 800;
+      if (now < this.murmurAt[i]!) continue;
+      this.shot(this.murmur(), (this.venue === 'arena' ? 0.08 : 0.06) * this.crowdLevel);
+      this.murmurAt[i] = now + 1500 + Math.random() * 300;
+    }
   }
 
   /** Uma nota de um instrumento: a amostra mais perto e a velocidade que a põe no tom. */
@@ -483,8 +499,9 @@ export class GameAudio {
    * a rua tem vento, trânsito ao longe e uma voz de vez em quando; o pavilhão pequeno e o vazio têm eco e ténis a chiar;
    * a arena tem um burburinho que nunca pára. */
   ambience(now: number): void {
-    if (!this.context || this.muted || now < this.nextAmbience || this.active >= VOICE_LIMIT - 4) return;
-    const crowd = this.crowdLevel;
+    if (!this.context || this.muted || this.active >= VOICE_LIMIT - 4) return;
+    this.keepMurmur(now);
+    if (now < this.nextAmbience) return;
     const roll = Math.random();
     switch (this.venue) {
       case 'street':
@@ -504,21 +521,15 @@ export class GameAudio {
         return;
       case 'hall':
         this.nextAmbience = now + 700 + Math.random() * 1800;
-        if (roll < 0.12) this.rhythmicClaps();
-        else if (roll < 0.45) this.shot(this.murmur(), 0.05 * crowd);
-        else if (roll < 0.55) this.shoutOnce(0.008, Math.random() * 0.6);
+        if (roll < 0.05) this.rhythmicClaps();
+        else if (roll < 0.15) this.shoutOnce(0.008, Math.random() * 0.6);
         else this.squeak(0.02);
         return;
       case 'arena':
-        this.nextAmbience = now + 250 + Math.random() * 200;
-        // Cada pedaço de burburinho entra antes de o anterior acabar, por isso nunca há buracos.
-        if (now >= this.nextMurmur) {
-          this.shot(this.murmur(), 0.1 * crowd);
-          this.nextMurmur = now + 1500 + Math.random() * 200;
-        }
-        if (roll < 0.25) this.shoutOnce(0.007, Math.random() * 0.3);
-        if (roll < 0.04) this.rhythmicClaps();
-        else if (roll < 0.2) this.squeak(0.014);
+        this.nextAmbience = now + 600 + Math.random() * 1200;
+        if (roll < 0.03) this.rhythmicClaps();
+        else if (roll < 0.15) this.shoutOnce(0.007, Math.random() * 0.3);
+        else if (roll < 0.45) this.squeak(0.014);
         return;
     }
   }

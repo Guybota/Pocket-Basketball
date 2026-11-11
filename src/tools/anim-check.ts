@@ -24,7 +24,7 @@ await withAnimPage(async page => {
     save(name, await page.evaluate(([n, w]) => (window as unknown as { __anim: World }).__anim.venueShot(n!, null, w!), [d, week]));
   }
   for (const [name, week] of [['cidade-chuva', 8], ['cidade-sol', 4], ['cidade-noite', 13]] as const) save(name, await page.evaluate(w => (window as unknown as { __anim: World }).__anim.townShot(2, w), week));
-  for (const kind of ['dog', 'pigeon', 'sleeper', 'mascot']) {
+  for (const kind of ['dog', 'pigeon', 'sleeper']) {
     const images = await page.evaluate(k => (window as unknown as { __anim: World }).__anim.humorShot(k), kind);
     images.forEach((image, k) => save(`humor-${kind}-${k + 1}`, image));
   }

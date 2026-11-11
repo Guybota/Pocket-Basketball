@@ -310,9 +310,9 @@ export function updateTargets(s: MatchState): void {
     passer.targetX = hasBall ? x : s.ball.x;
     passer.targetY = hasBall ? y : s.ball.y;
     for (const r of receivers) {
-      // V-cut: enquanto quem repõe não tem a bola, o recetor afasta-se dela; depois vem recebê-la.
+      // V-cut contra uma defesa que pressiona: enquanto quem repõe não tem a bola, o recetor afasta-se dela; depois vem recebê-la.
       const away = distance(r.x, r.y, x, y) || 1;
-      const k = hasBall ? 0 : B.inboundVCutDistance / away;
+      const k = hasBall || s.tactics[defense].pressure <= 0 ? 0 : B.inboundVCutDistance / away;
       r.body.targetX = Math.max(0.5, Math.min(COURT_LENGTH - 0.5, r.x + (r.x - x) * k));
       r.body.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, r.y + (r.y - y) * k));
     }

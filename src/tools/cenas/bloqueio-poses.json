@@ -1,7 +1,7 @@
 {
   "kind": "sheet",
   "name": "bloqueio-poses",
-  "poses": ["idle", "screen", "bump", "callBall", "callBall+run0", "callBall+run1", "callBall+run2"],
+  "poses": ["idle", "screen", "bump"],
   "looks": [{ "player": 0 }, { "player": 4, "kit": "cream" }, { "player": 9, "skin": 3, "style": 2 }, { "player": 2, "legs": 9, "torso": 9, "build": "heavy" }],
   "variants": ["front", "back", "flip"],
   "zoom": 4

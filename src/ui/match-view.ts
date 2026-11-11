@@ -75,7 +75,7 @@ const HOOP_FRONT_OFFSET = 0.5;
 const BALL_IN_HOOP_RANGE = 0.7;
 // Uma mudança de direção só se faz passado este tempo, para o boneco não tremer entre frente e costas.
 const TURN_LOCK_TICKS = 12;
-const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$|callBall$|bump$)/;
+const BACK_POSES = /^(run|dribRun|holdRun|slide|idle$|leap$|crossover$|grab$|reach$|gather$|dunk$|block$|bump$)/;
 const IDLE_TURN_MARGIN = 24;
 // Bola ao alto: de início fletem as pernas, e o pico do salto coincide com o toque na bola.
 const TIP_RISE = 0.45;
@@ -369,7 +369,6 @@ export class MatchView {
   private pigeon: { hoopX: number; flew: number } | null = null;
   private readonly sleeperFan: number;
   private readonly ownerLook: Look;
-  private readonly mascotLook: Look | null;
   private fansCheerUntil = 0;
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
@@ -485,10 +484,6 @@ export class MatchView {
       looks.push({ ...look, style: (i * 5) % 4, street: true });
     }
     this.ownerLook = looks[3]!;
-    // A mascote veste as cores do clube dono do pavilhão; a cabeça grande desenha-se por cima.
-    const css = (c: readonly number[]): string => `#${c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
-    const banner = theme.banner;
-    this.mascotLook = theme.mascot === undefined || !banner ? null : { ...looks[0]!, custom: { id: 'mascot', name: '', jersey: css(banner[0]), second: css(banner[1]), pattern: 'plain', trim: css(banner[1]), shorts: css(banner[0]) } };
     // A enchente cresce com a confiança na direção: a um terço, só os fiéis; perto de cem, casa cheia.
     // E um adversário forte para a divisão traz mais gente, um fraco menos (uma divisão de diferença vale ±50 %).
     const draw = division >= DIVISIONS.length ? 1 : Math.max(0.75, Math.min(1.3, 1 + (teamRating(away) - DIVISIONS[division]!.level) / 22));
@@ -1427,11 +1422,10 @@ export class MatchView {
     const inFront = man !== undefined && Math.hypot(b.x - hoopX, b.y) < Math.hypot(man.x - hoopX, man.y);
     const guarding = man !== undefined && inFront && (man.x - b.x) * (man.x - b.x) + (man.y - b.y) * (man.y - b.y) < STANCE_RANGE * STANCE_RANGE;
     if (moving && guarding) return { pose: step < 2 ? 'slide0' : 'slide1', withBall: false };
-    // O bloqueio direto: posto, o bloqueador fica plantado; quando o portador arranca, no pick-and-roll rola a pedir a bola.
+    // O bloqueio direto: posto, o bloqueador fica plantado; quando o portador arranca, rola a correr.
     const sc = s.screen;
     if (sc?.handler && sc.by === b && sc.handler === s.holder) {
       if (!s.driving && sc.x !== undefined) return { pose: 'screen', withBall: false };
-      if (s.driving && s.play === 'pickRoll') return { pose: 'callBall', withBall: false };
     }
     if (moving) return { pose: RUN_FRAMES[step]!, withBall: false };
     // O bloqueio sem bola mexe-se com o defensor; só se planta quando está parado.
@@ -2405,34 +2399,11 @@ export class MatchView {
     }
   }
 
-  /** A mascote, o cão do bairro e o pombo do aro: entram na ordem de profundidade como os outros bonecos. Nada disto mexe no jogo. */
+  /** O cão do bairro e o pombo do aro: entram na ordem de profundidade como os outros bonecos. Nada disto mexe no jogo. */
   private addHumor(drawables: { y: number; draw: () => void }[]): void {
     const { g, s, camera } = this;
     const { theme } = this.textures;
     const beat = this.reducedMotion ? 0 : this.animTick >> 2;
-    const mascot = this.mascotLook;
-    if (mascot && theme.mascot !== undefined) {
-      // Encostada à ponta do banco da casa, a festejar os cestos do clube; num desconto vem para o campo dançar.
-      const dancing = s.phase === 'timeout';
-      const [sx, sy] = camera.project(dancing ? 9.8 : 2.4, dancing ? -4.4 : -9);
-      const pose: PoseName = dancing ? (['cheer0', 'clap0', 'cheer1', 'clap1'] as const)[beat % 4]! : s.tick < this.benchCheerUntil[this.crowdTeam] ? (beat % 2 ? 'cheer0' : 'cheer1') : 'idle';
-      const y = (sy | 0) - (dancing && beat % 2 === 0 ? 2 : 0);
-      const kind = theme.mascot;
-      drawables.push({
-        y: sy,
-        draw: () => {
-          this.shadow(g, sx, sy);
-          this.sprite(g, pose, mascot, sx | 0, y, dancing && beat % 8 >= 4, false, false);
-          // A cabeça grande escala com o corpo, à volta do topo da cabeça do boneco.
-          const k = this.depth(y);
-          g.save();
-          g.translate(sx | 0, y - this.tall(mascot, y));
-          g.scale(k, k);
-          drawMascotHead(g, kind, mascot.custom!, 0, 0);
-          g.restore();
-        },
-      });
-    }
     const dogAt = this.humor.dogAt;
     if (dogAt !== null && s.tick >= dogAt && s.tick < dogAt + DOG_TICKS) {
       // Um cão entra pelo portão, corre pelo campo e senta-se; o dono vem buscá-lo e leva-o ao colo.
@@ -2843,43 +2814,3 @@ function drawPigeon(g: CanvasRenderingContext2D, x: number, y: number, flip: boo
   }
 }
 
-/** A cabeça grande da mascote, por cima do boneco: galo (0), urso (1) ou gato (2), nas cores do clube. */
-function drawMascotHead(g: CanvasRenderingContext2D, kind: number, kit: ClubKit, x: number, top: number): void {
-  const r = (dx: number, dy: number, w: number, h: number, color: string): void => {
-    g.fillStyle = color;
-    g.fillRect(x + dx, top + dy, w, h);
-  };
-  const ink = '#1b2230';
-  if (kind === 1) {
-    r(-6, -6, 4, 4, ink);
-    r(3, -6, 4, 4, ink);
-    r(-5, -5, 2, 2, kit.jersey);
-    r(4, -5, 2, 2, kit.jersey);
-  } else if (kind === 2) {
-    r(-5, -7, 3, 3, ink);
-    r(3, -7, 3, 3, ink);
-    r(-4, -6, 1, 2, kit.jersey);
-    r(4, -6, 1, 2, kit.jersey);
-  } else {
-    r(-2, -8, 2, 3, '#cf3a2c');
-    r(0, -9, 2, 4, '#cf3a2c');
-    r(2, -8, 2, 3, '#cf3a2c');
-  }
-  r(-5, -5, 11, 10, ink);
-  r(-4, -4, 9, 8, kit.jersey);
-  r(-3, -2, 2, 2, '#ffffff');
-  r(2, -2, 2, 2, '#ffffff');
-  r(-2, -1, 1, 1, ink);
-  r(2, -1, 1, 1, ink);
-  if (kind === 0) {
-    r(-1, 1, 3, 2, '#f2c230');
-    r(0, 3, 1, 2, '#cf3a2c');
-  } else {
-    r(-2, 1, 5, 3, kit.second);
-    r(0, 1, 1, 1, kind === 2 ? '#e88aa0' : ink);
-    if (kind === 2) {
-      r(-7, 2, 3, 1, ink);
-      r(5, 2, 3, 1, ink);
-    }
-  }
-}

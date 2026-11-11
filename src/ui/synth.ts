@@ -513,7 +513,7 @@ export function crowd(kind: Shout, people: number, r: Rng): Stereo {
 }
 
 /** Burburinho: vários a conversar ao longe, sílabas ao acaso e pausas. Entra e sai devagar, para se encadear. */
-export function babble(people: number, seconds: number, r: Rng): Stereo {
+export function babble(people: number, seconds: number, r: Rng, far = 0): Stereo {
   const n = samples(seconds);
   const out: Stereo = [new Float32Array(n), new Float32Array(n)];
   for (let p = 0; p < people; p++) {
@@ -537,6 +537,11 @@ export function babble(people: number, seconds: number, r: Rng): Stereo {
     amp.push([seconds, 0]);
     const voice = vox(seconds, pitch, [[0, vowels[0]![1]], ...vowels], amp, [[0, 0.2]], who.scale, r);
     addPanned(out, voice, 0, between(r, 0.5, 1), between(r, -0.9, 0.9));
+  }
+  // A bancada ao longe: sem os agudos, as sílabas deixam de se perceber e as vozes fundem-se num só rumor.
+  if (far > 0) for (const ch of out) {
+    const low = new Biquad('lowpass', far, 0.6);
+    for (let i = 0; i < n; i++) ch[i] = low.run(ch[i]!);
   }
   const fade = samples(Math.min(0.6, seconds / 3));
   for (const ch of out) for (let i = 0; i < fade; i++) {

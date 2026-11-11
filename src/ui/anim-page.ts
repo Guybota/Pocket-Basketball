@@ -1,5 +1,5 @@
 // Desenha as poses e os movimentos especiais numa cena à parte, para a verificação os poder ver sem correr o jogo.
-import { requestTimeout, simulateMatch, type MatchState } from '../sim/match.ts';
+import { simulateMatch, type MatchState } from '../sim/match.ts';
 import { clubIdentity } from './art/identity.ts';
 import { drawTown, weatherFor } from './art/town.ts';
 import { MOVES, type MoveId } from '../sim/types.ts';
@@ -8,7 +8,7 @@ import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
 import { MatchView } from './match-view.ts';
 import { scene, sheet } from './review.ts';
 
-const POSE_NAMES: PoseName[] = ['idle', 'run0', 'run1', 'run2', 'drib0', 'drib1', 'dribRun0', 'dribRun1', 'dribRun2', 'dribRun3', 'crossover', 'stumble', 'gather', 'shoot', 'dunk', 'block', 'defend', 'pass', 'cheer0', 'cheer1', 'sit', 'fists', 'handsHead', 'slump', 'screen', 'bump', 'callBall'];
+const POSE_NAMES: PoseName[] = ['idle', 'run0', 'run1', 'run2', 'drib0', 'drib1', 'dribRun0', 'dribRun1', 'dribRun2', 'dribRun3', 'crossover', 'stumble', 'gather', 'shoot', 'dunk', 'block', 'defend', 'pass', 'cheer0', 'cheer1', 'sit', 'fists', 'handsHead', 'slump', 'screen', 'bump'];
 const CELL = 40;
 const STRIP_W = 240;
 const STRIP_H = 160;
@@ -77,7 +77,7 @@ function moveStrip(move: MoveId, frames: number): { image: string; floaters: num
   return { image: strip.toDataURL(), floaters };
 }
 
-type Humor = 'dog' | 'pigeon' | 'sleeper' | 'mascot';
+type Humor = 'dog' | 'pigeon' | 'sleeper';
 
 /** Um jogo à parte numa tela de 360×216, já a meio do primeiro período: no pavilhão do clube `owner` (sem nome, o nosso), à hora e com o tempo da semana `week`. */
 function venueView(division: number, owner: string | null, week: number, seed = 5): MatchView {
@@ -108,11 +108,9 @@ function venueShot(division: number, owner: string | null, week: number): string
 }
 
 /** Os nomes dos clubes de uma divisão: para os pavilhões de três adversários diferentes. */
-function rivals(division: number, count: number, mascot?: boolean): string[] {
+function rivals(division: number, count: number): string[] {
   const club = newClub(5, division);
-  const names = club.clubs.map(c => c.name).filter(name => name !== club.team.name);
-  if (mascot === undefined) return names.slice(0, count);
-  return names.filter(name => (venueView(division, name, 1) as unknown as { textures: { theme: { mascot?: number } } }).textures.theme.mascot !== undefined === mascot).slice(0, count);
+  return club.clubs.map(c => c.name).filter(name => name !== club.team.name).slice(0, count);
 }
 
 /** A cidade numa divisão e numa semana. */
@@ -158,12 +156,7 @@ function humorShot(kind: Humor): string[] {
     };
     return [look(), look(), (frames(view, 10), look())];
   }
-  const view = venueView(2, rivals(2, 1, true)[0]!, 1);
-  frames(view, 200);
-  requestTimeout(view.s, 0);
-  while (view.s.phase !== 'timeout' && view.s.tick < 4000) view.stepSim();
-  frames(view, 6);
-  return [shot(view, 40), (frames(view, 4), shot(view, 2))];
+  return [];
 }
 
 Object.assign(window, { __anim: { poseSheet, moveStrip, moves: MOVES, venueShot, rivals, townShot, humorShot, sheet, scene } });

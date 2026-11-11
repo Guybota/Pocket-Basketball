@@ -101,8 +101,6 @@ export interface CourtTheme {
   stain?: boolean;
   /** A faixa da claque no muro da bancada, com as cores do clube. */
   banner?: readonly [Rgb, Rgb];
-  /** A mascote do clube, se tiver: 0 galo, 1 urso, 2 gato. Desenha-a a vista do jogo. */
-  mascot?: number;
   /** Quanto a bancada recua por cada metro que sobe. Zero é uma parede a pique. */
   slope: number;
   /** Ao ar livre: em vez de paredes há uma rede fina, o exterior por trás e um pano de fundo ao longe; `wall` é esse fundo. */
@@ -510,7 +508,7 @@ const HALL_WALLS: readonly Rgb[] = [[70, 50, 52], [42, 56, 72], [58, 62, 46]];
 const SEAT_SHADOW: Rgb = [40, 40, 46];
 
 /** O pavilhão de cada clube. A divisão manda no tipo de casa (rua, escola, municipal, arena); o emblema escolhe as cadeiras e a faixa
- * nas cores do clube, a parede, o tom do soalho, a luz, os patrocinadores, os prédios do bairro e a mascote. */
+ * nas cores do clube, a parede, o tom do soalho, a luz, os patrocinadores, e os prédios do bairro. */
 function clubVenue(theme: CourtTheme, emblem: Emblem): CourtTheme {
   const seed = venueSeed(emblem);
   const r = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
@@ -534,7 +532,6 @@ function clubVenue(theme: CourtTheme, emblem: Emblem): CourtTheme {
     stain: r(10) < 0.5,
     wallColor: theme.windows ? pick(SCHOOL_WALLS, 6) : theme.slope >= 0.8 ? mix(theme.wallColor, primary, 0.2) : pick(HALL_WALLS, 6),
     windows: theme.windows && { ...theme.windows, period: pick([0.45, 0.6, 0.8], 7) },
-    mascot: theme.crowd && r(8) < 0.55 ? Math.floor(r(9) * 3) : undefined,
   };
 }
 
