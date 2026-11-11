@@ -1285,7 +1285,12 @@ addEventListener('resize', fit);
 // volta-se a medir depois de o teclado ter fechado.
 // Com zoom de dois dedos a área visível também muda, mas aí não se volta a medir: o jogo encolhia para caber no bocado ampliado.
 window.visualViewport?.addEventListener('resize', () => { if (window.visualViewport!.scale < 1.01) fit(); });
-addEventListener('focusout', () => window.setTimeout(fit, 400));
+// Só ao sair de um campo de texto (é aí que o teclado fecha): medir a cada perda de foco redesenhava a cidade, o redesenho
+// tirava o botão com o foco, e essa perda de foco voltava a redesenhar — a nota da secretária piscava sem parar.
+addEventListener('focusout', event => {
+  const from = event.target;
+  if (from instanceof HTMLInputElement || from instanceof HTMLTextAreaElement || from instanceof HTMLSelectElement) window.setTimeout(fit, 400);
+});
 fit();
 // O clube de ensaio começa já na primeira jornada, a não ser que a morada diga a semana.
 club = testSeed !== null ? { ...newClub(testSeed, testDivision), week: paramInt('semana') ?? PRESEASON_WEEKS + 1 } : readClub(saveStatus);

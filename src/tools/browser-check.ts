@@ -60,8 +60,9 @@ const firstMatch = (seed: number, division: number) => {
 };
 /** Depois da bola ao alto há a apresentação dos cinco; a verificação fotografa-a e salta-a. */
 const skipIntro = async (p: Page): Promise<void> => {
-  await p.waitForSelector('#introSkip');
-  await p.click('#introSkip');
+  // A apresentação passa sozinha ao jogo ao fim de 3,5 s: se uma captura lenta já a deixou passar, segue-se.
+  await p.locator('#introSkip').click({ timeout: 4000 }).catch(() => {});
+  await p.waitForSelector('#pauseBtn');
 };
 const kick = async (p: Page): Promise<void> => {
   await toArena(p);
