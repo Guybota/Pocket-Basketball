@@ -55,6 +55,13 @@ export const BALANCE = {
   pressHelpDistance: 4,
   pressBreakPressure: 0.3,
   pressBreakPassChance: 0.8,
+  // Contra pressão: um colega fica atrás da bola, a acompanhá-la, e outro vem ao meio do campo (pivô), para receber à frente.
+  pressSafetyBehind: 2.5,
+  pressPivotU: 14,
+  // Na reposição, os recetores fingem que vão para longe (V-cut) e só vêm à bola quando quem repõe a tem na mão.
+  inboundVCutDistance: 2.5,
+  // Depois de um cesto, contra uma defesa que pressiona, quem repõe corre a linha de fundo até aqui (distância ao meio).
+  inboundRunBaselineY: 5.5,
   // Jogadas: o bloqueio conta quando o bloqueador está a esta distância do defensor; com ele posto, a penetração apetece mais.
   screenSetRange: 1.4,
   screenPressureFactor: 0.5,

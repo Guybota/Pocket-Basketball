@@ -60,7 +60,7 @@ export function resolveShot(s: MatchState, f: ShotFlight): void {
       ...(assisted ? { other: s.lastPasser!.player.name } : {}),
     });
     if (f.fouledBy) startFreeThrows(s, f.shooter, 1);
-    else deadBall(s, other(team), false, 'baseline');
+    else deadBall(s, other(team), false, 'baseline', true);
     return;
   }
   emit(s, 'missed', team, { player: f.shooter.player.name, points: f.points });

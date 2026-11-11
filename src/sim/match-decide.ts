@@ -308,7 +308,10 @@ export function decide(s: MatchState): void {
       const ahead = teammates.filter(b => toU(s, b.team, b.x) < u - 1);
       const openness = (b: Body): number => distance(b.x, b.y, nearestDefender(s, b).x, nearestDefender(s, b).y);
       const target = lowest(ahead, b => -openness(b));
+      // Ninguém solto à frente e o defensor colado: tenta-se passá-lo (só quem tem o crossover).
+      const marker = nearestDefender(s, h);
       if (target && openness(target) > 1.2) pass(s, h, target);
+      else if (inFrontOf(s, marker, h) && distance(h.x, h.y, marker.x, marker.y) < B.stanceRange) tryCrossover(s, h, marker, pressure);
     }
     return;
   }

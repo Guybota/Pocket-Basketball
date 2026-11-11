@@ -127,6 +127,16 @@ export function updateTargets(s: MatchState): void {
         b.targetY = 0;
       }
     }
+    // Pressão no campo de trás: com o defensor à frente e perto, dribla-se pelo ombro dele do lado do meio do campo, em vez de ir
+    // contra ele e ficar encurralado na linha lateral.
+    if (b === s.holder && !s.driving && s.phase === 'live' && toU(s, offense, b.x) > B.halfCourtPickUpU && pressureOn(s, b) >= B.pressBreakPressure) {
+      const defender = nearestDefender(s, b);
+      if (inFrontOf(s, defender, b) && distance(b.x, b.y, defender.x, defender.y) < B.stanceRange) {
+        const middle = Math.abs(b.y) > 1 ? -Math.sign(b.y) : b.y >= defender.y ? 1 : -1;
+        b.targetX = defender.x + fromU(s, offense, 0) - fromU(s, offense, 1);
+        b.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, defender.y + middle * B.driveSideGap));
+      }
+    }
     // Contra-ataque: o portador empurra pelo meio, as asas correm abertas à frente da bola, o poste vai direito ao aro e o 4 vem atrás.
     if (s.tick < s.breakUntil && (s.phase === 'live' || s.phase === 'pass') && s.holder) {
       const hu = toU(s, offense, s.holder.x);
@@ -195,6 +205,18 @@ export function updateTargets(s: MatchState): void {
       const defender = nearestDefender(s, h);
       helper.targetX = fromU(s, offense, hu - B.pressHelpDistance);
       helper.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, h.y + (defender.y > h.y ? -2.5 : 2.5)));
+      // As saídas seguras: o mais perto a seguir fica atrás da bola, do lado do meio; o seguinte vem ao meio do campo, para
+      // tirar a bola de uma armadilha na lateral.
+      const rest = s.court[offense].filter(b => b !== h && b !== helper).sort((p, q) => distance(p.x, p.y, h.x, h.y) - distance(q.x, q.y, h.x, h.y));
+      const [safety, pivot] = rest;
+      if (safety) {
+        safety.targetX = fromU(s, offense, Math.min(COURT_LENGTH - 1, hu + B.pressSafetyBehind));
+        safety.targetY = h.y * 0.3;
+      }
+      if (pivot && hu > B.pressPivotU + 2) {
+        pivot.targetX = fromU(s, offense, B.pressPivotU);
+        pivot.targetY = 0;
+      }
     } else if (hu <= B.screenStartU && !s.driving) {
       // Se a opção saiu numa troca a meio da posse, a jogada deixa de ser para ela.
       if (s.playFor && s.playFor.slot < 0) s.playFor = null;
@@ -277,12 +299,22 @@ export function updateTargets(s: MatchState): void {
     });
   }
   if (s.phase === 'dead' && s.inbound) {
-    const { passer, x, y, receivers, hasBall } = s.inbound;
+    const inbound = s.inbound;
+    // Chegado ao sítio com a bola, quem repõe corre a linha de fundo, se puder (ver `setupInbound`).
+    if (inbound.hasBall && inbound.runTo !== undefined && distance(inbound.passer.x, inbound.passer.y, inbound.x, inbound.y) < B.inboundSettleDistance) {
+      inbound.y = inbound.runTo;
+      inbound.runTo = undefined;
+      inbound.settled = 0;
+    }
+    const { passer, x, y, receivers, hasBall } = inbound;
     passer.targetX = hasBall ? x : s.ball.x;
     passer.targetY = hasBall ? y : s.ball.y;
     for (const r of receivers) {
-      r.body.targetX = r.x;
-      r.body.targetY = r.y;
+      // V-cut: enquanto quem repõe não tem a bola, o recetor afasta-se dela; depois vem recebê-la.
+      const away = distance(r.x, r.y, x, y) || 1;
+      const k = hasBall ? 0 : B.inboundVCutDistance / away;
+      r.body.targetX = Math.max(0.5, Math.min(COURT_LENGTH - 0.5, r.x + (r.x - x) * k));
+      r.body.targetY = Math.max(-COURT_HALF_WIDTH + 0.5, Math.min(COURT_HALF_WIDTH - 0.5, r.y + (r.y - y) * k));
     }
   }
   const focus = s.tactics[defense].focus ?? [];

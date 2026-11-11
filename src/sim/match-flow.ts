@@ -57,7 +57,7 @@ export function giveBall(s: MatchState, b: Body): void {
 }
 
 /** Prepara a reposição: depois de um cesto, da linha de fundo; nos outros casos, da lateral mais próxima da bola. */
-export function setupInbound(s: MatchState, kind: 'baseline' | 'side'): void {
+export function setupInbound(s: MatchState, kind: 'baseline' | 'side', afterScore = false): void {
   const offense = s.offense;
   const defense = other(offense);
   const attack = attackDirection(s, offense);
@@ -84,6 +84,8 @@ export function setupInbound(s: MatchState, kind: 'baseline' | 'side'): void {
     if (second) receivers.push({ body: second, ...far });
   }
   s.inbound = { passer, x, y, receivers, waited: 0, settled: 0, hasBall: false };
+  // Só depois de um cesto se pode correr a linha de fundo: contra pressão, foge-se ao defensor e muda-se o ângulo do passe.
+  if (afterScore && kind === 'baseline' && s.tactics[defense].pressure > 0) s.inbound.runTo = Math.sign(y) * B.inboundRunBaselineY;
 }
 
 /** Passa a quem estiver mais solto. */
@@ -116,7 +118,7 @@ export function nearestLine(s: MatchState): 'baseline' | 'side' {
   return Math.min(s.ball.x, COURT_LENGTH - s.ball.x) < COURT_HALF_WIDTH - Math.abs(s.ball.y) ? 'baseline' : 'side';
 }
 
-export function deadBall(s: MatchState, inbounding: TeamIndex, keepsPossession: boolean, kind: 'baseline' | 'side' = nearestLine(s)): void {
+export function deadBall(s: MatchState, inbounding: TeamIndex, keepsPossession: boolean, kind: 'baseline' | 'side' = nearestLine(s), afterScore = false): void {
   if (!keepsPossession) newPossession(s, inbounding);
   s.holder = null;
   s.flight = null;
@@ -129,7 +131,7 @@ export function deadBall(s: MatchState, inbounding: TeamIndex, keepsPossession: 
   rotate(s, 0);
   rotate(s, 1);
   s.timer = seconds(s.events.slice(before).some(e => e.type === 'substitution') ? B.substitutionSeconds : B.deadBallSeconds);
-  setupInbound(s, kind);
+  setupInbound(s, kind, afterScore);
   // A equipa dirigida pela simulação trava os parciais do adversário com um desconto.
   if (!s.controlled[inbounding] && s.run.team !== inbounding && s.run.points >= B.aiTimeoutRun && s.timeoutsLeft[inbounding] > 0) {
     s.pendingTimeout[inbounding] = true;
@@ -380,7 +382,7 @@ export function stepFreeThrow(s: MatchState): void {
   }
   s.freeThrow = null;
   if (made) {
-    deadBall(s, other(team), false, 'baseline');
+    deadBall(s, other(team), false, 'baseline', true);
   } else {
     s.ball.x = fromU(s, team, 1.575);
     s.ball.y = 0;

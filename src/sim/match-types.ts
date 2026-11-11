@@ -31,6 +31,8 @@ export interface Inbound {
   settled: number;
   /** Quem repõe já apanhou a bola do chão e leva-a na mão. */
   hasBall: boolean;
+  /** Depois de um cesto, quem repõe pode correr a linha de fundo: chegado ao sítio, vai para esta altura antes de passar. */
+  runTo?: number;
 }
 
 export interface JumpBall {
