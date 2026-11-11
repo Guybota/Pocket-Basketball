@@ -562,11 +562,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 #game.stage-in-slow { animation: stage-in .9s ease-out; }
 /* O fundo da página é a tinta do jogo: a cortina passa por esse azul escuro, não pelo preto. */
 @keyframes stage-in { from { opacity: 0; } 30% { opacity: 0; } to { opacity: 1; } }
-.found-card img { animation: card-in .35s both; }
+/* Só a carta nova (a última) vira: a lista reescreve-se a cada carta que cai, e as que já lá estavam viravam outra vez. */
+.found-card:last-child img { animation: card-in .35s both; }
 @keyframes card-in { from { opacity: 0; transform: rotateY(90deg); } to { opacity: 1; transform: none; } }
 .gainrow > .gr:nth-of-type(2) { animation: grade-pop .4s .25s both; }
 @keyframes grade-pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
-html.reduce-motion :is(#game.stage-in, #game.stage-in-slow, .found-card img, .gainrow > .gr:nth-of-type(2)) { animation: none; }
+html.reduce-motion :is(#game.stage-in, #game.stage-in-slow, .found-card:last-child img, .gainrow > .gr:nth-of-type(2)) { animation: none; }
 /* A apresentação antes do jogo: os cinco de cada lado entram um a um. */
 .intro { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); color: var(--paper); }
 .intro-head { text-align: center; font: 400 22px/1 var(--display); color: var(--gold); }
@@ -989,8 +990,8 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .cityp { flex: 1; min-height: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
 .cityp p { margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); }
 /* Quem fala, com cara: a secretária, o adjunto e o presidente. */
-/* As falas entram num fundido curto (speech.ts escreve-as letra a letra). */
-.say { animation: say-in .2s ease-out both; }
+/* As falas novas entram num fundido curto (speech.ts marca-as e escreve-as letra a letra). */
+.say.say-new { animation: say-in .2s ease-out both; }
 @keyframes say-in { from { opacity: 0; } to { opacity: 1; } }
 html.reduce-motion .say { animation: none; }
 .say { flex: none; display: grid; grid-template-columns: 40px 1fr; gap: 6px; align-items: center; margin: 0; padding: 3px 6px; background: var(--paper-2); border-left: 4px solid var(--ball); font: 400 15px/1.1 var(--small); color: var(--ink); text-align: left; }
@@ -1361,8 +1362,9 @@ html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
 #topUi.backdrop canvas#scene { filter: brightness(0.45) saturate(0.8); }
 /* Voltar: um botão redondo no canto de cima à esquerda, em todos os menus. */
 #game.floating:not(.court-only, .docked) #panel .actions button.back, #panel.hub .actions button.back { position: fixed; left: calc(12px + env(safe-area-inset-left, 0px)); top: 12px; z-index: 6; flex: none; width: 56px; height: 56px; min-height: 56px; padding: 0; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); color: transparent; font-size: 0; box-shadow: 2px 3px 0 var(--ink); }
-/* No botão redondo, a seta fica a tinta sobre o papel (na barra escura é que se inverte). */
-#game.floating:not(.court-only, .docked) #panel .actions button.back img.ink, #panel.hub .actions button.back img.ink { filter: none; width: 32px; height: 32px; }
+/* No botão redondo do canto, o «‹» grande da letra do jogo (escolha do dono); a seta em pixel art fica só na barra escura. */
+#game.floating:not(.court-only, .docked) #panel .actions button.back img, #panel.hub .actions button.back img { display: none; }
+#game.floating:not(.court-only, .docked) #panel .actions button.back::before, #panel.hub .actions button.back::before { content: '‹'; font: 400 46px/1 var(--display); color: var(--ink); }
 #game.floating:not(.court-only, .docked) #panel .actions:not(:has(> :not(.back))), #panel.hub .actions:not(:has(> :not(.back))) { padding: 0; border: 0; min-height: 0; background: none; }
 
 /* O escritório e o balneário: a cena inteira, as opções em botões redondos com legenda à direita, o título ao lado do

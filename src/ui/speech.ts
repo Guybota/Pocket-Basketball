@@ -10,6 +10,9 @@ function type(el: HTMLElement): void {
   const full = el.textContent ?? '';
   if (!full || seen.has(full) || busy.has(el)) return;
   seen.add(full);
+  // Só uma frase nova entra com o fundido: um painel que se reescreve (as trocas no desconto, a cada 250 ms) recria a
+  // fala com o mesmo texto, e ela piscava.
+  el.closest('.say')?.classList.add('say-new');
   if (seen.size > 200) seen.delete(seen.values().next().value!);
   if (reducedMotion()) return;
   busy.add(el);
