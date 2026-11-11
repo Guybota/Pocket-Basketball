@@ -53,6 +53,11 @@ const element = <T extends HTMLElement>(id: string): T => document.getElementByI
 const game = element<HTMLDivElement>('game');
 const screen_ = element<HTMLDivElement>('screen');
 const canvas = element<HTMLCanvasElement>('court');
+const backdrop = element<HTMLCanvasElement>('backdrop');
+const backdropContext = backdrop.getContext('2d', { willReadFrequently: true })!;
+let lastBackdrop = 0;
+// Uma tela de passagem, do tamanho do chão: `putImageData` não encolhe, e copiar a tela do jogo obrigava a lê-la da placa gráfica.
+const backdropFloor = document.createElement('canvas');
 const panel = element<HTMLDivElement>('panel');
 const banner = element<HTMLDivElement>('banner');
 const hudElement = element<HTMLDivElement>('hud');
@@ -73,6 +78,8 @@ const testSeed = paramInt('semente');
 const testDivision = Math.max(0, Math.min(DIVISIONS.length - 1, paramInt('divisao') ?? 0));
 let club: ClubState | null = null;
 let stage: Stage = 'title';
+// O pavilhão do jogo em curso (ver `venueOf`), também para as repetições.
+let matchVenue = 0;
 // Na horizontal, o resultado do jogo abre numa janela ao centro, com o campo a ocupar o ecrã todo por trás.
 let resultOpen = false;
 // No jogo, o painel escondido e o campo com o ecrã todo (o botão do canto).
@@ -92,6 +99,7 @@ let found: CardId[] = [];
 let dropUntil = 0;
 let speed = 1;
 const STILL_FRAME_MS = 1000 / 30 - 2;
+const BACKDROP_MS = 100;
 let lastStillDraw = 0;
 let paused = false;
 // Com o ecrã ao alto o jogo não se vê (há só o aviso para rodar), por isso também não anda.
@@ -400,7 +408,8 @@ function makeView(kind: GameKind, rivalId: number): void {
   drop.hidden = true;
   // Um jogo-treino é à porta fechada, por isso joga-se num pavilhão sem público.
   const rival = rivalTeam(current, rivalId);
-  view = new MatchView(context, clubTeam(current), rival, seed, kind === 'practice' ? CLOSED_GYM : current.division, {
+  matchVenue = venueOf(kind, rivalId);
+  view = new MatchView(context, clubTeam(current), rival, seed, matchVenue, {
     announce,
     event: e => {
       const said = started ? liveLine(e, view!.s) : null;
@@ -424,7 +433,7 @@ function makeView(kind: GameKind, rivalId: number): void {
   tacticsOpen = false;
   timeoutHandled = false;
   breakAnnounced = 0;
-  audio.setVenue(kind === 'practice' ? CLOSED_GYM : current.division);
+  audio.setVenue(matchVenue);
   banner.hidden = true;
   hud.reset();
   endAt = 0;
@@ -524,6 +533,14 @@ function showClub(): void {
 }
 
 /** A cor do pavilhão: quem joga em casa pinta o campo e enche a bancada. */
+/** O pavilhão do jogo: fora de casa, o do adversário, que pode ser de outra divisão (numa taça, por exemplo); um jogo-treino é à porta fechada. */
+function venueOf(kind: GameKind, rivalId: number): number {
+  const current = club!;
+  if (kind === 'practice') return CLOSED_GYM;
+  const theirs = current.divisions.findIndex(ids => ids.includes(rivalId));
+  return kind === 'official' && visitorOf(current) === 0 && theirs >= 0 ? theirs : current.division;
+}
+
 function venueColor(kind: GameKind, rivalId: number): string {
   const current = club!;
   if (kind === 'official' && visitorOf(current) === 0) return clubColor(current.clubs[rivalId]!);
@@ -934,7 +951,7 @@ function startReplay(at?: number): void {
   replayEnding = 0;
   const state = replayMatch(s.teams[0], s.teams[1], s.seed, s.controlled, s.commands, s.visitor, from);
   let live = false;
-  replay = new MatchView(context, s.teams[0], s.teams[1], s.seed, gameKind === 'practice' ? CLOSED_GYM : club!.division, {
+  replay = new MatchView(context, s.teams[0], s.teams[1], s.seed, matchVenue, {
     announce: () => {},
     event: () => {},
     sound: name => {
@@ -1221,6 +1238,22 @@ function frame(now: number): void {
     // Em pausa pára tudo, o treinador e o público incluídos; nos descontos e no intervalo, com a simulação parada, continuam a mexer-se.
     current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
     hud.update(current, club!.emblem);
+  }
+  // O fundo das margens copia o campo umas vezes por segundo: desfocado, não precisa de mais.
+  const showBackdrop = stage === 'match';
+  if (backdrop.classList.contains('on') !== showBackdrop) {
+    backdrop.classList.toggle('on', showBackdrop);
+    // Ao entrar num jogo, desenha logo, para não mostrar o último fotograma do anterior.
+    lastBackdrop = 0;
+  }
+  if (showBackdrop && now - lastBackdrop > (reducedMotion() ? 1500 : BACKDROP_MS)) {
+    lastBackdrop = now;
+    const floor = (replay ?? current)?.floorImage;
+    if (floor) {
+      if (backdropFloor.width !== floor.width || backdropFloor.height !== floor.height) [backdropFloor.width, backdropFloor.height] = [floor.width, floor.height];
+      backdropFloor.getContext('2d', { willReadFrequently: true })!.putImageData(floor, 0, 0);
+      backdropContext.drawImage(backdropFloor, 0, 0, backdrop.width, backdrop.height);
+    }
   }
   renderMs += performance.now() - start;
   renderCount++;

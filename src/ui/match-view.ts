@@ -313,6 +313,10 @@ export class MatchView {
   readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point; back?: boolean; legs?: PoseName }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
+  /** O chão e as bancadas da última imagem, sem bonecos, já na memória: o fundo das margens copia-o sem ler a tela. */
+  get floorImage(): ImageData {
+    return this.image;
+  }
   private pixels: Uint32Array;
   private readonly views = new Map<Body, BodyView>();
   private readonly coaches: [Look, Look];
@@ -576,15 +580,15 @@ export class MatchView {
     return this.s.phase === 'timeout' || (this.s.phase === 'break' && this.s.period !== 2);
   }
 
-  private cameraTarget(): [number, number] {
-    const { ball } = this.s;
+  /** `ballX` é a bola desenhada, entre dois passos: a da simulação só muda 20 vezes por segundo e a câmara andava aos soluços. */
+  private cameraTarget(ballX = this.s.ball.x): [number, number] {
     if (this.ceremony) return [CEREMONY_CENTRE.x, this.camera.tuning.lookY];
     // No fim, a câmara vai para o meio, onde fica o túnel, e para lá: segue a saída sem andar atrás da bola parada.
     if (this.s.phase === 'end') return [LOCKER_DOOR_X, this.camera.tuning.lookY];
     // Na paragem olha-se para o banco da casa, inclinado para baixo.
     if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, -1.5];
     // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
-    if (this.s.phase === 'intro' || this.s.phase === 'jump') return [ball.x, this.camera.tuning.lookY];
+    if (this.s.phase === 'intro' || this.s.phase === 'jump') return [ballX, this.camera.tuning.lookY];
     // Olhar um pouco à frente da bola, para o cesto atacado ficar sempre à vista. Quando a bola desce para a linha de baixo,
     // a câmara inclina-se, senão quem a tem ficava cortado pelo fundo do ecrã.
     const secondHalf = this.s.period >= 3;
@@ -592,9 +596,9 @@ export class MatchView {
     const lookY = this.camera.tuning.lookY;
     // Só se olha à frente quando o ataque já passou o meio campo: na transição a câmara segue a bola sem saltar 6 m para o
     // outro lado a cada mudança de posse, que era o que a fazia correr e rodar a cada ataque.
-    const settled = attacksRight ? ball.x > COURT_LENGTH / 2 + 2 : ball.x < COURT_LENGTH / 2 - 2;
+    const settled = attacksRight ? ballX > COURT_LENGTH / 2 + 2 : ballX < COURT_LENGTH / 2 - 2;
     const ahead = settled ? (attacksRight ? 3 : -3) : 0;
-    return [Math.max(5.4, Math.min(22.6, ball.x + ahead)), lookY];
+    return [Math.max(5.4, Math.min(22.6, ballX + ahead)), lookY];
   }
 
   private findBody(e: MatchEvent): Body | undefined {
@@ -1660,7 +1664,8 @@ export class MatchView {
     const time = this.animTime;
     const { theme } = this.textures;
     this.updateLocker();
-    const [lookX, lookY] = this.cameraTarget();
+    const ballX = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
+    const [lookX, lookY] = this.cameraTarget(ballX);
     // Na cerimónia, quando o troféu sobe, a imagem corta logo para o dobro, sem passar por escalas fracionárias, e a
     // câmara fica parada (com movimento reduzido, desde o início).
     const lifted = this.ceremony !== null && this.realTime - this.ceremony.start >= this.ceremony.lift;
@@ -1682,7 +1687,7 @@ export class MatchView {
       // CAMERA_BALL_SLACK metros do centro da imagem.
       const calm = 1 - Math.exp(-simSeconds * CAMERA_CALM_RATE);
       const x = camera.lookX + (lookX - camera.lookX) * calm;
-      camera.aim(Math.max(s.ball.x - CAMERA_BALL_SLACK, Math.min(s.ball.x + CAMERA_BALL_SLACK, x)), camera.lookY + (lookY - camera.lookY) * calm);
+      camera.aim(Math.max(ballX - CAMERA_BALL_SLACK, Math.min(ballX + CAMERA_BALL_SLACK, x)), camera.lookY + (lookY - camera.lookY) * calm);
     }
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
@@ -1715,7 +1720,8 @@ export class MatchView {
       const z = this.zoom;
       const tx = Math.max(camera.width * (1 - z), Math.min(0, camera.width / 2 - z * px));
       const ty = Math.max(camera.height * (1 - z), Math.min(0, camera.height / 2 - z * py));
-      this.zoomShift = [Math.round(tx), Math.round(ty)];
+      // Arredondado a píxeis do ecrã, não da arte: um píxel de arte vale até 6 do ecrã e o zoom andava aos saltinhos.
+      this.zoomShift = [Math.round(tx * this.art) / this.art, Math.round(ty * this.art) / this.art];
       g.setTransform(z * this.art, 0, 0, z * this.art, this.zoomShift[0] * this.art, this.zoomShift[1] * this.art);
     } else {
       this.zoomShift = [0, 0];
