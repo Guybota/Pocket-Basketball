@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- inicio-da-pagina -->
+<title>Cantos da Bancada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+20&family=Rubik:wght@400;500&display=swap">
+<style>
+/* Folhas sobre o xadrez da cidade; cada cenário é desenhado pelo motor do jogo e ampliado por píxeis inteiros. */
+:root {
+  --paper: #f8f0d8; --ink: #1b2230; --muted: #b9d6d2; --gold: #f2c230; --bg: #0f5560; --bg-2: #0c4a54; --card: #12343c; --line: #2a6a72;
+  --display: "Jersey 10", "Courier New", monospace; --ui: "Jersey 20", "Courier New", monospace; --body: "Rubik", "Trebuchet MS", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: var(--paper); font: 400 16px/1.5 var(--body);
+  background-color: var(--bg);
+  background-image: conic-gradient(var(--bg-2) 25%, transparent 0 50%, var(--bg-2) 0 75%, transparent 0);
+  background-size: 64px 64px;
+  padding: 32px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px));
+}
+main { max-width: 1240px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(3rem, 9vw, 5rem); }
+h2 { font-size: clamp(2.2rem, 5vw, 3rem); }
+h3 { font-size: 1.9rem; }
+p { margin: 0; max-width: 70ch; }
+.eyebrow { font: 400 20px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--gold); }
+.lead { color: var(--muted); }
+section { display: grid; gap: 16px; }
+.grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); }
+.grid.small { grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+figure { margin: 0; background: var(--card); border: 2px solid var(--line); border-radius: 10px; overflow: hidden; display: grid; }
+canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; background: #000; }
+.views { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px 0; }
+.views button { font: 400 18px var(--ui); color: var(--paper); background: transparent; border: 2px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 36px; cursor: pointer; }
+.views button:hover { border-color: var(--muted); }
+.views button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.views button[aria-pressed="true"] { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+.sticky { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 0; border-bottom: 2px solid var(--line); }
+.sticky .views { padding: 0; }
+figcaption { padding: 12px 14px 16px; display: grid; gap: 6px; }
+.tag { font: 400 18px var(--ui); color: var(--gold); letter-spacing: .04em; }
+.num { display: inline-grid; place-items: center; min-width: 34px; height: 34px; margin-right: 8px; border-radius: 50%; background: var(--gold); color: var(--ink); font: 400 24px var(--display); vertical-align: middle; }
+figcaption p { color: var(--muted); font-size: 15px; }
+.how { color: var(--paper); font-size: 15px; font-weight: 500; }
+</style>
+<!-- fim-do-cabecalho -->
+</head>
+<body>
+<main data-scenes="cantos">
+  <header>
+    <p class="eyebrow">Pocket Basketball · proposta</p>
+    <h1>Cantos da bancada</h1>
+    <p class="lead">Cinco maneiras de fechar os cantos da bancada da arena, todas com as filas à escala do jogo. A primeira é a de hoje. Cada uma tem três vistas: a do jogo, o canto de perto e de cima.</p>
+  </header>
+  <div class="sticky">
+    <p class="eyebrow">Vista de todos</p>
+    <div class="views" id="all-views" role="group" aria-label="Vista de todos os cenários"></div>
+  </div>
+  <section>
+    <h2>Propostas</h2>
+    <div class="grid" id="proposals"></div>
+  </section>
+</main>
+<!-- fim-da-pagina -->
+<script type="module" src="/src/ui/mock-scenes-page.ts"></script>
+</body>
+</html>

@@ -18,7 +18,7 @@ const headEnd = source.indexOf('<!-- fim-do-cabecalho -->');
 const bodyEnd = source.indexOf('<!-- fim-da-pagina -->');
 if (start < 0 || headEnd < 0 || bodyEnd < 0) throw new Error('Faltam marcadores na maqueta');
 const head = source.slice(start, headEnd);
-const main = source.slice(source.indexOf('<main>'), bodyEnd);
+const main = source.slice(source.indexOf('<main'), bodyEnd);
 const code = readFileSync(`${outDir}/assets/${script}`, 'utf8').replace(/<\/script/g, '<\\/script');
 const output = `${outDir}/${basename(entry)}`;
 writeFileSync(output, `${head}\n${main}\n<script type="module">${code}</script>\n`);
