@@ -15,6 +15,8 @@ const MENU_STAGE_HEIGHT = 270;
 // uma tela maior mostrava mais campo. A tela do jogo é sempre esta, ampliada por um inteiro, com barras no que sobra.
 const MATCH_STAGE_WIDTH = 360;
 const MATCH_STAGE_HEIGHT = 216;
+// A largura da coluna de botões redondos do jogo (56 px, mais as margens), em píxeis CSS antes do zoom do painel.
+const BUTTON_COLUMN = 76;
 
 /** A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si. */
 export type Stage = 'town' | 'title' | 'menu' | 'match';
@@ -121,10 +123,14 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     const panelWidth = stage === 'town' || centred || floating ? 0 : fitted ? Math.min(LANDSCAPE_PANEL_WIDTH * ui, Math.max(LANDSCAPE_PANEL_MIN, left)) : LANDSCAPE_PANEL_WIDTH * ui;
     const stageWidth = innerWidth - panelWidth;
     const stageHeight = viewHeight;
-    // A escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
-    // No jogo, a tela tem sempre o mesmo tamanho lógico, para a câmara e os bonecos ficarem iguais em qualquer ecrã.
+    // Nos outros ecrãs, a escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
+    // No jogo, a tela tem sempre o mesmo tamanho lógico, para a câmara e os bonecos ficarem iguais em qualquer ecrã, e enche
+    // o espaço com qualquer escala, sem saltos: desenha-se ampliada por um inteiro e o browser ajusta-a com suavização
+    // (o «sharp bilinear» dos jogos de pixel art). Fica de fora a coluna dos botões redondos, à direita: o campo centra-se
+    // no espaço que sobra, sem ficar por baixo deles.
+    const buttons = onlyCourt ? BUTTON_COLUMN * ui : 0;
     const scale = stage === 'match'
-      ? Math.max(1, Math.floor(Math.min(stageWidth / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT) * dpr)) / dpr
+      ? Math.max(1 / dpr, Math.min((stageWidth - buttons) / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT))
       : stage === 'town' || stage === 'title'
         ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
         : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
@@ -132,18 +138,21 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     const height = stage === 'match' ? MATCH_STAGE_HEIGHT : Math.ceil(stageHeight / scale);
     // No jogo, a tela tem a resolução do ecrã: a arte amplia-se por este inteiro, e os bonecos podem ter qualquer tamanho,
     // maiores à frente e mais pequenos atrás, como no Calciobit. Nos outros ecrãs, a tela é da arte e o CSS amplia-a.
-    const artScale = stage === 'match' ? Math.max(1, Math.min(6, Math.round(scale * dpr))) : 1;
+    // O inteiro logo acima dos píxeis do ecrã por píxel de arte: a tela tem sempre pelo menos a resolução do ecrã.
+    const artScale = stage === 'match' ? Math.max(1, Math.min(6, Math.ceil(scale * dpr - 0.001))) : 1;
     canvas.dataset.artScale = String(artScale);
+    // Na escala exata, os píxeis ficam nítidos; entre duas, o ajuste suaviza um nada as bordas, em vez de os pôr desiguais.
+    canvas.style.imageRendering = stage === 'match' && Math.abs(scale * dpr - artScale) > 0.001 ? 'auto' : '';
     setCanvasSize(width * artScale, height * artScale, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
     const bar = Math.max(0, (viewHeight - height * scale) / 2);
-    const side = Math.max(0, (stageWidth - width * scale) / 2);
+    const side = Math.max(0, (stageWidth - buttons - width * scale) / 2);
     canvas.style.marginTop = `${bar}px`;
     canvas.style.marginLeft = `${side}px`;
     hud.style.top = `${bar}px`;
     hud.style.bottom = `${bar}px`;
     hud.style.left = `${side}px`;
-    hud.style.right = `${side}px`;
+    hud.style.right = `${Math.max(0, stageWidth - side - width * scale)}px`;
     game.style.zoom = '';
     game.style.height = '';
     game.style.width = '';
@@ -161,7 +170,8 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     // No jogo, a janela do painel fica por cima do campo, com a largura de sempre e um pouco menos do que a altura do ecrã.
     panel.style.width = `${centred ? Math.min((innerWidth * 0.9) / ui, LANDSCAPE_PANEL_WIDTH * 1.8) : floating ? LANDSCAPE_PANEL_WIDTH : panelWidth / ui}px`;
     // No jogo, a janela começa debaixo do marcador, para nunca o tapar.
-    const windowTop = onlyCourt ? bar + (viewHeight < 460 ? 40 : 46) * ui : floating && roomy ? 12 : 0;
+    // O marcador ocupa ~36 px (com o zoom do painel) no cimo do campo.
+    const windowTop = onlyCourt ? bar + 40 * ui : floating && roomy ? 12 : 0;
     panel.style.top = floating ? `${windowTop / ui}px` : '';
     panel.style.height = centred ? '' : `${(floating && (roomy || onlyCourt) ? viewHeight - windowTop - 12 : viewHeight) / ui}px`;
     panel.style.maxHeight = centred ? `${(viewHeight * 0.94) / ui}px` : '';
