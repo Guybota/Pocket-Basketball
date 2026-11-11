@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { CROWDS } from '../ui/audio.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  ROOMS, SR, applause, babble, backboard, crowdBabble, roar, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
   snare, squeak, swish, thud, timpani, whistle, type Rng, type Room, type Sample,
 } from '../ui/synth.ts';
 
@@ -39,6 +39,10 @@ const SOUNDS: Record<string, [(r: Rng, i: number) => Sample, number]> = {
   coro: [r => crowd('hey', 10, r), 2],
   aplausos: [r => applause(24, 2.6, r), 1],
   burburinho: [r => babble(8, 2.4, r, 1600), 1],
+  'bancada-rumor': [r => crowdBabble(8, 4, r), 3],
+  'bancada-festa': [r => roar(14, 5, r, 'good'), 2],
+  'bancada-ooooh': [r => roar(14, 5, r, 'miss'), 2],
+  'bancada-uuuuh': [r => roar(14, 4, r, 'shame'), 2],
   tarola: [snare, 3],
   metais: [(r, i) => brass([72, 76, 79][i]!, r, 0.6), 3],
   glock: [(r, i) => glock([72, 84][i]!, r), 2],

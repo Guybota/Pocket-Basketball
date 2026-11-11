@@ -570,11 +570,12 @@ function underSky(theme: CourtTheme, sky: Sky): CourtTheme {
 const CREST_METRES = 3;
 
 /** As texturas calculam-se uma vez por divisão, cor da casa, emblema do dono do pavilhão e tempo. Desenhar um frame é só consultá-las. */
-export function courtTextures(division: number, accent?: string, emblem?: Emblem, sky?: Sky): CourtTextures {
-  const key = `${division}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}|${sky ? `${sky.hour}${sky.rain}${sky.sun}` : ''}`;
+export function courtTextures(division: number | CourtTheme, accent?: string, emblem?: Emblem, sky?: Sky): CourtTextures {
+  // Um tema em vez da divisão serve as maquetas de cenários novos.
+  const key = `${typeof division === 'number' ? division : division.name}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}|${sky ? `${sky.hour}${sky.rain}${sky.sun}` : ''}`;
   const cached = textureCache.get(key);
   if (cached) return cached;
-  let theme = VENUES[division]!;
+  let theme = typeof division === 'number' ? VENUES[division]! : division;
   if (emblem) theme = clubVenue(theme, emblem);
   if (accent) theme = dressed(theme, accent);
   if (sky) theme = underSky(theme, sky);

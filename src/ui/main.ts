@@ -1367,7 +1367,7 @@ Object.assign(window, {
     /** Toca todos os sons, para confirmar que nenhum dá erro. */
     playAllSounds: () => {
       audio.unlock();
-      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'catch', 'steal', 'block', 'cheer', 'bigCheer', 'card', 'bump'] as const) audio.play(name);
+      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'catch', 'steal', 'block', 'cheer', 'bigCheer', 'bigMiss', 'shame', 'card', 'bump'] as const) audio.play(name);
       for (let v = 0; v <= CLOSED_GYM; v++) {
         audio.setVenue(v);
         for (let i = 0; i < 30; i++) audio.ambience(1e12 + (v * 30 + i) * 1e6);

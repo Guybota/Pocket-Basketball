@@ -80,6 +80,17 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
 - **O desvio DC vem dos modos graves.** Os modos que começam numa fase ao acaso deixam o som desviado do zero. O `normalize` tem um passa-alto a 20 Hz que resolve isto em todos os sons; não o tires.
 - **Confirma o contexto antes de propor uma mudança na mistura.** Propus abafar a música na pausa, mas durante o jogo não há música (`audio.music('none')`). Antes de mexer na mistura, vê o que toca de facto nesse ecrã.
 - **Ao ouvido do jogador, a física perde para a legibilidade.** Quando a queixa contradiz a receita física, ganha a queixa.
+- **A bancada soava a vozes soltas e sem sentido.** Pedaços de burburinho com buracos, gritos isolados e palmas ao acaso não fazem uma multidão. O que resultou (`crowdBabble`, `roar` e `keepMurmur`):
+  - um rumor que nunca pára, em pedaços de 4 s com 1,2 s de entrada e saída, em correntes desfasadas;
+  - cada voz à sua distância (o seu passa-baixo, de 2,2 a 3,6 kHz, e o seu volume, de 0,3 a 1), ao seu ritmo de sílabas e com sopros de consoante;
+  - reações que nascem do rumor (sobe ~40 % e acalma em ~4 s), nunca sons soltos por cima.
+- **As reações dizem o que aconteceu pela vogal e pela altura.** Festa: «Éééé» (75 %), a subir para o agudo (~1,7 a 2× a voz de falar). Falha importante: «Ooooh» grave (até ~1,25×), que só desce no fim. Gozo (poster, defensor no chão): «Uuuuh» grave e mais curto (0,7 a 1,6 s). Se o «O» e o «U» sobem como o «E», deixam de se distinguir.
+- **Reação sem hold «soa a um carro a passar»;** com hold em cada voz, «soa a coro».
+  - O carro: a altura sobe e desce o tempo todo e o volume cai logo a seguir ao pico.
+  - O coro: todos na mesma nota, a entrar juntos e a aguentá-la.
+  - O que resultou: cada voz chega à nota em 0,15 a 0,45 s e fica lá, mas cada uma na sua nota, com 2 a 3 semitons de diferença entre elas, com tremor (±4 % de altura e volume) e rouquidão. Durações de 1 a 2,6 s, entradas espalhadas por 0,1 a 0,8 s, e perto de metade volta a gritar. O hold é do grupo, não de cada voz.
+  - A reação tem de ficar uns 8 dB acima do rumor, ou as vogais não se notam. Mede o RMS das duas janelas.
+- **A bancada é cara de calcular.** Uma reação de 14 vozes leva 45 a 90 ms, e o rumor de 8 vozes ~50 ms (o limite é ~15 ms). Calcula cada variante sozinha num momento livre (`warmEach`), toca só as que já estão prontas (`ready`) e, enquanto não há nenhuma, usa os sons antigos e baratos. Nunca as calcules a meio do jogo.
 
 ### Traduzir queixas em parâmetros
 
@@ -92,6 +103,10 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
 | «Estridente» ou «cansa» | Baixar acima de 5 kHz; encurtar; reduzir a repetição. |
 | «Artificial» ou «sempre igual» | Mais variantes e mais variação entre elas; a sala certa. |
 | «Não se ouve» | Ver se outro som tapa a mesma faixa; ducking; dar-lhe uma silhueta própria. |
+| «Parece um carro a passar» | Hold: a altura chega à nota e fica; o volume estável até ao fim. |
+| «Parece um coro» | Notas diferentes (2 a 3 semitons), tremor, rouquidão, entradas e durações desencontradas. |
+| «Vozes soltas e sem sentido» | Mais vozes a distâncias diferentes, abafadas, num fundo contínuo; reações que nascem do fundo. |
+| «Não se nota a reação» | Subir o contraste (~8 dB acima do fundo), entrada no primeiro meio segundo, fundo baixo durante a reação. |
 
 ## Mistura
 

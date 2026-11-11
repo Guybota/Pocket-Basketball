@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameAudio } from './audio.ts';
 import { MUSIC_THEMES, scheduleSection, sectionLengths, songShape, type Instrument, type MusicKit } from './music.ts';
 import {
-  ROOMS, SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
+  ROOMS, SR, applause, babble, backboard, crowdBabble, roar, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap,
   snare, squeak, swish, thud, timpani, whistle,
   type Sample,
 } from './synth.ts';
@@ -219,6 +219,7 @@ describe('os sons calculados', () => {
     ['aro', rim(r()), 0.35],
     ['tabela', backboard(r()), 0.4], ['rede', swish(r()), 0.42], ['hey', shout('hey', r()), 0], ['uuuh', shout('ooh', r()), 0],
     ['ohhh', shout('oh', r()), 0], ['coro', crowd('hey', 6, r()), 1.3], ['burburinho', babble(3, 1.5, r()), 1.5],
+    ['bancada a conversar', crowdBabble(3, 1.5, r()), 1.5], ['festa', roar(3, 2, r(), 'good'), 2], ['ooooh', roar(3, 2, r(), 'miss'), 2], ['uuuuh', roar(3, 2, r(), 'shame'), 2],
     ['aplausos', applause(10, 1.5, r()), 1.5], ['tarola', snare(r()), 0.3], ['metais', brass(72, r()), 2.6],
     ['glockenspiel', glock(84, r()), 1.8], ['timbale', timpani(42, r()), 2], ['tabela de metal', backboard(r(), 'metal'), 0.4],
     ['rede de corrente', chains(r()), 0.6], ['apito', whistle(0.34, r()), 0.34], ['buzina', horn(150, 1, r()), 1],

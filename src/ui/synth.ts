@@ -552,6 +552,118 @@ export function babble(people: number, seconds: number, r: Rng, far = 0): Stereo
   return normalize(out, 0.8);
 }
 
+/**
+ * Bancada a conversar, com profundidade: cada pessoa fala ao seu ritmo, com as suas pausas e um sopro de consoante entre
+ * sílabas, e está à sua distância (o seu passa-baixo e o seu volume): umas perto, a maior parte longe.
+ */
+export function crowdBabble(people: number, seconds: number, r: Rng): Stereo {
+  const n = samples(seconds);
+  const out: Stereo = [new Float32Array(n), new Float32Array(n)];
+  const air = new Biquad('highpass', 2500);
+  for (let p = 0; p < people; p++) {
+    const who = person(r);
+    const rate = between(r, 3.6, 4.8);
+    const active = between(r, 0.55, 0.8);
+    const pitch: [number, number][] = [[0, who.base]];
+    const amp: [number, number][] = [[0, 0]];
+    const vowels: [number, Vowel][] = [];
+    const starts: number[] = [];
+    for (let t = between(r, 0, 0.4); t < seconds - 0.3;) {
+      if (r() > active) {
+        t += between(r, 0.25, 0.8);
+        amp.push([t - 0.01, 0]);
+        continue;
+      }
+      const L = between(r, 0.6, 1.4) / rate;
+      starts.push(t);
+      vowels.push([t + L * 0.5, VOWEL_NAMES[Math.floor(r() * VOWEL_NAMES.length)]!]);
+      pitch.push([t, who.base * between(r, 0.9, 1.2)], [t + L, who.base * between(r, 0.8, 1.1)]);
+      amp.push([t, 0.05], [t + L * 0.25, between(r, 0.6, 1)], [t + L * 0.8, between(r, 0.4, 0.8)], [t + L, 0.05]);
+      t += L;
+    }
+    if (vowels.length < 2) continue;
+    amp.push([seconds, 0]);
+    const voice = vox(seconds, pitch, [[0, vowels[0]![1]], ...vowels], amp, [[0, 0.2]], who.scale, r);
+    // A consoante: um sopro agudo de 20 ms no começo de algumas sílabas.
+    for (const t of starts) {
+      if (r() < 0.4) continue;
+      const at = samples(t);
+      const len = samples(0.02);
+      air.reset();
+      for (let i = 0; i < len && at + i < n; i++) voice[at + i]! += air.run(white(r)) * 0.25 * (1 - i / len);
+    }
+    const low = new Biquad('lowpass', between(r, 2200, 3600), 0.7);
+    for (let i = 0; i < n; i++) voice[i] = low.run(voice[i]!);
+    addPanned(out, voice, 0, between(r, 0.3, 1), between(r, -0.85, 0.85));
+  }
+  // Entra e sai devagar: os pedaços sobrepõem-se e fundem-se, sem costura.
+  const fade = samples(Math.min(1.2, seconds / 3));
+  for (const ch of out) for (let i = 0; i < fade; i++) {
+    const w = 0.5 - 0.5 * Math.cos((Math.PI * i) / fade);
+    ch[i]! *= w;
+    ch[n - 1 - i]! *= w;
+  }
+  return normalize(out, 0.8);
+}
+
+/** O que a bancada sente: festa (cesto), desilusão (uma falha importante) ou gozo (um poster, um defensor no chão). */
+export type Mood = 'good' | 'miss' | 'shame';
+
+/**
+ * Uma vogal longa da bancada, de 1,6 a 3 s, em coro (todos perto da mesma altura, por isso ouve-se a vogal):
+ * «Éééé» e «Aaaah» de festa sobem para o agudo; «Ooooh» de desilusão e «Uuuuh» de gozo ficam graves, perto da voz de falar.
+ */
+function crowdVowel(kind: 'E' | 'a' | 'o' | 'u', r: Rng, who: Person): Mono {
+  const b = who.base;
+  // O «Uuuuh» do gozo é mais curto: um espanto, não um lamento.
+  const d = kind === 'u' ? between(r, 0.7, 1.6) : between(r, 1, 2.6);
+  // Cada um na sua nota (2 a 3 semitons de diferença entre eles), a tremer um pouco e rouco: uma multidão, não um coro.
+  const top = (kind === 'o' ? between(r, 1.02, 1.26) : kind === 'u' ? between(r, 1.06, 1.32) : between(r, 1.7, 2.05)) * b;
+  const pitch: [number, number][] = [[0, (kind === 'E' || kind === 'a' ? 1.4 : 1.0) * b], [between(r, 0.15, 0.4), top]];
+  for (let t = 0.6; t < d - 0.4; t += between(r, 0.25, 0.5)) pitch.push([t, top * between(r, 0.96, 1.04)]);
+  pitch.push([d - 0.25, top * between(r, 0.97, 1.02)], [d, top * (kind === 'o' ? 0.82 : 0.92)]);
+  const amp: [number, number][] = [[0, 0], [between(r, 0.25, 0.35), between(r, 0.7, 0.9)]];
+  for (let t = 0.4; t < d - 0.4; t += between(r, 0.2, 0.45)) amp.push([t, between(r, 0.75, 1)]);
+  amp.push([d - between(r, 0.2, 0.5), between(r, 0.6, 0.9)], [d, 0]);
+  const vowels: [number, Vowel][] = kind === 'o' ? [[0, 'o'], [d - 0.3, 'o'], [d, 'u']] : kind === 'u' ? [[0, 'u'], [d, 'U']] : kind === 'E' ? [[0, 'E'], [d, 'e']] : [[0, 'a'], [d, 'A']];
+  return vox(d, pitch, vowels, amp, [[0, 0.3], [0.25, between(r, 0.2, 0.35)]], who.scale, r);
+}
+
+/**
+ * A reação da bancada, em `seconds`: quase todos reagem no primeiro meio segundo e aguentam a vogal (alguns duas vezes).
+ * Na festa, sobretudo «Éééé» e palmas que sobem, ficam e morrem devagar; na falha, «Ooooh»; no gozo, «Uuuuh».
+ */
+export function roar(people: number, seconds: number, r: Rng, mood: Mood = 'good'): Stereo {
+  const n = samples(seconds);
+  const out: Stereo = [new Float32Array(n), new Float32Array(n)];
+  for (let p = 0; p < people; p++) {
+    const who = person(r);
+    // Quem acaba volta a gritar: as entradas e as saídas desencontradas é que seguram o som, não cada voz.
+    const repeats = r() < (mood === 'shame' ? 0.2 : 0.45) ? 2 : 1;
+    for (let k = 0; k < repeats; k++) {
+      const at = between(r, 0.1, 0.8) + k * between(r, 0.8, 1.8);
+      const roll = r();
+      const voice = mood === 'miss' ? crowdVowel('o', r, who)
+        : mood === 'shame' ? crowdVowel('u', r, who)
+          : roll < 0.75 ? crowdVowel('E', r, who) : roll < 0.85 ? crowdVowel('a', r, who) : shout('hey', r, who);
+      const low = new Biquad('lowpass', 5500, 0.7);
+      for (let i = 0; i < voice.length; i++) voice[i] = low.run(voice[i]!);
+      addPanned(out, voice, samples(at), between(r, 0.35, 1), between(r, -0.9, 0.9));
+    }
+  }
+  normalize(out, 0.8);
+  if (mood === 'good') {
+    const claps = applause(people, seconds, r);
+    const env = reader([[0, 0], [0.4, 0.5], [1, 1], [0.55 * seconds, 0.75], [seconds, 0]]);
+    for (let i = 0; i < n; i++) {
+      const g = env(i / SR) * 0.6;
+      out[0][i]! += claps[0][i]! * g;
+      out[1][i]! += claps[1][i]! * g;
+    }
+  }
+  return normalize(out, 0.85);
+}
+
 /** Uma palmada: ruído pela ressonância da mão (mais aguda) e da concha das mãos (mais grave), em 50 ms. */
 function addClap(out: Stereo, at: number, gain: number, hand: Biquad, cup: Biquad, fc: number, cupF: number, cupped: number, [gl, gr]: [number, number], r: Rng): void {
   const [l, rr] = out;

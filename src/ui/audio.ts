@@ -2,7 +2,7 @@ import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
 import {
-  SR, applause, babble, backboard, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
+  SR, applause, babble, backboard, crowdBabble, roar, type Mood, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
   squeak, swish, thud, timpani, whistle,
   type Rng, type Room, type Sample, type Shout,
 } from './synth.ts';
@@ -33,6 +33,11 @@ const LOW_PRIORITY: ReadonlySet<Sound> = new Set(['bounce', 'catch', 'bump', 'st
 const REPEAT_GAP = 0.045;
 /** O burburinho da bancada passa por um passa-baixo aqui (Hz): de longe, as vozes não se percebem. */
 const MURMUR_CUTOFF = 1600;
+/** Quantos pedaços de rumor e quantas variantes de cada reação se calculam (cada um no seu momento livre). */
+const BED_VARIANTS = 3;
+const ROAR_VARIANTS = 2;
+/** Quantas pessoas gritam numa reação, conforme o pavilhão: das 4 da rua às 14 da arena (mais pesava a calcular). */
+const crowdReactors = (venue: Venue): number => Math.max(4, Math.min(14, Math.round(CROWDS[venue].voices * 1.25)));
 
 // Todos os sons são sintetizados, por isso não há ficheiros de áudio para carregar. Os da bola, da bancada e dos
 // instrumentos calculam-se uma vez (synth.ts) para AudioBuffers, com algumas variantes, e depois só se tocam: os do
@@ -60,6 +65,8 @@ export class GameAudio {
   private nextAmbience = 0;
   /** Quando entra o próximo pedaço de cada corrente de burburinho (ver `keepMurmur`). */
   private murmurAt = [0, 0];
+  /** Quando foi a última reação da bancada (ms), para o rumor ficar mais alto um bocado. */
+  private exciteAt = -1e9;
   private theme: MusicTheme = 'none';
   /** O tema a retomar quando acaba uma vinheta com `resume`. */
   private resumeTheme: MusicTheme = 'none';
@@ -259,6 +266,13 @@ export class GameAudio {
     const { voices, talkers } = CROWDS[this.venue];
     if (voices) this.warm(() => this.cheers('hey'), () => this.clapping(), () => this.cheers('ooh'), () => this.cheers('oh'));
     if (talkers) this.warm(() => this.murmur());
+    if (voices) {
+      const people = crowdReactors(this.venue);
+      this.warmEach(this.roarKey('good'), ROAR_VARIANTS, r => roar(people, 5, r, 'good'));
+      this.warmEach(this.roarKey('miss'), ROAR_VARIANTS, r => roar(people, 5, r, 'miss'));
+      this.warmEach(this.roarKey('shame'), ROAR_VARIANTS, r => roar(people, 4, r, 'shame'));
+    }
+    if (talkers) this.warmEach(this.bedKey(), BED_VARIANTS, r => crowdBabble(talkers, 4, r));
   }
 
   /** Calcula as amostras uma de cada vez, quando o browser está livre, para não prender nenhum frame muito tempo. */
@@ -328,16 +342,56 @@ export class GameAudio {
     return this.set(`babble:${talkers}:far`, 3, r => babble(talkers, 2.4, r, MURMUR_CUTOFF));
   }
 
+  /**
+   * Variantes caras (a bancada), calculadas uma de cada vez nos momentos livres: devolve as que já estão prontas, e nunca
+   * as calcula a meio do jogo.
+   */
+  private ready(prefix: string, count: number): AudioBuffer[] {
+    const list: AudioBuffer[] = [];
+    for (let i = 0; i < count; i++) list.push(...(this.sets.get(`${prefix}#${i}`) ?? []));
+    return list;
+  }
+  private warmEach(prefix: string, count: number, make: (r: Rng) => Sample): void {
+    for (let i = 0; i < count; i++) this.warm(() => this.set(`${prefix}#${i}`, 1, make));
+  }
+  private bedKey(): string { return `bed:${CROWDS[this.venue].talkers}`; }
+  private roarKey(mood: Mood): string { return `roar:${mood}:${crowdReactors(this.venue)}`; }
+
+  /**
+   * A bancada reage: festa num cesto, «Ooooh» numa falha importante, «Uuuuh» num momento vergonhoso. Quase todos reagem
+   * no primeiro meio segundo e aguentam a vogal; numa reação grande, uma segunda onda entra a seguir. O rumor de fundo
+   * sobe um pouco e volta devagar. Enquanto as reações não estão calculadas, a bancada reage como antes (devolve false).
+   */
+  private reaction(mood: Mood, strength: number, big: boolean): boolean {
+    if (!CROWDS[this.venue].voices) return false;
+    const list = this.ready(this.roarKey(mood), ROAR_VARIANTS);
+    if (!list.length) return false;
+    const cut = this.speed > 2 ? 1.6 : undefined;
+    this.shot(list, 0.24 * this.crowdLevel * strength, { seconds: cut });
+    if (big && list.length > 1 && cut === undefined) this.shot(list, 0.13 * this.crowdLevel * strength, { delay: 1.3 });
+    this.exciteAt = performance.now();
+    return true;
+  }
+
   /** O rumor dos pavilhões grandes nunca pára: cada corrente encadeia pedaços de burburinho que se sobrepõem, e a arena tem
    * duas, desfasadas, para soar a muita gente e não a meia dúzia de vozes soltas. */
   private keepMurmur(now: number): void {
     const streams = this.venue === 'arena' ? 2 : this.venue === 'hall' ? 1 : 0;
+    // O rumor de vozes a distâncias diferentes, em pedaços de 4 s que se fundem; enquanto não está pronto, o de antes.
+    const bed = this.ready(this.bedKey(), BED_VARIANTS);
+    // Depois de uma reação a bancada fica mais animada, e acalma devagar.
+    const lift = 1 + 0.4 * Math.exp(-(now - this.exciteAt) / 4000);
     for (let i = 0; i < streams; i++) {
       // Quem esteve parado (pausa, menus) recomeça já, com a segunda corrente a meio da primeira.
-      if (now - this.murmurAt[i]! > 3000) this.murmurAt[i] = now + i * 800;
+      if (now - this.murmurAt[i]! > 4000) this.murmurAt[i] = now + i * 1400;
       if (now < this.murmurAt[i]!) continue;
-      this.shot(this.murmur(), (this.venue === 'arena' ? 0.08 : 0.06) * this.crowdLevel);
-      this.murmurAt[i] = now + 1500 + Math.random() * 300;
+      if (bed.length) {
+        this.shot(bed, (this.venue === 'arena' ? 0.09 : 0.07) * this.crowdLevel * lift);
+        this.murmurAt[i] = now + 2600 + Math.random() * 300;
+      } else {
+        this.shot(this.murmur(), (this.venue === 'arena' ? 0.08 : 0.06) * this.crowdLevel);
+        this.murmurAt[i] = now + 1500 + Math.random() * 300;
+      }
     }
   }
 
@@ -449,7 +503,15 @@ export class GameAudio {
           this.shot(this.boards(), 0.12);
           this.shot(this.rims(), 0.05, { delay: 0.07 });
         } else this.shot(this.rims(), 0.1);
-        if (Math.random() < 0.5) this.react('ooh', 0.7, 0.15);
+        // Uma falha qualquer só às vezes tira um «uuh»; as importantes têm o seu «Ooooh» (bigMiss).
+        if (Math.random() < 0.25) this.react('ooh', 0.6, 0.15);
+        break;
+      case 'bigMiss':
+        if (!this.reaction('miss', 1, true)) this.react('ooh', 1, 0.15);
+        break;
+      case 'shame':
+        this.duckMusic();
+        if (!this.reaction('shame', 1, false)) this.react('oh', 1);
         break;
       case 'whistle': this.duckMusic(); this.shot(this.whistles(), 0.15); break;
       case 'buzzer':
@@ -477,13 +539,17 @@ export class GameAudio {
         this.react('oh', 0.8);
         break;
       case 'cheer':
-        this.clap(0.7, 0.9);
-        this.react('hey', 0.6);
+        if (!this.reaction('good', 0.6, false)) {
+          this.clap(0.7, 0.9);
+          this.react('hey', 0.6);
+        }
         break;
       case 'bigCheer':
         this.duckMusic();
-        this.clap(1);
-        this.react(Math.random() < 0.5 ? 'hey' : 'oh', 1);
+        if (!this.reaction('good', 1, true)) {
+          this.clap(1);
+          this.react(Math.random() < 0.5 ? 'hey' : 'oh', 1);
+        }
         // Um pequeno toque de metais do pavilhão, nos momentos altos.
         this.fanfare();
         break;

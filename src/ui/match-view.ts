@@ -143,6 +143,8 @@ export const ANNOUNCE_TICKS = 36;
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
 // O momento grande: a imagem parada e o resultado grande a meio do campo, no máximo três vezes por jogo.
 const BIG_MOMENTS_MAX = 3;
+// Um afundanço com o defensor mais perto do que isto (m) é um poster.
+const POSTER_RANGE = 1.5;
 // A bola nunca salta: uma mudança de sítio maior do que isto (em píxeis de arte) faz-se em ~0,2 s (BALL_EASE_SECONDS é a
 // constante de tempo); maior do que BALL_CUT_PX é um corte.
 const BALL_SNAP_PX = 4;
@@ -245,7 +247,7 @@ interface Floater {
   top?: number;
 }
 
-export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'card' | 'bump';
+export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'bigMiss' | 'shame' | 'card' | 'bump';
 
 export interface ViewCallbacks {
   /** Um aviso grande; `cards`, num movimento especial, são as cartas do combo que o ensinou. */
@@ -399,6 +401,8 @@ export class MatchView {
   private ballMode: 'free' | 'hand' = 'free';
   private ballStep = 0;
   private ballLag: [number, number] = [0, 0];
+  /** O último lançamento: para a bancada saber se a falha foi importante. */
+  private lastShot: { dunk: boolean; breaking: boolean } | null = null;
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
   // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
   private readonly referee = { x: 14, y: -1, prevX: 14, prevY: -1, flip: false, moving: false, signalUntil: 0 };
@@ -679,6 +683,8 @@ export class MatchView {
           if (s.period === 3) this.fadeInUntil = s.tick + FADE_IN_TICKS;
           break;
         case 'shot': {
+          // Para a bancada: um afundanço ou um contra-ataque falhado é uma falha importante.
+          this.lastShot = { dunk: e.dunk === true, breaking: s.tick < s.breakUntil };
           if (!body) break;
           const dunk = e.dunk === true;
           // No lay-up e no step-back não há pose fixa: `poseOf` segue o voo. De costas no poste, lança-se de gancho.
@@ -725,6 +731,8 @@ export class MatchView {
           break;
         case 'missed':
           callbacks.sound('rim');
+          // Um afundanço falhado, um contra-ataque desperdiçado ou uma falha no fim de um jogo renhido: «Ooooh».
+          if (this.lastShot?.dunk || this.lastShot?.breaking || this.crowdTense) callbacks.sound('bigMiss');
           if (e.team !== this.crowdTeam && this.crowdChance(3)) this.crowdSay(this.crowdPick('miss'));
           break;
         case 'freeThrowMissed':
@@ -825,7 +833,8 @@ export class MatchView {
           }
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
-          callbacks.sound('bigCheer');
+          // Um crossover que deita o defensor ao chão é um momento vergonhoso: «Uuuuh».
+          callbacks.sound(e.move === 'crossover' && s.events.some(k => k.tick === e.tick && k.type === 'knockdown') ? 'shame' : 'bigCheer');
           // As cartas do combo que ensina o movimento ficam ao lado do nome: liga-se o treino ao que se vê.
           callbacks.announce(`${MOVE_INFO[e.move!].name}!`, COMBOS.find(c => c.move === e.move)?.cards);
           this.moveAnnouncedAt = s.tick;
@@ -1044,7 +1053,11 @@ export class MatchView {
     this.fansReact(e.team === this.crowdTeam, e.team === this.crowdTeam ? Math.round(20 + 50 * worth) : 30, worth);
     if (dunk) this.shakeUntil = this.realTime + SHAKE_SECONDS;
     callbacks.sound('swish');
-    callbacks.sound(loud ? 'bigCheer' : 'cheer');
+    // Um poster, um afundanço por cima de quem defende, envergonha-o: a bancada faz «Uuuuh» além de festejar.
+    const beaten = dunk && body ? this.nearestOpponent(body) : undefined;
+    const poster = beaten !== undefined && Math.hypot(beaten.x - body!.x, beaten.y - body!.y) < POSTER_RANGE;
+    callbacks.sound(loud && !poster ? 'bigCheer' : 'cheer');
+    if (poster) callbacks.sound('shame');
     // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada.
     if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS) callbacks.announce('Afundanço!');
     if (s.clock <= 20) {

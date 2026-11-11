@@ -29,6 +29,7 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
   - `slap(force)`: a bola nas mãos e também no chão; `rim`, `backboard(kind)`, `swish` e `chains`;
   - `whistle`, `horn`, `squeak`, `thud`, `chime` e `clapBeat`;
   - `shout(kind)`, com `crowd`, `babble` e `applause`;
+  - a bancada nova: `crowdBabble(pessoas, s)` (rumor com cada voz à sua distância) e `roar(pessoas, s, r, mood)`, a reação, com `mood` `good` («Éééé» e palmas), `miss` («Ooooh») ou `shame` («Uuuuh»);
   - `snare`, `brass`, `glock` e `timpani`, para a música;
   - `roomImpulse(room, sr, r)`, a resposta ao impulso de cada sala (`ROOMS`, com rt60, brilho, amortecimento, pré-atraso e primeiras reflexões).
 
@@ -47,6 +48,10 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
   | `crowd:*` | 2 |
   | `claps:*` | 2 |
   | `babble:*` | 2 |
+  | `bed:*#0..2` (rumor `crowdBabble`) | 3, uma por chave |
+  | `roar:<mood>:<pessoas>#0..1` | 2 por reação, uma por chave |
+
+  As da bancada são caras (45 a 90 ms cada): `warmEach` calcula cada variante sozinha num momento livre e `ready` devolve só as que já estão prontas. Enquanto não há nenhuma, `reaction()` devolve `false` e toca-se o som antigo.
 
   Os instrumentos da música guardam uma amostra por meio tom ou por oitava e tocam-se com outro `playbackRate`.
 - **Grafo:**
@@ -57,7 +62,8 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
   música → musicGain → musicBus → duck ──────────────────┴→ master → compressor(−14 dB, 4:1) → limitador(−3 dB, 20:1) → saída
   ```
 
-  O `wet` de cada pavilhão está em `CROWDS`. O `duckMusic()` baixa a música para 0.45 durante cerca de meio segundo e só é chamado pela rede, pelo apito e pelo `bigCheer`.
+  O `wet` de cada pavilhão está em `CROWDS`. O `duckMusic()` baixa a música para 0.45 durante cerca de meio segundo e só é chamado pela rede, pelo apito, pelo `bigCheer` e pelo `shame`.
+- **Reações da bancada:** `cheer` e `bigCheer` (festa; o grande tem uma segunda onda 1,3 s depois), `bigMiss` («Ooooh»: afundanço falhado, contra-ataque desperdiçado ou falha no último minuto com o jogo a 3 pontos ou menos) e `shame` («Uuuuh»: poster, ou crossover que deita o defensor). Quem decide é `match-view.ts`. Depois de cada reação, o rumor (`keepMurmur`) sobe ~40 % e acalma em ~4 s.
 - **Tocar:** `shot(bolsa, ganho, {seconds, pan})` escolhe uma variante, varia o `playbackRate` ±3 % e liga ao `room`.
   - `react()` toca as reações do público; `clap()` toca os aplausos.
   - As duas escalam com `crowdLevel`, o nível do pavilhão.
@@ -109,7 +115,7 @@ O ruído partilhado (`noiseBuffer`) e as escolhas no momento de tocar usam `Math
 
 ## Lacunas conhecidas
 
-- **A bancada não reage ao marcador**, como num final apertado.
+- **A bancada reage pouco ao marcador:** só as falhas no último minuto de um jogo renhido têm o seu «Ooooh»; o rumor não fica mais tenso no fim.
 - **Sem volume próprio para a bancada.**
 - **O `addBurst` usa sempre `SR`**, ao contrário de `addModes` e `Biquad`, que aceitam outra frequência.
 - **A lista de sons em `playAllSounds` é escrita à mão** e pode ficar desatualizada em relação ao tipo `Sound`.
