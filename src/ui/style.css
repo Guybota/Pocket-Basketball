@@ -260,7 +260,7 @@ button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--ink)
 
 /* Selecionado: um só estilo em todo o jogo, fundo ouro, letra tinta e um filete tinta por dentro. O !important ganha às cores
  * de cada lista (banco, reservas, giz); onde o fundo já diz alguma coisa (cores, cartas, bonecos), o selecionado é um contorno ouro. */
-button[aria-pressed="true"]:not(.gcard, .swatch), [role="tab"][aria-selected="true"] { background: var(--gold) !important; color: var(--ink) !important; box-shadow: inset 0 0 0 2px var(--ink) !important; }
+button[aria-pressed="true"]:not(.gcard, .swatch, .shelfhit), [role="tab"][aria-selected="true"] { background: var(--gold) !important; color: var(--ink) !important; box-shadow: inset 0 0 0 2px var(--ink) !important; }
 .gcard[aria-pressed="true"], .swatch[aria-pressed="true"] { outline: 3px solid var(--gold); outline-offset: 1px; box-shadow: 0 0 0 5px var(--ink); }
 
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
@@ -742,6 +742,8 @@ html.reduce-motion .town-match.bounce { animation: none; }
 /* Os menus: em cima a ficha ou a cena, em baixo as decisões, sempre com a mesma barra em baixo. */
 #topUi { position: absolute; left: 0; top: 0; overflow: hidden; zoom: var(--top-zoom, 1); background-color: var(--paint-dkr); color: var(--ink); }
 #topUi canvas.full { display: block; image-rendering: pixelated; position: absolute; inset: 0; }
+/* As cenas com conteúdo ficam no espaço que se vê: depois do voltar e antes da janela do painel. */
+#topUi canvas.full.fit { left: var(--back-space, 0px); right: auto; }
 #topUi .patterned { position: absolute; inset: 0; padding: 6px; display: flex; align-items: center; justify-content: center; }
 #topUi .patterned > * { width: 100%; height: 100%; max-width: 380px; max-height: 430px; }
 #panel > .choices { padding: 4px 6px 0; }
@@ -1107,6 +1109,8 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .chips4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 
 .chips4.three { grid-template-columns: repeat(3, 1fr); }
+/* As peças do equipamento em 2×2: numa linha, «Pormenores» ficava cortado. */
+.chips4.two { grid-template-columns: repeat(2, 1fr); }
 
 .town-bar .game { color: var(--gold); }
 
@@ -1121,7 +1125,8 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 
 .chip i { display: block; width: 18px; height: 18px; border: 1px solid var(--ink); }
 
-.patterns { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+/* Os desenhos da camisola em duas linhas, todos à vista (numa fila que deslizava ficavam cortados). */
+.patterns { display: flex; flex-wrap: wrap; gap: 3px; padding-bottom: 2px; }
 
 .patterns button { flex: none; width: 56px; display: grid; justify-items: center; gap: 1px; padding: 3px 2px; font: 400 13px/1 var(--small); min-height: 0; box-shadow: 1px 1px 0 var(--ink); }
 
@@ -1396,6 +1401,13 @@ html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
 }
 /* No escritório, a nota da direção fica à esquerda, debaixo do título, sem tapar os botões redondos. */
 #game.floating #topUi .tnote { left: var(--note-left, 8px); right: var(--hub-space, 8px); top: var(--note-top, 8px); max-width: none; }
+/* A vitrina sem janela: a nota por cima das prateleiras, e um botão transparente por cima de cada troféu. */
+#game.floating #topUi .tnote.shelfnote { right: 8px; }
+.shelfhit { position: absolute; width: 48px; height: 50px; min-height: 0; padding: 0; background: transparent; border: 2px solid transparent; box-shadow: none; }
+.shelfhit:hover, .shelfhit:focus-visible { border-color: var(--gold); background: rgb(242 194 48 / 0.08); }
+.shelfhit:active { transform: none; box-shadow: none; }
+/* O escolhido marca-se na própria prateleira (a luz e o traço dourado de drawShelf), não com o amarelo dos botões. */
+.shelfhit[aria-pressed="true"] { background: transparent; border-color: transparent; }
 /* Em 640×360 o escritório tem dez botões: em três colunas de quatro, para a última fila caber. */
 @media (max-height: 380px) { #panel.hub .menu { grid-template-rows: repeat(4, auto); } }
 /* Com a janela do jogo aberta, a carta encontrada passa para a esquerda, para não a tapar. */

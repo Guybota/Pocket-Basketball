@@ -60,6 +60,7 @@ const typing = (): boolean => document.activeElement instanceof HTMLInputElement
 export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
   const { game, screen, canvas, context, panel, hud, topUi } = els;
   let topSize: readonly [number, number] = [MENU_STAGE_WIDTH, MENU_STAGE_HEIGHT];
+  let topInsets = '';
   // A altura da janela sem o teclado do telemóvel. Enquanto se escreve num campo de texto, o teclado tira metade da altura:
   // medir aí encolhia o jogo todo, e ficava encolhido depois de o teclado fechar, porque nem sempre vem um aviso de mudança.
   let stableHeight = innerHeight;
@@ -85,12 +86,14 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     context.imageSmoothingEnabled = false;
   }
 
-  function setTopSize(width: number, height: number, zoom: number): void {
+  /** `insets`: o espaço do voltar e da janela; as cenas desenham-se no meio, por isso mudá-lo também as redesenha. */
+  function setTopSize(width: number, height: number, zoom: number, insets: string): void {
     topUi.style.width = `${width}px`;
     topUi.style.height = `${height}px`;
     screen.style.setProperty('--top-zoom', String(zoom));
-    if (topSize[0] === width && topSize[1] === height) return;
+    if (topSize[0] === width && topSize[1] === height && topInsets === insets) return;
     topSize = [width, height];
+    topInsets = insets;
     hooks.topResized();
   }
 
@@ -179,15 +182,16 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     // A escala da parte de cima vem do espaço da ficha, como quando a ficha e o painel ficavam lado a lado.
     const cardSpace = stage === 'menu' ? stageWidth - windowSpace - backSpace : stageWidth;
     const topZoom = Math.max(1, Math.floor(Math.min(cardSpace / MENU_STAGE_WIDTH, viewHeight / MENU_STAGE_HEIGHT) * dpr) / dpr);
-    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom);
-    // O espaço do voltar e o que a janela do painel tapa à direita, nas unidades da parte de cima.
+    // O espaço do voltar e o que a janela do painel tapa à direita, nas unidades da parte de cima: antes de setTopSize,
+    // que redesenha as cenas a partir deles.
     screen.style.setProperty('--back-space', `${Math.ceil(backSpace / topZoom)}px`);
+    screen.style.setProperty('--window-space', `${Math.ceil(windowSpace / topZoom)}px`);
     // A nota do escritório começa depois do voltar e debaixo do título, que crescem com o zoom do painel.
     screen.style.setProperty('--note-left', `${Math.ceil((84 * ui) / topZoom)}px`);
     // As colunas de botões redondos do escritório, à direita: duas, ou três num ecrã baixo.
     screen.style.setProperty('--hub-space', `${Math.ceil((((viewHeight < 380 ? 3 : 2) * 92 + 20) * ui) / topZoom)}px`);
     screen.style.setProperty('--note-top', `${Math.ceil((66 * ui) / topZoom)}px`);
-    screen.style.setProperty('--window-space', `${Math.ceil(windowSpace / topZoom)}px`);
+    setTopSize(Math.floor(stageWidth / topZoom), Math.floor(viewHeight / topZoom), topZoom, `${Math.ceil(backSpace / topZoom)}|${Math.ceil(windowSpace / topZoom)}`);
   }
 
   return { fit, topSize: () => topSize };

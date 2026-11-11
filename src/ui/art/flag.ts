@@ -34,7 +34,10 @@ export function drawFlagScene(canvas: HTMLCanvasElement, emblem: Emblem, now: nu
   g.fillRect(0, H - 6, W, 6);
   // O mastro.
   const poleX = Math.floor(W * 0.36);
-  const poleTop = Math.floor(H * 0.1);
+  // O pano fica sempre ao meio, na vertical; e nunca mais alto do que 70 % do ecrã, para caber num ecrã baixo e largo.
+  const fw = Math.floor(Math.min(W * 0.46, (H * 0.7) / 0.68));
+  const fh = Math.floor(fw * 0.68);
+  const poleTop = Math.floor((H - fh) / 2) - 2;
   g.fillStyle = INK;
   g.fillRect(poleX - 2, poleTop - 2, 5, H - poleTop + 2);
   g.fillStyle = '#d8d8d0';
@@ -42,8 +45,6 @@ export function drawFlagScene(canvas: HTMLCanvasElement, emblem: Emblem, now: nu
   g.fillStyle = '#f2c230';
   g.fillRect(poleX - 3, poleTop - 5, 7, 5);
   // O pano, coluna a coluna, com a onda a crescer para a ponta solta.
-  const fw = Math.floor(W * 0.46);
-  const fh = Math.floor(fw * 0.68);
   const fx = poleX + 3;
   const fy = poleTop + 2;
   const wave = (c: number): number => (now === 0 ? 0 : Math.round(Math.sin(now / 260 + c / 14) * 5 * (c / fw)));

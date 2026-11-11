@@ -27,7 +27,7 @@ import type { MatchView, Sound } from './match-view.ts';
 import type { MusicTheme } from './music.ts';
 import { MOVE_INFO, OFF_BALL_INFO, ON_BALL_INFO } from './narrate.ts';
 import { ATTRIBUTE_LABELS, SLOT_NAMES, legendHead, optionMark, optionsControls, pickOption, bodyStars, heightStar, escapeHtml as esc, panelContent, slotCode } from './panel.ts';
-import { drawShelf, titleTrophy, trophyList } from './trophies.ts';
+import { drawShelf, shelfSpots, titleTrophy, trophyList } from './trophies.ts';
 import { GUEST_RIVAL, guestKit, kitClash, parseTeamFile, teamFile, type GuestTeam } from './airport.ts';
 import { downloadFile, pickFile } from './save.ts';
 import { assistantReport, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
@@ -222,6 +222,23 @@ interface Rendered {
 const fullCanvas = (id: string, kind?: SceneKind): string => {
   const [width, height] = host.topSize();
   return `<canvas class="full" id="${id}" width="${width}" height="${height}"${kind ? ` data-kind="${kind}"` : ''}></canvas>`;
+};
+
+/** O que a janela e o voltar tapam, nas unidades da parte de cima (`--back-space` e `--window-space`, de layout.ts). */
+function sceneInsets(): [number, number] {
+  const style = getComputedStyle(document.getElementById('screen') ?? document.body);
+  return [parseInt(style.getPropertyValue('--back-space')) || 0, parseInt(style.getPropertyValue('--window-space')) || 0];
+}
+
+/**
+ * Uma cena com conteúdo (a bandeira, o roupeiro, o cartaz do jogo, o quadro tático, a vitrina, o quadro da taça): ecrã
+ * único, por isso ocupa só o espaço que se vê, entre o voltar e a janela do painel; desenhada na largura toda, metade
+ * ficava escondida debaixo da janela.
+ */
+const sceneCanvas = (id: string, windowed = true): string => {
+  const [width, height] = host.topSize();
+  const [left, right] = sceneInsets();
+  return `<canvas class="full fit" id="${id}" width="${Math.max(120, width - left - (windowed ? right : 0))}" height="${height}"></canvas>`;
 };
 const inside = (html: string): string => `<div class="patterned">${html}</div>`;
 
@@ -636,7 +653,7 @@ function halfStatsScreen(): Rendered {
 function tacticsScreen(): Rendered {
   const tactics = liveTactics();
   return {
-    top: fullCanvas('tacticsBoard'),
+    top: sceneCanvas('tacticsBoard'),
     bottom: `<div class="stack">${TACTIC_ROWS.map(({ key, label, fallback, options }) => `<div class="tacrow"><span>${label}: ${(options.find(([v]) => v === (tactics[key] ?? fallback)) ?? options[0]!)[2]}</span><div>${options.map(([value, name]) => `<button type="button" data-tactic="${key}" data-tactic-value="${value}" aria-pressed="${value === (tactics[key] ?? fallback)}">${name}</button>`).join('')}</div></div>`).join('')}${optionsRow()}</div>${bar(backBtn(tacticsBack))}`,
     after: () => drawTacticsBoard(element<HTMLCanvasElement>('tacticsBoard'), tactics),
   };
@@ -669,7 +686,7 @@ function kitScreen(): Rendered {
     `<button type="button" class="kitbtn" ${attr}="${value}" aria-pressed="${pressed}"><canvas ${preview} width="20" height="36"></canvas><span>${esc(name)}</span></button>`;
   const rivalNames = ['Principal', 'Alternativo'];
   return {
-    top: fullCanvas('poster'),
+    top: sceneCanvas('poster'),
     bottom: `<div class="kitpick">
       <div class="kithead"><img class="emblem" alt="" src="${emblemImage(club.emblem)}"><b>${esc(club.team.name)}</b></div>
       <div class="kitgrid">${club.kits.map(k => button('data-kit', k.id, k.id === club.kitChoice, `data-kit-preview="${k.id}"`, k.name)).join('')}</div>
@@ -727,10 +744,10 @@ function kitEditScreen(): Rendered {
   const kit = kitById(kitEditing);
   const parts: readonly (readonly [typeof kitPart, string])[] = [['jersey', 'Camisola'], ['second', 'Segunda'], ['shorts', 'Calções'], ['trim', 'Pormenores']];
   return {
-    top: fullCanvas('wardrobe'),
+    top: sceneCanvas('wardrobe'),
     bottom: `${choices('data-kit-edit', club.kits.map(k => [k.id, esc(k.name)] as const), kitEditing)}
       <div class="scroll editor">
-        <div><span>Peça e cor</span><div class="chips4">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
+        <div><span>Peça e cor</span><div class="chips4 two">${parts.map(([id, label]) => chip('data-kit-part', id, label, kit[id], kitPart === id)).join('')}</div>${swatches('data-kit-color', kit[kitPart])}</div>
         <div><span>Desenho da camisola</span><div class="patterns">${KIT_PATTERNS.map(([id, label]) => `<button type="button" data-kit-pattern="${id}" aria-pressed="${kit.pattern === id}"><img alt="" src="${kitImage({ ...kit, pattern: id })}"><span>${label}</span></button>`).join('')}</div></div>
         <div class="hint">${kitClash(kit, rivalKitFor(club, currentRival().name, kit, guestGame ? club.guest : null)) ? 'Parecido com o equipamento do adversário desta semana: em campo, custa distinguir.' : 'Boa diferença para o adversário desta semana.'}</div>
       </div>
@@ -754,7 +771,7 @@ function emblemScreen(): Rendered {
   const symbols = EMBLEM_SYMBOL_LIST.map(([id, label]) => `<button type="button" data-em-symbol="${id}" aria-pressed="${emblem.symbol === id}" title="${label}"><img alt="${label}" src="${emblemImage({ ...emblem, shape: 'circle', pattern: 'plain', symbol: id, letters: '' })}"></button>`).join('');
   const parts: readonly (readonly [typeof emblemPart, string])[] = [['primary', 'Fundo'], ['secondary', 'Segunda'], ['accent', 'Símbolo']];
   return {
-    top: fullCanvas('flag'),
+    top: sceneCanvas('flag'),
     bottom: `<div class="scroll editor">
         <div><span>Desenho <small>${emblemPage + 1} de ${pages}</small></span><div class="pager"><button type="button" data-em-page="-1" aria-label="Página anterior">‹</button><div class="designs">${designs}</div><button type="button" data-em-page="1" aria-label="Página seguinte">›</button></div></div>
         <div><span>Símbolo</span><div class="symbols">${symbols}</div></div>
@@ -932,7 +949,7 @@ function federationScreen(): Rendered {
     : [['table', 'Clubes'], ['cup', 'Taça']];
   const bracket = federationTab === 'cup' || federationTab === 'playoffs';
   return {
-    top: bracket ? fullCanvas('bracket') : top,
+    top: bracket ? sceneCanvas('bracket') : top,
     after: bracket ? () => drawBracket(element<HTMLCanvasElement>('bracket'), ...(federationTab === 'cup' ? cupBracket() : playoffBracket())) : () => {
       // Ao voltar de um jogador, a ficha fica no sítio do plantel onde estava.
       const inner = document.querySelector('.fedsheet .inner');
@@ -942,16 +959,26 @@ function federationScreen(): Rendered {
   };
 }
 
+/**
+ * A vitrina: só as prateleiras, no ecrã todo. Toca-se num troféu para ver a nota dele; cada um tem por cima um botão
+ * transparente, que também serve o teclado e o leitor de ecrã. O título e o voltar ficam como no escritório.
+ */
 function trophyScreen(): Rendered {
   const trophies = trophyList(club);
   const won = trophies.filter(t => t.won).length;
   const t = trophies[selectedTrophy]!;
+  const [width, height] = host.topSize();
+  const [left] = sceneInsets();
+  const W = Math.max(120, width - left);
+  const hits = shelfSpots(W, height, trophies.length).map(([x, y], n) => {
+    const item = trophies[n]!;
+    const name = item.won ? item.name : `${item.name} (por ganhar)`;
+    return `<button type="button" class="shelfhit" data-trophy="${n}" aria-pressed="${selectedTrophy === n}" aria-label="${esc(name)}" style="left:calc(var(--back-space, 0px) + ${x - 24}px);top:${y - 46}px"></button>`;
+  }).join('');
   return {
-    top: `${fullCanvas('shelf')}<div class="tnote"><b>${esc(t.won ? t.name : `${t.name} (por ganhar)`)}</b><span>${esc(t.detail)}</span></div>`,
-    bottom: `<div class="matchhead"><span>Carreira do treinador</span><b>${won} de ${trophies.length} troféus e prémios</b></div>
-      <div class="scroll">${won === 0 ? emptyState('A vitrina ainda está vazia. Cada título, taça e prémio que ganhares fica aqui, e vai contigo para outro clube.', 'secretary') : ''}${trophies.map((item, n) => `<button type="button" class="trow" data-trophy="${n}" aria-pressed="${selectedTrophy === n}"><i class="${item.won ? 'yes' : ''}"></i><span>${esc(item.won ? item.name : '???')}</span><small>${item.won ? 'Ganho' : 'Por ganhar'}</small></button>`).join('')}</div>
-      ${bar(backButton('data-office="board"'))}`,
-    after: () => drawShelf(element<HTMLCanvasElement>('shelf'), trophies),
+    top: `${sceneCanvas('shelf', false)}${hits}<div class="tnote shelfnote"><b>${esc(t.won ? t.name : `${t.name} (por ganhar)`)}</b><span>${esc(t.detail)}</span></div>`,
+    bottom: `<div class="matchhead"><span>Carreira do treinador</span><b>${won} de ${trophies.length} troféus e prémios</b></div>${bar(backButton('data-office="board"'))}`,
+    after: () => drawShelf(element<HTMLCanvasElement>('shelf'), trophies, selectedTrophy),
   };
 }
 
@@ -1044,9 +1071,12 @@ function render(): void {
   const { top, bottom, after } = SCREENS[screen]();
   // Ecrã único: as fichas e as notas ficam numa janela por cima da cena do sítio, escurecida; os ecrãs com cena própria
   // (balneário, escritório, quadro tático, vitrina…) já a têm. O escritório e o balneário mostram as opções em botões redondos.
-  const backdrop = top.includes('class="full"') ? '' : fullCanvas('scene', screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : 'office');
+  // As cenas de conteúdo (classe «full fit») ficam à frente da sala escurecida, como as fichas; a sala é a de onde se veio.
+  const room: SceneKind | undefined = screen === 'kit' ? 'lockerPre' : screen === 'tactics' ? (tacticsBack === 'pre' ? 'lockerPre' : tacticsBack === 'train' ? 'gym' : 'office') : screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : 'office';
+  const backdrop = top.includes('class="full"') ? '' : fullCanvas('scene', room);
   setHtmlKeepingScenes(top_, backdrop + top);
   top_.classList.toggle('backdrop', backdrop !== '');
+  // Os botões redondos do escritório e do balneário; a vitrina, que vive no escritório, não tem janela: só o título e o voltar.
   panel.classList.toggle('hub', screen === 'office' || screen === 'pre');
   top_.style.backgroundImage = `url(${pattern()})`;
   panel.innerHTML = bottom;

@@ -117,7 +117,14 @@ export function trophyList(club: ClubState): Trophy[] {
 }
 
 /** A vitrina: prateleiras de madeira com o que já se ganhou. O que falta fica em sombra. */
-export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]): void {
+/** Onde fica cada troféu na vitrina: a base (x, y), em píxeis da tela. As prateleiras e os botões por cima usam o mesmo. */
+export function shelfSpots(W: number, H: number, count: number): [number, number][] {
+  const rowY = [Math.round(H * 0.47), Math.round(H * 0.92)];
+  const perRow = Math.ceil(count / rowY.length);
+  return Array.from({ length: count }, (_, n) => [Math.round((W / perRow) * (n % perRow + 0.5)), rowY[Math.floor(n / perRow)]!]);
+}
+
+export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[], selected = -1): void {
   const g = canvas.getContext('2d')!;
   const { width: W, height: H } = canvas;
   const rect = (c: string, x: number, y: number, w: number, h: number): void => {
@@ -133,9 +140,18 @@ export function drawShelf(canvas: HTMLCanvasElement, trophies: readonly Trophy[]
     rect('#a06a2c', 8, y, W - 16, 3);
     rect('rgba(242,194,48,.08)', 8, y - 90, W - 16, 90);
   }
-  const perRow = Math.ceil(trophies.length / rowY.length);
-  trophies.forEach((t, n) => drawTrophy(g, Math.round((W / perRow) * (n % perRow + 0.5)), rowY[Math.floor(n / perRow)]!, t.kind, t.won));
+  const spots = shelfSpots(W, H, trophies.length);
+  // O escolhido tem uma luz por cima, para se saber de qual é a nota.
+  const pick = spots[selected];
+  if (pick) {
+    rect('rgba(242,194,48,.18)', pick[0] - 16, pick[1] - 44, 32, 44);
+    rect('#f2c230', pick[0] - 14, pick[1] + 3, 28, 2);
+  }
+  trophies.forEach((t, n) => drawTrophy(g, spots[n]![0], spots[n]![1], t.kind, t.won));
 }
+
+/** A sombra dos troféus por ganhar: clara o bastante para se ver na madeira escura (3:1), sem parecer ganha. */
+const UNWON = '#8c7660';
 
 /** Um troféu, com a base em (x, y). O que falta fica em sombra. */
 export function drawTrophy(g: CanvasRenderingContext2D, x: number, y: number, kind: Trophy['kind'], won: boolean): void {
@@ -145,9 +161,9 @@ export function drawTrophy(g: CanvasRenderingContext2D, x: number, y: number, ki
   };
   {
     const t = { kind, won };
-    const main = !t.won ? '#1b140d' : t.kind === 'cup' ? '#c9ccd4' : t.kind === 'plate' ? '#c98a4a' : '#f2c230';
-    const dark = !t.won ? '#1b140d' : t.kind === 'cup' ? '#8f93a0' : t.kind === 'plate' ? '#8f5e2c' : '#c99a14';
-    const light = !t.won ? '#1b140d' : '#ffffff';
+    const main = !t.won ? UNWON : t.kind === 'cup' ? '#c9ccd4' : t.kind === 'plate' ? '#c98a4a' : '#f2c230';
+    const dark = !t.won ? UNWON : t.kind === 'cup' ? '#8f93a0' : t.kind === 'plate' ? '#8f5e2c' : '#c99a14';
+    const light = !t.won ? UNWON : '#ffffff';
     if (t.kind === 'cup' || t.kind === 'bigCup') {
       const s = t.kind === 'bigCup' ? 1.3 : 1;
       const w = Math.round(14 * s);
@@ -169,8 +185,11 @@ export function drawTrophy(g: CanvasRenderingContext2D, x: number, y: number, ki
       rect(dark, x + 5, y - 27, 3, 22);
       if (t.won) rect('#e8622a', x - 3, y - 21, 6, 6);
     } else {
-      rect('#cf3a2c', x - 4, y - 28, 3, 10);
-      rect('#2b5fd9', x + 1, y - 28, 3, 10);
+      // A fita só aparece nas medalhas já ganhas.
+      if (t.won) {
+        rect('#cf3a2c', x - 4, y - 28, 3, 10);
+        rect('#2b5fd9', x + 1, y - 28, 3, 10);
+      }
       rect(dark, x - 7, y - 18, 14, 14);
       rect(main, x - 6, y - 17, 12, 12);
       if (t.won) rect(light, x - 3, y - 14, 3, 3);
