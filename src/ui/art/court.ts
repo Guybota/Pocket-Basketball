@@ -22,9 +22,10 @@ const NEAR_Y = 17;
 /** Para onde a câmara olha em repouso: um pouco para lá do meio do campo. */
 export const LOOK_Y = -1.1;
 /** Quantas filas de público cabem na bancada deste pavilhão. */
-export const fanRows = (theme: CourtTheme): number => (theme.crowd ? Math.min(5, Math.floor((theme.crowd.to - theme.crowd.from - CROWD_WALL) / FAN_ROW_STEP)) : 0);
+const rowStep = (theme: CourtTheme): number => theme.crowd?.rowStep ?? FAN_ROW_STEP;
+export const fanRows = (theme: CourtTheme): number => (theme.crowd ? Math.min(5, Math.floor((theme.crowd.to - theme.crowd.from - CROWD_WALL) / rowStep(theme))) : 0);
 /** A altura de uma fila de público na bancada, acima do muro. */
-export const fanHeight = (theme: CourtTheme, row: number): number => (theme.crowd ? theme.crowd.from : 1) + CROWD_WALL + 0.3 + row * FAN_ROW_STEP;
+export const fanHeight = (theme: CourtTheme, row: number): number => (theme.crowd ? theme.crowd.from : 1) + CROWD_WALL + 0.3 + row * rowStep(theme);
 /** Onde assentam os pés de um adepto da bancada lateral: a bancada recua ao subir. */
 export const sideFanSpot = (theme: CourtTheme, row: number): { y: number; z: number } => {
   const z = fanHeight(theme, row);
@@ -33,8 +34,96 @@ export const sideFanSpot = (theme: CourtTheme, row: number): { y: number; z: num
 /** O mesmo, nas bancadas dos topos. */
 export const endFanSpot = (theme: CourtTheme, far: boolean, row: number): { x: number; z: number } => {
   const z = fanHeight(theme, row);
-  return { x: far ? WALL_FAR_X + theme.slope * z : WALL_NEAR_X - theme.slope * z, z };
+  const slope = theme.endSlope ?? theme.slope;
+  return { x: far ? WALL_FAR_X + slope * z : WALL_NEAR_X - slope * z, z };
 };
+/** Os corredores de escada partem a bancada em blocos, de 7 em 7 m a partir do meio-campo; ninguém se senta neles. */
+const AISLE_EVERY = 7;
+const AISLE_HALF = 0.45;
+const aisleAt = (c: number): boolean => Math.abs(((((c - 14) % AISLE_EVERY) + AISLE_EVERY * 1.5) % AISLE_EVERY) - AISLE_EVERY / 2) < AISLE_HALF;
+/** Um adepto sentado ocupa ~0,42 m para cada lado (mais nos topos, vistos de lado): os lugares ficam a 1 m do meio do corredor. */
+const SEAT_CLEAR = 1;
+/** Se um lugar ao longo da bancada (x nas laterais, y nos topos) fica perto de mais de um corredor de escada. */
+export const inAisle = (theme: CourtTheme, along: number): boolean =>
+  theme.steps === true && Math.abs(((((along - 14) % AISLE_EVERY) + AISLE_EVERY * 1.5) % AISLE_EVERY) - AISLE_EVERY / 2) < SEAT_CLEAR;
+/** Nas bancadas em degraus, os dois cantos do fundo são cortados a 45°: uma terceira bancada, 4 m para cada lado do canto. */
+const CHAMFER = 4;
+/** Meia largura da escada em cada junção de bancadas (lateral com diagonal, diagonal com topo). */
+const JUNCTION_HALF = 0.7;
+/** Um adepto sentado ocupa ~0,42 m para cada lado: o primeiro lugar fica a esta distância da junção, fora da escada. */
+const JUNCTION_GAP = 1.2;
+/** Quanto cada junção anda ao longo da fila por metro de altura: as filas do canto alargam ao subir, como num anel. */
+const junctionShift = (theme: CourtTheme): number => (Math.SQRT2 - 1) * theme.slope;
+const sideJunction = (theme: CourtTheme, z: number, far: boolean): number => (far ? WALL_FAR_X - CHAMFER + junctionShift(theme) * z : WALL_NEAR_X + CHAMFER - junctionShift(theme) * z);
+const endJunction = (theme: CourtTheme, z: number): number => WALL_Y + CHAMFER - junctionShift(theme) * z;
+/** Metade do comprimento de uma fila da bancada do canto, à altura z, medida a partir do meio da diagonal. */
+const diagHalf = (theme: CourtTheme, z: number): number => CHAMFER / Math.SQRT2 + junctionShift(theme) * z;
+
+export type SeatPlane = 'side' | 'end' | 'diag';
+/** Um lugar da bancada: onde assentam os pés, em que bancada fica e a posição ao longo da fila (x, y ou a diagonal). */
+export interface Seat {
+  x: number;
+  y: number;
+  z: number;
+  plane: SeatPlane;
+  far: boolean;
+  along: number;
+}
+
+/** Onde começa a fila de cadeiras de cada bancada (o meio da primeira cadeira com gente): as cadeiras partem daqui. */
+function seatStart(theme: CourtTheme, plane: SeatPlane, row: number): number {
+  const z = fanHeight(theme, row);
+  const half = (row % 2) * (FAN_SPACING / 2);
+  if (!theme.steps) return plane === 'side' ? endFanSpot(theme, false, row).x + 0.7 + half : sideFanSpot(theme, row).y + 0.7 + half;
+  // Sem cantos cortados, a bancada da lateral vai de parede a parede, com uma escada em cada ponta.
+  if (!theme.chamfer) return plane === 'side' ? WALL_NEAR_X + JUNCTION_GAP + half : sideFanSpot(theme, row).y + JUNCTION_GAP + half;
+  if (plane === 'side') return sideJunction(theme, z, false) + JUNCTION_GAP + half;
+  if (plane === 'end') return endJunction(theme, z) + JUNCTION_GAP + half;
+  // Na diagonal, os lugares ficam ao meio; as filas ímpares têm menos um, para ficarem desencontradas das outras.
+  const n = Math.floor((2 * (diagHalf(theme, z) - JUNCTION_GAP)) / FAN_SPACING) + 1;
+  const m = row % 2 && n > 1 ? n - 1 : n;
+  return (-(m - 1) * FAN_SPACING) / 2;
+}
+
+/**
+ * Todos os lugares de uma fila, sem os corredores, as escadas das junções e a frente do túnel. Os adeptos sentam-se aqui e
+ * as cadeiras desenham-se a partir daqui, uma por meio lugar, para cada adepto ficar sentado numa.
+ */
+export function seats(theme: CourtTheme, row: number): Seat[] {
+  if (!theme.crowd) return [];
+  const out: Seat[] = [];
+  const z = fanHeight(theme, row);
+  const sideY = WALL_Y - theme.slope * z;
+  const last = !theme.steps ? endFanSpot(theme, true, row).x - 0.5 : theme.chamfer ? sideJunction(theme, z, true) - JUNCTION_GAP + 1e-6 : WALL_FAR_X - JUNCTION_GAP + 1e-6;
+  for (let x = seatStart(theme, 'side', row); theme.steps ? x <= last : x < last; x += FAN_SPACING) {
+    if (z < TUNNEL.height + 0.3 && x > TUNNEL.x0 - 0.5 && x < TUNNEL.x1 + 0.5) continue;
+    if (inAisle(theme, x)) continue;
+    out.push({ x, y: sideY, z, plane: 'side', far: false, along: x });
+  }
+  for (const far of theme.endStands === false ? [] : [false, true]) {
+    const x = endFanSpot(theme, far, row).x;
+    for (let y = seatStart(theme, 'end', row); y < 9; y += FAN_SPACING) if (!inAisle(theme, y)) out.push({ x, y, z, plane: 'end', far, along: y });
+  }
+  if (theme.chamfer) {
+    const limit = diagHalf(theme, z) - JUNCTION_GAP + 1e-6;
+    for (const far of [false, true]) {
+      for (let a = seatStart(theme, 'diag', row); a <= limit; a += FAN_SPACING) {
+        // Do canto ao lugar: s ao longo do fundo, t ao longo do topo (a frente da diagonal tem s + t = CHAMFER).
+        const s = (CHAMFER - Math.SQRT2 * theme.slope * z + Math.SQRT2 * a) / 2;
+        const t = (CHAMFER - Math.SQRT2 * theme.slope * z - Math.SQRT2 * a) / 2;
+        out.push({ x: far ? WALL_FAR_X - s : WALL_NEAR_X + s, y: WALL_Y + t, z, plane: 'diag', far, along: a });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Onde cai um ponto ao longo de uma fila de cadeiras, de 0 a 1: 0,5 é o meio de uma cadeira, 0 e 1 a frincha entre duas.
+ * Há uma cadeira por cada meio lugar, alinhada com `seats`.
+ */
+export const chairPhase = (theme: CourtTheme, plane: SeatPlane, row: number, along: number): number =>
+  frac((along - seatStart(theme, plane, row)) / (FAN_SPACING / 2) + 0.5);
 const FLOOR_SCALE = 32;
 const WALL_SCALE = 20;
 const SIDE_WALL_SPAN = WALL_FAR_X - WALL_NEAR_X;
@@ -115,11 +204,65 @@ export interface CourtTheme {
   reflection: number;
   boards: readonly Rgb[];
   boardText: Rgb;
-  crowd: { from: number; to: number; density: number; seats: readonly Rgb[]; shirts: readonly Rgb[]; dim: number } | null;
+  /** `rowStep`: a altura de cada fila de público (por omissão FAN_ROW_STEP); nas bancadas de tábuas é mais baixa. */
+  crowd: { from: number; to: number; density: number; seats: readonly Rgb[]; shirts: readonly Rgb[]; dim: number; rowStep?: number } | null;
   flashes: boolean;
+  /** A bancada em degraus a sério (piso, cadeiras e espelho), em vez de um plano inclinado com os lugares pintados. */
+  steps?: boolean;
+  /** Os dois cantos do fundo cortados a 45°, com uma terceira bancada (nas arenas). */
+  chamfer?: boolean;
+  /** Degraus de tábuas pintadas, sem cadeiras: as bancadas que se recolhem nos ginásios das escolas. */
+  woodSteps?: boolean;
+  /** Sem público nos topos: são paredes. */
+  endStands?: boolean;
+  /** A inclinação das paredes dos topos (por omissão a das bancadas); zero é uma parede a direito. */
+  endSlope?: number;
+  /** Acima da bancada da lateral, a parede sobe a direito em vez de continuar a recuar. */
+  wallAbove?: boolean;
+  /** Linhas de outras modalidades, desenhadas por baixo das do basquetebol, cada grupo com a sua cor. */
+  extraLines?: readonly { color: Rgb; lines: readonly (readonly [number, number])[][] }[];
 }
 
 const SKIN_TONES: readonly Rgb[] = [[240, 200, 160], [208, 150, 104], [140, 92, 58], [98, 64, 42]];
+
+/** As linhas que um pavilhão de escola partilha com outras modalidades: vólei a vermelho e dois campos de badminton a verde. */
+// Só as linhas principais do badminton: as duplas colavam-se e o chão ficava cheio de linhas a tremer com a câmara.
+const badminton = (cx: number): [number, number][][] => [
+  [[cx - 3.05, -6.7], [cx + 3.05, -6.7], [cx + 3.05, 6.7], [cx - 3.05, 6.7], [cx - 3.05, -6.7]],
+  [[cx - 3.05, 0], [cx + 3.05, 0]],
+  [[cx - 3.05, -1.98], [cx + 3.05, -1.98]],
+  [[cx - 3.05, 1.98], [cx + 3.05, 1.98]],
+];
+// Cores calmas, perto do tom do soalho: o vólei cor de tijolo, para não se confundir com as camisolas vermelhas.
+const SCHOOL_LINES: CourtTheme['extraLines'] = [
+  { color: [128, 160, 108], lines: [...badminton(7), ...badminton(21)] },
+  { color: [176, 98, 72], lines: [[[5, -4.5], [23, -4.5], [23, 4.5], [5, 4.5], [5, -4.5]], [[11, -4.5], [11, 4.5]], [[17, -4.5], [17, 4.5]]] },
+];
+
+/** As paredes dos topos do ginásio (y ao longo da parede): espaldares, o marcador de abas e cartazes de papel. */
+function schoolEnd(y: number, z: number, t: CourtTheme): Rgb {
+  // Espaldares de madeira: só as barras ao alto, grossas, e a de cima; os degraus finos saíam em píxeis soltos.
+  if (y > -9.5 && y < -3 && z < 2.8) {
+    if (z > 2.62) return [150, 104, 58];
+    return frac((y + 9.5) / 0.5) < 0.36 ? [176, 124, 70] : shade(t.wallColor, 0.94);
+  }
+  // O marcador de abas: moldura de madeira, fundo verde e quatro abas de papel com a dobra a meio.
+  if (y > 0.5 && y < 5.5 && z > 3.2 && z < 4.6) {
+    if (y < 0.6 || y > 5.4 || z < 3.3 || z > 4.5) return [92, 62, 38];
+    for (const c of [1.3, 2, 3.4, 4.1]) {
+      if (y > c && y < c + 0.6 && z > 3.5 && z < 4.25) return Math.abs(z - 3.87) < 0.03 ? [150, 140, 120] : [238, 230, 204];
+    }
+    return [30, 70, 50];
+  }
+  // Cartazes de papel presos com fita, cada um com uma faixa de cor e linhas de texto.
+  for (const [c, band] of [[-1.6, [214, 64, 52]], [6.8, [52, 110, 170]], [9.4, [232, 180, 60]]] as const) {
+    if (y > c && y < c + 1.1 && z > 1.9 && z < 3) {
+      if (z > 2.78) return band as Rgb;
+      return frac(z / 0.16) < 0.3 && y > c + 0.15 && y < c + 0.95 - (Math.floor(z / 0.16) % 2) * 0.25 ? [120, 116, 108] : [244, 238, 222];
+    }
+  }
+  return t.wallColor;
+}
 
 /** Um campo por divisão, pela mesma ordem de DIVISIONS. */
 export const THEMES: readonly CourtTheme[] = [
@@ -185,10 +328,17 @@ export const THEMES: readonly CourtTheme[] = [
     center: [64, 158, 148],
     line: () => [248, 244, 228],
     apron: () => [58, 128, 124],
-    wall: (u, z, t) => (t.windows && z > 3 && z < 4.6 && frac(u * t.windows.period) < 0.7 ? t.windows.color : t.wallColor),
+    // As janelas sobem para cima da bancada de tábuas; os topos são paredes com espaldares, o marcador e cartazes.
+    wall: (u, z, t) => (u >= SIDE_WALL_SPAN ? schoolEnd(u - SIDE_WALL_SPAN + WALL_Y, z, t) : t.windows && z > 5.4 && z < 7 && frac(u * t.windows.period) < 0.7 ? t.windows.color : t.wallColor),
     wallColor: [236, 226, 196],
     windows: { color: [186, 226, 240], period: 0.6 },
-    slope: 0.5,
+    slope: 0.9,
+    steps: true,
+    woodSteps: true,
+    endStands: false,
+    endSlope: 0,
+    wallAbove: true,
+    extraLines: SCHOOL_LINES,
     seams: true,
     pole: '#7f8a94',
     board: '#f4f4ee',
@@ -197,7 +347,7 @@ export const THEMES: readonly CourtTheme[] = [
     reflection: 0.1,
     boards: [[58, 128, 124], [226, 214, 182]],
     boardText: [40, 60, 70],
-    crowd: { from: 1, to: 2.9, density: 0.3, seats: [[196, 170, 124], [178, 152, 108]], shirts: [[60, 110, 170], [190, 80, 60], [240, 210, 110], [90, 150, 110]], dim: 1 },
+    crowd: { from: 1, to: 4.5, density: 0.3, seats: [[52, 86, 134], [44, 74, 116]], shirts: [[60, 110, 170], [190, 80, 60], [240, 210, 110], [90, 150, 110]], dim: 1, rowStep: 0.9 },
     flashes: false,
   },
   {
@@ -225,6 +375,8 @@ export const THEMES: readonly CourtTheme[] = [
     boardText: [27, 34, 48],
     crowd: { from: 1, to: 16, density: 0.72, seats: [[128, 62, 54], [112, 54, 48]], shirts: [[43, 95, 217], [43, 95, 217], [244, 239, 224], [207, 58, 44], [242, 194, 48], [70, 80, 96]], dim: 0.68 },
     flashes: true,
+    steps: true,
+    chamfer: true,
   },
   {
     name: 'Grande Arena',
@@ -251,6 +403,8 @@ export const THEMES: readonly CourtTheme[] = [
     boardText: [250, 240, 214],
     crowd: { from: 1, to: 16, density: 0.92, seats: [[24, 28, 54], [20, 24, 46]], shirts: [[60, 90, 170], [200, 200, 210], [190, 70, 60], [240, 190, 70], [80, 90, 120]], dim: 0.55 },
     flashes: true,
+    steps: true,
+    chamfer: true,
   },
 ];
 
@@ -346,6 +500,72 @@ export interface CourtTextures {
   /** Ao ar livre: o céu, e o passeio e as duas relvas de fora da rede, já com a luz da hora. */
   sky: number;
   ground: readonly [number, number, number];
+  /** As cores dos degraus, por fila, já com a luz; null onde a bancada é um plano. */
+  steps: StepColours | null;
+}
+
+/**
+ * Os degraus da bancada: o primeiro piso fica 0,3 m acima do muro e cada um sobe uma fila de público (os pés dos adeptos
+ * assentam no fundo de cada piso). Cores por fila, a escurecer para cima.
+ */
+interface StepColours {
+  zs: number;
+  t0: number;
+  rise: number;
+  rows: number;
+  /** Tábuas sem cadeiras: o espelho mostra as juntas das tábuas. */
+  wood: boolean;
+  tread: Uint32Array;
+  nosing: Uint32Array;
+  chair: Uint32Array;
+  chairTop: Uint32Array;
+  gap: Uint32Array;
+  riser: Uint32Array;
+  aisleTread: Uint32Array;
+  aisleRiser: Uint32Array;
+}
+
+function stepColours(theme: CourtTheme): StepColours | null {
+  const crowd = theme.crowd;
+  if (!theme.steps || !crowd) return null;
+  const zs = crowd.from + CROWD_WALL;
+  const t0 = zs + 0.3;
+  const rise = rowStep(theme);
+  const rows = Math.ceil((crowd.to - t0) / rise) + 2;
+  const seat = crowd.seats[0]!;
+  if (theme.woodSteps) {
+    // Tábuas de madeira no piso, e o espelho de tábuas pintadas na cor do clube, com as juntas mais escuras.
+    const wood: Rgb = [206, 162, 106];
+    const painted = mix(seat, [96, 66, 44], 0.2);
+    const woodTones = {
+      tread: wood,
+      nosing: mix(wood, [250, 232, 196], 0.45),
+      chair: painted,
+      chairTop: painted,
+      gap: shade(painted, 0.78),
+      riser: painted,
+      aisleTread: shade(wood, 0.92),
+      aisleRiser: shade(wood, 0.7),
+    };
+    const woodOut = Object.fromEntries(Object.entries(woodTones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, () => packRgb(tinted(shade(c, crowd.dim), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
+    return { zs, t0, rise, rows, wood: true, ...woodOut };
+  }
+  const tread = mix(seat, [128, 128, 132], 0.62);
+  // As cadeiras mais claras do que o betão por trás (nas arenas escuras confundiam-se), com a aresta de cima ao sol;
+  // as escadas no tom do piso e com rebordo, para não parecerem pilares; a frincha pouco escura, para não piscar a andar.
+  const chair = mix(seat, [236, 236, 236], 0.14);
+  const tones = {
+    tread,
+    nosing: mix(seat, [196, 196, 196], 0.55),
+    chair,
+    chairTop: mix(seat, [236, 236, 236], 0.32),
+    gap: shade(chair, 0.8),
+    riser: shade(mix(seat, [24, 24, 30], 0.72), 0.8),
+    aisleTread: shade(tread, 1.06),
+    aisleRiser: shade(tread, 0.72),
+  };
+  const out = Object.fromEntries(Object.entries(tones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, (_, j) => packRgb(tinted(shade(c, crowd.dim * (1 - (0.45 * j) / rows)), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
+  return { zs, t0, rise, rows, wood: false, ...out };
 }
 
 const textureCache = new Map<string, CourtTextures>();
@@ -442,14 +662,14 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
         // Vistas de lado, as placas do topo do campo ocupam muito ecrã, por isso ficam mais discretas.
         const base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.6);
         color = z > BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
-      } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL) {
+      } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL && (u < SIDE_WALL_SPAN || theme.endStands !== false)) {
         // O muro baixo entre as placas e a primeira fila; dos dois lados do túnel, a faixa da claque, às riscas nas cores do clube.
         const top = theme.crowd.from + CROWD_WALL;
         const onBanner = theme.banner && u < SIDE_WALL_SPAN && ((x > 2.4 && x < 10.6) || (x > 17.4 && x < 25.6)) && z < top - 0.1;
         if (onBanner) color = shade(theme.banner![frac(x / 1.2) < 0.5 ? 0 : 1], z > top - 0.16 || z < BOARD_HEIGHT + 0.06 ? 0.7 : 1);
         else color = z > top - 0.08 ? [120, 120, 118] : [156, 156, 150];
       } else {
-        color = crowdColor(theme, u, z, frame) ?? theme.wall(u, z, theme);
+        color = (u < SIDE_WALL_SPAN || theme.endStands !== false ? crowdColor(theme, u, z, frame) : null) ?? theme.wall(u, z, theme);
       }
       wall[j * wallW + i] = packRgb(theme.open ? color : tinted(color, theme.tint));
     }
@@ -626,7 +846,7 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
   const walls = Array.from({ length: CROWD_FRAMES }, (_, frame) => buildWall(theme, frame, wallW, wallH));
   const floorLevels: CourtTextures['floorLevels'] = [{ data: floor, w: floorW, h: floorH, scale: FLOOR_SCALE }];
   for (let level = 1; level <= 2; level++) floorLevels.push(halve(floorLevels[level - 1]!));
-  const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH, sky: skyColor, ground };
+  const textures = { theme, floor, floorW, floorH, floorLevels, walls, wallW, wallH, sky: skyColor, ground, steps: stepColours(theme) };
   // Cada pavilhão ocupa uns 12 MB e cada clube da casa tem o seu: só ficam os últimos.
   return remember(textureCache, key, textures, 3);
 }
@@ -850,8 +1070,17 @@ export class Camera {
     const { slope } = t.theme;
     // As bancadas são planos inclinados que partem do chão e recuam ao subir. O raio só conta onde os corta acima do chão.
     const sideOffset = cy - WALL_Y + slope * cz;
-    const nearOffset = cx - WALL_NEAR_X + slope * cz;
-    const farOffset = WALL_FAR_X + slope * cz - cx;
+    // Os topos podem ter outra inclinação (zero: paredes a direito).
+    const endSlope = t.theme.endSlope ?? slope;
+    const nearOffset = cx - WALL_NEAR_X + endSlope * cz;
+    const farOffset = WALL_FAR_X + endSlope * cz - cx;
+    // Onde a bancada da lateral acaba e a parede sobe a direito, quando sobe.
+    const standTop = t.theme.wallAbove && t.theme.crowd ? t.theme.crowd.to : Infinity;
+    const wallAboveY = WALL_Y - slope * standTop;
+    // Os cantos cortados: a distância da câmara para lá de cada diagonal, medida na perpendicular.
+    const chamfer = t.steps !== null && t.theme.chamfer === true;
+    const diagNear0 = (WALL_NEAR_X - cx + WALL_Y - cy + CHAMFER) / Math.SQRT2;
+    const diagFar0 = (cx - WALL_FAR_X + WALL_Y - cy + CHAMFER) / Math.SQRT2;
     for (let sy = 0; sy < height; sy++) {
       const vy = height / 2 - sy - 0.5;
       const row = sy * width;
@@ -875,12 +1104,14 @@ export class Camera {
         const dirY = baseY + right[1] * sx;
         const hitX = cx + dirX * floorT;
         const hitY = cy + dirY * floorT;
-        if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y) {
+        if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y && (!chamfer || (hitX - WALL_NEAR_X + hitY - WALL_Y > CHAMFER && WALL_FAR_X - hitX + hitY - WALL_Y > CHAMFER))) {
           pixels[row + sx] = floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
           continue;
         }
         let hit = Infinity;
         let onSide = false;
+        let far = false;
+        let diag = false;
         const dSide = dirY + slope * rz;
         if (dSide < 0) {
           const tSide = -sideOffset / dSide;
@@ -889,7 +1120,7 @@ export class Camera {
             onSide = true;
           }
         }
-        const dNear = dirX + slope * rz;
+        const dNear = dirX + endSlope * rz;
         if (dNear < 0) {
           const tNear = -nearOffset / dNear;
           if (tNear < hit && cz + rz * tNear >= 0) {
@@ -897,16 +1128,91 @@ export class Camera {
             onSide = false;
           }
         }
-        const dFar = dirX - slope * rz;
+        const dFar = dirX - endSlope * rz;
         if (dFar > 0) {
           const tFar = farOffset / dFar;
           if (tFar < hit && cz + rz * tFar >= 0) {
             hit = tFar;
             onSide = false;
+            far = true;
           }
         }
+        if (chamfer) {
+          // As duas bancadas dos cantos: o raio sai do pavilhão pelo primeiro plano que cruza.
+          for (const isFar of [false, true]) {
+            const dd = ((isFar ? dirX : -dirX) - dirY) / Math.SQRT2;
+            const den = dd - slope * rz;
+            if (den <= 0) continue;
+            const tDiag = (slope * cz - (isFar ? diagFar0 : diagNear0)) / den;
+            if (tDiag > 0 && tDiag < hit && cz + rz * tDiag >= 0) {
+              hit = tDiag;
+              onSide = false;
+              far = isFar;
+              diag = true;
+            }
+          }
+        }
+        // Acima da bancada, a parede da lateral sobe a direito: o raio que passou por cima dela bate nessa parede.
+        if (onSide && !diag && cz + rz * hit > standTop && dirY < 0) hit = (cy - wallAboveY) / -dirY;
         // Cada bancada tem a sua faixa na textura: o texto da publicidade só fica na lateral. Acima de tudo, o teto.
-        const along = hit === Infinity ? 0 : onSide ? cx + dirX * hit - WALL_NEAR_X : cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN;
+        // Nos pavilhões com degraus, o raio que bate no plano da bancada recua até ao degrau que encontrou primeiro.
+        const steps = t.steps;
+        if (steps && hit !== Infinity && rz < 0 && (onSide || diag || t.theme.endStands !== false) && cz + rz * hit < standTop) {
+          const zIn = cz + rz * hit;
+          const d0 = diag ? (far ? diagFar0 : diagNear0) : onSide ? WALL_Y - cy : far ? cx - WALL_FAR_X : WALL_NEAR_X - cx;
+          const dd = diag ? ((far ? dirX : -dirX) - dirY) / Math.SQRT2 : onSide ? -dirY : far ? dirX : -dirX;
+          // Por cima do túnel não há degraus: a boca fica inteira, como na parede lisa.
+          const xIn = cx + dirX * hit;
+          const tunnel = onSide && xIn > TUNNEL.x0 - 0.2 && xIn < TUNNEL.x1 + 0.2 && zIn < TUNNEL.height + 0.2;
+          if (zIn >= steps.zs && dd > 0 && !tunnel) {
+            // O plano passa pelos cantos de dentro: o ponto do plano fica debaixo do piso j, atrás do espelho j.
+            const j = Math.max(0, Math.ceil((zIn - steps.t0) / steps.rise));
+            const top = steps.t0 + j * steps.rise;
+            const below = j === 0 ? steps.zs : top - steps.rise;
+            const tTread = (top - cz) / rz;
+            const tRiser = (slope * below - d0) / dd;
+            const tHit = Math.max(tTread, tRiser);
+            const k = Math.min(j, steps.rows - 1);
+            const hx = cx + dirX * tHit;
+            const hy = cy + dirY * tHit;
+            // Ao longo da fila: x na lateral, y nos topos, e na diagonal a partir do meio dela.
+            const c = diag ? ((far ? WALL_FAR_X - hx : hx - WALL_NEAR_X) - (hy - WALL_Y)) / Math.SQRT2 : onSide ? hx : hy;
+            // As escadas das junções. Medem-se à altura da fila que lá se senta, como os lugares: no piso, a do próprio piso; no
+            // espelho (as cadeiras da fila de baixo), a do degrau de baixo; o espelho baixo da primeira fila conta como a primeira.
+            const at = tTread >= tRiser || j === 0 ? top : below;
+            const junction = !chamfer
+              ? onSide ? Math.min(c - WALL_NEAR_X, WALL_FAR_X - c) : c - WALL_Y
+              : diag
+                ? diagHalf(t.theme, at) - Math.abs(c)
+                : onSide
+                  ? Math.min(c - sideJunction(t.theme, at, false), sideJunction(t.theme, at, true) - c)
+                  : c - endJunction(t.theme, at);
+            const aisle = junction < JUNCTION_HALF || (!diag && aisleAt(c));
+            if (tTread >= tRiser) {
+              const depth = d0 + dd * tHit - slope * below;
+              // Na escada, cada fila tem dois degraus: o rebordo repete-se a meio do piso.
+              const nose = depth < 0.08 || (aisle && Math.abs(depth - (slope * steps.rise) / 2) < 0.06);
+              pixels[row + sx] = nose ? steps.nosing[k]! : aisle ? steps.aisleTread[k]! : steps.tread[k]!;
+            } else {
+              // As costas das cadeiras no fundo de cada piso, com uma frincha entre elas; o resto do espelho é betão.
+              // Na escada, o espelho parte-se a meio no segundo degrau.
+              const local = cz + rz * tHit - below;
+              if (aisle) pixels[row + sx] = Math.abs(local - steps.rise / 2) < 0.06 ? steps.nosing[k]! : steps.aisleRiser[k]!;
+              // Nas tábuas não há cadeiras: o espelho mostra as juntas entre as tábuas.
+              else if (steps.wood) pixels[row + sx] = frac(local / 0.3) < 0.12 ? steps.gap[k]! : steps.riser[k]!;
+              else if (local < 0.55 && j > 0) {
+                // As cadeiras da fila j - 1 (cujos pés estão neste canto), centradas nos lugares onde os adeptos se sentam.
+                const u = chairPhase(t.theme, diag ? 'diag' : onSide ? 'side' : 'end', j - 1, c);
+                pixels[row + sx] = u < 0.07 || u > 0.93 ? steps.gap[k]! : local > 0.47 ? steps.chairTop[k]! : steps.chair[k]!;
+              }
+              else pixels[row + sx] = steps.riser[k]!;
+            }
+            continue;
+          }
+        }
+        // A diagonal usa a faixa dos topos da textura (sem letras), perto do canto.
+        // Nos topos nunca se vai à faixa da lateral: nos cantos, para lá da bancada, aparecia o público pintado da lateral.
+        const along = hit === Infinity ? 0 : diag ? SIDE_WALL_SPAN + 0.5 : onSide ? cx + dirX * hit - WALL_NEAR_X : Math.max(SIDE_WALL_SPAN, cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN);
         const z = hit === Infinity ? WALL_Z_SPAN : cz + rz * hit;
         const wu = Math.max(0, Math.min(t.wallW - 1, (along * WALL_SCALE) | 0));
         const wv = Math.max(0, Math.min(t.wallH - 1, (z * WALL_SCALE) | 0));
@@ -920,7 +1226,9 @@ export class Camera {
   /** As linhas do campo, por cima do chão: 1 píxel, com a cor e a luz de cada troço. */
   private drawCourtLines(pixels: Uint32Array, theme: CourtTheme): void {
     const { width, height } = this;
-    for (const line of COURT_LINES) {
+    // As linhas das outras modalidades primeiro, para as do basquetebol ficarem por cima.
+    const all = [...(theme.extraLines ?? []).flatMap(group => group.lines.map(line => ({ line, fixed: group.color as Rgb | null }))), ...COURT_LINES.map(line => ({ line, fixed: null as Rgb | null }))];
+    for (const { line, fixed } of all) {
       let [px, py] = this.project(line[0]![0], line[0]![1]);
       // O chão de cada píxel é a média do troço logo abaixo do seu centro: a linha desce meio píxel para ficar onde a área muda de cor.
       px = Math.floor(px);
@@ -932,7 +1240,7 @@ export class Camera {
         const qy = Math.floor(qy0 - 0.5);
         const mx = (line[i - 1]![0] + x) / 2;
         const my = (line[i - 1]![1] + y) / 2;
-        const color = packRgb(tinted(shade(theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)), theme.tint));
+        const color = packRgb(tinted(shade(fixed ?? theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)), theme.tint));
         // Bresenham: cada passo avança um píxel no eixo mais longo, por isso a linha nunca engrossa nem tem buracos.
         const dx = Math.abs(qx - px);
         const dy = -Math.abs(qy - py);

@@ -17,8 +17,9 @@ export interface Demo {
   tick: () => number | null;
 }
 
-/** `source` dá os clubes da liga; `active` diz se ainda se está no título. */
-export function createDemo(context: CanvasRenderingContext2D, source: () => ClubState, active: () => boolean): Demo {
+/** `source` dá os clubes da liga; `active` diz se ainda se está no título; `running` avisa quando a demonstração começa e
+ * acaba, para a tela passar a ter o tamanho da do jogo antes de se desenhar. */
+export function createDemo(context: CanvasRenderingContext2D, source: () => ClubState, active: () => boolean, running: (on: boolean) => void = () => {}): Demo {
   let view: MatchView | undefined;
   let timer = 0;
   let accumulator = 0;
@@ -32,6 +33,7 @@ export function createDemo(context: CanvasRenderingContext2D, source: () => Club
     const home = clubs.clubs[top[seed % top.length]!]!;
     const away = clubs.clubs[top[(seed + 1) % top.length]!]!;
     const quiet = { announce: () => {}, event: () => {}, sound: () => {} };
+    if (!view) running(true);
     const homeKit = clubIdentity(home.name).kits[0];
     view = new MatchView(context, aiTeam(home), aiTeam(away), seed, DIVISIONS.length - 1, quiet, [false, false], 1, homeKit, undefined, clubColor(home), 0.7, kitAgainst(away.name, homeKit), clubIdentity(home.name).emblem);
     view.snapCamera();
@@ -45,6 +47,7 @@ export function createDemo(context: CanvasRenderingContext2D, source: () => Club
     },
     stop: () => {
       clearTimeout(timer);
+      if (view) running(false);
       view = undefined;
     },
     resize: () => view?.resize(),

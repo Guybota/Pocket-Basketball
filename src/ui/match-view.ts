@@ -9,7 +9,7 @@ import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchS
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
-import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
+import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
 import {
@@ -525,17 +525,12 @@ export class MatchView {
       let n = 1;
       // De trás para a frente, para quem está à frente tapar quem está atrás.
       for (let row = fanRows(theme) - 1; row >= 0; row--) {
-        const side = sideFanSpot(theme, row);
-        // Cada fila vai de canto a canto da bancada, que recua ao subir; à frente do túnel ninguém se senta.
-        for (let x = endFanSpot(theme, false, row).x + 0.7 + (row % 2) * (FAN_SPACING / 2); x < endFanSpot(theme, true, row).x - 0.5; x += FAN_SPACING) {
-          if (side.z < TUNNEL.height + 0.3 && x > TUNNEL.x0 - 0.5 && x < TUNNEL.x1 + 0.5) continue;
-          if (seat(n++) < density) this.fans.push({ x, y: side.y, z: side.z, look: looks[n % looks.length]!, phase: n, flip: n % 3 === 0, flag: seat(n * 7 + 3) < 0.05, front: row === 0, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
-        }
-        for (const far of [false, true]) {
-          const end = endFanSpot(theme, far, row);
-          for (let y = side.y + 0.7 + (row % 2) * (FAN_SPACING / 2); y < 9; y += FAN_SPACING) {
-            if (seat(n++) < density) this.fans.push({ x: end.x, y, z: end.z, look: looks[n % looks.length]!, phase: n, flip: far, flag: false, front: false, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
-          }
+        // Os lugares da fila (laterais, cantos e topos), já sem as escadas e a frente do túnel.
+        for (const spot of seats(theme, row)) {
+          if (seat(n++) >= density) continue;
+          const flip = spot.plane === 'side' ? n % 3 === 0 : spot.far;
+          const front = row === 0 && spot.plane === 'side';
+          this.fans.push({ x: spot.x, y: spot.y, z: spot.z, look: looks[n % looks.length]!, phase: n, flip, flag: spot.plane === 'side' && seat(n * 7 + 3) < 0.05, front, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
         }
       }
     }

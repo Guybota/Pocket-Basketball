@@ -162,7 +162,11 @@ let replayTick = 0;
 let replayStart = 0;
 let replayEnding = 0;
 const townExtras = newClub(1);
-const demo = createDemo(context, () => club ?? townExtras, () => stage === 'title');
+let demoRunning = false;
+const demo = createDemo(context, () => club ?? townExtras, () => stage === 'title', on => {
+  demoRunning = on;
+  fit();
+});
 const soundsPlayed = new Set<Sound>();
 const announced = new Set<string>();
 
@@ -201,7 +205,7 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 });
 
 function fit(): void {
-  layout.fit({ stage, resultOpen, menuPanel, courtOnly: true });
+  layout.fit({ stage, resultOpen, menuPanel, courtOnly: true, demo: demoRunning });
   // As faixas da apresentação ficam no mesmo retângulo que o marcador: o do campo.
   for (const side of ['top', 'left', 'right'] as const) introBarsBox.style[side] = hudElement.style[side];
   // Medir o canvas apaga-o: a cena desenha-se já na imagem seguinte, sem esperar pela vez das 30 por segundo.

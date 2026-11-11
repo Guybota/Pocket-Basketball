@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courtTextures, fillPolygon } from './court.ts';
+import { FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats } from './court.ts';
 
 describe('pavilhão', () => {
   it('veste as cores do clube da casa, e guarda cada versão', { tags: ['slow'] }, () => {
@@ -59,5 +59,48 @@ describe('polígonos', () => {
     const corner = (n: number): boolean => Math.sign(steps[n - 1] ?? steps[n]!) !== Math.sign(steps[n]!) || Math.sign(steps[n + 1] ?? steps[n]!) !== Math.sign(steps[n]!);
     expect(steps.filter((d, n) => !corner(n) && Math.abs(d) !== 2)).toEqual([]);
     expect(steps.filter(d => Math.abs(d) === 2).length).toBeGreaterThan(10);
+  });
+});
+
+describe('bancada em degraus', () => {
+  const stepped = THEMES.filter(t => t.steps);
+
+  it('senta cada adepto no meio de uma cadeira, nas laterais, nos cantos e nos topos', () => {
+    // As duas arenas com os cantos cortados, e o ginásio da escola com a bancada de tábuas só na lateral.
+    expect(stepped.map(t => t.name)).toEqual(['Pavilhão Escolar', 'Pavilhão Municipal', 'Grande Arena']);
+    for (const theme of stepped) {
+      expect(fanRows(theme)).toBeGreaterThanOrEqual(3);
+      for (let row = 0; row < fanRows(theme); row++) {
+        const list = seats(theme, row);
+        expect(new Set(list.map(s => s.plane))).toEqual(new Set(theme.chamfer ? ['side', 'end', 'diag'] : ['side']));
+        for (const s of list) expect(chairPhase(theme, s.plane, row, s.along)).toBeCloseTo(0.5, 6);
+      }
+    }
+  });
+
+  it('não põe ninguém em cima de outro nem nas escadas entre bancadas', () => {
+    for (const theme of stepped) {
+      for (let row = 0; row < fanRows(theme); row++) {
+        const list = seats(theme, row);
+        // Na mesma fila, dois adeptos ficam pelo menos a um lugar de distância, também de uma bancada para a do lado.
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length; j++) {
+            const d = Math.sqrt((list[i]!.x - list[j]!.x) ** 2 + (list[i]!.y - list[j]!.y) ** 2);
+            expect(d).toBeGreaterThan(FAN_SPACING - 1e-6);
+          }
+        }
+        // As escadas das junções têm 0,7 m para cada lado e um adepto sentado ~0,42 m: as junções ficam onde as filas da
+        // lateral (x), do topo (y) e da diagonal se encontram, e recuam ao subir.
+        const z = fanHeight(theme, row);
+        const shift = (Math.SQRT2 - 1) * theme.slope * z;
+        for (const s of list) {
+          // Sem cantos cortados, as escadas ficam nas duas pontas da bancada, junto às paredes dos topos.
+          const corner = theme.chamfer ? 4 - shift : 0;
+          const clear =
+            s.plane === 'side' ? Math.min(s.x - (-4 + corner), 32 - corner - s.x) : s.plane === 'end' ? s.y - (-11 + 4 - shift) : 4 / Math.SQRT2 + shift - Math.abs(s.along);
+          expect(clear).toBeGreaterThan(0.7 + 0.42);
+        }
+      }
+    }
   });
 });

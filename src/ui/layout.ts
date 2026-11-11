@@ -28,6 +28,8 @@ export interface LayoutState {
   menuPanel: number;
   /** O campo com o ecrã todo e o painel numa janela por cima (o jogo é sempre assim; o resultado vai ao centro). */
   courtOnly: boolean;
+  /** No ecrã inicial, o jogo de demonstração está a correr: a tela fica igual à do jogo. */
+  demo?: boolean;
 }
 
 export interface LayoutElements {
@@ -99,7 +101,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
 
   /** O jogo é só na horizontal, como o resto do género: o campo fica ao lado do painel. Com o ecrã ao alto, um aviso
    * pede para o rodar (CSS, `#rotateHint`). */
-  function fit({ stage, resultOpen, courtOnly }: LayoutState): void {
+  function fit({ stage, resultOpen, courtOnly, demo }: LayoutState): void {
     game.classList.add('landscape');
     document.body.classList.add('landscape');
     const viewHeight = windowHeight();
@@ -132,20 +134,25 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     // (o «sharp bilinear» dos jogos de pixel art). Fica de fora a coluna dos botões redondos, à direita: o campo centra-se
     // no espaço que sobra, sem ficar por baixo deles.
     const buttons = onlyCourt ? BUTTON_COLUMN * ui : 0;
-    const scale = stage === 'match'
+    // A demonstração do ecrã inicial desenha-se como o jogo: o mesmo enquadramento, a mesma resolução e os bonecos do mesmo
+    // tamanho. Com a tela da cidade mostrava mais campo, e os bonecos encolhidos numa tela pequena saíam com outras proporções.
+    const court = stage === 'match' || (stage === 'title' && demo === true);
+    const scale = court
       ? Math.max(1 / dpr, Math.min((stageWidth - buttons) / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT))
       : stage === 'town' || stage === 'title'
         ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
         : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
-    const width = stage === 'match' ? MATCH_STAGE_WIDTH : Math.ceil(stageWidth / scale);
-    const height = stage === 'match' ? MATCH_STAGE_HEIGHT : Math.ceil(stageHeight / scale);
+    // A demonstração enche o lado do ecrã inicial sem barras: no mínimo o campo do jogo, e mais bancada ou chão onde sobra,
+    // sempre com a mesma escala de arte (os bonecos não mudam de tamanho em relação ao campo).
+    const width = stage === 'match' ? MATCH_STAGE_WIDTH : court ? Math.max(MATCH_STAGE_WIDTH, Math.floor(stageWidth / scale)) : Math.ceil(stageWidth / scale);
+    const height = stage === 'match' ? MATCH_STAGE_HEIGHT : court ? Math.max(MATCH_STAGE_HEIGHT, Math.floor(stageHeight / scale)) : Math.ceil(stageHeight / scale);
     // No jogo, a tela tem a resolução do ecrã: a arte amplia-se por este inteiro, e os bonecos podem ter qualquer tamanho,
     // maiores à frente e mais pequenos atrás, como no Calciobit. Nos outros ecrãs, a tela é da arte e o CSS amplia-a.
     // O inteiro logo acima dos píxeis do ecrã por píxel de arte: a tela tem sempre pelo menos a resolução do ecrã.
-    const artScale = stage === 'match' ? Math.max(1, Math.min(6, Math.ceil(scale * dpr - 0.001))) : 1;
+    const artScale = court ? Math.max(1, Math.min(6, Math.ceil(scale * dpr - 0.001))) : 1;
     canvas.dataset.artScale = String(artScale);
     // Na escala exata, os píxeis ficam nítidos; entre duas, o ajuste suaviza um nada as bordas, em vez de os pôr desiguais.
-    canvas.style.imageRendering = stage === 'match' && Math.abs(scale * dpr - artScale) > 0.001 ? 'auto' : '';
+    canvas.style.imageRendering = court && Math.abs(scale * dpr - artScale) > 0.001 ? 'auto' : '';
     setCanvasSize(width * artScale, height * artScale, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
     const bar = Math.max(0, (viewHeight - height * scale) / 2);
