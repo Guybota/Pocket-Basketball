@@ -23,6 +23,7 @@ import {
   lookOf,
   poseFeet,
   spriteHeight,
+  spriteBall,
   SPRITE_H,
   type Look,
   type PoseName,
@@ -142,6 +143,11 @@ export const ANNOUNCE_TICKS = 36;
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
 // O momento grande: a imagem parada e o resultado grande a meio do campo, no máximo três vezes por jogo.
 const BIG_MOMENTS_MAX = 3;
+// A bola nunca salta: uma mudança de sítio maior do que isto (em píxeis de arte) faz-se em ~0,2 s (BALL_EASE_SECONDS é a
+// constante de tempo); maior do que BALL_CUT_PX é um corte.
+const BALL_SNAP_PX = 4;
+const BALL_CUT_PX = 90;
+const BALL_EASE_SECONDS = 0.06;
 // A falta: o grande plano dura isto em tempo real, e a faixa com o nome um pouco mais.
 const FOUL_ZOOM_SECONDS = 1.2;
 const FOUL_STRIP_SECONDS = 2;
@@ -383,6 +389,13 @@ export class MatchView {
   private simPerReal = 1;
   private animTick = 0;
   private frameSeconds = 0;
+  private lastRealSeconds = 0;
+  // A bola desenhada: o alvo da imagem anterior, onde foi desenhada e quanto ainda falta para chegar ao alvo (ver `placeBall`).
+  private ballTarget: [number, number] | null = null;
+  private ballDrawnAt: [number, number] | null = null;
+  private ballMode: 'free' | 'hand' = 'free';
+  private ballStep = 0;
+  private ballLag: [number, number] = [0, 0];
   private tip: { a: Body; b: Body; start: number; total: number } | null = null;
   // shortcut: o árbitro só existe na vista e não choca com ninguém, para não mudar o jogo; passa para a simulação se precisar de influenciar jogadas.
   private readonly referee = { x: 14, y: -1, prevX: 14, prevY: -1, flip: false, moving: false, signalUntil: 0 };
@@ -1637,6 +1650,7 @@ export class MatchView {
     this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
     this.animTime += this.frameSeconds;
     this.realTime += realSeconds;
+    this.lastRealSeconds = realSeconds;
     if (realSeconds > 0 && simSeconds > 0) this.simPerReal = simSeconds / realSeconds;
     this.animTick = Math.floor(this.animTime * 20);
     this.drawn.bodies.clear();
@@ -1769,7 +1783,7 @@ export class MatchView {
         const look = held.trophy ? { ...this.view(b).look, trophy: held.trophy } : this.view(b).look;
         const [sx, sy] = camera.project(held.x, held.y);
         this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose: held.pose, height: this.tall(look, sy), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
-        return { x: sx, y: sy, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: held.back, legs: held.legs };
+        return { body: b as Body | null, x: sx, y: sy, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: held.back, legs: held.legs };
       }
       const prev = this.view(b).prev;
       let x = prev.x + (b.x - prev.x) * alpha;
@@ -1813,7 +1827,7 @@ export class MatchView {
       const legs = motion.moving && lift === 0 && !crouching && !LOCOMOTION.test(pose) && (poseFeet(pose) <= 2 || CHEERS.has(pose)) ? RUN_FRAMES[this.view(b).steps % 4] : undefined;
       this.drawn.bodies.get(b)!.legs = legs;
       this.view(b).striding = legs !== undefined || LOCOMOTION.test(pose);
-      return { x: sx, y: sy, lift, pose, withBall, look, flip, back, legs };
+      return { body: b as Body | null, x: sx, y: sy, lift, pose, withBall, look, flip, back, legs };
     });
     const { referee } = this;
     // Depois do corte para o dobro, o árbitro já não está no plano da cerimónia.
@@ -1821,6 +1835,7 @@ export class MatchView {
       const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
       const signalling = s.tick < referee.signalUntil;
       placed.push({
+        body: null,
         x: refereeX,
         y: refereeY,
         lift: 0,
@@ -1870,7 +1885,19 @@ export class MatchView {
     const holderDrawsBall = inHands !== null && (!holderOverride || holderOverride.until <= s.tick || holderOverride.withBall === true);
     // No afundanço, a bola vai na mão de quem afunda até ao aro.
     const dunkerDrawsBall = s.flight?.kind === 'shot' && this.view(s.flight.shooter).dunkJump?.withBall === true && this.drawn.bodies.has(s.flight.shooter);
-    if (!holderDrawsBall && !dunkerDrawsBall && !lifted) {
+    const carrierBody = holderDrawsBall ? inHands : dunkerDrawsBall && s.flight?.kind === 'shot' ? s.flight.shooter : null;
+    // Quem leva a bola desenha-se sem ela, e a bola desenha-se logo a seguir, no sítio da mão: assim pode vir de onde
+    // estava (`placeBall`) em vez de saltar quando muda de mãos. Numa pose sem a bola nas mãos, a bola fica solta.
+    const carrier = carrierBody ? placed.find(p => p.body === carrierBody && p.withBall) : undefined;
+    const inHand = carrier ? spriteBall(carrier.pose, carrier.look, carrier.legs) : null;
+    if (carrier && inHand) {
+      carrier.withBall = false;
+      const k = this.depth(carrier.y);
+      const target: [number, number] = [carrier.x + (carrier.flip ? -(inHand[0] + 1) : inHand[0]) * k, carrier.y - carrier.lift + inHand[1] * k];
+      const [bx, by] = this.placeBall(target, 'hand');
+      this.trail.length = 0;
+      drawables.push({ y: carrier.y + 0.001, draw: () => this.drawBallAt(g, bx, by, k) });
+    } else if (!lifted) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
       let z = this.ballPrevious.z + (this.ball.z - this.ballPrevious.z) * alpha;
@@ -1880,7 +1907,7 @@ export class MatchView {
         z = Math.max(B.ballRestHeight, z - (z - B.ballRestHeight) * Math.sin(Math.PI * t));
       }
       const [gx, gy] = camera.project(x, y);
-      const [bx, by] = this.ballScreen(x, y, z);
+      const [bx, by] = this.placeBall(this.ballScreen(x, y, z), 'free');
       this.drawn.ball = [bx, by];
       if (s.flight?.kind === 'shot') {
         this.trail.push([bx, by]);
@@ -1902,9 +1929,13 @@ export class MatchView {
           drawBall(g, bx, by);
         },
       });
+    } else {
+      this.ballTarget = null;
+      this.ballDrawnAt = null;
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
+    if (this.ballTrace) this.ballTrace.push({ tick: s.tick, mode: this.ballDrawnAt ? this.ballMode : 'none', x: this.ballDrawnAt ? this.ballDrawnAt[0] * this.zoom + this.zoomShift[0] : NaN, y: this.ballDrawnAt ? this.ballDrawnAt[1] * this.zoom + this.zoomShift[1] : NaN, phase: s.phase, zoom: this.zoom });
     this.drawRain();
     this.drawCarrier(alpha);
     this.drawNameTags(alpha);
@@ -1988,6 +2019,48 @@ export class MatchView {
   /** Em grande plano na bola ao alto: o marcador sai, senão tapava a bola lá em cima. */
   closeUp(): boolean {
     return this.jumpZoom && this.s.phase === 'jump';
+  }
+
+  /**
+   * Para verificar que a bola nunca salta: guarda onde ela foi desenhada em cada imagem, em píxeis de arte já com a
+   * aproximação. Liga-se pondo `ballTrace = []` (pela API de depuração, `matchView()`).
+   */
+  ballTrace: { tick: number; mode: 'free' | 'hand' | 'none'; x: number; y: number; phase: string; zoom: number }[] | null = null;
+
+  /**
+   * Onde a bola se desenha nesta imagem: no alvo, mais o que ainda falta percorrer. Quando o alvo salta (a bola muda de
+   * mãos, passa de solta para a mão ou ao contrário, ou a pose mexe a mão de repente), a bola parte de onde estava
+   * desenhada e chega ao alvo em ~0,2 s, em vez de aparecer logo no sítio novo. Um salto enorme (outra ponta do campo)
+   * é um corte, e aí vai logo.
+   */
+  private placeBall(target: [number, number], mode: 'free' | 'hand'): [number, number] {
+    const last = this.ballTarget;
+    const at = this.ballDrawnAt;
+    if (last && at) {
+      const jump = Math.hypot(target[0] - last[0], target[1] - last[1]);
+      const sudden = mode !== this.ballMode ? jump > BALL_SNAP_PX : jump > BALL_SNAP_PX + 3 * this.ballStep;
+      if (jump >= BALL_CUT_PX) this.ballLag = [0, 0];
+      else if (sudden) this.ballLag = [at[0] - target[0], at[1] - target[1]];
+      else this.ballStep = jump;
+    }
+    const fade = this.reducedMotion ? 0 : Math.exp(-this.lastRealSeconds / BALL_EASE_SECONDS);
+    this.ballLag = [this.ballLag[0] * fade, this.ballLag[1] * fade];
+    if (Math.abs(this.ballLag[0]) < 0.3 && Math.abs(this.ballLag[1]) < 0.3) this.ballLag = [0, 0];
+    this.ballTarget = target;
+    this.ballMode = mode;
+    const drawn: [number, number] = [target[0] + this.ballLag[0], target[1] + this.ballLag[1]];
+    this.ballDrawnAt = drawn;
+    return drawn;
+  }
+
+  /** A bola na mão, com o tamanho do boneco que a leva (o mesmo desenho que vinha dentro dele). */
+  private drawBallAt(g: CanvasRenderingContext2D, x: number, y: number, k: number): void {
+    if (k === 1) return drawBall(g, x, y);
+    g.save();
+    g.translate(x | 0, y | 0);
+    g.scale(k, k);
+    drawBall(g, 0, 0);
+    g.restore();
   }
 
   /** O tamanho de um boneco com os pés na linha `y`, na tela do jogo (num ecrã de densidade 1 fica mais suave). */

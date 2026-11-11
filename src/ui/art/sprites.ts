@@ -499,6 +499,17 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
   }
 }
 
+/**
+ * Onde fica a bola desenhada dentro do boneco, em píxeis de arte a partir dos pés (a âncora), sem virar e sem escala;
+ * null se a pose não desenha bola. Serve para seguir a bola quando é o boneco que a leva.
+ */
+export function spriteBall(pose: PoseName, look: Look, legs?: PoseName): [number, number] | null {
+  const own = POSES[pose](look.legs, look.torso);
+  if (!own.ball) return null;
+  const jump = (legs && legs !== pose ? POSES[legs](look.legs, look.torso) : own).jump ?? 0;
+  return [own.ball[0], -look.legs - jump + own.ball[1]];
+}
+
 /** A sombra é uma oval por degraus, ligeiramente deslocada, como se a luz viesse de cima e da frente. */
 export function drawShadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 7): void {
   x = (x | 0) + 1;

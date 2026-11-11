@@ -214,6 +214,28 @@ try {
   const stats = await page.evaluate(() => window.__pocket.renderStats());
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   check('Desenhar um frame demora menos de 16 ms com CPU 4× mais lento', stats.meanMs < 16, `${stats.meanMs.toFixed(1)} ms em ${stats.frames} frames`);
+  // A bola nunca salta nem desaparece: 8 s de jogo a 4×, imagem a imagem (as receções e os ressaltos agarrados saltavam).
+  await page.evaluate(() => {
+    window.__pocket.setSpeedRaw(4);
+    window.__pocket.matchView().ballTrace = [];
+  });
+  await page.waitForTimeout(8000);
+  const ball = await page.evaluate(() => {
+    const t: { mode: string; x: number; y: number; zoom: number; phase: string }[] = window.__pocket.matchView().ballTrace;
+    window.__pocket.matchView().ballTrace = null;
+    window.__pocket.setSpeedRaw(1);
+    let gone = 0;
+    let worst = 0;
+    for (let i = 1; i < t.length; i++) {
+      const a = t[i - 1]!;
+      const b = t[i]!;
+      if (b.mode === 'none' && ['live', 'pass', 'shot', 'rebound', 'dead', 'freeThrow', 'jump'].includes(b.phase)) gone++;
+      if (a.mode === 'none' || b.mode === 'none' || Math.abs(a.zoom - b.zoom) > 0.02) continue;
+      worst = Math.max(worst, Math.hypot(b.x - a.x, b.y - a.y) / b.zoom);
+    }
+    return { frames: t.length, gone, worst };
+  });
+  check('A bola nunca desaparece nem salta mais de 24 píxeis de arte de uma imagem para a seguinte', ball.frames > 100 && ball.gone === 0 && ball.worst <= 24, `${ball.frames} imagens, sem bola ${ball.gone}, maior passo ${ball.worst.toFixed(1)} px`);
 
   check('O campo diz o resultado e o tempo ao leitor de ecrã', /^Jogo: \S+ \d+ – \d+ \S+, (\d\.º período|prolongamento), \d+:\d\d$/.test(await page.locator('#court').getAttribute('aria-label') ?? ''), await page.locator('#court').getAttribute('aria-label') ?? '');
   // Separadores: as setas passam de um ao outro, e o conteúdo é o painel do separador escolhido.
