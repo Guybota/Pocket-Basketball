@@ -23,6 +23,7 @@ import {
   lookOf,
   poseFeet,
   spriteHeight,
+  SPRITE_H,
   type Look,
   type PoseName,
 } from './art/sprites.ts';
@@ -418,6 +419,8 @@ export class MatchView {
   private jumpZoom = false;
   // Píxeis da tela por píxel de arte: no jogo a tela tem a resolução do ecrã, e a arte amplia-se por este inteiro.
   private art = 1;
+  // Só a tela do jogo tem perspetiva nos bonecos; as das ferramentas de revisão medem-nos píxel a píxel, ao tamanho de sempre.
+  private perspective = false;
   private readonly g: CanvasRenderingContext2D;
   private readonly callbacks: ViewCallbacks;
   private get reducedMotion(): boolean { return reducedMotion(); }
@@ -434,6 +437,7 @@ export class MatchView {
     const roll = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
     this.humor = { dogAt: division === 0 && roll(1) < 0.35 ? Math.floor(600 + roll(2) * 3000) : null, pigeon: roll(3) < 0.25, sleeper: roll(4) < 0.6, blowout: 25 };
     this.art = artScaleOf(g.canvas);
+    this.perspective = g.canvas.dataset.artScale !== undefined;
     this.image = g.createImageData(g.canvas.width / this.art, g.canvas.height / this.art);
     this.pixels = new Uint32Array(this.image.data.buffer);
     this.camera.setViewport(g.canvas.width / this.art, g.canvas.height / this.art);
@@ -538,6 +542,7 @@ export class MatchView {
   resize(): void {
     const { canvas } = this.g;
     this.art = artScaleOf(canvas);
+    this.perspective = canvas.dataset.artScale !== undefined;
     this.image = this.g.createImageData(canvas.width / this.art, canvas.height / this.art);
     this.pixels = new Uint32Array(this.image.data.buffer);
     this.camera.setViewport(canvas.width / this.art, canvas.height / this.art);
@@ -1478,7 +1483,8 @@ export class MatchView {
     const dz = z - B.rimHeight;
     const d = Math.sqrt((x - hoopX) * (x - hoopX) + y * y + dz * dz);
     const w = Math.max(0, Math.min(1, (d - 0.5) / 1.5));
-    return [wx + (gx - wx) * w, wy + (gy - z * BALL_PX_PER_METRE - wy) * w];
+    // Longe do aro, a altura da bola segue os bonecos: os mesmos píxeis por metro, com o tamanho da distância.
+    return [wx + (gx - wx) * w, wy + (gy - z * BALL_PX_PER_METRE * this.depth(gy) - wy) * w];
   }
 
   /** Quem está no banco, a mesa de oficiais e os treinadores. */
@@ -1984,9 +1990,13 @@ export class MatchView {
     return this.jumpZoom && this.s.phase === 'jump';
   }
 
-  /** O tamanho de um boneco com os pés na linha `y`: só numa tela ampliada, onde dá para o desenhar a qualquer tamanho. */
+  /** O tamanho de um boneco com os pés na linha `y`, na tela do jogo (num ecrã de densidade 1 fica mais suave). */
   private depth(y: number): number {
-    return this.art > 1 ? this.camera.depthScale(y) : 1;
+    if (!this.perspective) return 1;
+    // Arredondado a um píxel do ecrã na altura da tela do boneco: entre degraus as bordas ficam paradas, e cada degrau
+    // mexe-as no máximo um píxel do ecrã (sem o arredondamento, ondulavam a cada frame de movimento).
+    const steps = SPRITE_H * this.art;
+    return Math.round(this.camera.depthScale(y) * steps) / steps;
   }
 
   /** Um boneco no mundo, maior ou mais pequeno com a distância. */
@@ -2334,7 +2344,13 @@ export class MatchView {
         draw: () => {
           this.shadow(g, sx, sy);
           this.sprite(g, pose, mascot, sx | 0, y, dancing && beat % 8 >= 4, false, false);
-          drawMascotHead(g, kind, mascot.custom!, sx | 0, y - this.tall(mascot, y));
+          // A cabeça grande escala com o corpo, à volta do topo da cabeça do boneco.
+          const k = this.depth(y);
+          g.save();
+          g.translate(sx | 0, y - this.tall(mascot, y));
+          g.scale(k, k);
+          drawMascotHead(g, kind, mascot.custom!, 0, 0);
+          g.restore();
         },
       });
     }

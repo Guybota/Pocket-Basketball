@@ -223,7 +223,7 @@ export const hairColor = (look: Look): string => HAIRS[look.hair]!;
 export const spriteHeight = (look: Look): number => look.legs + look.torso + 12;
 
 const SPRITE_W = 34;
-const SPRITE_H = 46;
+export const SPRITE_H = 46;
 const ANCHOR_X = 17;
 const ANCHOR_Y = 43;
 const JERSEY_MARK = 'camisola';
@@ -477,8 +477,9 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
   if (scale !== 1) {
     // Os píxeis do ecrã por píxel de arte, na tela onde se desenha: o boneco amplia-se primeiro por esse inteiro.
     // No máximo 4×: nos grandes planos a tela vai a 10× e cada pose ampliada ocupava mais de meio megabyte.
-    const n = Math.max(1, Math.min(4, Math.round(Math.abs(g.getTransform().a))));
-    const texture = n > 1 ? enlarge(key, sprite, n) : sprite;
+    // Pelo menos 2×: numa tela à escala da arte (ecrã de densidade 1), encolher a partir do dobro suaviza menos.
+    const n = Math.max(2, Math.min(4, Math.round(Math.abs(g.getTransform().a))));
+    const texture = enlarge(key, sprite, n);
     g.save();
     g.imageSmoothingEnabled = true;
     g.translate(x | 0, y | 0);
