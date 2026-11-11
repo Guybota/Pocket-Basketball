@@ -63,7 +63,7 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
   ```
 
   O `wet` de cada pavilhão está em `CROWDS`. O `duckMusic()` baixa a música para 0.45 durante cerca de meio segundo e só é chamado pela rede, pelo apito, pelo `bigCheer` e pelo `shame`.
-- **Reações da bancada:** `cheer` e `bigCheer` (festa; o grande tem uma segunda onda 1,3 s depois), `bigMiss` («Ooooh»: afundanço falhado, contra-ataque desperdiçado ou falha no último minuto com o jogo a 3 pontos ou menos) e `shame` («Uuuuh»: poster, ou crossover que deita o defensor). Quem decide é `match-view.ts`. Depois de cada reação, o rumor (`keepMurmur`) sobe ~40 % e acalma em ~4 s.
+- **Reações da bancada:** `cheer` e `bigCheer` (festa; o grande tem uma segunda onda 1,3 s depois), `bigMiss` («Ooooh»: afundanço falhado, contra-ataque desperdiçado ou falha no último minuto com o jogo a 3 pontos ou menos) e `shame` («Uuuuh»: poster, ou crossover que deita o defensor). A festa e o «Ooooh» são da casa (`crowdTeam`); quando é o adversário a marcar ou a falhar, só os adeptos de fora reagem (`awayCheer`, `awayMiss`): a 35 %, de um lado (pan −0,55) e sem fazer subir o rumor. Quem decide é `match-view.ts`. Depois de cada reação, o rumor (`keepMurmur`) sobe ~40 % e acalma em ~4 s.
 - **Tocar:** `shot(bolsa, ganho, {seconds, pan})` escolhe uma variante, varia o `playbackRate` ±3 % e liga ao `room`.
   - `react()` toca as reações do público; `clap()` toca os aplausos.
   - As duas escalam com `crowdLevel`, o nível do pavilhão.

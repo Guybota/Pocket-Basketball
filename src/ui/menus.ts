@@ -225,6 +225,20 @@ const fullCanvas = (id: string, kind?: SceneKind): string => {
 };
 const inside = (html: string): string => `<div class="patterned">${html}</div>`;
 
+/**
+ * Reescreve um bloco sem deixar as cenas piscar. As telas com nome (o fundo, a cena do treino, a bandeira, os confetes)
+ * desenham-se a cada imagem; uma tela nova fica vazia até à imagem seguinte, e o fundo piscava a cada toque numa lista.
+ * Por isso a que já lá estava, com o mesmo nome, tamanho e cena, passa para o lugar da nova.
+ */
+export function setHtmlKeepingScenes(el: HTMLElement, html: string): void {
+  const old = new Map([...el.querySelectorAll<HTMLCanvasElement>('canvas[id]')].map(c => [c.id, c]));
+  el.innerHTML = html;
+  for (const fresh of el.querySelectorAll<HTMLCanvasElement>('canvas[id]')) {
+    const kept = old.get(fresh.id);
+    if (kept && kept.width === fresh.width && kept.height === fresh.height && kept.className === fresh.className && kept.dataset.kind === fresh.dataset.kind) fresh.replaceWith(kept);
+  }
+}
+
 function squadScreen(): Rendered {
   return {
     top: inside(playerCard(selected)),
@@ -1031,7 +1045,7 @@ function render(): void {
   // Ecrã único: as fichas e as notas ficam numa janela por cima da cena do sítio, escurecida; os ecrãs com cena própria
   // (balneário, escritório, quadro tático, vitrina…) já a têm. O escritório e o balneário mostram as opções em botões redondos.
   const backdrop = top.includes('class="full"') ? '' : fullCanvas('scene', screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : 'office');
-  top_.innerHTML = backdrop + top;
+  setHtmlKeepingScenes(top_, backdrop + top);
   top_.classList.toggle('backdrop', backdrop !== '');
   panel.classList.toggle('hub', screen === 'office' || screen === 'pre');
   top_.style.backgroundImage = `url(${pattern()})`;
@@ -1422,7 +1436,7 @@ export function showTopScene(kind: SceneKind, title: string, side: string): void
 export function showTopNote(title: string, side: string, inner: string): void {
   active = false;
   club = host.club();
-  host.top.innerHTML = inside(`<div class="note"><header><b>${title}</b><span>${side}</span></header><div class="inner">${inner}</div></div>`);
+  setHtmlKeepingScenes(host.top, inside(`<div class="note"><header><b>${title}</b><span>${side}</span></header><div class="inner">${inner}</div></div>`));
   host.top.style.backgroundImage = `url(${pattern()})`;
 }
 

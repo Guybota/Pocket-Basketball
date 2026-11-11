@@ -345,16 +345,16 @@ function placeTownUi(): void {
   });
 }
 
-function announce(message: string, cards?: readonly CardId[]): void {
+function announce(message: string, long = false): void {
   announced.add(message);
-  banner.innerHTML = cards ? `<span class="move-cards">${cards.map(c => `<img alt="" src="${cardImage(c, CARDS[c].category)}">`).join('')}</span>${escapeHtml(message)}` : escapeHtml(message);
+  banner.textContent = message;
   banner.hidden = false;
   // Recomeçar a animação de entrada, mesmo que já houvesse um aviso no ecrã.
   banner.classList.remove('show');
   void banner.offsetWidth;
   banner.classList.add('show');
   // Um movimento especial fica até ao fim da jogada; os outros avisos, o tempo de sempre.
-  bannerUntil = view!.s.tick + (cards ? ANNOUNCE_TICKS * 2 : ANNOUNCE_TICKS);
+  bannerUntil = view!.s.tick + (long ? ANNOUNCE_TICKS * 2 : ANNOUNCE_TICKS);
   speak(message, 1);
 }
 
@@ -1367,7 +1367,7 @@ Object.assign(window, {
     /** Toca todos os sons, para confirmar que nenhum dá erro. */
     playAllSounds: () => {
       audio.unlock();
-      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'catch', 'steal', 'block', 'cheer', 'bigCheer', 'bigMiss', 'shame', 'card', 'bump'] as const) audio.play(name);
+      for (const name of ['swish', 'rim', 'whistle', 'buzzer', 'shotClockBuzzer', 'horn', 'bounce', 'catch', 'steal', 'block', 'cheer', 'bigCheer', 'bigMiss', 'shame', 'awayCheer', 'awayMiss', 'card', 'bump'] as const) audio.play(name);
       for (let v = 0; v <= CLOSED_GYM; v++) {
         audio.setVenue(v);
         for (let i = 0; i < 30; i++) audio.ambience(1e12 + (v * 30 + i) * 1e6);

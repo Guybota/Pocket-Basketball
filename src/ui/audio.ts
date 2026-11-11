@@ -36,6 +36,9 @@ const MURMUR_CUTOFF = 1600;
 /** Quantos pedaços de rumor e quantas variantes de cada reação se calculam (cada um no seu momento livre). */
 const BED_VARIANTS = 3;
 const ROAR_VARIANTS = 2;
+/** Os adeptos da equipa de fora: quanto se ouvem em relação aos da casa, e de que lado da bancada estão. */
+const AWAY_STRENGTH = 0.35;
+const AWAY_PAN = -0.55;
 /** Quantas pessoas gritam numa reação, conforme o pavilhão: das 4 da rua às 14 da arena (mais pesava a calcular). */
 const crowdReactors = (venue: Venue): number => Math.max(4, Math.min(14, Math.round(CROWDS[venue].voices * 1.25)));
 
@@ -362,14 +365,16 @@ export class GameAudio {
    * no primeiro meio segundo e aguentam a vogal; numa reação grande, uma segunda onda entra a seguir. O rumor de fundo
    * sobe um pouco e volta devagar. Enquanto as reações não estão calculadas, a bancada reage como antes (devolve false).
    */
-  private reaction(mood: Mood, strength: number, big: boolean): boolean {
+  private reaction(mood: Mood, strength: number, big: boolean, away = false): boolean {
     if (!CROWDS[this.venue].voices) return false;
     const list = this.ready(this.roarKey(mood), ROAR_VARIANTS);
     if (!list.length) return false;
     const cut = this.speed > 2 ? 1.6 : undefined;
-    this.shot(list, 0.24 * this.crowdLevel * strength, { seconds: cut });
+    // Os adeptos de fora são poucos e estão juntos, num canto da bancada: mais baixo e de um lado.
+    this.shot(list, 0.24 * this.crowdLevel * strength, { seconds: cut, pan: away ? AWAY_PAN : undefined });
     if (big && list.length > 1 && cut === undefined) this.shot(list, 0.13 * this.crowdLevel * strength, { delay: 1.3 });
-    this.exciteAt = performance.now();
+    // Só a casa faz subir o pavilhão inteiro.
+    if (!away) this.exciteAt = performance.now();
     return true;
   }
 
@@ -508,6 +513,15 @@ export class GameAudio {
         break;
       case 'bigMiss':
         if (!this.reaction('miss', 1, true)) this.react('ooh', 1, 0.15);
+        break;
+      case 'awayCheer':
+        if (!this.reaction('good', AWAY_STRENGTH, false, true)) {
+          this.clap(0.3, 0.9);
+          this.react('hey', 0.25);
+        }
+        break;
+      case 'awayMiss':
+        if (!this.reaction('miss', AWAY_STRENGTH, false, true)) this.react('ooh', 0.35, 0.15);
         break;
       case 'shame':
         this.duckMusic();

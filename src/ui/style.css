@@ -199,8 +199,6 @@ html.reduce-motion #banner.replay { animation: none; }
 .film-row b { font-weight: 400; color: var(--ball-ink); }
 .film-row button.quiet { min-height: 34px; }
 /* As cartas do combo de um movimento especial antes do nome, ao tamanho da arte (40×44), com píxeis inteiros. */
-#banner .move-cards { display: inline-flex; gap: 4px; margin: 2px 12px 0 -6px; vertical-align: middle; }
-#banner .move-cards img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }
 
 /* As faixas dos clubes na apresentação: debaixo do marcador, a da casa encostada à esquerda e a de fora à direita.
  * Entram a abrandar depois da cortina do ecrã (a de fora 100 ms depois) e saem a acelerar, cada uma pelo seu lado, em degraus como o aviso. */

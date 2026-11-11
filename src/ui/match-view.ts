@@ -9,7 +9,6 @@ import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchS
 import type { MoveId, Player, Team } from '../sim/types.ts';
 import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
-import { COMBOS, type CardId } from '../sim/training.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, endFanSpot, fanRows, sideFanSpot, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
@@ -247,11 +246,12 @@ interface Floater {
   top?: number;
 }
 
-export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'bigMiss' | 'shame' | 'card' | 'bump';
+export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'bigMiss' | 'shame' | 'awayCheer' | 'awayMiss' | 'card' | 'bump';
 
 export interface ViewCallbacks {
   /** Um aviso grande; `cards`, num movimento especial, são as cartas do combo que o ensinou. */
-  announce(message: string, cards?: readonly CardId[]): void;
+  /** `long`: um movimento especial, que fica até ao fim da jogada. */
+  announce(message: string, long?: boolean): void;
   sound(name: Sound): void;
   event(e: MatchEvent): void;
 }
@@ -732,7 +732,8 @@ export class MatchView {
         case 'missed':
           callbacks.sound('rim');
           // Um afundanço falhado, um contra-ataque desperdiçado ou uma falha no fim de um jogo renhido: «Ooooh».
-          if (this.lastShot?.dunk || this.lastShot?.breaking || this.crowdTense) callbacks.sound('bigMiss');
+          // A casa lamenta as suas falhas; as do adversário só os adeptos de fora, que são menos.
+          if (this.lastShot?.dunk || this.lastShot?.breaking || this.crowdTense) callbacks.sound(e.team === this.crowdTeam ? 'bigMiss' : 'awayMiss');
           if (e.team !== this.crowdTeam && this.crowdChance(3)) this.crowdSay(this.crowdPick('miss'));
           break;
         case 'freeThrowMissed':
@@ -834,9 +835,9 @@ export class MatchView {
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
           // Um crossover que deita o defensor ao chão é um momento vergonhoso: «Uuuuh».
-          callbacks.sound(e.move === 'crossover' && s.events.some(k => k.tick === e.tick && k.type === 'knockdown') ? 'shame' : 'bigCheer');
-          // As cartas do combo que ensina o movimento ficam ao lado do nome: liga-se o treino ao que se vê.
-          callbacks.announce(`${MOVE_INFO[e.move!].name}!`, COMBOS.find(c => c.move === e.move)?.cards);
+          callbacks.sound(e.move === 'crossover' && s.events.some(k => k.tick === e.tick && k.type === 'knockdown') ? 'shame' : e.team === this.crowdTeam ? 'bigCheer' : 'awayCheer');
+          // Só o nome do movimento: as cartas do combo que o ensina seriam um spoiler.
+          callbacks.announce(`${MOVE_INFO[e.move!].name}!`, true);
           this.moveAnnouncedAt = s.tick;
           this.moveTeam = e.team;
           break;
@@ -1032,7 +1033,7 @@ export class MatchView {
     for (const threshold of RUN_BANNERS) {
       if (previousRun < threshold && this.run.points >= threshold) {
         this.callbacks.announce(`Parcial de ${this.run.points}-0!`);
-        this.callbacks.sound('bigCheer');
+        this.callbacks.sound(e.team === this.crowdTeam ? 'bigCheer' : 'awayCheer');
         if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('run'));
       }
     }
@@ -1056,7 +1057,8 @@ export class MatchView {
     // Um poster, um afundanço por cima de quem defende, envergonha-o: a bancada faz «Uuuuh» além de festejar.
     const beaten = dunk && body ? this.nearestOpponent(body) : undefined;
     const poster = beaten !== undefined && Math.hypot(beaten.x - body!.x, beaten.y - body!.y) < POSTER_RANGE;
-    callbacks.sound(loud && !poster ? 'bigCheer' : 'cheer');
+    // A festa é da casa; quando o adversário marca, só os adeptos de fora festejam, que são menos.
+    callbacks.sound(e.team !== this.crowdTeam ? 'awayCheer' : loud && !poster ? 'bigCheer' : 'cheer');
     if (poster) callbacks.sound('shame');
     // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada.
     if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS) callbacks.announce('Afundanço!');

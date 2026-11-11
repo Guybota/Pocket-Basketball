@@ -365,6 +365,10 @@ try {
   await coach.waitForSelector('.prow');
   await shot(coach, `${OUT}/treino-lista.png`);
   check('A lista do treino mostra as notas de cada jogador', (await coach.locator('.prow').first().locator('.gr').count()) === 7);
+  // Escolher outro jogador redesenha a ficha, mas o fundo é a mesma tela: uma tela nova ficava vazia uma imagem e piscava.
+  await coach.evaluate(() => { (document.getElementById('scene') as HTMLCanvasElement & { kept?: boolean }).kept = true; });
+  await coach.click('[data-player="1"]');
+  check('Escolher um jogador da lista não faz piscar o fundo', await coach.evaluate(() => (document.getElementById('scene') as (HTMLCanvasElement & { kept?: boolean }) | null)?.kept === true));
   await coach.click('[data-player="0"]');
   await coach.click('[data-act="openCards"]');
   check('Sem cartas escolhidas não se pode treinar', await coach.locator('[data-act="trainNow"]').isDisabled());
@@ -536,7 +540,9 @@ try {
   await coach.click('[data-squad="office"]');
   await shot(coach, `${OUT}/plantel.png`);
   const rosterBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster.map(p => p.name));
+  await coach.evaluate(() => { (document.getElementById('scene') as HTMLCanvasElement & { kept?: boolean }).kept = true; });
   await coach.click('[data-player="0"]');
+  check('Escolher um jogador do plantel não faz piscar o fundo', await coach.evaluate(() => (document.getElementById('scene') as (HTMLCanvasElement & { kept?: boolean }) | null)?.kept === true));
   await coach.click('[data-act="swap"]');
   await coach.click('[data-player="6"]');
   await shot(coach, `${OUT}/plantel-trocado.png`);
