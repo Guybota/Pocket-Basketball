@@ -61,11 +61,6 @@ const ready = (p: Page) => p.waitForFunction(() => window.__pocket !== undefined
 const phase = (p: Page) => p.evaluate(() => window.__pocket.state().phase);
 const speed = (p: Page, v: number) => p.evaluate(x => window.__pocket.setSpeedRaw(x), v);
 /** Fecha as trocas que os descontos do adversário abrem, até a condição se cumprir. */
-/** Na semana de jogo, o pavilhão pergunta primeiro pelo adjunto: responde «Sim, vamos». */
-const toArena = async (p: Page): Promise<void> => {
-  await p.click('#arenaChip');
-  if (await p.locator('#arenaYes').count()) await p.click('#arenaYes');
-};
 const until = async (p: Page, done: () => Promise<boolean>, timeout = 120_000): Promise<void> => {
   const deadline = Date.now() + timeout;
   while (!(await done())) {
@@ -152,7 +147,7 @@ try {
     await p.evaluate(n => window.__pocket.fastForward(n), 3);
     await p.waitForTimeout(1500);
     mark('cidade-para-pavilhao');
-    await toArena(p);
+    await p.click('#arenaChip');
     await p.waitForTimeout(2500);
   });
 
@@ -164,7 +159,7 @@ try {
     await p.waitForSelector('#arenaChip');
     await p.waitForTimeout(1000);
     mark('cidade-para-pavilhao');
-    await toArena(p);
+    await p.click('#arenaChip');
     await p.waitForSelector('#kickoffBtn');
     await p.waitForTimeout(2000);
     mark('pavilhao-para-apresentacao');
@@ -185,7 +180,7 @@ try {
   await route('paragens', async (p, mark) => {
     await p.goto(`${url}?semente=10&divisao=2`);
     await ready(p);
-    await toArena(p);
+    await p.click('#arenaChip');
     await p.click('#kickoffBtn');
     await p.waitForTimeout(12_000);
     await moment(p, mark, 'falta-e-lances-livres', 'foul', 0, 12);
@@ -202,7 +197,7 @@ try {
   await route('jogo-fim', async (p, mark) => {
     await p.goto(`${url}?semente=10&divisao=2`);
     await ready(p);
-    await toArena(p);
+    await p.click('#arenaChip');
     await p.click('#kickoffBtn');
     await p.waitForTimeout(12_000);
     await moment(p, mark, 'fim-de-periodo', 'periodEnd', 0, 12);
@@ -238,7 +233,7 @@ try {
       await p.goto(`${url}?semente=${seed}&divisao=${division}`);
       await ready(p);
       await p.evaluate(() => window.__pocket.forceTitle({ kind: 'league', division: 1 }));
-      await toArena(p);
+      await p.click('#arenaChip');
       await p.click('#kickoffBtn');
       await speed(p, 40);
       await until(p, async () => (await p.locator('#secondHalfBtn').count()) > 0);

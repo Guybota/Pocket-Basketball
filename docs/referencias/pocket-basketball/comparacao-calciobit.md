@@ -60,7 +60,7 @@ São erros do que já existe, não ideias novas. Estão por ordem de gravidade. 
 > **Feitas a 10 de novembro de 2026, à noite:** o jogo passou a um só ecrã, como o Calciobit, e ficaram feitas as outras lacunas de interface.
 > - **Ecrã único:** no jogo, o campo ocupa o ecrã, os botões do treinador são redondos à direita e o painel é uma janela aberta pelo INFO. Nos menus, a cena ocupa o ecrã e as fichas e as listas abrem em janelas. O escritório e o balneário têm botões redondos com legenda.
 > - **Lacunas altas:** 1 (momentos grandes, com a imagem parada e o resultado grande), 3 (falta com grande plano e faixa), 6 (câmara mais calma, por experimentar a jogar) e 7 (cartas do combo ao lado do aviso).
-> - **Lacunas médias e baixas:** 8 a 23, menos as bandeiras no pavilhão em semana de jogo (17 ficou só com a pergunta do adjunto) e o «Rever» oferecido durante o jogo (9 ficou com o filme do jogo no relatório).
+> - **Lacunas médias e baixas:** 8 a 23, menos a 17, a ida para o jogo: a pergunta do adjunto saiu por decisão do dono (tocar no pavilhão entra logo) e as bandeiras no pavilhão ficaram por fazer e o «Rever» oferecido durante o jogo (9 ficou com o filme do jogo no relatório).
 
 
 

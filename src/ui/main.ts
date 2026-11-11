@@ -206,10 +206,7 @@ function setStage(next: Stage): void {
   // Ao voltar à cidade, o foco regressa ao botão que a deixou (o leitor de ecrã não fica perdido no início da página).
   if (stage === 'town' && next !== 'town') townFocus = document.activeElement?.id ?? '';
   stage = next;
-  if (next !== 'town') {
-    towerOpen = false;
-    askingArena = false;
-  }
+  if (next !== 'town') towerOpen = false;
   // A classe dos menus com botões redondos não pode ir para o jogo: lá o painel é uma janela com fundo.
   if (next !== 'menu') panel.classList.remove('hub');
   // Durante o jogo o ecrã do telemóvel não se apaga; nos menus e na cidade, volta ao normal.
@@ -290,28 +287,8 @@ function importFile(): void {
 
 let townFocus = '';
 let bouncedWeek = '';
-// A pergunta do adjunto antes do jogo fica aberta quando a cidade se redesenha, como a nota da Torre.
-let askingArena = false;
 // A nota da Torre fica aberta quando a cidade se volta a desenhar (ao medir o ecrã, ao fechar o teclado).
 let towerOpen = false;
-/** Na semana de jogo, ir para o pavilhão é um momento: o adjunto pergunta primeiro, com sim e não. */
-function askArena(): void {
-  const note = document.querySelector('.town-note');
-  if (!club || !currentGame(club) || !note) {
-    openArena();
-    return;
-  }
-  askingArena = true;
-  towerOpen = false;
-  note.innerHTML = `${say('assistant', 'happy', `Esta semana há jogo contra o ${opponentOf(club).name}. Vamos para o pavilhão?`)}<div class="tower-actions"><button type="button" id="arenaYes">Sim, vamos</button><button type="button" class="quiet" id="arenaNo">Ainda não</button></div>`;
-  element('arenaYes').addEventListener('click', openArena);
-  element('arenaNo').addEventListener('click', () => {
-    askingArena = false;
-    placeTownUi();
-  });
-  element('arenaYes').focus();
-}
-
 function placeTownUi(): void {
   const current = club!;
   const back = townUi.contains(document.activeElement) ? document.activeElement!.id : townFocus;
@@ -327,10 +304,9 @@ function placeTownUi(): void {
     const box = document.querySelector('#staffNote .t');
     if (box) box.textContent = text;
   };
-  element('arenaChip').addEventListener('click', askArena);
+  element('arenaChip').addEventListener('click', openArena);
   element('towerChip').addEventListener('click', () => {
     towerOpen = true;
-    askingArena = false;
     note(saveStatus.failed ? 'Este browser não deixa guardar: o clube perde-se ao fechar a página. Exporta-o para não o perderes.' : TOWER_NOTE);
     const showCopy = (): void => {
       const { text, stale } = lastExportNote(club!);
@@ -346,7 +322,6 @@ function placeTownUi(): void {
     element('importBtn').addEventListener('click', importFile);
   });
   if (towerOpen) element('towerChip').click();
-  if (askingArena) askArena();
   if (back) document.getElementById(back)?.focus({ preventScroll: true });
   element('airportChip').addEventListener('click', () => openMenu('airport'));
   element('federationBtn').addEventListener('click', () => openMenu('federation'));

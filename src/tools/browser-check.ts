@@ -42,11 +42,6 @@ declare global {
 }
 
 const OUT = 'dist-check';
-/** Na semana de jogo, o pavilhão pergunta primeiro pelo adjunto: responde «Sim, vamos». */
-const toArena = async (p: Page): Promise<void> => {
-  await p.click('#arenaChip');
-  if (await p.locator('#arenaYes').count()) await p.click('#arenaYes');
-};
 
 /** No jogo, o painel é uma janela fechada até se tocar no INFO: abre-a, se ainda não estiver aberta. */
 const openPanel = (p: Page): Promise<void> => p.evaluate(() => {
@@ -65,7 +60,7 @@ const skipIntro = async (p: Page): Promise<void> => {
   await p.waitForSelector('#pauseBtn');
 };
 const kick = async (p: Page): Promise<void> => {
-  await toArena(p);
+  await p.click('#arenaChip');
   await p.click('#kickoffBtn');
   await p.waitForTimeout(700);
   await shot(p, `${OUT}/apresentacao.png`);
@@ -438,9 +433,6 @@ try {
   const arenaBox = await coach.evaluate(() => window.__pocket.townBox('arena'));
   const courtBox = (await coach.locator('#court').boundingBox())!;
   await coach.mouse.click(courtBox.x + courtBox.width * (arenaBox.x0 + arenaBox.x1) / 2, courtBox.y + courtBox.height * (arenaBox.y0 + arenaBox.y1) / 2);
-  // Na semana de jogo o adjunto pergunta primeiro; noutra semana abre logo as propostas.
-  await coach.waitForSelector('#kickoffBtn, [data-offer], #arenaYes');
-  if (await coach.locator('#arenaYes').count()) await coach.click('#arenaYes');
   await coach.waitForSelector('#kickoffBtn, [data-offer]');
   check('Tocar no pavilhão abre o pavilhão', true);
   await coach.click('.back');
@@ -469,7 +461,7 @@ try {
   await shot(coach, `${OUT}/taticas.png`);
   await coach.click('.back');
   await coach.click('.back');
-  await toArena(coach);
+  await coach.click('#arenaChip');
   await shot(coach, `${OUT}/balneario.png`);
   await coach.click('[data-go="rival"]');
   await coach.click('[data-target="0"]');
@@ -582,7 +574,7 @@ try {
   await coach.evaluate(() => window.__pocket.fastForward(3));
   check('A semana 14 é livre', await coach.evaluate(() => window.__pocket.club()!.week === 14 && !document.getElementById('practiceBtn')));
   await shot(coach, `${OUT}/semana-livre.png`);
-  await toArena(coach);
+  await coach.click('#arenaChip');
   await coach.waitForSelector('[data-offer]');
   await shot(coach, `${OUT}/propostas.png`);
   await coach.click('[data-offer-kind="friendly"]');
@@ -797,7 +789,7 @@ try {
   await practice.goto(`${url}?semente=31&divisao=1&semana=1`);
   await practice.waitForFunction(() => window.__pocket !== undefined);
   const beforePractice = await practice.evaluate(() => window.__pocket.club()!);
-  await toArena(practice);
+  await practice.click('#arenaChip');
   check('Na pré-época o pavilhão abre as propostas, com particulares', await practice.locator('[data-offer-kind="friendly"]').isEnabled());
   await practice.click('[data-offer="2"]');
   await shot(practice, `${OUT}/jogo-treino-proposta.png`);
@@ -1111,7 +1103,7 @@ try {
     check(`Em ${name}, os menus cabem na janela`, await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight));
     await wide.click('.back');
     await wide.click('.back');
-    await toArena(wide);
+    await wide.click('#arenaChip');
     await wide.waitForTimeout(150);
     await shot(wide, `${OUT}/landscape-${name}-balneario.png`);
     check(`Em ${name}, «Bola ao alto» está todo à vista no balneário`, await fullyVisible(wide, '#kickoffBtn'));
@@ -1179,10 +1171,6 @@ try {
   await keys.keyboard.press('Escape');
   await keys.waitForSelector('#arenaChip');
   await keys.keyboard.press('p');
-  // O adjunto pergunta se vamos para o pavilhão, com o «Sim» já escolhido: Enter responde.
-  await keys.waitForSelector('#arenaYes');
-  check('P pergunta se vamos para o pavilhão, com o sim já escolhido', await keys.evaluate(() => document.activeElement?.id === 'arenaYes'));
-  await keys.keyboard.press('Enter');
   await keys.waitForSelector('#kickoffBtn');
   await keys.keyboard.press('Enter');
   await keys.waitForSelector('#introSkip');
@@ -1251,7 +1239,7 @@ try {
   await small.click('#officeBtn');
   await visit('escritorio');
   await small.click('.back');
-  await toArena(small);
+  await small.click('#arenaChip');
   await small.waitForTimeout(150);
   check('Em 640x360, «Bola ao alto» está todo à vista no balneário, sem deslizar', await fullyVisible(small, '#kickoffBtn'));
   await visit('balneario');
@@ -1277,7 +1265,7 @@ try {
     const accents = await context.newPage();
     await accents.goto(`${url}?semente=11&divisao=2`);
     await accents.waitForFunction(() => window.__pocket !== undefined);
-    await toArena(accents);
+    await accents.click('#arenaChip');
     await accents.click('#kickoffBtn');
     await skipIntro(accents);
     await accents.evaluate(() => window.__pocket.pauseAt('pass', 2));
