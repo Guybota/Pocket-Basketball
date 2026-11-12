@@ -572,8 +572,9 @@ function stepColours(theme: CourtTheme): StepColours | null {
   // As cadeiras mais claras do que o betão por trás (nas arenas escuras confundiam-se), com a aresta de cima ao sol;
   // as escadas no tom do piso e com rebordo, para não parecerem pilares; a frincha pouco escura, para não piscar a andar.
   const chair = mix(seat, [236, 236, 236], 0.14);
-  // As escadas em betão claro, para se lerem como um caminho a subir entre as cadeiras e não como um buraco.
-  const stairTread = mix(seat, [176, 176, 178], 0.8);
+  // As escadas em betão claro, para se lerem como um caminho a subir entre as cadeiras e não como um buraco: em cinzentos, o
+  // tampo fica ~0,2 de L acima das cadeiras, e a frente, à sombra, ainda ~0,15.
+  const stairTread = mix(seat, [222, 222, 226], 0.9);
   const tones = {
     tread,
     nosing: mix(seat, [196, 196, 196], 0.55),
@@ -582,10 +583,10 @@ function stepColours(theme: CourtTheme): StepColours | null {
     gap: shade(chair, 0.8),
     riser: shade(mix(seat, [24, 24, 30], 0.72), 0.8),
     aisleTread: stairTread,
-    aisleRiser: shade(stairTread, 0.62),
-    aisleSide: shade(stairTread, 0.8),
+    aisleRiser: shade(stairTread, 0.8),
+    aisleSide: shade(stairTread, 0.9),
     // O rebordo de cada degrau da escada com uma faixa clara, como as de segurança.
-    aisleNose: [222, 212, 168] as Rgb,
+    aisleNose: [250, 238, 190] as Rgb,
   };
   const out = Object.fromEntries(Object.entries(tones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, (_, j) => packRgb(tinted(shade(c, crowd.dim * (1 - (0.45 * j) / rows)), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
   return { zs, t0, rise, rows, wood: false, ...out };
@@ -1246,7 +1247,8 @@ export class Camera {
               // Cada fila tem dois degraus na escada: um bloco de meio espelho em cima da metade de trás do piso.
               for (let b = Math.max(0, j - 1); b <= j; b++) {
                 const bTop = steps.t0 + b * steps.rise;
-                if (sp.kind === 'side' && bTop < TUNNEL.height + 0.2 && hi > TUNNEL.x0 && lo < TUNNEL.x1) continue;
+                // Por cima do túnel a escada só começa uma fila acima da padieira: o primeiro bloco ficava cortado pela boca.
+                if (sp.kind === 'side' && bTop < TUNNEL.height + 0.2 + steps.rise && hi > TUNNEL.x0 && lo < TUNNEL.x1) continue;
                 let tin = -Infinity;
                 let tout = Infinity;
                 let f = 0;
@@ -1278,14 +1280,16 @@ export class Camera {
             }
             const c = sp.c0 + db * tHit;
             const inStair = sp.stairs.some(([lo, hi]) => c > lo && c < hi);
+            // O rebordo das escadas tem sempre pelo menos um píxel de altura: o que um píxel cobre no piso, a esta distância.
+            const noseW = Math.max(0.08, (1.2 * tHit * (dirX * dirX + dirY * dirY + rz * rz)) / (focal * -rz));
             const k = Math.min(face >= 2 ? Math.round((stairTop - steps.t0) / steps.rise) : j, steps.rows - 1);
             if (face === 0) {
               const depth = sp.d0 + dd * tHit - slope * below;
-              const nose = depth < 0.08;
+              const nose = depth < (inStair ? noseW : 0.08);
               pixels[row + sx] = inStair ? (nose ? steps.aisleNose[k]! : steps.aisleTread[k]!) : nose ? steps.nosing[k]! : steps.tread[k]!;
             } else if (face === 2) {
               const depth = sp.d0 + dd * tHit - slope * (stairTop - steps.rise / 2);
-              pixels[row + sx] = depth < 0.08 ? steps.aisleNose[k]! : steps.aisleTread[k]!;
+              pixels[row + sx] = depth < noseW ? steps.aisleNose[k]! : steps.aisleTread[k]!;
             } else if (face === 3) pixels[row + sx] = steps.aisleRiser[k]!;
             else if (face === 4) pixels[row + sx] = steps.aisleSide[k]!;
             else {
