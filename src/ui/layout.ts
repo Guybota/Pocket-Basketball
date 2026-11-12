@@ -59,8 +59,10 @@ if ((navigator as Navigator & { standalone?: boolean }).standalone === true) doc
 
 // Com o telemóvel ao alto, o jogo roda 90° (CSS, `html.turned`) e continua deitado: o body fica com a largura e a altura
 // trocadas, e é por ele que se mede.
-const turnedQuery = typeof matchMedia === 'function' ? matchMedia('(orientation: portrait) and (pointer: coarse)') : null;
-export const turned = (): boolean => turnedQuery?.matches ?? false;
+// Decide-se em fit() pela largura e altura da janela nesse instante: ao voltar à aplicação, o iPad chegou a dar a orientação
+// antiga e o jogo ficava rodado com o ecrã deitado. Os toques seguem a classe, para baterem sempre certo com o que se vê.
+const coarse = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+export const turned = (): boolean => document.documentElement.classList.contains('turned');
 const viewWidth = (): number => (turned() ? document.body.clientWidth : innerWidth);
 
 /** Onde caiu um toque dentro de um elemento, de 0 a 1 em cada eixo do jogo, rodado ou não. */
@@ -126,7 +128,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
   function fit({ stage, resultOpen, courtOnly, demo }: LayoutState): void {
     game.classList.add('landscape');
     document.body.classList.add('landscape');
-    document.documentElement.classList.toggle('turned', turned());
+    document.documentElement.classList.toggle('turned', (coarse?.matches ?? false) && window.innerHeight > window.innerWidth);
     const innerWidth = viewWidth();
     const viewHeight = windowHeight();
     const dpr = devicePixelRatio || 1;

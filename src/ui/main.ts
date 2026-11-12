@@ -1453,6 +1453,17 @@ initSpeech();
 initKeys(game);
 
 document.addEventListener('visibilitychange', () => audio.setHidden(document.visibilityState === 'hidden'));
+// Ao voltar à aplicação, o iPad nem sempre avisa que o tamanho mudou enquanto estava escondida: mede-se outra vez, já e
+// depois de o sistema acabar de a pôr no ecrã.
+const refit = (): void => {
+  if (document.visibilityState !== 'visible') return;
+  fit();
+  requestAnimationFrame(fit);
+  setTimeout(fit, 400);
+};
+document.addEventListener('visibilitychange', refit);
+addEventListener('pageshow', refit);
+addEventListener('orientationchange', () => setTimeout(fit, 300));
 
 
 initPwa();
