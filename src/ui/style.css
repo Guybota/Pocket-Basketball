@@ -192,8 +192,8 @@ html.reduce-motion .scorebug .points.flash { animation: none; }
 }
 
 html.reduce-motion #banner.show { animation: none; }
-/* «Repetição» pisca a 1 Hz: diz sem ler que não é ao vivo. */
-#banner.replay { animation: replay-blink 1s steps(1) infinite; }
+/* «Repetição» pisca a 1 Hz: diz sem ler que não é ao vivo. Fica no canto de baixo à esquerda, fora do lance. */
+#banner.replay { animation: replay-blink 1s steps(1) infinite; bottom: 5%; left: 5%; right: auto; margin-inline: 0; }
 @keyframes replay-blink { 50% { visibility: hidden; } }
 html.reduce-motion #banner.replay { animation: none; }
 .film-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--line); font: 400 15px/1.1 var(--ui-sm); }
