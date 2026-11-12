@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats } from './court.ts';
+import { FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats, stairs } from './court.ts';
 
 describe('pavilhão', () => {
   it('veste as cores do clube da casa, e guarda cada versão', { tags: ['slow'] }, () => {
@@ -78,7 +78,7 @@ describe('bancada em degraus', () => {
     }
   });
 
-  it('não põe ninguém em cima de outro nem nas escadas entre bancadas', () => {
+  it('não põe ninguém em cima de outro, nas escadas nem na dobra dos cantos', () => {
     for (const theme of stepped) {
       for (let row = 0; row < fanRows(theme); row++) {
         const list = seats(theme, row);
@@ -89,16 +89,15 @@ describe('bancada em degraus', () => {
             expect(d).toBeGreaterThan(FAN_SPACING - 1e-6);
           }
         }
-        // As escadas das junções têm 0,7 m para cada lado e um adepto sentado ~0,42 m: as junções ficam onde as filas da
-        // lateral (x), do topo (y) e da diagonal se encontram, e recuam ao subir.
+        // Um adepto sentado ocupa ~0,42 m para cada lado: fica fora das escadas e do seu lado da dobra do canto, que recua
+        // ao subir.
         const z = fanHeight(theme, row);
         const shift = (Math.SQRT2 - 1) * theme.slope * z;
         for (const s of list) {
-          // Sem cantos cortados, as escadas ficam nas duas pontas da bancada, junto às paredes dos topos.
-          const corner = theme.chamfer ? 4 - shift : 0;
-          const clear =
-            s.plane === 'side' ? Math.min(s.x - (-4 + corner), 32 - corner - s.x) : s.plane === 'end' ? s.y - (-11 + 4 - shift) : 4 / Math.SQRT2 + shift - Math.abs(s.along);
-          expect(clear).toBeGreaterThan(0.7 + 0.42);
+          for (const [lo, hi] of stairs(theme, s.plane)) expect(s.along <= lo - 0.42 || s.along >= hi + 0.42).toBe(true);
+          if (!theme.chamfer) continue;
+          const clear = s.plane === 'side' ? Math.min(s.x - (-shift), 28 + shift - s.x) : s.plane === 'end' ? s.y - (-7 - shift) : 4 / Math.SQRT2 + shift - Math.abs(s.along);
+          expect(clear).toBeGreaterThan(0.42);
         }
       }
     }
