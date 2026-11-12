@@ -77,8 +77,9 @@ export function stairs(theme: CourtTheme, plane: SeatPlane): [number, number][] 
   const mid = (c: number): [number, number] => [c - AISLE_HALF, c + AISLE_HALF];
   if (plane === 'diag') return [mid(0)];
   if (plane === 'end') return [mid(0), mid(7)];
-  if (theme.chamfer) return [mid(7), mid(14), mid(21)];
-  return [[WALL_NEAR_X, WALL_NEAR_X + WALL_STAIR], mid(0), mid(7), mid(14), mid(21), mid(28), [WALL_FAR_X - WALL_STAIR, WALL_FAR_X]];
+  // A meio da lateral não há escada: por baixo fica o túnel, que é a entrada.
+  if (theme.chamfer) return [mid(7), mid(21)];
+  return [[WALL_NEAR_X, WALL_NEAR_X + WALL_STAIR], mid(0), mid(7), mid(21), mid(28), [WALL_FAR_X - WALL_STAIR, WALL_FAR_X]];
 }
 /** Se um lugar ao longo da fila fica perto de mais de uma escada. */
 export const inAisle = (theme: CourtTheme, plane: SeatPlane, along: number): boolean =>
@@ -539,6 +540,8 @@ interface StepColours {
   aisleRiser: Uint32Array;
   aisleSide: Uint32Array;
   aisleNose: Uint32Array;
+  /** O lado dos blocos de cadeiras, cortados pela escada. */
+  cutSide: Uint32Array;
 }
 
 function stepColours(theme: CourtTheme): StepColours | null {
@@ -564,6 +567,7 @@ function stepColours(theme: CourtTheme): StepColours | null {
       aisleRiser: shade(wood, 0.7),
       aisleSide: shade(wood, 0.8),
       aisleNose: mix(wood, [250, 232, 196], 0.45),
+      cutSide: shade(painted, 0.86),
     };
     const woodOut = Object.fromEntries(Object.entries(woodTones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, () => packRgb(tinted(shade(c, crowd.dim), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
     return { zs, t0, rise, rows, wood: true, ...woodOut };
@@ -587,6 +591,8 @@ function stepColours(theme: CourtTheme): StepColours | null {
     aisleSide: shade(stairTread, 0.9),
     // O rebordo de cada degrau da escada com uma faixa clara, como as de segurança.
     aisleNose: [250, 238, 190] as Rgb,
+    // O lado dos blocos de cadeiras é do betão dos pisos, à sombra: escuro como o espelho, lia-se como um buraco.
+    cutSide: shade(tread, 0.86),
   };
   const out = Object.fromEntries(Object.entries(tones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, (_, j) => packRgb(tinted(shade(c, crowd.dim * (1 - (0.45 * j) / rows)), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
   return { zs, t0, rise, rows, wood: false, ...out };
@@ -1108,6 +1114,19 @@ export class Camera {
     // As bancadas em degraus, como um só bloco: em cada uma, a profundidade d atrás da linha da frente e a posição c ao longo
     // da fila, ambas lineares no raio (d = d0 + ax·dirX + ay·dirY por unidade, c = c0 + bx·dirX + by·dirY).
     const R = Math.SQRT1_2;
+    // A altura do bloco das bancadas a uma profundidade d atrás da linha da frente: o muro inclinado, depois os pisos das filas;
+    // e a das escadas, em degraus de ~0,3 m que calham nos pisos das filas.
+    const stepsOf = t.steps;
+    const stairStep = stepsOf ? stepsOf.rise / Math.max(2, Math.round(stepsOf.rise / 0.3)) : 1;
+    const standAt = (d: number): number =>
+      !stepsOf || d < slope * stepsOf.zs ? d / slope : stepsOf.t0 + stepsOf.rise * Math.max(0, Math.floor((d / slope - stepsOf.t0) / stepsOf.rise) + 1);
+    // A escada começa no cimo do muro, como a primeira fila: o primeiro degrau sobe do muro ao primeiro piso (0,3 m).
+    const stairLid = (z: number): number => (!stepsOf ? 0 : z < stepsOf.t0 ? stepsOf.t0 : stepsOf.t0 + stairStep * Math.ceil((z - stepsOf.t0) / stairStep));
+    const stairAt = (d: number): number => {
+      if (!stepsOf || d < slope * stepsOf.zs) return d / slope;
+      const z = d / slope;
+      return z < stepsOf.t0 ? stepsOf.t0 : stepsOf.t0 + stairStep * (Math.floor((z - stepsOf.t0) / stairStep) + 1);
+    };
     const stands: { kind: SeatPlane; d0: number; ax: number; ay: number; c0: number; bx: number; by: number; stairs: [number, number][] }[] = [];
     if (t.steps) {
       stands.push({ kind: 'side', d0: WALL_Y - cy, ax: 0, ay: -1, c0: cx, bx: 1, by: 0, stairs: stairs(t.theme, 'side') });
@@ -1202,33 +1221,45 @@ export class Camera {
           // Por cima do túnel não há degraus: a boca fica inteira, como na parede lisa.
           const xIn = cx + dirX * hit;
           const tunnel = onSide && xIn > TUNNEL.x0 - 0.2 && xIn < TUNNEL.x1 + 0.2 && zIn < TUNNEL.height + 0.2;
-          if (zIn >= steps.zs && inward > 0 && !tunnel) {
-            // O plano passa pelos cantos de dentro: o ponto do plano fica debaixo do piso j, atrás do espelho j.
-            const j = Math.max(0, Math.ceil((zIn - steps.t0) / steps.rise));
-            const top = steps.t0 + j * steps.rise;
-            const below = j === 0 ? steps.zs : top - steps.rise;
-            const tTread = (top - cz) / rz;
-            // As bancadas são um só bloco e cada degrau um anel à volta do campo, dobrado em esquadria nos cantos: o raio entra no
-            // espelho j quando passa a linha dele na primeira bancada em que a passa.
-            let tRiser = Infinity;
+          if (inward > 0 && !tunnel && stands.length > 0) {
+            const rise = steps.rise;
+            // A bancada onde o raio bate: a que tem o ponto mais para trás da sua linha da frente.
             let owner = 0;
-            for (let p = 0; p < stands.length; p++) {
-              const sp = stands[p]!;
-              const dd = sp.ax * dirX + sp.ay * dirY;
-              if (dd <= 0) continue;
-              const tp = (slope * below - sp.d0) / dd;
-              if (tp < tRiser) {
-                tRiser = tp;
-                owner = p;
+            // 0 piso, 1 espelho, 5 o muro liso por baixo da bancada; na escada, 6 piso, 7 espelho, 8 lado; 9 o corte das filas.
+            let tHit = hit;
+            let face = 5;
+            let j = 0;
+            let below = 0;
+            if (zIn >= steps.zs) {
+              // O plano passa pelos cantos de dentro: o ponto do plano fica debaixo do piso j, atrás do espelho j.
+              j = Math.max(0, Math.ceil((zIn - steps.t0) / rise));
+              const top = steps.t0 + j * rise;
+              below = j === 0 ? steps.zs : top - rise;
+              const tTread = (top - cz) / rz;
+              // As bancadas são um só bloco e cada degrau um anel à volta do campo, dobrado em esquadria nos cantos: o raio entra
+              // no espelho j quando passa a linha dele na primeira bancada em que a passa.
+              let tRiser = Infinity;
+              let riserOwner = owner;
+              for (let p = 0; p < stands.length; p++) {
+                const st = stands[p]!;
+                const dd = st.ax * dirX + st.ay * dirY;
+                if (dd <= 0) continue;
+                const tp = (slope * below - st.d0) / dd;
+                if (tp < tRiser) {
+                  tRiser = tp;
+                  riserOwner = p;
+                }
               }
+              tHit = Math.max(tTread, tRiser);
+              face = tTread >= tRiser ? 0 : 1;
+              owner = riserOwner;
             }
-            let tHit = Math.max(tTread, tRiser);
-            if (tTread >= tRiser) {
-              // No piso, a bancada é a que tem o ponto mais para trás da sua linha da frente.
+            if (face !== 1 && stands.length > 1) {
+              const tt = tHit;
               let deepest = -Infinity;
               for (let p = 0; p < stands.length; p++) {
-                const sp = stands[p]!;
-                const d = sp.d0 + (sp.ax * dirX + sp.ay * dirY) * tHit;
+                const st = stands[p]!;
+                const d = st.d0 + (st.ax * dirX + st.ay * dirY) * tt;
                 if (d > deepest) {
                   deepest = d;
                   owner = p;
@@ -1238,73 +1269,74 @@ export class Camera {
             const sp = stands[owner]!;
             const dd = sp.ax * dirX + sp.ay * dirY;
             const db = sp.bx * dirX + sp.by * dirY;
-            // 0 piso, 1 espelho; nas escadas, o meio degrau por cima do piso: 2 em cima, 3 à frente, 4 de lado.
-            let face = tTread >= tRiser ? 0 : 1;
-            let stairTop = 0;
-            const cBase = sp.c0 + db * tHit;
-            for (const [lo, hi] of sp.stairs) {
-              if (cBase < lo - 1.5 || cBase > hi + 1.5 || dd <= 0) continue;
-              // Cada fila tem dois degraus na escada: um bloco de meio espelho em cima da metade de trás do piso.
-              for (let b = Math.max(0, j - 1); b <= j; b++) {
-                const bTop = steps.t0 + b * steps.rise;
-                // Por cima do túnel a escada só começa uma fila acima da padieira: o primeiro bloco ficava cortado pela boca.
-                if (sp.kind === 'side' && bTop < TUNNEL.height + 0.2 + steps.rise && hi > TUNNEL.x0 && lo < TUNNEL.x1) continue;
-                let tin = -Infinity;
-                let tout = Infinity;
-                let f = 0;
-                if (db !== 0) {
-                  const a0 = (lo - sp.c0) / db;
-                  const a1 = (hi - sp.c0) / db;
-                  tin = Math.min(a0, a1);
-                  tout = Math.max(a0, a1);
-                  f = 4;
-                } else if (sp.c0 < lo || sp.c0 > hi) continue;
-                const front = (slope * (bTop - steps.rise / 2) - sp.d0) / dd;
-                if (front > tin) {
-                  tin = front;
-                  f = 3;
+            // As escadas sobem a bancada do muro ao cimo, com degraus de ~0,3 m e os cantos de dentro no plano da bancada; os
+            // pisos das filas calham num degrau. Ganha o que o raio encontrar primeiro: a escada, os lados dela ou as filas.
+            let best = tHit;
+            let stairFront = 0;
+            if (dd > 0) {
+              const cHit = sp.c0 + db * tHit;
+              for (let si = 0; si < sp.stairs.length; si++) {
+                const lo = sp.stairs[si]![0];
+                const hi = sp.stairs[si]![1];
+                if (cHit < lo - 3 || cHit > hi + 3) continue;
+                // Dentro da escada, os pisos das filas não existem; o muro por baixo dela sim.
+                if (face !== 5 && cHit > lo && cHit < hi) best = Infinity;
+                const tP = (slope * cz - sp.d0) / (dd - slope * rz);
+                const zP = cz + rz * tP;
+                if (zP >= steps.zs) {
+                  const lid = stairLid(zP);
+                  const front = lid <= steps.t0 ? slope * steps.zs : slope * (lid - stairStep);
+                  const tTr = (lid - cz) / rz;
+                  const tRi = (front - sp.d0) / dd;
+                  const tS = Math.max(tTr, tRi);
+                  const cS = sp.c0 + db * tS;
+                  if (tS > 0 && tS < best && cS >= lo && cS <= hi) {
+                    best = tS;
+                    face = tTr >= tRi ? 6 : 7;
+                    stairFront = front;
+                  }
                 }
-                tout = Math.min(tout, (slope * bTop - sp.d0) / dd);
-                const lid = (bTop + steps.rise / 2 - cz) / rz;
-                if (lid > tin) {
-                  tin = lid;
-                  f = 2;
-                }
-                tout = Math.min(tout, (bTop - cz) / rz);
-                if (tin < tout && tin < tHit && tin > 0) {
-                  tHit = tin;
-                  face = f;
-                  stairTop = bTop;
+                if (db === 0) continue;
+                for (let e = 0; e < 2; e++) {
+                  const edge = e === 0 ? lo : hi;
+                  const tb = (edge - sp.c0) / db;
+                  if (!(tb > 0) || tb >= best) continue;
+                  const d = sp.d0 + dd * tb;
+                  if (d < 0) continue;
+                  const into = db > 0 === (e === 0);
+                  if (cz + rz * tb <= (into ? stairAt(d) : standAt(d))) {
+                    best = tb;
+                    face = into ? 8 : 9;
+                  }
                 }
               }
             }
-            const c = sp.c0 + db * tHit;
-            const inStair = sp.stairs.some(([lo, hi]) => c > lo && c < hi);
-            // O rebordo das escadas tem sempre pelo menos um píxel de altura: o que um píxel cobre no piso, a esta distância.
-            const noseW = Math.max(0.08, (1.2 * tHit * (dirX * dirX + dirY * dirY + rz * rz)) / (focal * -rz));
-            const k = Math.min(face >= 2 ? Math.round((stairTop - steps.t0) / steps.rise) : j, steps.rows - 1);
-            if (face === 0) {
-              const depth = sp.d0 + dd * tHit - slope * below;
-              const nose = depth < (inStair ? noseW : 0.08);
-              pixels[row + sx] = inStair ? (nose ? steps.aisleNose[k]! : steps.aisleTread[k]!) : nose ? steps.nosing[k]! : steps.tread[k]!;
-            } else if (face === 2) {
-              const depth = sp.d0 + dd * tHit - slope * (stairTop - steps.rise / 2);
-              pixels[row + sx] = depth < noseW ? steps.aisleNose[k]! : steps.aisleTread[k]!;
-            } else if (face === 3) pixels[row + sx] = steps.aisleRiser[k]!;
-            else if (face === 4) pixels[row + sx] = steps.aisleSide[k]!;
-            else {
-              // As costas das cadeiras no fundo de cada piso, com uma frincha entre elas; o resto do espelho é betão.
-              const local = cz + rz * tHit - below;
-              if (inStair) pixels[row + sx] = steps.aisleRiser[k]!;
-              // Nas tábuas não há cadeiras: o espelho mostra as juntas entre as tábuas.
-              else if (steps.wood) pixels[row + sx] = frac(local / 0.3) < 0.12 ? steps.gap[k]! : steps.riser[k]!;
-              else if (local < 0.55 && j > 0) {
-                // As cadeiras da fila j - 1 (cujos pés estão neste canto), centradas nos lugares onde os adeptos se sentam.
-                const u = chairPhase(t.theme, sp.kind, j - 1, c);
-                pixels[row + sx] = u < 0.07 || u > 0.93 ? steps.gap[k]! : local > 0.47 ? steps.chairTop[k]! : steps.chair[k]!;
-              } else pixels[row + sx] = steps.riser[k]!;
+            if (best !== Infinity) tHit = best;
+            if (face !== 5) {
+              const zHit = cz + rz * tHit;
+              const k = Math.min(steps.rows - 1, Math.max(0, face <= 1 ? j : Math.ceil((zHit - steps.t0) / rise)));
+              const dHit = sp.d0 + dd * tHit;
+              if (face === 0) pixels[row + sx] = dHit - slope * below < 0.08 ? steps.nosing[k]! : steps.tread[k]!;
+              else if (face === 1) {
+                // As costas das cadeiras no fundo de cada piso, com uma frincha entre elas; o resto do espelho é betão.
+                const local = zHit - below;
+                // Nas tábuas não há cadeiras: o espelho mostra as juntas entre as tábuas.
+                if (steps.wood) pixels[row + sx] = frac(local / 0.3) < 0.12 ? steps.gap[k]! : steps.riser[k]!;
+                else if (local < 0.55 && j > 0) {
+                  // As cadeiras da fila j - 1 (cujos pés estão neste canto), centradas nos lugares onde os adeptos se sentam.
+                  const u = chairPhase(t.theme, sp.kind, j - 1, sp.c0 + db * tHit);
+                  pixels[row + sx] = u < 0.07 || u > 0.93 ? steps.gap[k]! : local > 0.47 ? steps.chairTop[k]! : steps.chair[k]!;
+                } else pixels[row + sx] = steps.riser[k]!;
+              } else if (face === 6) {
+                // O rebordo de cada degrau tem sempre pelo menos um píxel: o que um píxel cobre no piso, a esta distância.
+                const noseW = Math.max(0.08, (1.2 * tHit * (dirX * dirX + dirY * dirY + rz * rz)) / (focal * -rz));
+                pixels[row + sx] = dHit - stairFront < noseW ? steps.aisleNose[k]! : steps.aisleTread[k]!;
+              } else if (face === 7) pixels[row + sx] = steps.aisleRiser[k]!;
+              else if (face === 8) pixels[row + sx] = steps.aisleSide[k]!;
+              else pixels[row + sx] = steps.cutSide[k]!;
+              continue;
             }
-            continue;
+            hit = tHit;
           }
         }
         // A diagonal usa a faixa dos topos da textura (sem letras), perto do canto.
