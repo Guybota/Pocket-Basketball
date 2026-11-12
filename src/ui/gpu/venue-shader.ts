@@ -3,8 +3,8 @@
 // aí fica a malha do chão. Escreve a profundidade do que encontra, para peças 3D futuras se cruzarem bem com as bancadas.
 // Mudar o aspeto das bancadas obriga a mudar os dois sítios: o traçador continua a ser a reserva sem WebGL 2, e o
 // `npm run gpu-check` compara os dois píxel a píxel.
-import { DataTexture, Matrix4, NearestFilter, RGBAFormat, UnsignedByteType, Vector2, Vector3, type Texture } from 'three';
-import { FAN_SPACING, FLOOR_AREA, TUNNEL, WALL_SHAPE, chairPhase, stairs, type CourtTextures, type SeatPlane } from '../art/court.ts';
+import { DataTexture, Matrix4, NearestFilter, RGBAFormat, UnsignedByteType, Vector2, Vector3, Vector4, type Texture } from 'three';
+import { FAN_SPACING, FLOOR_AREA, OPEN_SHAPE, TUNNEL, WALL_SHAPE, chairPhase, stairs, type CourtTextures, type SeatPlane } from '../art/court.ts';
 
 /** As cores dos degraus por fila, numa textura de 11 colunas (uma por cor) e uma linha por fila. */
 const STEP_KEYS = ['tread', 'nosing', 'chair', 'chairTop', 'gap', 'riser', 'aisleTread', 'aisleRiser', 'aisleSide', 'aisleNose', 'cutSide'] as const;
@@ -68,9 +68,10 @@ const float TH = ${f(TUNNEL.height)};
 const float HALF_SEAT = ${f(FAN_SPACING / 2)};
 
 vec4 stepColor(int kind, float k) { return texelFetch(stepMap, ivec2(kind, int(k)), 0); }
+// Como no traçador: o texel por truncatura, preso à textura. (Filtrá-las não baixava o tremor e misturava, nas dobras, a
+// coluna de outra parede.)
 vec4 wallColor(float along, float z) {
   ivec2 size = textureSize(wallMap, 0);
-  // Como no traçador: o texel por truncatura, preso à textura.
   int u = clamp(int(along * WALL_SCALE), 0, size.x - 1);
   int v = clamp(int(z * WALL_SCALE), 0, size.y - 1);
   return texelFetch(wallMap, ivec2(u, v), 0);
@@ -351,6 +352,217 @@ export function venueUniforms(t: CourtTextures): { uniforms: Record<string, { va
     dispose() {
       for (const w of walls) w.dispose();
       stepMap.dispose();
+    },
+  };
+}
+
+const rgb = (p: number): Vector3 => new Vector3((p & 255) / 255, ((p >>> 8) & 255) / 255, ((p >>> 16) & 255) / 255);
+
+/**
+ * O campo de rua: as contas de `Camera.drawOpenScene` por píxel. O chão do campo fica para a malha; fora dele, o passeio e
+ * a relva, o pano de fundo (prédios e árvores) e o céu. Com `fencePass`, desenha só a rede, sobre fundo transparente, para
+ * ficar por cima de quem está do lado de fora.
+ */
+export const OPEN_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform vec3 eye;
+uniform vec3 fwdV;
+uniform vec3 rightV;
+uniform vec3 upV;
+uniform float focal;
+uniform vec2 artSize;
+uniform vec2 res;
+uniform float zoom;
+uniform vec2 shift;
+uniform mat4 viewProj;
+uniform sampler2D wallMap;
+uniform bool exactFence;
+uniform vec3 sky;
+uniform vec3 ground0;
+uniform vec3 ground1;
+uniform vec3 ground2;
+uniform vec4 fenceColor;
+uniform vec4 postColor;
+uniform vec4 veilColor;
+uniform bool fencePass;
+
+const float INF = 1e30;
+const float NEAR_X = ${f(FLOOR_AREA.x0)};
+const float FAR_X = ${f(FLOOR_AREA.x1)};
+const float WALL_Y = ${f(FLOOR_AREA.y0)};
+const float SIDE_SPAN = ${f(WALL_SHAPE.sideSpan)};
+const float WALL_SCALE = ${f(WALL_SHAPE.scale)};
+const float BACKDROP = ${f(OPEN_SHAPE.backdrop)};
+const float FH = ${f(OPEN_SHAPE.fenceHeight)};
+const float CELL = ${f(OPEN_SHAPE.fenceCell)};
+const float PAVEMENT = ${f(OPEN_SHAPE.pavement)};
+const float STRIPE = ${f(OPEN_SHAPE.stripe)};
+const float TX0 = ${f(TUNNEL.x0)};
+const float TX1 = ${f(TUNNEL.x1)};
+
+vec4 wallColor(float along, float z) {
+  ivec2 size = textureSize(wallMap, 0);
+  int u = clamp(int(along * WALL_SCALE), 0, size.x - 1);
+  int v = clamp(int(z * WALL_SCALE), 0, size.y - 1);
+  return texelFetch(wallMap, ivec2(u, v), 0);
+}
+
+// Quanto de um fio da malha (de 0 a lineW, em células) cobre um píxel do ecrã centrado em d, com fw células de largura.
+float wireCover(float d, float lineW, float fw) {
+  float h = 0.5 * fw;
+  float inside = max(0.0, min(d + h, lineW) - max(d - h, 0.0)) + max(0.0, min(d - 1.0 + h, lineW) - max(d - 1.0 - h, 0.0));
+  return clamp(inside / fw, 0.0, 1.0);
+}
+
+// Quanto anda cada coordenada dos fios num píxel do ecrã: o comprimento do gradiente (o fwidth soma os dois eixos e, nos
+// fios a 45°, dava o dobro).
+vec2 footprint(vec2 u) {
+  vec2 dx = dFdx(u);
+  vec2 dy = dFdy(u);
+  return sqrt(dx * dx + dy * dy);
+}
+
+// A cobertura do último fio encontrado e quanto véu lhe cabe: no jogo, a borda dos fios esbate-se num píxel do ecrã e, onde a
+// malha se aperta (vista de lado), passa aos poucos a véu, para não cintilar a andar. Com \`exactFence\` (o gpu-check), o fio
+// é cheio ou nada e o véu só onde o traçador o põe.
+float meshCover = 1.0;
+float veilMix = 0.0;
+
+// 0 nada, 1 poste, 2 véu, 3 malha.
+int fenceAt(int mesh, float tf, float a, bool side, float cz, float rz, float floorT, vec2 fw) {
+  float zf = cz + rz * tf;
+  if (zf <= 0.0 || zf >= FH || tf > floorT) return mesh;
+  if (side && a > TX0 && a < TX1) {
+    if (a < TX0 + 0.15 || a > TX1 - 0.15 || zf > FH - 0.12) return 1;
+    return mesh;
+  }
+  if (fract(a / 4.0) < 0.03 || zf > FH - 0.08) return 1;
+  float cellPx = CELL * (focal / tf);
+  if (cellPx < 4.0) return 2;
+  float lineW = max(1.2, cellPx * 0.16) / cellPx;
+  float d1 = fract((a + zf) / CELL);
+  float d2 = fract((a - zf) / CELL);
+  if (exactFence) return d1 < lineW || d2 < lineW ? 3 : mesh;
+  // \`fw\`: quantas células cabem num píxel do ecrã, em cada direção dos fios. Em píxeis da imagem (sem a aproximação, que
+  // assim mostra a malha de perto), a malha passa a véu entre 1/0,4 e 1/0,65 píxeis por célula.
+  float pixel = res.y / artSize.y;
+  float veil = smoothstep(0.4, 0.65, max(fw.x, fw.y) * pixel);
+  float cover = max(wireCover(d1, lineW, fw.x), wireCover(d2, lineW, fw.y));
+  if (cover <= 0.0 && veil <= 0.0) return mesh;
+  meshCover = cover;
+  veilMix = veil;
+  return 3;
+}
+
+void main() {
+  vec2 frag = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y) / res * artSize;
+  vec2 p = (frag - shift) / zoom;
+  float vx = p.x - artSize.x * 0.5;
+  float vy = artSize.y * 0.5 - p.y;
+  float dirX = fwdV.x * focal + upV.x * vy + rightV.x * vx;
+  float dirY = fwdV.y * focal + upV.y * vy + rightV.y * vx;
+  float rz = fwdV.z * focal + upV.z * vy + rightV.z * vx;
+  float cx = eye.x;
+  float cy = eye.y;
+  float cz = eye.z;
+  float floorT = rz < 0.0 ? -cz / rz : INF;
+  float hitX = cx + dirX * floorT;
+  float hitY = cy + dirY * floorT;
+  // As três redes, contadas em todos os píxeis antes de qualquer ramo ou discard, para as derivadas no ecrã valerem.
+  float tS = (WALL_Y - cy) / dirY;
+  float aS = cx + dirX * tS;
+  float tN = (NEAR_X - cx) / dirX;
+  float aN = cy + dirY * tN;
+  float tF = (FAR_X - cx) / dirX;
+  float aF = cy + dirY * tF;
+  vec2 fwS = footprint(vec2(aS + cz + rz * tS, aS - cz - rz * tS) / CELL);
+  vec2 fwN = footprint(vec2(aN + cz + rz * tN, aN - cz - rz * tN) / CELL);
+  vec2 fwF = footprint(vec2(aF + cz + rz * tF, aF - cz - rz * tF) / CELL);
+  // O chão do campo fica para a malha do chão; a rede também não passa por cima dele.
+  if (rz < 0.0 && hitX > NEAR_X && hitX < FAR_X && hitY > WALL_Y) discard;
+
+  if (fencePass) {
+    int mesh = 0;
+    if (dirY < 0.0 && aS >= NEAR_X && aS <= FAR_X) mesh = fenceAt(mesh, tS, aS, true, cz, rz, floorT, fwS);
+    if (dirX < 0.0) {
+      if (aN >= WALL_Y) mesh = fenceAt(mesh, tN, aN, false, cz, rz, floorT, fwN);
+    } else if (dirX > 0.0) {
+      if (aF >= WALL_Y) mesh = fenceAt(mesh, tF, aF, false, cz, rz, floorT, fwF);
+    }
+    if (mesh == 0) discard;
+    // A tela tem a transparência pré-multiplicada.
+    vec4 c = mesh == 1 ? vec4(postColor.rgb * postColor.a, postColor.a) : mesh == 2 ? vec4(veilColor.rgb * veilColor.a, veilColor.a)
+      : mix(vec4(fenceColor.rgb, 1.0) * fenceColor.a * meshCover, vec4(veilColor.rgb, 1.0) * veilColor.a, veilMix);
+    if (c.a <= 0.0) discard;
+    gl_FragColor = c;
+    return;
+  }
+
+  float backY = WALL_Y - BACKDROP;
+  float backNearX = NEAR_X - BACKDROP;
+  float backFarX = FAR_X + BACKDROP;
+  float back = INF;
+  float along = 0.0;
+  if (dirY < 0.0) {
+    float tb = (backY - cy) / dirY;
+    if (cz + rz * tb >= 0.0) { back = tb; along = cx + dirX * tb - backNearX; }
+  }
+  if (dirX < 0.0) {
+    float tb = (backNearX - cx) / dirX;
+    if (tb < back && cz + rz * tb >= 0.0) { back = tb; along = SIDE_SPAN + (cy + dirY * tb - backY); }
+  } else if (dirX > 0.0) {
+    float tb = (backFarX - cx) / dirX;
+    if (tb < back && cz + rz * tb >= 0.0) { back = tb; along = SIDE_SPAN + (cy + dirY * tb - backY); }
+  }
+  vec3 color = sky;
+  float t = INF;
+  if (rz < 0.0 && floorT < back) {
+    float outside = max(max(WALL_Y - hitY, NEAR_X - hitX), hitX - FAR_X);
+    color = outside < PAVEMENT ? ground0 : mod(floor((hitX + hitY) / STRIPE), 2.0) == 0.0 ? ground1 : ground2;
+    t = floorT;
+  } else if (back < INF) {
+    color = wallColor(along, cz + rz * back).rgb;
+    t = back;
+  }
+  gl_FragColor = vec4(color, 1.0);
+  if (t >= INF) gl_FragDepth = 1.0;
+  else {
+    vec4 clip = viewProj * vec4(vec3(cx, cy, cz) + vec3(dirX, dirY, rz) * t, 1.0);
+    gl_FragDepth = clamp(0.5 * clip.z / clip.w + 0.5, 0.0, 1.0);
+  }
+}`;
+
+/** As texturas e os números do campo de rua para o shader. */
+export function openUniforms(t: CourtTextures): { uniforms: Record<string, { value: unknown }>; walls: Texture[]; dispose(): void } {
+  const walls = [packedTexture(t.walls[0]!, t.wallW, t.wallH)];
+  const rgba = (p: number): Vector4 => new Vector4((p & 255) / 255, ((p >>> 8) & 255) / 255, ((p >>> 16) & 255) / 255, ((p >>> 24) & 255) / 255);
+  const uniforms: Record<string, { value: unknown }> = {
+    eye: { value: new Vector3() },
+    fwdV: { value: new Vector3() },
+    rightV: { value: new Vector3() },
+    upV: { value: new Vector3() },
+    focal: { value: 1 },
+    artSize: { value: new Vector2(1, 1) },
+    res: { value: new Vector2(1, 1) },
+    zoom: { value: 1 },
+    shift: { value: new Vector2() },
+    viewProj: { value: new Matrix4() },
+    wallMap: { value: walls[0] },
+    exactFence: { value: false },
+    sky: { value: rgb(t.sky) },
+    ground0: { value: rgb(t.ground[0]) },
+    ground1: { value: rgb(t.ground[1]) },
+    ground2: { value: rgb(t.ground[2]) },
+    fenceColor: { value: rgba(OPEN_SHAPE.fence) },
+    postColor: { value: rgba(OPEN_SHAPE.post) },
+    veilColor: { value: rgba(OPEN_SHAPE.veil) },
+    fencePass: { value: false },
+  };
+  return {
+    uniforms,
+    walls,
+    dispose() {
+      for (const w of walls) w.dispose();
     },
   };
 }

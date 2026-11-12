@@ -1448,6 +1448,9 @@ function groundOutside(x: number, y: number, ground: CourtTextures['ground']): n
   return Math.floor((x + y) / 4) % 2 === 0 ? ground[1] : ground[2];
 }
 
+/** As medidas do campo de rua e as cores da rede, para a placa gráfica fazer as mesmas contas. */
+export const OPEN_SHAPE = { backdrop: BACKDROP, fenceHeight: FENCE_HEIGHT, fenceCell: FENCE_CELL, fence: FENCE, post: POST, veil: VEIL, pavement: 1.6, stripe: 4 } as const;
+
 /**
  * Pinta os píxeis cujo centro fica dentro do polígono. Duas faces com uma aresta comum dividem-na sem buracos nem
  * sobreposições, e uma aresta isométrica (2:1) avança sempre dois píxeis por linha, seja qual for a fração dos vértices.

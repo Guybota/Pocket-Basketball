@@ -4,7 +4,8 @@
 
 - **Fase 1, feita:** o chão e as linhas.
 - **Fase 2, feita:** o interior dos quatro pavilhões fechados (Escolar, Municipal, Grande Arena e o pavilhão fechado).
-- **Próxima:** o campo de rua.
+- **Fase 3, feita:** o campo de rua, com a rede numa passagem à parte.
+- **Próxima:** os momentos especiais e um telemóvel verdadeiro.
 
 ## Porquê
 
@@ -53,9 +54,10 @@ three.js (uma tela WebGL partilhada, à resolução da tela do jogo)
   - a placa gráfica partilhada, as malhas do chão e das linhas, e a cache dos três últimos pavilhões;
   - a perda e a recuperação do contexto;
   - a reserva e o `prepare`, que envia as texturas e compila os shaders antes do primeiro frame.
-- **`src/ui/gpu/venue-shader.ts`:** o shader das bancadas e das paredes, e as texturas e os números de cada pavilhão.
+- **`src/ui/gpu/venue-shader.ts`:** os shaders das bancadas e das paredes e do campo de rua, e as texturas e os números de cada pavilhão.
 - **`npm run gpu-check`:** compara o shader com o traçador, píxel a píxel a 360×216, em 44 casos (quatro pavilhões, vários enquadramentos, duas imagens do público e outra câmara).
   - **Corre-o sempre que mudares um dos dois.** São as mesmas contas escritas em TypeScript e em GLSL.
+  - **Nota:** o `gpu-check` desenha a rede sem as diferenças do jogo (a borda suavizada e o véu gradual), com `exactFence`.
 
 ## Fases
 
@@ -67,7 +69,11 @@ Cada fase acaba com `npm run check`, `npm run browser-check`, `npm run gpu-check
    - Igual ao traçador em 44 casos.
    - O tremor da imagem inteira desceu 2 a 6×.
    - A mediana por frame passou de 4,6–7,1 ms para 2,4–4,2 ms numa RTX 4070.
-3. **O campo de rua:** o `drawOpenScene` no shader, com a rede numa camada própria (os adeptos de fora ficam atrás dela), o pano de fundo, o céu e a relva.
+3. **Feita: o campo de rua.**
+   - O `drawOpenScene` num shader (`OPEN_FRAGMENT`), e a rede numa segunda passagem (`drawFence`), por cima dos adeptos de fora.
+   - Igual ao traçador no `gpu-check` (com a rede exata).
+   - No jogo, os fios da rede têm a borda suavizada num píxel e, onde a malha se aperta (vista de lado), passam aos poucos a véu.
+   - O tremor desceu de 5127 para 2091 píxeis por frame.
 4. **Momentos:**
    - a aproximação no banco, a cerimónia e as repetições;
    - o movimento reduzido, o alto contraste e o 640×360;

@@ -459,7 +459,7 @@ export class MatchView {
     this.s = state ?? createMatch(home, away, seed, controlled, visitor);
     this.textures = courtTextures(division, venue, centreEmblem, weather);
     // As texturas e os shaders vão já para a placa gráfica, para o primeiro frame não engasgar.
-    if (!this.textures.theme.open) courtGpu()?.prepare(this.textures);
+    courtGpu()?.prepare(this.textures);
     const roll = (salt: number): number => (Math.imul(seed ^ Math.imul(salt, 0x9e3779b9), 2654435761) >>> 0) / 4294967296;
     this.humor = { dogAt: division === 0 && roll(1) < 0.35 ? Math.floor(600 + roll(2) * 3000) : null, pigeon: roll(3) < 0.25, sleeper: roll(4) < 0.6, blowout: 25 };
     this.art = artScaleOf(g.canvas);
@@ -1741,10 +1741,10 @@ export class MatchView {
     const excited = s.tick < this.excitedUntil;
     const beat = (this.animTick >> 2) % 2;
     const crowdFrame = excited ? (this.excitement >= 0.5 ? 3 : 1) + beat : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
-    // O cenário dos pavilhões (chão, linhas, bancadas e paredes) na placa gráfica, à resolução do ecrã. Ao ar livre, ou sem
-    // WebGL 2, ou com o contexto perdido, fica no traçador de raios, como antes.
+    // O cenário (chão, linhas, bancadas e paredes, ou o exterior do campo de rua) na placa gráfica, à resolução do ecrã. Sem
+    // WebGL 2, com WebGL por software, ou com o contexto perdido, fica no traçador de raios, como antes.
     const frame = this.reducedMotion ? 0 : crowdFrame;
-    const gpu = theme.open ? null : courtGpu();
+    const gpu = courtGpu();
     const gpuScene = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame) ?? null;
     this.gpuFloor = gpuScene;
     // Flashes de fotografia nas bancadas: ao acaso, mas pelo animTick, para duas gravações da mesma cena saírem iguais.
@@ -1795,7 +1795,14 @@ export class MatchView {
       }
     }
     this.drawOutsiders();
-    if (this.fence) g.drawImage(this.fence.canvas, 0, 0);
+    // A rede do campo de rua, por cima de quem está do lado de fora.
+    const gpuFence = gpuScene && theme.open ? gpu!.drawFence(this.textures) : null;
+    if (gpuFence) {
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(gpuFence, 0, 0);
+      g.restore();
+    } else if (this.fence && !gpuScene) g.drawImage(this.fence.canvas, 0, 0);
     this.drawFans();
     const drawables: { y: number; draw: () => void }[] = [];
     this.addSideline(drawables, time);

@@ -22,7 +22,7 @@ import {
   type Texture,
 } from 'three';
 import { FLOOR_AREA, courtLinePaths, type Camera, type CourtTextures } from '../art/court.ts';
-import { VENUE_FRAGMENT, VENUE_VERTEX, venueUniforms } from './venue-shader.ts';
+import { OPEN_FRAGMENT, VENUE_FRAGMENT, VENUE_VERTEX, openUniforms, venueUniforms } from './venue-shader.ts';
 
 /** A largura verdadeira das linhas (5 cm) e o mínimo no ecrã, em píxeis: ao longe nunca ficam mais finas do que isto. */
 const LINE_HALF = 0.025;
@@ -31,6 +31,8 @@ const LINE_MIN_PX = 1.5;
 /** O que a placa gráfica guarda para cada pavilhão: a textura do chão e as malhas. */
 interface Venue {
   scene: Scene;
+  /** O campo de rua: o shader é o do exterior, e a rede desenha-se numa passagem à parte (`drawFence`). */
+  open: boolean;
   floor: Mesh;
   floorTexture: DataTexture;
   lines: Mesh<BufferGeometry, ShaderMaterial>;
@@ -103,7 +105,8 @@ void main() { gl_FragColor = vec4(vColor, clamp(vHalf + 0.5 - abs(vAcross), 0.0,
 
 function buildVenue(t: CourtTextures): Venue | null {
   // As contas das bancadas têm tamanhos fixos no shader: um pavilhão que não caiba fica no traçador de raios.
-  const venue = venueUniforms(t);
+  const open = t.theme.open === true;
+  const venue = open ? openUniforms(t) : venueUniforms(t);
   if (!venue) return null;
   const scene = new Scene();
   const { x0, x1, y0, y1, scale } = FLOOR_AREA;
@@ -214,13 +217,14 @@ function buildVenue(t: CourtTextures): Venue | null {
   // a profundidade do que encontra (o teste passa sempre, mas sem teste a placa não a escreve), para peças 3D por cima.
   const standGeometry = new BufferGeometry();
   standGeometry.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
-  const standMaterial = new ShaderMaterial({ vertexShader: VENUE_VERTEX, fragmentShader: VENUE_FRAGMENT, uniforms: venue.uniforms, depthTest: true, depthFunc: AlwaysDepth, depthWrite: true });
+  const standMaterial = new ShaderMaterial({ vertexShader: VENUE_VERTEX, fragmentShader: open ? OPEN_FRAGMENT : VENUE_FRAGMENT, uniforms: venue.uniforms, depthTest: true, depthFunc: AlwaysDepth, depthWrite: true });
   const stands = new Mesh(standGeometry, standMaterial);
   stands.renderOrder = 1;
   stands.frustumCulled = false;
   scene.add(stands);
   return {
     scene,
+    open,
     floor,
     floorTexture,
     lines,
@@ -254,7 +258,9 @@ export class CourtGpu {
 
   private constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
+    // Opaca no cenário; a passagem da rede limpa para transparente.
+    this.renderer.setClearColor(0x000000, 1);
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.autoClear = true;
     this.camera.matrixAutoUpdate = false;
@@ -370,6 +376,29 @@ export class CourtGpu {
     (v.viewProj!.value as Matrix4).multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     v.wallMap!.value = venue.stands.walls[crowdFrame] ?? venue.stands.walls[0];
     this.renderer.render(venue.scene, this.camera);
+    return this.failed ? null : this.canvas;
+  }
+
+  /**
+   * A rede do campo de rua, sobre fundo transparente, com a mesma câmara do último `draw`: desenha-se depois de quem está do
+   * lado de fora, para ficarem atrás dela. Devolve a tela, ou `null` (então não há rede a desenhar à parte).
+   */
+  drawFence(t: CourtTextures, exact = false): HTMLCanvasElement | null {
+    const venue = this.venues.get(t);
+    if (!venue?.open || this.failed || this.lost || this.renderer.getContext().isContextLost()) return null;
+    venue.floor.visible = false;
+    venue.lines.visible = false;
+    venue.stands.material.uniforms.fencePass!.value = true;
+    venue.stands.material.uniforms.exactFence!.value = exact;
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.render(venue.scene, this.camera);
+    this.renderer.setClearColor(0x000000, 1);
+    venue.stands.material.uniforms.fencePass!.value = false;
+    venue.stands.material.uniforms.exactFence!.value = false;
+    venue.floor.visible = true;
+    venue.lines.visible = true;
+    // A tela já não tem o cenário: o próximo `draw` refaz-se mesmo com a câmara parada.
+    this.last = [];
     return this.failed ? null : this.canvas;
   }
 
