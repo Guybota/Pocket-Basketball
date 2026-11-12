@@ -7,10 +7,12 @@ import { drawSprite, lookOf, type PoseName } from './art/sprites.ts';
 import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
 import { MatchView } from './match-view.ts';
 import { scene, sheet } from './review.ts';
-import { useCourtGpu } from './gpu/court-gpu.ts';
+import { loadCourtGpu, useCourtGpu } from './gpu/loader.ts';
 
-// As ferramentas correm sem janela, com WebGL por software: mesmo assim, o cenário vem da placa gráfica, como no jogo.
+// As ferramentas correm sem janela, com WebGL por software: mesmo assim, o cenário vem da placa gráfica, como no jogo. Espera-se
+// pelo three.js, para a primeira imagem de cada cena já vir dela.
 useCourtGpu('force');
+await loadCourtGpu();
 
 const POSE_NAMES: PoseName[] = ['idle', 'run0', 'run1', 'run2', 'drib0', 'drib1', 'dribRun0', 'dribRun1', 'dribRun2', 'dribRun3', 'crossover', 'stumble', 'gather', 'shoot', 'dunk', 'block', 'defend', 'pass', 'cheer0', 'cheer1', 'sit', 'fists', 'handsHead', 'slump', 'screen', 'bump'];
 const CELL = 40;

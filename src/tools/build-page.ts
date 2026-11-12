@@ -3,7 +3,8 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { build } from 'vite';
 
 // Constrói numa pasta própria: o browser-check esvazia `dist/` ao começar, e apagava a página publicada.
-await build({ logLevel: 'warn', build: { outDir: 'dist-page', emptyOutDir: true } });
+// O three.js, que no jogo publicado chega à parte, vai aqui para dentro do mesmo ficheiro: a página tem de ser uma só.
+await build({ logLevel: 'warn', build: { outDir: 'dist-page', emptyOutDir: true, rollupOptions: { output: { inlineDynamicImports: true } } } });
 const assets = readdirSync('dist-page/assets');
 const read = (extension: string): string => {
   const file = assets.find(name => name.endsWith(extension));

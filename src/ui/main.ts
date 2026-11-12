@@ -39,7 +39,7 @@ import { initSpeech } from './speech.ts';
 import { TITLE_STAGE_SECONDS, drawTitleStage, type TitleStageInfo } from './title-stage.ts';
 import { initKeys } from './keys.ts';
 import { createFpsMeter } from './fps-meter.ts';
-import { courtGpu, useCourtGpu } from './gpu/court-gpu.ts';
+import { courtGpu, loadCourtGpu, useCourtGpu } from './gpu/loader.ts';
 
 const DROP_TICKS = 50;
 const MAX_STEPS_PER_FRAME = 40;
@@ -78,6 +78,7 @@ const paramInt = (name: string): number | null => {
 
 // ?cpu desenha o cenário no traçador de raios, sem a placa gráfica; ?fps mostra as imagens por segundo (para medir no telemóvel).
 if (params.has('cpu')) useCourtGpu(false);
+else void loadCourtGpu();
 const fpsMeter = params.has('fps') ? createFpsMeter(() => courtGpu()?.name ?? null) : null;
 
 const testSeed = paramInt('semente');

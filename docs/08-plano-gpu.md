@@ -1,12 +1,12 @@
 # Plano: o cenário na placa gráfica
 
-**Estado:** em curso.
+**Estado:** feito.
 
 - **Fase 1, feita:** o chão e as linhas.
 - **Fase 2, feita:** o interior dos quatro pavilhões fechados (Escolar, Municipal, Grande Arena e o pavilhão fechado).
 - **Fase 3, feita:** o campo de rua, com a rede numa passagem à parte.
 - **Fase 4, feita:** os momentos, as escalas e um iPhone verdadeiro.
-- **Próxima:** a limpeza.
+- **Fase 5, feita:** a limpeza.
 
 ## Porquê
 
@@ -51,6 +51,7 @@ three.js (uma tela WebGL partilhada, à resolução da tela do jogo)
 
 ## O que existe
 
+- **`src/ui/gpu/loader.ts`:** quem desenha pede a placa aqui. Carrega o three.js à parte e devolve `null` até chegar.
 - **`src/ui/gpu/court-gpu.ts`:**
   - a placa gráfica partilhada, as malhas do chão e das linhas, e a cache dos três últimos pavilhões;
   - a perda e a recuperação do contexto;
@@ -87,9 +88,9 @@ Cada fase acaba com `npm run check`, `npm run browser-check`, `npm run gpu-check
      | Com o traçador de raios (`?cpu`) | — | 60 | 1,2 ms (2,0 ms) |
 
      Os dois sobram muito na imagem de 16,7 ms. O ganho da placa gráfica neste aparelho é a imagem: o cenário à resolução do ecrã e o tremor 2 a 19× menor. A rapidez do jogo fica igual.
-5. **Limpeza:**
-   - tirar o protótipo (`src/prototype/`, `prototipo-3d.html`);
-   - carregar o three.js à parte, depois do primeiro desenho. O pacote cresceu 128 KB em gzip.
+5. **Feita: limpeza.**
+   - O protótipo (`src/prototype/`, `prototipo-3d.html`) saiu.
+   - O three.js chega à parte (`src/ui/gpu/loader.ts`): o arranque voltou a ~179 KB comprimidos e a placa gráfica (~139 KB) vem a seguir, com o traçador a desenhar entretanto. A página única (`build-page`) leva tudo num só ficheiro.
 
 ## Riscos
 
