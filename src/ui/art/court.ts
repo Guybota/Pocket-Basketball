@@ -904,6 +904,8 @@ export function courtLineSegments(theme: CourtTheme): { a: readonly [number, num
 
 /** O chão dentro do pavilhão, em metros, e a sua textura: `chamfer` corta os dois cantos do lado de lá. */
 export const FLOOR_AREA = { x0: WALL_NEAR_X, x1: WALL_FAR_X, y0: WALL_Y, y1: NEAR_Y, scale: FLOOR_SCALE, chamfer: CHAMFER } as const;
+/** As medidas das paredes e da sua textura, para a placa gráfica fazer as mesmas contas do traçador de raios. */
+export const WALL_SHAPE = { scale: WALL_SCALE, zSpan: WALL_Z_SPAN, sideSpan: SIDE_WALL_SPAN } as const;
 
 export class Camera {
   lookX = 14;
@@ -1102,8 +1104,6 @@ export class Camera {
   }
 
   private lastScene: unknown[] = [];
-  /** O chão e as linhas vão para a placa gráfica: aqui o chão fica transparente e as linhas não se desenham. */
-  floorOnGpu = false;
 
   /** Esquece a última imagem: para quando se pinta por cima dos píxeis que `drawScene` deixou. */
   forgetScene(): void {
@@ -1113,7 +1113,7 @@ export class Camera {
   /** Desenha o chão e as paredes, píxel a píxel, como o Modo 7 das consolas antigas.
    * Com a câmara parada e a mesma bancada, os píxeis já lá estão: não se refaz nada e devolve `false`. */
   drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number, fence?: Uint32Array): boolean {
-    const key = [pixels, t, crowdFrame, fence, this.lookX, this.lookY, this.tuning, this.width, this.height, this.floorOnGpu];
+    const key = [pixels, t, crowdFrame, fence, this.lookX, this.lookY, this.tuning, this.width, this.height];
     if (key.every((v, i) => v === this.lastScene[i])) return false;
     this.lastScene = key;
     if (t.theme.open) {
@@ -1122,7 +1122,6 @@ export class Camera {
       return true;
     }
     const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
-    const gpuFloor = this.floorOnGpu;
     const wall = t.walls[crowdFrame]!;
     const { slope } = t.theme;
     // As bancadas são planos inclinados que partem do chão e recuam ao subir. O raio só conta onde os corta acima do chão.
@@ -1190,7 +1189,7 @@ export class Camera {
         const hitX = cx + dirX * floorT;
         const hitY = cy + dirY * floorT;
         if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y && (!chamfer || (hitX - WALL_NEAR_X + hitY - WALL_Y > CHAMFER && WALL_FAR_X - hitX + hitY - WALL_Y > CHAMFER))) {
-          pixels[row + sx] = gpuFloor ? 0 : floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
+          pixels[row + sx] = floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
           continue;
         }
         let hit = Infinity;
@@ -1375,7 +1374,7 @@ export class Camera {
         pixels[row + sx] = wall[wv * t.wallW + wu]!;
       }
     }
-    if (!gpuFloor) this.drawCourtLines(pixels, t.theme);
+    this.drawCourtLines(pixels, t.theme);
     return true;
   }
 

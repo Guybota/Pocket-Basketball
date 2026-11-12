@@ -3,6 +3,7 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  AlwaysDepth,
   DataTexture,
   DoubleSide,
   LinearMipmapLinearFilter,
@@ -15,10 +16,13 @@ import {
   Scene,
   ShaderMaterial,
   UnsignedByteType,
+  Vector2,
   Vector3,
   WebGLRenderer,
+  type Texture,
 } from 'three';
 import { FLOOR_AREA, courtLinePaths, type Camera, type CourtTextures } from '../art/court.ts';
+import { VENUE_FRAGMENT, VENUE_VERTEX, venueUniforms } from './venue-shader.ts';
 
 /** A largura verdadeira das linhas (5 cm) e o mínimo no ecrã, em píxeis: ao longe nunca ficam mais finas do que isto. */
 const LINE_HALF = 0.025;
@@ -27,8 +31,11 @@ const LINE_MIN_PX = 1.5;
 /** O que a placa gráfica guarda para cada pavilhão: a textura do chão e as malhas. */
 interface Venue {
   scene: Scene;
+  floor: Mesh;
   floorTexture: DataTexture;
   lines: Mesh<BufferGeometry, ShaderMaterial>;
+  /** O pavilhão por dentro (bancadas e paredes), com uma textura das paredes por imagem do público. */
+  stands: { material: ShaderMaterial; walls: Texture[] };
   dispose(): void;
 }
 
@@ -94,7 +101,10 @@ varying float vAcross;
 varying float vHalf;
 void main() { gl_FragColor = vec4(vColor, clamp(vHalf + 0.5 - abs(vAcross), 0.0, 1.0)); }`;
 
-function buildVenue(t: CourtTextures): Venue {
+function buildVenue(t: CourtTextures): Venue | null {
+  // As contas das bancadas têm tamanhos fixos no shader: um pavilhão que não caiba fica no traçador de raios.
+  const venue = venueUniforms(t);
+  if (!venue) return null;
   const scene = new Scene();
   const { x0, x1, y0, y1, scale } = FLOOR_AREA;
   // O chão: um retângulo no plano z = 0 que passa 2 m para lá das paredes (e para trás da câmara). O traçador de raios decide
@@ -196,14 +206,29 @@ function buildVenue(t: CourtTextures): Venue {
     depthWrite: false,
   });
   const lines = new Mesh(lineGeometry, lineMaterial);
-  lines.renderOrder = 1;
+  lines.renderOrder = 2;
   lines.frustumCulled = false;
   scene.add(lines);
+
+  // As bancadas e as paredes: um triângulo que cobre o ecrã, onde o shader lança um raio por píxel (venue-shader.ts). Escreve
+  // a profundidade do que encontra (o teste passa sempre, mas sem teste a placa não a escreve), para peças 3D por cima.
+  const standGeometry = new BufferGeometry();
+  standGeometry.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+  const standMaterial = new ShaderMaterial({ vertexShader: VENUE_VERTEX, fragmentShader: VENUE_FRAGMENT, uniforms: venue.uniforms, depthTest: true, depthFunc: AlwaysDepth, depthWrite: true });
+  const stands = new Mesh(standGeometry, standMaterial);
+  stands.renderOrder = 1;
+  stands.frustumCulled = false;
+  scene.add(stands);
   return {
     scene,
+    floor,
     floorTexture,
     lines,
+    stands: { material: standMaterial, walls: venue.walls },
     dispose() {
+      standGeometry.dispose();
+      standMaterial.dispose();
+      venue.dispose();
       floorGeometry.dispose();
       floorMaterial.dispose();
       floorTexture.dispose();
@@ -217,8 +242,10 @@ function buildVenue(t: CourtTextures): Venue {
 export class CourtGpu {
   private readonly renderer: WebGLRenderer;
   private readonly camera = new PerspectiveCamera();
-  private readonly venues = new Map<CourtTextures, Venue>();
+  private readonly venues = new Map<CourtTextures, Venue | null>();
   private lost = false;
+  // Um shader que não compila neste driver: o jogo fica de vez no traçador de raios.
+  private failed = false;
   // O que se desenhou da última vez: com a câmara parada, a imagem já está na tela e não se refaz.
   private last: unknown[] = [];
   private readonly basis = new Matrix4();
@@ -231,6 +258,9 @@ export class CourtGpu {
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.autoClear = true;
     this.camera.matrixAutoUpdate = false;
+    this.renderer.debug.onShaderError = () => {
+      this.failed = true;
+    };
     // Ao voltar à aplicação no telemóvel, o contexto pode perder-se: até voltar, o jogo desenha o chão no traçador de raios.
     canvas.addEventListener('webglcontextlost', e => {
       e.preventDefault();
@@ -242,12 +272,23 @@ export class CourtGpu {
     });
   }
 
-  /** A placa gráfica, se o browser tiver WebGL 2; senão `null`, e o jogo fica todo no traçador de raios. */
-  static create(): CourtGpu | null {
+  /**
+   * A placa gráfica, se o browser tiver WebGL 2 numa placa a sério; senão `null`, e o jogo fica todo no traçador de raios.
+   * Com WebGL por software (SwiftShader, llvmpipe), o traçador é muito mais rápido: só se usa com `force` (as ferramentas).
+   */
+  static create(force = false): CourtGpu | null {
     if (typeof document === 'undefined') return null;
     try {
       // O three.js só usa WebGL 2: sem ele, o construtor falha.
-      return new CourtGpu(document.createElement('canvas'));
+      const gpu = new CourtGpu(document.createElement('canvas'));
+      const gl = gpu.renderer.getContext();
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      const name = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      if (!force && /swiftshader|llvmpipe|software|basic render/i.test(name)) {
+        gpu.renderer.dispose();
+        return null;
+      }
+      return gpu;
     } catch {
       return null;
     }
@@ -255,13 +296,17 @@ export class CourtGpu {
 
   /** Prepara um pavilhão (texturas e shaders na placa gráfica) antes do primeiro frame, para o jogo não engasgar ao começar. */
   prepare(t: CourtTextures): void {
-    if (this.lost || this.renderer.getContext().isContextLost()) return;
-    this.renderer.compile(this.venue(t).scene, this.camera);
+    if (this.failed || this.lost || this.renderer.getContext().isContextLost()) return;
+    const venue = this.venue(t);
+    if (!venue) return;
+    this.renderer.compile(venue.scene, this.camera);
+    // As cinco imagens do público na parede vão já, e não a meio do jogo, quando a bancada se levanta.
+    for (const wall of venue.stands.walls) this.renderer.initTexture(wall);
   }
 
-  private venue(t: CourtTextures): Venue {
+  private venue(t: CourtTextures): Venue | null {
     let venue = this.venues.get(t);
-    if (venue) {
+    if (venue !== undefined) {
       // O mais usado fica no fim: sai primeiro o que há mais tempo não se vê.
       this.venues.delete(t);
       this.venues.set(t, venue);
@@ -272,22 +317,23 @@ export class CourtGpu {
     // Só ficam os últimos pavilhões, como as texturas (cada um ocupa uns 4 MB na placa gráfica).
     if (this.venues.size > 3) {
       const [oldest, old] = this.venues.entries().next().value!;
-      old.dispose();
+      old?.dispose();
       this.venues.delete(oldest);
     }
     return venue;
   }
 
   /**
-   * Desenha o chão e as linhas com a câmara do jogo, `width`×`height` píxeis. Com a imagem aproximada (`zoom` e `shift`, em
+   * Desenha o cenário do pavilhão (chão, linhas, bancadas e paredes) com a câmara do jogo, `width`×`height` píxeis. Com a imagem aproximada (`zoom` e `shift`, em
    * píxeis da arte, como a transformação da tela 2D), mostra só essa parte, à resolução toda. Devolve a tela, ou `null`.
    */
-  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0]): HTMLCanvasElement | null {
+  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0], crowdFrame = 0): HTMLCanvasElement | null {
     // O evento da perda só chega depois: no próprio frame, pergunta-se ao contexto.
-    if (this.lost || this.renderer.getContext().isContextLost()) return null;
+    if (this.failed || this.lost || this.renderer.getContext().isContextLost()) return null;
     const venue = this.venue(t);
+    if (!venue) return null;
     const pose = view.pose();
-    const key = [venue, width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
+    const key = [venue, crowdFrame, width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
     if (key.length === this.last.length && key.every((v, i) => v === this.last[i])) return this.canvas;
     this.last = key;
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -311,21 +357,52 @@ export class CourtGpu {
     (u.eye!.value as Vector3).set(px, py, pz);
     (u.fwd!.value as Vector3).set(...pose.fwd);
     u.pixelsPerUnit!.value = pose.focal * unit;
+    const v = venue.stands.material.uniforms;
+    (v.eye!.value as Vector3).set(px, py, pz);
+    (v.fwdV!.value as Vector3).set(...pose.fwd);
+    (v.rightV!.value as Vector3).set(...pose.right);
+    (v.upV!.value as Vector3).set(...pose.up);
+    v.focal!.value = pose.focal;
+    (v.artSize!.value as Vector2).set(pose.width, pose.height);
+    (v.res!.value as Vector2).set(width, height);
+    v.zoom!.value = zoom;
+    (v.shift!.value as Vector2).set(shift[0], shift[1]);
+    (v.viewProj!.value as Matrix4).multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    v.wallMap!.value = venue.stands.walls[crowdFrame] ?? venue.stands.walls[0];
     this.renderer.render(venue.scene, this.camera);
-    return this.canvas;
+    return this.failed ? null : this.canvas;
+  }
+
+  /** Para o `gpu-check`: só as bancadas e as paredes, com magenta onde o shader deixa o chão. */
+  debugStands(view: Camera, t: CourtTextures, width: number, height: number, crowdFrame: number): HTMLCanvasElement | null {
+    const venue = this.venue(t);
+    if (!venue) return null;
+    venue.floor.visible = false;
+    venue.lines.visible = false;
+    this.renderer.setClearColor(0xff00ff, 1);
+    this.last = [];
+    const out = this.draw(view, t, width, height, 1, [0, 0], crowdFrame);
+    venue.floor.visible = true;
+    venue.lines.visible = true;
+    this.renderer.setClearColor(0x000000, 1);
+    this.last = [];
+    return out;
   }
 }
 
 let shared: CourtGpu | null | undefined;
-let enabled = true;
-/** A placa gráfica partilhada, criada à primeira vez; `null` sem WebGL 2 ou desligada. */
+let enabled: boolean | 'force' = true;
+/** A placa gráfica partilhada, criada à primeira vez; `null` sem WebGL 2, por software ou desligada. */
 export function courtGpu(): CourtGpu | null {
   if (!enabled) return null;
-  if (shared === undefined) shared = CourtGpu.create();
+  if (shared === undefined || (shared === null && enabled === 'force')) shared = CourtGpu.create(enabled === 'force');
   return shared;
 }
 
-/** Liga ou desliga a placa gráfica: desligada, o cenário fica todo no traçador de raios (para comparar e como reserva). */
-export function useCourtGpu(on: boolean): void {
+/**
+ * Liga ou desliga a placa gráfica: desligada, o cenário fica todo no traçador de raios (para comparar e como reserva).
+ * `force` usa-a mesmo com WebGL por software, para as ferramentas sem janela verem o que o jogador vê.
+ */
+export function useCourtGpu(on: boolean | 'force'): void {
   enabled = on;
 }

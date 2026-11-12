@@ -1254,9 +1254,9 @@ function frame(now: number): void {
     lastBackdrop = now;
     const view = replay ?? current;
     const floor = view?.floorImage;
-    if (floor) {
-      // Com o chão na placa gráfica, o `floorImage` tem-no transparente: desenha-se primeiro o da placa.
-      if (view!.gpuFloor) backdropContext.drawImage(view!.gpuFloor, 0, 0, backdrop.width, backdrop.height);
+    // Com o cenário na placa gráfica, copia-se de lá, sem passar pela memória.
+    if (view?.gpuFloor) backdropContext.drawImage(view.gpuFloor, 0, 0, backdrop.width, backdrop.height);
+    else if (floor) {
       if (backdropFloor.width !== floor.width || backdropFloor.height !== floor.height) [backdropFloor.width, backdropFloor.height] = [floor.width, floor.height];
       backdropFloor.getContext('2d', { willReadFrequently: true })!.putImageData(floor, 0, 0);
       backdropContext.drawImage(backdropFloor, 0, 0, backdrop.width, backdrop.height);

@@ -316,11 +316,12 @@ export class MatchView {
   readonly drawn: { bodies: Map<Body, { x: number; y: number; lift: number; pose: PoseName; height: number; world: Point; back?: boolean; legs?: PoseName }>; ball: [number, number] | null; labels: [number, number, number, number][] } = { bodies: new Map(), ball: null, labels: [] };
   private readonly textures: CourtTextures;
   private image: ImageData;
-  /** O chão e as bancadas da última imagem, sem bonecos, já na memória: o fundo das margens copia-o sem ler a tela. */
-  get floorImage(): ImageData {
-    return this.image;
+  /** O chão e as bancadas da última imagem, sem bonecos, já na memória: o fundo das margens copia-o sem ler a tela.
+   * `null` quando o cenário veio da placa gráfica (então está em `gpuFloor`). */
+  get floorImage(): ImageData | null {
+    return this.gpuFloor ? null : this.image;
   }
-  /** O chão e as linhas da última imagem, se vieram da placa gráfica: em `floorImage` esse chão fica transparente. */
+  /** O cenário da última imagem, se veio da placa gráfica. */
   gpuFloor: HTMLCanvasElement | null = null;
   private pixels: Uint32Array;
   private readonly views = new Map<Body, BodyView>();
@@ -1740,51 +1741,58 @@ export class MatchView {
     const excited = s.tick < this.excitedUntil;
     const beat = (this.animTick >> 2) % 2;
     const crowdFrame = excited ? (this.excitement >= 0.5 ? 3 : 1) + beat : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
-    // O chão e as linhas na placa gráfica, à resolução do ecrã, por baixo do resto do cenário (que deixa o chão transparente).
-    // Ao ar livre, ou sem WebGL 2, ou com o contexto perdido, fica tudo no traçador de raios, como antes.
+    // O cenário dos pavilhões (chão, linhas, bancadas e paredes) na placa gráfica, à resolução do ecrã. Ao ar livre, ou sem
+    // WebGL 2, ou com o contexto perdido, fica no traçador de raios, como antes.
+    const frame = this.reducedMotion ? 0 : crowdFrame;
     const gpu = theme.open ? null : courtGpu();
-    const gpuFloor = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift) ?? null;
-    if (gpuFloor) {
-      g.save();
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.drawImage(gpuFloor, 0, 0);
-      g.restore();
-    }
-    this.gpuFloor = gpuFloor;
-    camera.floorOnGpu = gpuFloor !== null;
-    let fresh = camera.drawScene(this.pixels, this.textures, this.reducedMotion ? 0 : crowdFrame, this.fence?.pixels);
+    const gpuScene = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame) ?? null;
+    this.gpuFloor = gpuScene;
+    // Flashes de fotografia nas bancadas: ao acaso, mas pelo animTick, para duas gravações da mesma cena saírem iguais.
+    const flashes: [number, number][] = [];
     if (excited && theme.flashes && !this.reducedMotion) {
-      // Flashes de fotografia nas bancadas: sujam os píxeis do chão, que têm de se refazer na imagem seguinte.
-      const { width, height } = camera;
-      // Ao acaso, mas pelo animTick: duas gravações da mesma cena saem iguais.
       for (let i = 0; i < 6; i++) {
         const h = Math.imul(this.animTick * 6 + i + 1, 2654435761) >>> 0;
-        const y = h % Math.max(1, Math.floor(height * 0.25));
-        const x = (h >>> 8) % width;
-        this.pixels[y * width + x] = 0xffffffff;
+        flashes.push([(h >>> 8) % camera.width, h % Math.max(1, Math.floor(camera.height * 0.25))]);
       }
-      camera.forgetScene();
-      fresh = true;
     }
-    // Com a imagem aproximada, ou com a câmara parada, o chão passa por uma tela à parte: `putImageData` ignora a aproximação,
-    // `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai direto, que é uma cópia a menos.
-    if (this.zoom > 1.001 || !fresh || this.art > 1 || gpuFloor) {
-      if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
-        this.scene = document.createElement('canvas');
-        this.scene.width = camera.width;
-        this.scene.height = camera.height;
+    if (gpuScene) {
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(gpuScene, 0, 0);
+      g.restore();
+      // Um píxel da arte cada um, como no traçador.
+      g.fillStyle = '#ffffff';
+      for (const [x, y] of flashes) g.fillRect(x, y, 1, 1);
+      this.sceneStale = true;
+    } else {
+      let fresh = camera.drawScene(this.pixels, this.textures, frame, this.fence?.pixels);
+      if (flashes.length > 0) {
+        // Os flashes sujam os píxeis do cenário, que têm de se refazer na imagem seguinte.
+        for (const [x, y] of flashes) this.pixels[y * camera.width + x] = 0xffffffff;
+        camera.forgetScene();
+        fresh = true;
+      }
+      // Com a imagem aproximada, ou com a câmara parada, o cenário passa por uma tela à parte: `putImageData` ignora a
+      // aproximação, `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai
+      // direto, que é uma cópia a menos.
+      if (this.zoom > 1.001 || !fresh || this.art > 1) {
+        if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
+          this.scene = document.createElement('canvas');
+          this.scene.width = camera.width;
+          this.scene.height = camera.height;
+          this.sceneStale = true;
+        }
+        if (fresh || this.sceneStale) {
+          this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+          if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
+        }
+        this.sceneStale = false;
+        g.drawImage(this.scene, 0, 0);
+      } else {
+        g.putImageData(this.image, 0, 0);
+        if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
         this.sceneStale = true;
       }
-      if (fresh || this.sceneStale) {
-        this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
-        if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
-      }
-      this.sceneStale = false;
-      g.drawImage(this.scene, 0, 0);
-    } else {
-      g.putImageData(this.image, 0, 0);
-      if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
-      this.sceneStale = true;
     }
     this.drawOutsiders();
     if (this.fence) g.drawImage(this.fence.canvas, 0, 0);
