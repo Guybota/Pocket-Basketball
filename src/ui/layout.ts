@@ -57,6 +57,28 @@ export interface Layout {
 // Instalado no ecrã inicial do iPhone, a faixa que o sistema desfoca no topo é mais alta do que a barra de estado.
 if ((navigator as Navigator & { standalone?: boolean }).standalone === true) document.documentElement.style.setProperty('--top-extra', '24px');
 
+// Com o telemóvel ao alto, o jogo roda 90° (CSS, `html.turned`) e continua deitado: o body fica com a largura e a altura
+// trocadas, e é por ele que se mede.
+const turnedQuery = typeof matchMedia === 'function' ? matchMedia('(orientation: portrait) and (pointer: coarse)') : null;
+export const turned = (): boolean => turnedQuery?.matches ?? false;
+const viewWidth = (): number => (turned() ? document.body.clientWidth : innerWidth);
+
+/** Onde caiu um toque dentro de um elemento, de 0 a 1 em cada eixo do jogo, rodado ou não. */
+export function pointIn(event: MouseEvent, element: Element): [number, number] {
+  const r = element.getBoundingClientRect();
+  return turned()
+    ? [(event.clientY - r.top) / r.height, (r.right - event.clientX) / r.width]
+    : [(event.clientX - r.left) / r.width, (event.clientY - r.top) / r.height];
+}
+
+/** O retângulo de um elemento nas coordenadas do jogo (as do `position: fixed`), rodado ou não. */
+export function gameRect(element: Element): { left: number; top: number; width: number; height: number; viewWidth: number } {
+  const r = element.getBoundingClientRect();
+  if (!turned()) return { left: r.left, top: r.top, width: r.width, height: r.height, viewWidth: innerWidth };
+  const body = document.body.getBoundingClientRect();
+  return { left: r.top - body.top, top: body.right - r.right, width: r.height, height: r.width, viewWidth: document.body.clientWidth };
+}
+
 const typing = (): boolean => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 
 export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
@@ -69,6 +91,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
   let stableWidth = innerWidth;
 
   function windowHeight(): number {
+    if (turned()) return document.body.clientHeight;
     // Rodar o telemóvel muda a largura: aí a altura guardada já não vale, mesmo com o teclado aberto.
     if (!typing() || innerWidth !== stableWidth) {
       stableHeight = innerHeight;
@@ -99,11 +122,12 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     hooks.topResized();
   }
 
-  /** O jogo é só na horizontal, como o resto do género: o campo fica ao lado do painel. Com o ecrã ao alto, um aviso
-   * pede para o rodar (CSS, `#rotateHint`). */
+  /** O jogo é só na horizontal, como o resto do género: o campo fica ao lado do painel. Com o ecrã ao alto, roda. */
   function fit({ stage, resultOpen, courtOnly, demo }: LayoutState): void {
     game.classList.add('landscape');
     document.body.classList.add('landscape');
+    document.documentElement.classList.toggle('turned', turned());
+    const innerWidth = viewWidth();
     const viewHeight = windowHeight();
     const dpr = devicePixelRatio || 1;
     // O resultado do jogo, numa janela larga ao centro.

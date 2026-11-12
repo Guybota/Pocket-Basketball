@@ -192,13 +192,17 @@ try {
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   check('Sem deslocamento horizontal no telemóvel', !overflow);
-  // Só na horizontal: ao alto, o aviso para rodar tapa tudo e o jogo não anda.
+  // Só na horizontal: ao alto, a página roda e o jogo continua deitado, a andar, com o campo a ocupar o ecrã.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(300);
   const uprightTick = await page.evaluate(() => window.__pocket.state().tick);
   await page.waitForTimeout(500);
-  check('Ao alto aparece o aviso para rodar o ecrã e o jogo não anda', await page.evaluate(t => document.getElementById('rotateHint')!.getClientRects().length > 0 && window.__pocket.state().tick === t, uprightTick));
-  await shot(page, `${OUT}/rodar-ecra.png`);
+  const upright = await page.evaluate(t => {
+    const court = document.getElementById('court')!.getBoundingClientRect();
+    return { turned: document.documentElement.classList.contains('turned'), moving: window.__pocket.state().tick > t, tall: court.height > court.width, fits: court.right <= innerWidth + 1 && court.bottom <= innerHeight + 1 };
+  }, uprightTick);
+  check(`Ao alto o jogo roda e continua a andar (${JSON.stringify(upright)})`, upright.turned && upright.moving && upright.tall && upright.fits);
+  await page.screenshot({ path: `${OUT}/ao-alto.png` });
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(200);
 

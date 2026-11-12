@@ -1,3 +1,5 @@
+import { gameRect } from './layout.ts';
+
 // Os toques no telemóvel e no tablet: segurar o dedo mostra o nome do que se está a tocar.
 
 export function initTouch(): void {
@@ -28,8 +30,8 @@ export function initTouch(): void {
     tipTimer = window.setTimeout(() => {
       tip.textContent = label;
       tip.hidden = false;
-      const box = target.getBoundingClientRect();
-      tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, box.left + box.width / 2 - tip.offsetWidth / 2))}px`;
+      const box = gameRect(target);
+      tip.style.left = `${Math.max(4, Math.min(box.viewWidth - tip.offsetWidth - 4, box.left + box.width / 2 - tip.offsetWidth / 2))}px`;
       tip.style.top = `${Math.max(4, box.top - tip.offsetHeight - 6)}px`;
     }, 450);
   });

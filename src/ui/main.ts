@@ -31,7 +31,7 @@ import { createDemo } from './demo.ts';
 import { createHud } from './hud.ts';
 import { clockText } from './narrate.ts';
 import { createIdleResume } from './idle.ts';
-import { createLayout, type Stage } from './layout.ts';
+import { createLayout, pointIn, type Stage } from './layout.ts';
 import { initPwa } from './pwa.ts';
 import { exportClub, importClub, lastExportNote, loadClub as readClub, saveClub as writeClub, type SaveStatus } from './save.ts';
 import { holdTap, initTouch } from './touch.ts';
@@ -102,8 +102,6 @@ const STILL_FRAME_MS = 1000 / 30 - 2;
 const BACKDROP_MS = 100;
 let lastStillDraw = 0;
 let paused = false;
-// Com o ecrã ao alto o jogo não se vê (há só o aviso para rodar), por isso também não anda.
-const upright = matchMedia('(orientation: portrait)');
 let pauseRequested = false;
 /** Uma paragem em que o jogo espera pelo treinador: desconto, ou fim de período sem ser o intervalo. */
 const holdOpen = (s: MatchState): boolean => s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
@@ -251,8 +249,8 @@ let townPress: TownPlace | null = null;
 
 /** Qual o edifício debaixo de um toque no mapa. */
 function townPlaceAt(event: MouseEvent): TownPlace | null {
-  const rect = canvas.getBoundingClientRect();
-  return townHit(canvas.width, canvas.height, club!.division, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+  const [u, v] = pointIn(event, canvas);
+  return townHit(canvas.width, canvas.height, club!.division, u, v);
 }
 
 // Tocar num edifício ou na etiqueta dele marca os dois: a etiqueta fica a tinta e o edifício ganha a seta.
@@ -274,12 +272,12 @@ document.addEventListener('pointerdown', event => {
 
 /** Tocar num edifício é o mesmo que tocar na etiqueta dele. */
 canvas.addEventListener('click', event => {
-  const rect = canvas.getBoundingClientRect();
   // Durante o jogo, tocar num jogador mostra-lhe o nome por cima.
   if (stage === 'match' && view && !replay) {
     // Em píxeis de arte: no jogo a tela tem a resolução do ecrã.
     const art = Number(canvas.dataset.artScale ?? 1);
-    view.tapAt(((event.clientX - rect.left) / rect.width) * (canvas.width / art), ((event.clientY - rect.top) / rect.height) * (canvas.height / art));
+    const [u, v] = pointIn(event, canvas);
+    view.tapAt(u * (canvas.width / art), v * (canvas.height / art));
     return;
   }
   if (stage !== 'town' || !club) return;
@@ -1108,7 +1106,7 @@ function frame(now: number): void {
   lastFrame = now;
   let simSeconds = 0;
   const current = view;
-  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen() && !upright.matches && !current.momentHold()) {
+  if (current && started && !paused && !finished && !halfSubsOpen && !menusOpen() && !current.momentHold()) {
     simSeconds = elapsed * speed;
     accumulator += simSeconds * TICKS_PER_SECOND;
     let steps = 0;

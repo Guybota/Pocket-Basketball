@@ -45,6 +45,8 @@ img, canvas, button { -webkit-user-drag: none; user-select: none; -webkit-touch-
 input, textarea { user-select: text; -webkit-user-select: text; }
 
 html, body { height: 100%; }
+/* As regras de tamanho medem o body, que é o jogo (rodado ou não), e não a janela. */
+body { container-type: size; }
 
 /* O zoom com dois dedos fica livre, para quem precisa de letra maior. Só os dois toques seguidos não fazem zoom: nos botões e no campo são cliques. */
 :root { --safe-top: env(safe-area-inset-top, 0px); --top-extra: 0px; }
@@ -701,7 +703,7 @@ html.reduce-motion .town-match.bounce { animation: none; }
 
 .town-bar span { white-space: nowrap; }
 
-@media (max-width: 500px) { .town-bar { font-size: 15px; gap: 6px; padding: 5px 6px; } .town-bar #skipWeekBtn { font-size: 13px; padding: 0 5px; } }
+@container (max-width: 500px) { .town-bar { font-size: 15px; gap: 6px; padding: 5px 6px; } .town-bar #skipWeekBtn { font-size: 13px; padding: 0 5px; } }
 
 /* A secretária num canto do mapa, com a linha da semana por baixo. */
 .town-note { position: absolute; left: 8px; bottom: 8px; zoom: var(--hud-zoom, 1); max-width: 300px; display: grid; gap: 3px; padding: 4px 6px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); pointer-events: none; }
@@ -982,7 +984,7 @@ details.legend > summary:not(.thead) { padding: 2px 6px; font: 400 15px/1.1 var(
 .kitgrid.two { grid-template-columns: repeat(2, 1fr); }
 .kitbtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px 4px; min-height: 0; }
 .kitbtn canvas { display: block; width: 60px; height: 108px; image-rendering: pixelated; }
-@media (max-height: 520px) { .kitbtn canvas { width: 40px; height: 72px; } }
+@container (max-height: 520px) { .kitbtn canvas { width: 40px; height: 72px; } }
 .kitpick.compact .kitbtn canvas { width: 40px; height: 72px; }
 .kitbtn span { font: 400 13px/1 var(--ui-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .kits { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; overflow-y: auto; }
@@ -1160,7 +1162,7 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 .createkit { width: 72px; height: 160px; image-rendering: pixelated; }
 .createplayers { display: flex; justify-content: center; gap: 6px; }
 .createplayers img { width: 68px; height: 92px; image-rendering: pixelated; }
-@media (max-height: 700px) { .createkit { width: 54px; height: 120px; } .createplayers img { width: 51px; height: 69px; } }
+@container (max-height: 700px) { .createkit { width: 54px; height: 120px; } .createplayers img { width: 51px; height: 69px; } }
 .note .kitstage, .note .emblemstage { flex-direction: row; align-items: center; justify-content: center; gap: 10px; }
 .kitstage canvas.big { display: block; image-rendering: pixelated; }
 .kitflat { display: grid; justify-items: center; gap: 2px; filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)); }
@@ -1343,21 +1345,19 @@ html.reduce-motion #timeoutBtn[data-armed]::after { animation: none; }
 #game.court-only #panel .coachbar :is(#pauseBtn, #speedBtn, #muteBtn) { width: 46px; height: 46px; min-height: 46px; }
 #game.court-only #panel .coachbar #timeoutBtn { margin-top: auto; }
 /* Num telemóvel deitado os sete cabem na altura: 44 px, o mínimo para o dedo. */
-@media (max-height: 460px) {
+@container (max-height: 460px) {
   #game.court-only #panel .coachbar { gap: 5px; top: 6px; bottom: 6px; }
   #game.court-only #panel .coachbar .icon, #game.court-only #panel .coachbar :is(#pauseBtn, #speedBtn, #muteBtn) { width: 44px; height: 44px; min-height: 44px; }
   #game.court-only #panel { right: 64px; }
 }
 #game.court-only #panel .coachbar #timeoutBtn[data-armed]::before { content: attr(data-armed); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 3px 7px; background: var(--ink); color: var(--paper); border: 2px solid var(--gold); font: 400 15px/1.15 var(--ui-sm); pointer-events: none; }
 
-/* Só na horizontal: com o ecrã ao alto, tudo fica escondido por trás de um aviso para rodar. */
-#rotateHint { display: none; }
-@media (orientation: portrait) {
-  #rotateHint { display: flex; position: fixed; inset: 0; z-index: 100; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #1b2230; color: var(--paper); font: 400 24px/1.2 var(--ui-sm); text-align: center; padding: 24px; }
-  .rotate-phone { width: 44px; height: 76px; border: 4px solid var(--paper); border-radius: 8px; animation: rotate-phone 2.4s steps(1, end) infinite; }
-}
-@keyframes rotate-phone { 0%, 45% { transform: rotate(0deg); } 50%, 100% { transform: rotate(-90deg); } }
-html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
+/* Só na horizontal: com o telemóvel ao alto, a página roda 90° e o jogo continua deitado (html.turned, de layout.ts). O
+ * topo do jogo fica do lado direito do telemóvel, e a barra de estado e a do fundo ficam fora dele. As janelas de diálogo
+ * vivem por cima da página, fora do body, por isso rodam à parte. */
+html.turned body { position: fixed; top: var(--safe-top); left: 0; width: calc(100dvh - var(--safe-top) - env(safe-area-inset-bottom, 0px)); height: 100vw; transform-origin: top left; transform: translateX(100vw) rotate(90deg); }
+html.turned dialog { transform: rotate(90deg); max-height: calc(100vw - 32px); }
+html.turned :is(#settings, #keysHelp) { width: min(340px, calc(100dvh - 32px)); }
 
 /* ---------- Menus em ecrã único, no estilo do Calciobit ---------- */
 /* Sem os botões redondos do jogo à direita, a janela do painel encosta à borda. */
@@ -1393,7 +1393,7 @@ html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
 #panel.hub .mbar small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #panel.hub .actions { position: static; padding: 0; border: 0; background: none; min-height: 0; }
 #panel.hub .actions .primary { position: fixed; right: 12px; bottom: 12px; z-index: 6; width: 260px; height: 64px; min-height: 64px; font-size: 26px; }
-@media (max-height: 460px) {
+@container (max-height: 460px) {
   #panel.hub .menu { gap: 3px 6px; top: 8px; }
   #panel.hub .mbar img { padding: 8px; }
   #panel.hub .mbar span { font-size: 13px; }
@@ -1409,7 +1409,7 @@ html.reduce-motion .rotate-phone { animation: none; transform: rotate(-90deg); }
 /* O escolhido marca-se na própria prateleira (a luz e o traço dourado de drawShelf), não com o amarelo dos botões. */
 .shelfhit[aria-pressed="true"] { background: transparent; border-color: transparent; }
 /* Em 640×360 o escritório tem dez botões: em três colunas de quatro, para a última fila caber. */
-@media (max-height: 380px) { #panel.hub .menu { grid-template-rows: repeat(4, auto); } }
+@container (max-height: 380px) { #panel.hub .menu { grid-template-rows: repeat(4, auto); } }
 /* Com a janela do jogo aberta, a carta encontrada passa para a esquerda, para não a tapar. */
 #game.window-open #drop { right: auto; left: 6px; }
 /* O combo do treino fica entre o voltar e a janela, como as fichas. */
