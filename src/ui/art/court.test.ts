@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats, stairs } from './court.ts';
+import { Camera, FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats, stairs } from './court.ts';
 
 describe('pavilhão', () => {
+  it('com o chão na placa gráfica, o traçador deixa só o chão transparente e não muda o resto', () => {
+    const t = courtTextures(2);
+    const camera = new Camera();
+    const cpu = new Uint32Array(camera.width * camera.height);
+    camera.drawScene(cpu, t, 0);
+    const gpu = new Uint32Array(cpu.length);
+    camera.floorOnGpu = true;
+    camera.drawScene(gpu, t, 0);
+    const holes = gpu.filter(p => p === 0).length;
+    // O chão é mais de metade da imagem; fora dele, cada píxel fica igual.
+    expect(holes).toBeGreaterThan(cpu.length / 2);
+    expect(gpu.every((p, i) => p === 0 || p === cpu[i])).toBe(true);
+  });
+
   it('veste as cores do clube da casa, e guarda cada versão', { tags: ['slow'] }, () => {
     const plain = courtTextures(2);
     const red = courtTextures(2, '#cf3a2c');

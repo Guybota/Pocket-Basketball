@@ -25,7 +25,7 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
 
 - **Original.** Nada copiado nem parecido com recursos de outros jogos (Nintendo, Kairosoft e outros) nem com marcas reais: logótipos da NBA ou da FIBA, emblemas de clubes reais. Cuidado, por exemplo, com leão verde e branco, águia vermelha ou dragão azul e branco. Estuda-se a abordagem, não o resultado.
 - **Desenhado por código e determinista.** O que varia sai de uma semente: o hash do nome, do emblema, da semana ou do jogo. Na arte não se usa `Math.random`; a exceção atual são os flashes de fotografia. Fora de `src/sim/` podes usar `Math.sin` e funções parecidas.
-- **Escala inteira, com uma exceção.** A arte desenha-se a 1× e mostra-se a múltiplos inteiros, com `imageSmoothingEnabled = false` e `image-rendering: pixelated`. A exceção, por decisão do dono: no jogo, a tela tem a resolução do ecrã e os bonecos do mundo (jogadores, bancos, público) têm o tamanho da distância à câmara, como no Calciobit (`drawSprite(…, scale)` com `Camera.depthScale`). O desenho amplia-se primeiro por um inteiro e só depois se ajusta, por isso só as bordas ficam suaves. No jogo, o campo inteiro também enche o ecrã com qualquer escala: a tela desenha-se ampliada pelo inteiro logo acima do necessário e o browser ajusta-a com suavização (`image-rendering: auto`, em layout.ts), em vez de crescer aos saltos e deixar margens. Tudo o resto continua a escala inteira. Proibido:
+- **Escala inteira, com uma exceção.** A arte desenha-se a 1× e mostra-se a múltiplos inteiros, com `imageSmoothingEnabled = false` e `image-rendering: pixelated`. A exceção, por decisão do dono: no jogo, a tela tem a resolução do ecrã e os bonecos do mundo (jogadores, bancos, público) têm o tamanho da distância à câmara, como no Calciobit (`drawSprite(…, scale)` com `Camera.depthScale`). O desenho amplia-se primeiro por um inteiro e só depois se ajusta, por isso só as bordas ficam suaves. No jogo, o campo inteiro também enche o ecrã com qualquer escala: a tela desenha-se ampliada pelo inteiro logo acima do necessário e o browser ajusta-a com suavização (`image-rendering: auto`, em layout.ts), em vez de crescer aos saltos e deixar margens. O cenário do campo vai passando para a placa gráfica (`src/ui/gpu/`, three.js; por agora o chão e as linhas), desenhado à resolução do ecrã: texels nítidos (cada borda num só píxel do ecrã), média dos mipmaps ao longe e linhas com largura real e um mínimo em píxeis do ecrã. Tudo o resto continua a escala inteira. Proibido:
   - escalas fracionárias;
   - `rotate` (exceto os frames de queda que já existem);
   - `stroke` e `arc` com anti-aliasing;
@@ -93,6 +93,10 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
   - um passe longo ou picado tem arco, e quem o tenta intercetar salta;
   - a altura no ápice cresce com a distância.
 - **Arredondamento:** arredonda a âncora do boneco (os pés) e desenha as articulações a partir dela, para nada tremer. Um objeto lento move-se de píxel em píxel, sempre com a mesma regra de arredondamento.
+- **O cenário em perspetiva que se mexe com a câmara** (linhas do campo, arestas, texturas do chão) não se resolve na resolução da arte. Já se experimentou, com a G2:
+  - Linhas de 1 píxel de arte (Bresenham) rastejam aos blocos de 4 a 6 píxeis do ecrã.
+  - Linhas suavizadas (Wu) ou pintadas na textura tremem menos, mas, ampliadas, ficam desfocadas ao longe e nas curvas.
+  - Só desenhar à resolução do ecrã as deixa nítidas e estáveis. Num jogo a 30 fps, cada frame tem 33 ms ao todo, mas o traçador de raios em JavaScript à resolução do ecrã leva 33 a 63 ms por frame. Por isso, o caminho é a placa gráfica: ver [docs/08-plano-gpu.md](../../../docs/08-plano-gpu.md).
 - **O «sumo» na medida de um jogo de gestão calmo:**
   - tremor do ecrã de 1 a 2 píxeis de arte, só em momentos raros como o afundanço;
   - paragem no golpe de 33 a 83 ms, também só em momentos raros;
@@ -171,6 +175,14 @@ O revisor:
 **Medir primeiro, olhar depois.** Um modelo de visão sozinho é fraco a rever arte: o melhor apanhou 43 % das falhas no GlitchBench, e quase nenhuma das que se estendem por vários frames. Também conta mal píxeis e julga mal cores. Por isso as medidas em código vêm primeiro, o olhar vem depois, e cada problema que o olhar encontra é confirmado com uma medida. Ajuda muito dar ao revisor uma imagem de referência e dizer-lhe o que o frame deve mostrar.
 
 **Gravações reprodutíveis.** Os flashes de fotografia usam `Math.random`, por isso grava com movimento reduzido ou com uma semente.
+
+**Grava à escala real do jogo.** Num `MatchView` montado à mão, usa uma tela de 360·N × 216·N com `canvas.dataset.artScale = 'N'`, com N = 4 (1440×864). Com `artScale = '1'`, os bonecos são reduzidos a frações de píxel e saem esborratados, e o cenário não mostra os blocos que o jogador vê. Isso engana a revisão nos dois sentidos.
+
+**O que treme com a câmara mede-se com a câmara a andar.** Uma imagem parada não mostra rastejar nem cintilar em linhas, arestas e texturas. Faz uma passagem lenta de 0,02 m por frame, com `cam.aim` preso e `cam.forgetScene()` em cada frame. Conta os píxeis que voltam à cor de dois frames antes (A-B-A, com ΔL > 0,04): esses píxeis estão a piscar. Compara sempre com o jogo atual medido da mesma maneira.
+
+**Um crítico sem contexto encontra o que o autor não vê.** Além do revisor, para mudanças grandes (um cenário novo, um motor novo), lança um agente que não sabe o que mudou nem porquê. Diz-lhe só para comparar com o jogo e para medir tudo o que afirmar. Foi assim que se encontraram as dobras abertas e o sinal trocado no protótipo 3D.
+
+**Imagens para o utilizador:** em JPEG de até cerca de 350 KB. PNGs grandes falham no envio quando o utilizador está no telemóvel. Para comparar, põe as versões uma por cima da outra na mesma imagem.
 
 **A ferramenta: `npm run review -- <descrição.json> [outra.json …]`.** Grava em `dist-check/revisao/<nome>/`. Há exemplos em `src/tools/cenas/`, e os formatos (`SheetSpec` e `SceneSpec`) estão em `src/ui/review.ts`.
 

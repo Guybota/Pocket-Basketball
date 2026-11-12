@@ -447,7 +447,7 @@ const halfCourtLines = (): [number, number][][] => {
   for (const mark of [1.75, 2.6, 3.45, 4.3]) for (const side of [-1, 1]) lines.push([[mark, side * 2.45], [mark, side * 2.72]]);
   return lines;
 };
-const COURT_LINES: readonly (readonly [number, number][])[] = [
+export const COURT_LINES: readonly (readonly [number, number][])[] = [
   ...halfCourtLines(),
   ...halfCourtLines().map(l => l.map(([x, y]): [number, number] => [28 - x, y])),
   [[0, -7.5], [28, -7.5]],
@@ -467,7 +467,7 @@ function isCenterSeam(x: number, y: number): boolean {
 const packRgb = (c: Rgb): number => (255 << 24) | ((Math.max(0, Math.min(255, c[2])) & 255) << 16) | ((Math.max(0, Math.min(255, c[1])) & 255) << 8) | (Math.max(0, Math.min(255, c[0])) & 255);
 
 /** A luz do teto ilumina o centro de cada meio-campo e deixa os cantos mais escuros. */
-function lightAt(theme: CourtTheme, x: number, y: number): number {
+export function lightAt(theme: CourtTheme, x: number, y: number): number {
   const dx = (x - 7) / 11;
   const dy = y / 9;
   return theme.ambient + theme.spot * Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy));
@@ -853,7 +853,8 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
           const ey = Math.floor(((y + CREST_METRES / 2) / CREST_METRES) * crestSize);
           if (ex >= 0 && ey >= 0 && ex < crestSize && ey < crestSize) {
             const k = (ey * crestSize + ex) * 4;
-            if (crestData[k + 3]! > 128) color = [crestData[k]!, crestData[k + 1]!, crestData[k + 2]!];
+            // Só os texels opacos: os meio-transparentes da borda saíam como pontos claros no contorno do escudo.
+            if (crestData[k + 3]! === 255) color = [crestData[k]!, crestData[k + 1]!, crestData[k + 2]!];
           }
         }
       }
@@ -880,6 +881,29 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
   // Cada pavilhão ocupa uns 12 MB e cada clube da casa tem o seu: só ficam os últimos.
   return remember(textureCache, key, textures, 3);
 }
+
+/** As linhas do campo, cada uma com os pontos e a cor de cada troço (já com a luz e a hora): as das outras modalidades
+ * primeiro, para as do basquetebol ficarem por cima. */
+export function courtLinePaths(theme: CourtTheme): { points: readonly (readonly [number, number])[]; colors: number[] }[] {
+  const all = [...(theme.extraLines ?? []).flatMap(group => group.lines.map(line => ({ line, fixed: group.color as Rgb | null }))), ...COURT_LINES.map(line => ({ line, fixed: null as Rgb | null }))];
+  return all.map(({ line, fixed }) => ({
+    points: line,
+    colors: line.slice(1).map((b, i) => {
+      const a = line[i]!;
+      const mx = (a[0] + b[0]) / 2;
+      const my = (a[1] + b[1]) / 2;
+      return packRgb(tinted(shade(fixed ?? theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)), theme.tint));
+    }),
+  }));
+}
+
+/** As mesmas linhas em troços; os troços seguidos de uma linha partilham o ponto (`b` de um é o `a` do seguinte). */
+export function courtLineSegments(theme: CourtTheme): { a: readonly [number, number]; b: readonly [number, number]; color: number }[] {
+  return courtLinePaths(theme).flatMap(({ points, colors }) => colors.map((color, i) => ({ a: points[i]!, b: points[i + 1]!, color })));
+}
+
+/** O chão dentro do pavilhão, em metros, e a sua textura: `chamfer` corta os dois cantos do lado de lá. */
+export const FLOOR_AREA = { x0: WALL_NEAR_X, x1: WALL_FAR_X, y0: WALL_Y, y1: NEAR_Y, scale: FLOOR_SCALE, chamfer: CHAMFER } as const;
 
 export class Camera {
   lookX = 14;
@@ -1078,6 +1102,8 @@ export class Camera {
   }
 
   private lastScene: unknown[] = [];
+  /** O chão e as linhas vão para a placa gráfica: aqui o chão fica transparente e as linhas não se desenham. */
+  floorOnGpu = false;
 
   /** Esquece a última imagem: para quando se pinta por cima dos píxeis que `drawScene` deixou. */
   forgetScene(): void {
@@ -1087,7 +1113,7 @@ export class Camera {
   /** Desenha o chão e as paredes, píxel a píxel, como o Modo 7 das consolas antigas.
    * Com a câmara parada e a mesma bancada, os píxeis já lá estão: não se refaz nada e devolve `false`. */
   drawScene(pixels: Uint32Array, t: CourtTextures, crowdFrame: number, fence?: Uint32Array): boolean {
-    const key = [pixels, t, crowdFrame, fence, this.lookX, this.lookY, this.tuning, this.width, this.height];
+    const key = [pixels, t, crowdFrame, fence, this.lookX, this.lookY, this.tuning, this.width, this.height, this.floorOnGpu];
     if (key.every((v, i) => v === this.lastScene[i])) return false;
     this.lastScene = key;
     if (t.theme.open) {
@@ -1096,6 +1122,7 @@ export class Camera {
       return true;
     }
     const { focal, fwd, right, up, cx, cy, cz, width, height } = this;
+    const gpuFloor = this.floorOnGpu;
     const wall = t.walls[crowdFrame]!;
     const { slope } = t.theme;
     // As bancadas são planos inclinados que partem do chão e recuam ao subir. O raio só conta onde os corta acima do chão.
@@ -1163,7 +1190,7 @@ export class Camera {
         const hitX = cx + dirX * floorT;
         const hitY = cy + dirY * floorT;
         if (hitX > WALL_NEAR_X && hitX < WALL_FAR_X && hitY > WALL_Y && (!chamfer || (hitX - WALL_NEAR_X + hitY - WALL_Y > CHAMFER && WALL_FAR_X - hitX + hitY - WALL_Y > CHAMFER))) {
-          pixels[row + sx] = floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
+          pixels[row + sx] = gpuFloor ? 0 : floorSample(level, hitX, hitY, sampleOffX, sampleOffY, samples);
           continue;
         }
         let hit = Infinity;
@@ -1348,53 +1375,57 @@ export class Camera {
         pixels[row + sx] = wall[wv * t.wallW + wu]!;
       }
     }
-    this.drawCourtLines(pixels, t.theme);
+    if (!gpuFloor) this.drawCourtLines(pixels, t.theme);
     return true;
   }
 
   /** As linhas do campo, por cima do chão: 1 píxel, com a cor e a luz de cada troço. */
   private drawCourtLines(pixels: Uint32Array, theme: CourtTheme): void {
     const { width, height } = this;
-    // As linhas das outras modalidades primeiro, para as do basquetebol ficarem por cima.
-    const all = [...(theme.extraLines ?? []).flatMap(group => group.lines.map(line => ({ line, fixed: group.color as Rgb | null }))), ...COURT_LINES.map(line => ({ line, fixed: null as Rgb | null }))];
-    for (const { line, fixed } of all) {
-      let [px, py] = this.project(line[0]![0], line[0]![1]);
-      // O chão de cada píxel é a média do troço logo abaixo do seu centro: a linha desce meio píxel para ficar onde a área muda de cor.
-      px = Math.floor(px);
-      py = Math.floor(py - 0.5);
-      for (let i = 1; i < line.length; i++) {
-        const [x, y] = line[i]!;
-        const [qx0, qy0] = this.project(x, y);
-        const qx = Math.floor(qx0);
-        const qy = Math.floor(qy0 - 0.5);
-        const mx = (line[i - 1]![0] + x) / 2;
-        const my = (line[i - 1]![1] + y) / 2;
-        const color = packRgb(tinted(shade(fixed ?? theme.line(hash(Math.floor(mx * 3), Math.floor(my * 3))), lightAt(theme, mx < 14 ? mx : 28 - mx, my)), theme.tint));
-        // Bresenham: cada passo avança um píxel no eixo mais longo, por isso a linha nunca engrossa nem tem buracos.
-        const dx = Math.abs(qx - px);
-        const dy = -Math.abs(qy - py);
-        const stepX = px < qx ? 1 : -1;
-        const stepY = py < qy ? 1 : -1;
-        let err = dx + dy;
-        let ax = px;
-        let ay = py;
-        for (;;) {
-          if (ax >= 0 && ay >= 0 && ax < width && ay < height) pixels[ay * width + ax] = color;
-          if (ax === qx && ay === qy) break;
-          const e2 = 2 * err;
-          if (e2 >= dy) {
-            err += dy;
-            ax += stepX;
-          }
-          if (e2 <= dx) {
-            err += dx;
-            ay += stepY;
-          }
-        }
-        px = qx;
-        py = qy;
+    let last: readonly [number, number] | null = null;
+    let px = 0;
+    let py = 0;
+    for (const { a, b, color } of courtLineSegments(theme)) {
+      // No início de cada linha parte do primeiro ponto; nos troços seguidos continua do píxel onde o anterior acabou.
+      if (a !== last) {
+        [px, py] = this.project(a[0], a[1]);
+        // O chão de cada píxel é a média do troço logo abaixo do seu centro: a linha desce meio píxel para ficar onde a área muda de cor.
+        px = Math.floor(px);
+        py = Math.floor(py - 0.5);
       }
+      last = b;
+      const [qx0, qy0] = this.project(b[0], b[1]);
+      const qx = Math.floor(qx0);
+      const qy = Math.floor(qy0 - 0.5);
+      // Bresenham: cada passo avança um píxel no eixo mais longo, por isso a linha nunca engrossa nem tem buracos.
+      const dx = Math.abs(qx - px);
+      const dy = -Math.abs(qy - py);
+      const stepX = px < qx ? 1 : -1;
+      const stepY = py < qy ? 1 : -1;
+      let err = dx + dy;
+      let ax = px;
+      let ay = py;
+      for (;;) {
+        if (ax >= 0 && ay >= 0 && ax < width && ay < height) pixels[ay * width + ax] = color;
+        if (ax === qx && ay === qy) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) {
+          err += dy;
+          ax += stepX;
+        }
+        if (e2 <= dx) {
+          err += dx;
+          ay += stepY;
+        }
+      }
+      px = qx;
+      py = qy;
     }
+  }
+
+  /** Onde está e para onde olha: para a placa gráfica desenhar com a mesma câmara. */
+  pose(): { position: readonly [number, number, number]; fwd: readonly [number, number, number]; right: readonly [number, number, number]; up: readonly [number, number, number]; focal: number; width: number; height: number } {
+    return { position: [this.cx, this.cy, this.cz], fwd: this.fwd, right: this.right, up: this.up, focal: this.focal, width: this.width, height: this.height };
   }
 }
 

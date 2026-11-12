@@ -54,7 +54,8 @@ const game = element<HTMLDivElement>('game');
 const screen_ = element<HTMLDivElement>('screen');
 const canvas = element<HTMLCanvasElement>('court');
 const backdrop = element<HTMLCanvasElement>('backdrop');
-const backdropContext = backdrop.getContext('2d', { willReadFrequently: true })!;
+// Sem `willReadFrequently`: o chão da placa gráfica copia-se para aqui sem passar pela memória.
+const backdropContext = backdrop.getContext('2d')!;
 let lastBackdrop = 0;
 // Uma tela de passagem, do tamanho do chão: `putImageData` não encolhe, e copiar a tela do jogo obrigava a lê-la da placa gráfica.
 const backdropFloor = document.createElement('canvas');
@@ -1251,8 +1252,11 @@ function frame(now: number): void {
   }
   if (showBackdrop && now - lastBackdrop > (reducedMotion() ? 1500 : BACKDROP_MS)) {
     lastBackdrop = now;
-    const floor = (replay ?? current)?.floorImage;
+    const view = replay ?? current;
+    const floor = view?.floorImage;
     if (floor) {
+      // Com o chão na placa gráfica, o `floorImage` tem-no transparente: desenha-se primeiro o da placa.
+      if (view!.gpuFloor) backdropContext.drawImage(view!.gpuFloor, 0, 0, backdrop.width, backdrop.height);
       if (backdropFloor.width !== floor.width || backdropFloor.height !== floor.height) [backdropFloor.width, backdropFloor.height] = [floor.width, floor.height];
       backdropFloor.getContext('2d', { willReadFrequently: true })!.putImageData(floor, 0, 0);
       backdropContext.drawImage(backdropFloor, 0, 0, backdrop.width, backdrop.height);

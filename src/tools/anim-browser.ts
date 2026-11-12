@@ -12,6 +12,8 @@ export async function withAnimPage<T>(work: (page: Page) => Promise<T>, onPageEr
     channel: process.env.BROWSER_CHANNEL ?? (process.env.BROWSER_PATH || process.platform !== 'win32' ? undefined : 'msedge'),
     executablePath: process.env.BROWSER_PATH || undefined,
     headless: true,
+    // O chão do campo é desenhado pela placa gráfica: sem janela, o WebGL vem do SwiftShader, igual em qualquer máquina.
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
   });
   try {
     const page = await browser.newPage();
