@@ -255,6 +255,8 @@ export class CourtGpu {
   private readonly basis = new Matrix4();
   private readonly axes = [new Vector3(), new Vector3(), new Vector3()] as const;
   readonly canvas: HTMLCanvasElement;
+  /** O nome da placa gráfica, como o browser o dá (para o medidor de imagens por segundo). */
+  name = '';
 
   private constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -290,6 +292,7 @@ export class CourtGpu {
       const gl = gpu.renderer.getContext();
       const info = gl.getExtension('WEBGL_debug_renderer_info');
       const name = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      gpu.name = name;
       if (!force && /swiftshader|llvmpipe|software|basic render/i.test(name)) {
         gpu.renderer.dispose();
         return null;

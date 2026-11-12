@@ -5,7 +5,7 @@
 - **Fase 1, feita:** o chão e as linhas.
 - **Fase 2, feita:** o interior dos quatro pavilhões fechados (Escolar, Municipal, Grande Arena e o pavilhão fechado).
 - **Fase 3, feita:** o campo de rua, com a rede numa passagem à parte.
-- **Próxima:** os momentos especiais e um telemóvel verdadeiro.
+- **Fase 4, em curso:** os momentos e as escalas estão verificados; falta medir num telemóvel verdadeiro.
 
 ## Porquê
 
@@ -74,10 +74,11 @@ Cada fase acaba com `npm run check`, `npm run browser-check`, `npm run gpu-check
    - Igual ao traçador no `gpu-check` (com a rede exata).
    - No jogo, os fios da rede têm a borda suavizada num píxel e, onde a malha se aperta (vista de lado), passam aos poucos a véu.
    - O tremor desceu de 5127 para 2091 píxeis por frame.
-4. **Momentos:**
-   - a aproximação no banco, a cerimónia e as repetições;
-   - o movimento reduzido, o alto contraste e o 640×360;
-   - a medição num telemóvel verdadeiro.
+4. **Momentos e telemóvel:**
+   - **Verificado:** a aproximação (desconto, bola ao alto, cerimónia: a câmara three.js com `setViewOffset`), a 1×, 2×, 3×, 4× e 6× e com a tela larga do ecrã inicial, nos pavilhões e no campo de rua. Tudo alinhado com os bonecos (`dist-check/gpu-fase4.ts`).
+   - **Sem nada a fazer:** o alto contraste só muda a interface; o movimento reduzido fixa a imagem do público e tira os flashes, como antes.
+   - **Para medir num telemóvel:** abrir o jogo com `?fps` no endereço mostra as imagens por segundo, o tempo de desenho e a placa gráfica; `?cpu` desliga a placa, para comparar.
+   - **Falta:** a medição num telemóvel verdadeiro.
 5. **Limpeza:**
    - tirar o protótipo (`src/prototype/`, `prototipo-3d.html`);
    - carregar o three.js à parte, depois do primeiro desenho. O pacote cresceu 128 KB em gzip.

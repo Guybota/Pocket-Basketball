@@ -38,6 +38,8 @@ import { holdTap, initTouch } from './touch.ts';
 import { initSpeech } from './speech.ts';
 import { TITLE_STAGE_SECONDS, drawTitleStage, type TitleStageInfo } from './title-stage.ts';
 import { initKeys } from './keys.ts';
+import { createFpsMeter } from './fps-meter.ts';
+import { courtGpu, useCourtGpu } from './gpu/court-gpu.ts';
 
 const DROP_TICKS = 50;
 const MAX_STEPS_PER_FRAME = 40;
@@ -73,6 +75,10 @@ const paramInt = (name: string): number | null => {
   const value = Number(params.get(name));
   return params.has(name) && Number.isInteger(value) ? value : null;
 };
+
+// ?cpu desenha o cenário no traçador de raios, sem a placa gráfica; ?fps mostra as imagens por segundo (para medir no telemóvel).
+if (params.has('cpu')) useCourtGpu(false);
+const fpsMeter = params.has('fps') ? createFpsMeter(() => courtGpu()?.name ?? null) : null;
 
 const testSeed = paramInt('semente');
 // Só para a verificação automática poder ver os outros pavilhões. Um clube a sério começa sempre na última divisão.
@@ -1265,6 +1271,8 @@ function frame(now: number): void {
   }
   renderMs += performance.now() - start;
   renderCount++;
+  const shown = replay ?? current;
+  fpsMeter?.frame(now, performance.now() - start, shown ? shown.gpuFloor !== null : null);
   if (started && !finished && now - lastPanelUpdate > 250) {
     lastPanelUpdate = now;
     refreshContent();
