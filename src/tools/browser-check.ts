@@ -269,6 +269,18 @@ try {
   check('Os avisos de momentos altos aparecem', final.announced.includes('Afundanço!') && final.announced.includes('Intervalo'), final.announced.join(', '));
   const liveLog = await page.evaluate(() => (window as unknown as { liveLog: string[] }).liveLog);
   check('O leitor de ecrã ouve os cestos, o intervalo e o fim do jogo', liveLog.some(line => /^Cesto de [23] de .+\. \S+ \d+, \S+ \d+$/.test(line)) && liveLog.some(line => line.startsWith('Intervalo.')) && liveLog.some(line => line.startsWith('Fim do jogo.')), liveLog.slice(-6).join(' | '));
+  // Rever o lance: o campo à vista, só com um botão redondo à direita para voltar ao resultado.
+  await page.click('#replayBtn');
+  await page.waitForTimeout(600);
+  const replayView = await page.evaluate(() => {
+    const back = document.getElementById('replayBack')!.getBoundingClientRect();
+    const boxes = [...document.querySelectorAll('#panel *')].filter(e => e.getClientRects().length && !e.closest('#replayBack') && !e.matches('.coachbar'));
+    return { round: Math.round(back.width) === Math.round(back.height) && back.right > innerWidth - 80, extra: boxes.length, clear: getComputedStyle(document.getElementById('panel')!).backgroundColor === 'rgba(0, 0, 0, 0)' };
+  });
+  await shot(page, `${OUT}/repeticao.png`);
+  check(`A repetição só tem o botão redondo de voltar (${JSON.stringify(replayView)})`, replayView.round && replayView.extra === 0 && replayView.clear);
+  await page.click('#replayBack');
+  await page.waitForSelector('#againBtn');
   await page.click('#againBtn');
   await page.waitForSelector('#arenaChip');
   check('Sem erros na página', problems.length === 0, problems.join(' | '));

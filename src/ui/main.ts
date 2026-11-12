@@ -970,8 +970,9 @@ function startReplay(at?: number): void {
   bannerUntil = Infinity;
   resultOpen = false;
   fit();
-  panel.innerHTML = `<div class="result replay-card"><div class="winner">${at === undefined ? 'O lance decisivo' : 'Rever o lance'}</div><p class="hint">Dois segundos antes do cesto, e em câmara lenta no fim.</p></div>
-    <div class="end-actions"><button type="button" id="replayBack">Voltar ao resultado</button></div>`;
+  game.classList.remove('window-open');
+  // Só um botão redondo à direita, como os do jogo: o campo fica todo à vista, e o «Repetição» já diz o que é.
+  panel.innerHTML = `<div class="coachbar"><button type="button" id="replayBack" class="icon" aria-label="Voltar ao resultado" title="Voltar ao resultado"><img class="ink" alt="" src="${controlIcon('back')}"></button></div>`;
   element('replayBack').addEventListener('click', endReplay);
 }
 

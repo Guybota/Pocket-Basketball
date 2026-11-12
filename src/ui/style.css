@@ -1414,5 +1414,3 @@ html.turned :is(#settings, #keysHelp) { width: min(340px, calc(100dvh - 32px)); 
 #game.window-open #drop { right: auto; left: 6px; }
 /* O combo do treino fica entre o voltar e a janela, como as fichas. */
 #game.floating #topUi .combofx { left: var(--back-space, 0px); right: var(--window-space, 0px); width: auto; }
-/* Na repetição, a janela é só um cartão pequeno com o título e o botão: o campo fica à vista. */
-#game.floating #panel:has(.replay-card) { height: auto !important; }
