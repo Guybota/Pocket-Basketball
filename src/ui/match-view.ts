@@ -1977,7 +1977,7 @@ export class MatchView {
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
-    if (this.ballTrace) this.ballTrace.push({ tick: s.tick, mode: this.ballDrawnAt ? this.ballMode : 'none', x: this.ballDrawnAt ? this.ballDrawnAt[0] * this.zoom + this.zoomShift[0] : NaN, y: this.ballDrawnAt ? this.ballDrawnAt[1] * this.zoom + this.zoomShift[1] : NaN, phase: s.phase, zoom: this.zoom });
+    if (this.ballTrace) this.ballTrace.push({ tick: s.tick, mode: this.ballDrawnAt ? this.ballMode : 'none', x: this.ballDrawnAt ? this.ballDrawnAt[0] * this.zoom + this.zoomShift[0] : NaN, y: this.ballDrawnAt ? this.ballDrawnAt[1] * this.zoom + this.zoomShift[1] : NaN, phase: s.phase, zoom: this.zoom, dt: this.frameSeconds });
     this.drawRain();
     this.drawCarrier(alpha);
     this.drawNameTags(alpha);
@@ -2067,7 +2067,7 @@ export class MatchView {
    * Para verificar que a bola nunca salta: guarda onde ela foi desenhada em cada imagem, em píxeis de arte já com a
    * aproximação. Liga-se pondo `ballTrace = []` (pela API de depuração, `matchView()`).
    */
-  ballTrace: { tick: number; mode: 'free' | 'hand' | 'none'; x: number; y: number; phase: string; zoom: number }[] | null = null;
+  ballTrace: { tick: number; mode: 'free' | 'hand' | 'none'; x: number; y: number; phase: string; zoom: number; dt: number }[] | null = null;
 
   /**
    * Onde a bola se desenha nesta imagem: no alvo, mais o que ainda falta percorrer. Quando o alvo salta (a bola muda de
