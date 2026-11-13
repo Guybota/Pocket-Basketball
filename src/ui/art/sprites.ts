@@ -126,6 +126,12 @@ const POSES = {
   clap1: (L: number): PoseShape => ({ a: [3, 1], b: [-3, 1], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  // Sentado à mesa: a falar, com a mão a acompanhar a frase, e a esticar o braço para o lado (virar as folhas do marcador).
+  talk0: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -2], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  talk1: (L: number): PoseShape => ({ a: [-2, 3], b: [4, -4], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  // O professor a apitar: sentado, o braço direito esticado no ar.
+  armUp: (L: number): PoseShape => ({ a: [-2, 3], b: [1, -10], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  reachSit: (L: number): PoseShape => ({ a: [-2, 3], b: [7, -1], f: [-3, 3], g: [3, 3], jump: 3 - L }),
   // A abanar a bandeira, sentado: a mão ao lado da cabeça (por dentro dela, o pau parecia espetado no cabelo) e o pau a
   // inclinar de um lado para o outro, com o pano a ondular atrás dele.
   flagSit0: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -6], f: [-3, 3], g: [3, 3], jump: 3 - L, prop: 'flag', flag: [-2, 0] }),
@@ -199,6 +205,8 @@ export interface Look {
   street?: boolean;
   /** O troféu das poses de levantar (`lift0`, `lift1`); por omissão, a taça. */
   trophy?: 'cup' | 'bigCup';
+  /** Os comentadores: auscultadores com microfone. */
+  headset?: boolean;
 }
 
 /** A aparência vem do nome: o mesmo jogador tem sempre a mesma cara. */
@@ -382,6 +390,21 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
     rect(headX + 3, headY + 3, 1, 2, INK);
     rect(headX + 6, headY + 3, 1, 2, INK);
   }
+  if (look.headset) {
+    // O arco por cima do cabelo, as duas conchas sobre as orelhas e a haste do microfone até ao canto da boca.
+    // Prateados com contorno de tinta: escuros, liam-se como cabelo.
+    rect(headX, headY - 2, 8, 1, '#aab2bc');
+    rect(headX - 1, headY - 1, 1, 3, '#aab2bc');
+    rect(headX + 8, headY - 1, 1, 3, '#aab2bc');
+    rect(headX - 2, headY + 1, 3, 4, INK);
+    rect(headX + 7, headY + 1, 3, 4, INK);
+    rect(headX - 1, headY + 2, 1, 2, '#d8dee4');
+    rect(headX + 8, headY + 2, 1, 2, '#d8dee4');
+    if (!back) {
+      rect(headX + 1, headY + 5, 2, 1, '#2c3345');
+      put(headX + 3, headY + 5, '#c9c9c9');
+    }
+  }
   if (!leftCrosses) drawLeftArm();
   if (!rightCrosses) drawRightArm();
   if (shape.prop === 'bottle') {
@@ -487,7 +510,7 @@ const ENLARGED_LIMIT = 200;
  */
 /** A imagem de um boneco (guardada, a 1×) e a chave dela. */
 function poseImage(pose: PoseName, look: Look, back: boolean, withBall: boolean, legs?: PoseName): { key: string; sprite: HTMLCanvasElement; lean: number | undefined } {
-  const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}|${look.trophy ?? ''}`;
+  const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}|${look.trophy ?? ''}|${look.headset === true}`;
   const lean = legs ? undefined : LEAN[pose];
   let sprite = cache.get(key);
   if (!sprite) {

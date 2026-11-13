@@ -47,6 +47,8 @@ await withAnimPage(async page => {
       // A câmara do jogo nas duas pontas (até onde ela vai) e ao meio.
       for (const x of [4.4, 14, 23.6]) {
         const { view, canvas } = make(4, 360, 216);
+        // Sem balões: tapavam a mesa e os bancos, que é o que se quer ver.
+        view.drawBubbles = () => {};
         const cam = view.camera;
         const aim = cam.aim.bind(cam);
         cam.aim = (_x: number, y?: number) => aim(x, y);

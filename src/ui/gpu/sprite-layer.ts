@@ -16,6 +16,8 @@ export interface WorldSprite extends SpriteQuad {
   mirror?: boolean;
   /** Toda à profundidade de `feet`; sem isto, é um cartão em pé, com a de cima `TOP` metros acima. */
   flat?: boolean;
+  /** A altura do cartão em pé, em metros, em vez de `TOP` (a cara de um objeto, que só sobe o que ele tem). */
+  tall?: number;
   /** Quanto se aproxima da câmara, em metros, em vez de `FEET_BIAS` (as sombras e os reflexos ficam atrás de quem os faz). */
   bias?: number;
   /** A imagem muda de imagem para imagem (um desenho copiado): volta a ir para a placa gráfica. */
@@ -42,10 +44,11 @@ uniform mat4 vp;
 uniform float flip;
 uniform float mirror;
 uniform float upright;
+uniform float tall;
 varying vec2 vUv;
 void main() {
   vec4 low = vp * vec4(feet, 1.0);
-  vec4 high = vp * vec4(feet + vec3(0.0, 0.0, ${TOP.toFixed(2)}), 1.0);
+  vec4 high = vp * vec4(feet + vec3(0.0, 0.0, tall), 1.0);
   vec2 p = mix(rect.xy, rect.zw, position.xy);
   float z = mix(low.z / low.w, high.z / high.w, position.y * upright);
   gl_Position = vec4(p, clamp(z, -1.0, 1.0), 1.0);
@@ -129,6 +132,7 @@ export class SpriteLayer {
           flip: { value: 0 },
           mirror: { value: 0 },
           upright: { value: 1 },
+          tall: { value: 1.8 },
           map: { value: null },
           size: { value: new Vector2() },
           used: { value: new Vector2() },
@@ -169,6 +173,7 @@ export class SpriteLayer {
       u.flip!.value = s.flip ? 1 : 0;
       u.mirror!.value = s.mirror ? 1 : 0;
       u.upright!.value = s.flat ? 0 : 1;
+      u.tall!.value = s.tall ?? TOP;
       u.alpha!.value = s.alpha ?? -1;
       u.map!.value = this.texture(s.image, s.dynamic === true);
       (u.size!.value as Vector2).set(s.image.width, s.image.height);

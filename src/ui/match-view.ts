@@ -11,8 +11,9 @@ import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { courtGpu } from './gpu/loader.ts';
 import type { WorldSprite } from './gpu/sprite-layer.ts';
-import { CLOSED_GYM, Camera, FAN_SPACING, SIDELINE, endBoards, STAND, STREET_SEATS, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
+import { CLOSED_GYM, Camera, FAN_SPACING, sideline, tableKind, TABLE_CREW, TABLE_FACES, TABLE_SPAN, type TableRole, endBoards, STAND, STREET_SEATS, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
+import { remember } from './art/cache.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
 import {
   drawBall,
@@ -29,6 +30,8 @@ import {
   SPRITE_H,
   type Look,
   type PoseName,
+  KITS,
+  type KitName,
 } from './art/sprites.ts';
 
 /** A letra dos balões de fala: a da interface do jogo, em píxeis da arte (à resolução do ecrã, porque a tela está ampliada). */
@@ -56,7 +59,14 @@ interface Drawable {
   world?: Vec3;
   box?: Box;
   bias?: number;
+  /** Um cartão em pé com esta altura em metros (a cara de um objeto), em vez de deitado à profundidade dos pés. */
+  tall?: number;
 }
+/** As cores das coisas da mesa: o papel das folhas, o vermelho das setas e das faltas, os algarismos de luz e a ardósia. */
+const PAPER = '#f4efe0';
+const TABLE_RED = '#e8402e';
+const LED_RED = '#ff5a3c';
+const LED_AMBER = '#ffc04a';
 /** Quanto quem está no chão se aproxima da câmara, em metros, no mundo da placa gráfica: um nada, à frente da sua sombra. */
 const GROUND_BIAS = 0.05;
 /** A sombra de raio `r` (píxeis da arte) numa imagem, para a placa gráfica: a mesma de `drawShadow`, guardada por tamanho. */
@@ -97,7 +107,9 @@ const COACH_SPEED = 2.5;
 // Ao balneário vai-se a trote, todos pela mesma porta: pelo corredor à frente dos bancos (que fica sempre aquém da
 // parede, dos bancos e da mesa), até à frente do túnel, e depois túnel adentro, um de cada vez.
 const LOCKER_SPEED = 3.5;
-const LOCKER_LANE_Y = -8.8;
+// O corredor à frente da mesa, onde se anda de lado, e o de trás dela, entre quem lá está sentado e a boca do túnel.
+const LOCKER_LANE_Y = -7.8;
+const LOCKER_BEHIND_Y = -10.9;
 const LOCKER_DOOR_X = 14;
 // O caminho acaba 5 m túnel adentro: com a placa gráfica, o túnel é fundo e a boca tapa quem lá vai (a partir de uns 4 m,
 // com a câmara do jogo). Sem ela, o túnel é pintado e quem passa a boca deixa logo de se ver.
@@ -473,6 +485,24 @@ export class MatchView {
   private fansCheerTicks = 0;
   private fansCheerLevel = 0.6;
   private benchCheerUntil: [number, number] = [0, 0];
+  /** Quem está à mesa, que muda com a liga (ver `tableKind`). */
+  private tableCrew: { x: number; y: number; z: number; look: Look; role: TableRole }[] = [];
+  /** O professor apita (braço no ar) quando há falta; a frente de luzes da arena enche-se da cor da casa num cesto dela. */
+  private tableFouls = 0;
+  private tableWhistleUntil = 0;
+  private tableHomeUntil = 0;
+  private tableReady = false;
+  /** O nome do clube da casa, no painel de luzes da arena. */
+  private tableTitle = '';
+  /** As cores da casa e do visitante nas folhas do marcador. */
+  private tableColors: [string, string] = ['#2b5fd9', '#cf3a2c'];
+  /** O resultado que o marcador de folhas mostra, e a folha a virar (quem, desde quando, o número de antes). */
+  private tableScore: [number, number] = [0, 0];
+  private tableFlip: { team: number; at: number } | null = null;
+  /** O locutor e os comentadores falam depois de um cesto; num grande lance, os comentadores levantam-se. */
+  private tableTalkUntil = 0;
+  private tableBigUntil = 0;
+  private boardCache = new Map<string, HTMLCanvasElement>();
   private swishUntil = 0;
   private swishHoop = HOOP_LEFT;
   private shakeUntil = 0;
@@ -595,6 +625,17 @@ export class MatchView {
       }
     }
     this.coaches = [coachLook(home), coachLook(away)];
+    this.tableColors = [homeKit?.jersey ?? KITS.blue.jersey, awayKit?.jersey ?? KITS.cream.jersey];
+    this.tableTitle = home.name.toUpperCase();
+    const person = (name: string, kit: KitName, extra: Partial<Look> = {}): Look => ({ ...lookOf({ ...home.roster[0]!, name }, kit), legs: 6, torso: 6, build: 'athletic', street: true, ...extra });
+    // Quem se senta à mesa (court.ts: TABLE_CREW), vestido conforme o que faz: o voluntário e os alunos de t-shirt, o
+    // professor de fato de treino, os oficiais de polo escuro, o locutor e os comentadores de fato (estes de auscultadores).
+    const dress: Record<TableRole, [KitName, Partial<Look>]> = { flip: ['fan', {}], clock: ['fan', {}], whistle: ['coach', {}], official: ['fan2', {}], speaker: ['suit', {}], stats: ['fan2', {}], comment: ['suit', { headset: true }] };
+    const kind = tableKind(theme);
+    this.tableCrew = TABLE_CREW[kind].map((c, i) => {
+      const [kit, extra] = kind === 'official' && c.role !== 'speaker' ? (['fan2', {}] as [KitName, Partial<Look>]) : dress[c.role];
+      return { ...c, look: person(`Mesa ${kind} ${i}`, kit, extra) };
+    });
     // Quem adormece numa goleada: um da primeira fila perto do meio da bancada, onde a câmara passa mais.
     const front = this.fans.map((f, i) => ({ f, i })).filter(({ f }) => f.front);
     const spot = 8 + roll(5) * 12;
@@ -1105,6 +1146,8 @@ export class MatchView {
     this.benchCheerUntil[e.team] = s.tick + 24;
     const dunk = this.dunking(body!);
     const loud = e.points === 3 || dunk;
+    this.tableTalkUntil = s.tick + 60;
+    if (loud) this.tableBigUntil = s.tick + 30;
     const worth = this.basketWorth(e, dunk);
     this.excitement = worth;
     this.excitedUntil = s.tick + Math.round(18 + 40 * worth);
@@ -1570,12 +1613,252 @@ export class MatchView {
     return [wx + (gx - wx) * w, wy + (gy - z * BALL_PX_PER_METRE * this.depth(gy) - wy) * w];
   }
 
+  /** A mesa da liga: quem lá está sentado e o que está em cima dela (o marcador, os monitores, o painel da frente). */
+  private addTable(drawables: Drawable[]): void {
+    const { g, s, camera } = this;
+    const kind = tableKind(this.textures.theme);
+    // O marcador de folhas vira a folha de quem marcou: a folha a meio durante 6 ticks, e o braço esticado um pouco mais.
+    if (!this.tableReady) {
+      // O primeiro desenho (um jogo retomado, ou uma vista que só agora se desenha) começa no resultado que lá está.
+      this.tableReady = true;
+      this.tableScore = [s.score[0], s.score[1]];
+      this.tableFouls = s.teamFouls[0] + s.teamFouls[1];
+    }
+    for (const team of [0, 1] as const) {
+      if (s.score[team] !== this.tableScore[team] && (!this.tableFlip || s.tick - this.tableFlip.at > 12)) {
+        this.tableFlip = { team, at: s.tick };
+        if (team === this.crowdTeam) this.tableHomeUntil = s.tick + 40;
+        this.tableScore[team] = s.score[team];
+      }
+    }
+    const fouls = s.teamFouls[0] + s.teamFouls[1];
+    if (fouls > this.tableFouls) this.tableWhistleUntil = s.tick + 24;
+    this.tableFouls = fouls;
+    const flipping = this.tableFlip && s.tick - this.tableFlip.at < 14 ? this.tableFlip : null;
+    const big = s.tick < this.tableBigUntil;
+    const talking = s.tick < this.tableTalkUntil;
+    const beat = Math.floor(this.animTick / 4);
+    const boardX = TABLE_FACES[kind].find(f => f.face === 'flip')?.x ?? 14;
+    let commentator = 0;
+    this.tableCrew.forEach((p, i) => {
+      let pose: PoseName = 'sit';
+      if (p.role === 'flip' && flipping) pose = 'reachSit';
+      else if (p.role === 'whistle' && s.tick < this.tableWhistleUntil) pose = 'armUp';
+      else if (p.role === 'speaker' && talking) pose = beat % 2 ? 'talk0' : 'talk1';
+      else if (p.role === 'comment') {
+        // Os dois comentadores falam à vez, 3 s cada; num grande lance levantam-se os dois.
+        const turn = commentator++;
+        if (big) pose = (beat + turn) % 2 ? 'cheer0' : 'cheer1';
+        else if (Math.floor(this.animTick / 60) % 2 === turn) pose = (beat + i) % 2 ? 'talk0' : 'talk1';
+      }
+      // Sentados atrás da mesa, em cadeiras (e no estrado): o boneco sobe, senão o tampo tapava-o até ao pescoço.
+      const lift = p.z + 0.4;
+      const [px, py] = camera.project(p.x, p.y, lift);
+      // Quem vira as folhas estica o braço para o lado do marcador, no ecrã.
+      const turn = p.role === 'flip' && camera.project(boardX, -8.5)[0] < px;
+      drawables.push({ y: py, world: [p.x, p.y, lift], draw: () => this.sprite(g, pose, p.look, px, py, turn, false, false) });
+    });
+    // Uma imagem colada na frente da mesa (de x0 a x1, à altura z0–z1, no plano y), coluna a coluna.
+    // A imagem desenha-se com o tamanho que a frente tem no ecrã (`paint(colunas, linhas)`): esticada, as letras de 3×5 desfaziam-se.
+    const front = (x0: number, x1: number, y: number, z0: number, z1: number, paint: (w: number, h: number) => HTMLCanvasElement, scroll = 0): void => {
+      const [ax, ay] = camera.project(x0, y, z1);
+      const [cx, cy] = camera.project(x1, y, z1);
+      const [, ay2] = camera.project(x0, y, z0);
+      const [, cy2] = camera.project(x1, y, z0);
+      // Um cartão em pé da altura da cara, com os pés em baixo: a profundidade acompanha a cara, e quem passa à frente da
+      // mesa fica à frente dela (com os pés em cima, toda à profundidade do cimo, pintava-se por cima de quem passava).
+      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: () => {
+        g.imageSmoothingEnabled = false;
+        // A câmara olha para o fundo: o x do mundo cresce para a esquerda do ecrã.
+        const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
+        const dir = cx < ax ? -1 : 1;
+        const picture = paint(cols, Math.max(1, Math.round(Math.max(ay2 - ay, cy2 - cy))));
+        for (let c = 0; c < cols; c++) {
+          const f = c / cols;
+          const top = ay + (cy - ay) * f;
+          const bottom = ay2 + (cy2 - ay2) * f;
+          const source = Math.floor((dir < 0 ? 1 - f - 1e-6 : f) * cols);
+          g.drawImage(picture, (source + scroll) % picture.width, 0, 1, picture.height, Math.round(ax) + dir * c, Math.round(top), 1, Math.max(1, Math.round(bottom - top)));
+        }
+      } });
+    };
+    // As caras dos objetos 3D de cima da mesa, pintadas à frente deles.
+    for (const f of TABLE_FACES[kind]) {
+      const paint = (w: number, h: number): HTMLCanvasElement =>
+        f.face === 'flip' ? this.flipFace(w, h, flipping)
+        : f.face === 'led' ? this.ledFace(w, h)
+        : f.face === 'arrow' ? this.arrowFace(w, h, s.period % 2 === 0)
+        : this.foulFace(w, h, s.teamFouls[f.face === 'foul0' ? 0 : 1]);
+      // Uma moldura de um palmo: a cara ocupa a frente menos 3 cm à volta.
+      front(f.x - f.w / 2 + 0.03, f.x + f.w / 2 - 0.03, f.y + 0.005, f.z0 + 0.03, f.z0 + f.h - 0.03, paint);
+    }
+    if (kind === 'official') front(11.85, 14.65, -8.14, 0.24, 1.0, (w, h) => this.skirtText(w, h));
+    else if (kind === 'broadcast') {
+      // A frente de luzes da mesa toda.
+      const shift = Math.floor(this.animTick / 2);
+      front(11.65, 16.75, -8.09, 0.12, 0.84, (w, h) => this.ledStrip(s.tick < this.tableHomeUntil, w, h), s.tick < this.tableHomeUntil ? 0 : shift);
+    }
+  }
+
+  /** A cara da seta da posse alternada: a seta vermelha, para a esquerda ou para a direita do ecrã, sobre escuro. */
+  private arrowFace(w: number, h: number, left: boolean): HTMLCanvasElement {
+    const key = `arrow|${w}|${h}|${left}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    const rows = ['..R.....', '.RR.....', 'RRRRRRR.', '.RR.....', '..R.....'];
+    const image = this.faceCanvas(w, h, INK);
+    if (h < 5) return image;
+    const c = image.getContext('2d')!;
+    const [ox, oy] = [(w - 7) >> 1, (h - 5) >> 1];
+    c.fillStyle = TABLE_RED;
+    rows.forEach((row, y) => [...row].forEach((ch, x) => ch === 'R' && c.fillRect(ox + (left ? x : 6 - x), oy + y, 1, 1)));
+    remember(this.boardCache, key, image, 64);
+    return image;
+  }
+
+  /** A cara do marcador de faltas de uma equipa: o número de faltas em branco; toda vermelha quando já dão lances livres. */
+  private foulFace(w: number, h: number, fouls: number): HTMLCanvasElement {
+    const full = fouls > B.teamFoulLimit;
+    const key = `fouls|${w}|${h}|${full ? 'full' : Math.min(9, fouls)}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    const image = this.faceCanvas(w, h, full ? TABLE_RED : PAPER);
+    if (!full && h >= 6) text(image.getContext('2d')!, String(Math.min(9, fouls)), (w - 3) >> 1, (h - 5) >> 1, INK, 1);
+    remember(this.boardCache, key, image, 64);
+    return image;
+  }
+
+  /** Uma tela do tamanho da cara no ecrã, toda de uma cor. */
+  private faceCanvas(w: number, h: number, color: string): HTMLCanvasElement {
+    const image = document.createElement('canvas');
+    image.width = w;
+    image.height = h;
+    const c = image.getContext('2d')!;
+    c.fillStyle = color;
+    c.fillRect(0, 0, w, h);
+    return image;
+  }
+
+  /** O nome da câmara no saiote da mesa oficial, em letra clara ou escura conforme a cor do clube. */
+  private skirtText(w: number, h: number): HTMLCanvasElement {
+    const paint = this.textures.theme.paint;
+    const key = `skirt|${w}|${h}|${paint.join()}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    // Os acentos sobem 3 linhas acima da letra.
+    const label = 'MUNICÍPIO';
+    const image = document.createElement('canvas');
+    image.width = w;
+    image.height = h;
+    const c = image.getContext('2d')!;
+    if (h < 8) {
+      remember(this.boardCache, key, image, 64);
+      return image;
+    }
+    const ink = 0.2126 * paint[0] + 0.7152 * paint[1] + 0.0722 * paint[2] > 140 ? INK : PAPER;
+    // Assente em baixo, com uma linha de folga: os acentos ficam por cima, dentro da faixa.
+    text(c, label, (w - (label.length * 4 - 1)) >> 1, Math.max(3, h - 6), ink, 1);
+    remember(this.boardCache, key, image, 64);
+    return image;
+  }
+
+  /** A cara do marcador de folhas: duas folhas brancas com o resultado e a faixa da cor de cada equipa, presas à barra. */
+  private flipFace(w: number, h: number, flipping: { team: number; at: number } | null): HTMLCanvasElement {
+    const [a, b] = this.tableScore;
+    const half = flipping && this.s.tick - flipping.at < 6 ? flipping.team : -1;
+    const key = `flip|${w}|${h}|${a}|${b}|${half}|${this.tableColors.join()}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    const image = this.faceCanvas(w, h, INK);
+    const c = image.getContext('2d')!;
+    const cw = (w - 3) >> 1;
+    for (const team of [0, 1]) {
+      const x0 = 1 + team * (cw + 1);
+      c.fillStyle = this.tableColors[team]!;
+      c.fillRect(x0, 1, cw, 1);
+      c.fillStyle = PAPER;
+      c.fillRect(x0, 2, cw, h - 3);
+      const value = String(this.tableScore[team]);
+      if (h >= 8) text(c, value, x0 + ((cw - (value.length * 4 - 1)) >> 1), 2 + ((h - 3 - 5) >> 1), INK, 1);
+      if (half === team) {
+        // A folha a meio da volta: a metade de cima tapada pelas costas da folha, com a sombra da dobra.
+        const fold = 2 + ((h - 3) >> 1);
+        c.fillStyle = '#d8d0b8';
+        c.fillRect(x0, 2, cw, fold - 2);
+        c.fillStyle = '#8a8270';
+        c.fillRect(x0, fold, cw, 1);
+      }
+    }
+    remember(this.boardCache, key, image, 64);
+    return image;
+  }
+
+  /** A cara do marcador eletrónico da mesa oficial: o resultado em vermelho, com um traço âmbar, num ecrã escuro. */
+  private ledFace(w: number, h: number): HTMLCanvasElement {
+    const [a, b] = this.s.score;
+    const key = `led|${w}|${h}|${a}|${b}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    const image = this.faceCanvas(w, h, INK);
+    const c = image.getContext('2d')!;
+    if (h < 7) return image;
+    const label = `${a}-${b}`;
+    const x = (w - (label.length * 4 - 1)) >> 1;
+    const y = (h - 5) >> 1;
+    text(c, String(a), x, y, LED_RED, 1);
+    c.fillStyle = LED_AMBER;
+    c.fillRect(x + String(a).length * 4, y + 2, 3, 1);
+    text(c, String(b), x + (String(a).length + 1) * 4, y, LED_RED, 1);
+    remember(this.boardCache, key, image, 64);
+    return image;
+  }
+
+  /** A frente de luzes da mesa da transmissão: o nome do clube da casa a correr em branco sobre preto (a frente desliza
+   * por cima dela, `scroll`); num cesto da casa, toda na cor dela, a piscar. */
+  private ledStrip(home: boolean, w: number, h: number): HTMLCanvasElement {
+    const blink = home && (this.animTick >> 2) % 2 === 0;
+    const key = `strip|${w}|${h}|${home ? `h${blink}` : 'run'}|${this.tableColors[this.crowdTeam]}|${this.tableTitle}`;
+    const cached = this.boardCache.get(key);
+    if (cached) return cached;
+    const club = this.tableColors[this.crowdTeam];
+    const row = (h - 5) >> 1;
+    // A volta inteira do texto: o nome, um quadrado na cor do clube e «BASQUETEBOL», pelo menos da largura da frente.
+    const words = `${this.tableTitle}   `;
+    const unit = (words.length + 'BASQUETEBOL'.length + 3) * 4 + 8;
+    const loop = home ? w : Math.max(w, unit) + (Math.max(w, unit) % unit === 0 ? 0 : unit - (Math.max(w, unit) % unit));
+    const image = document.createElement('canvas');
+    image.width = loop;
+    image.height = h;
+    const c = image.getContext('2d')!;
+    c.fillStyle = blink ? club : INK;
+    c.fillRect(0, 0, loop, h);
+    if (home) {
+      for (let x = 4; x < w; x += 32) text(c, 'CESTO!', x, row, blink ? PAPER : club, 1);
+    } else {
+      for (let x = 0; x < loop; x += unit) {
+        text(c, words, x + 4, row, PAPER, 1);
+        c.fillStyle = club;
+        c.fillRect(x + 4 + words.length * 4, row + 1, 3, 3);
+        text(c, 'BASQUETEBOL', x + 12 + words.length * 4, row, PAPER, 1);
+      }
+    }
+    remember(this.boardCache, key, image, 32);
+    return image;
+  }
+
   /** Quem está no banco, a mesa de oficiais e os treinadores. */
   private addSideline(drawables: Drawable[], time: number): void {
     const { g, s, camera } = this;
-    // A mesa e os bancos estão encostados à parede, por isso desenham-se antes de tudo o resto.
+    // Os bancos e as placas desenham-se antes de tudo o resto; a mesa, à sua profundidade.
     // Com a placa gráfica, a mesa e os bancos são modelos 3D do cenário.
-    for (const f of [...SIDELINE, ...endBoards(this.textures.theme)]) drawables.push(this.boxDrawable(f.x0, f.x1, f.y0, f.y1, f.height, f.top, f.front));
+    for (const f of [...sideline(this.textures.theme), ...endBoards(this.textures.theme)]) {
+      if (f.gpuOnly) continue;
+      const box = this.boxDrawable(f.x0, f.x1, f.y0, f.y1, f.height, f.top, f.front);
+      // A mesa está no meio do caminho: quem está sentado atrás dela fica tapado, e não por cima dela.
+      // O estrado, baixo, ordena-se pela borda de trás: senão o tampo dele pintava-se por cima da mesa e do que está nela.
+      drawables.push(f.table ? { ...box, y: camera.project((f.x0 + f.x1) / 2, f.height <= 0.3 ? f.y0 : f.y1, 0)[1] } : box);
+    }
+    this.addTable(drawables);
     for (const team of [0, 1] as const) {
       const benchers = s.bodies.filter(b => b.team === team && b.slot === -1);
       const startX = team === 0 ? 4.4 : 20.3;
@@ -2025,7 +2308,7 @@ export class MatchView {
           this.spriteWorld = null;
           if (d.box && d.world) {
             const copy = this.capture(d.box, d.world, d.bias ?? 0);
-            if (copy) world.push(copy);
+            if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall } : copy);
           }
         }
       } finally {
@@ -2131,7 +2414,11 @@ export class MatchView {
       const dy = (p.y - CEREMONY_CENTRE.y) / ry;
       // A imagem é um retângulo: sai-se pelo lado mais perto, a direito desde o centro.
       const r = Math.max(Math.abs(dx), Math.abs(dy));
-      return r >= 1 ? null : r < 0.05 ? { x: CEREMONY_CENTRE.x, y: CEREMONY_CENTRE.y - ry } : { x: CEREMONY_CENTRE.x + (dx / r) * rx, y: CEREMONY_CENTRE.y + (dy / r) * ry };
+      const to = r >= 1 ? null : r < 0.05 ? { x: CEREMONY_CENTRE.x, y: CEREMONY_CENTRE.y - ry } : { x: CEREMONY_CENTRE.x + (dx / r) * rx, y: CEREMONY_CENTRE.y + (dy / r) * ry };
+      // Quem sai para o fundo para à frente da mesa, em vez de entrar por ela adentro.
+      const span = TABLE_SPAN[tableKind(this.textures.theme)];
+      if (to && to.x > span.x0 - 0.5 && to.x < span.x1 + 0.5) to.y = Math.max(to.y, span.front + 0.3);
+      return to;
     };
     const other: TeamIndex = team === 0 ? 1 : 0;
     for (const b of s.court[other]) {
@@ -2573,10 +2860,10 @@ export class MatchView {
     const end = s.phase === 'end';
     const winner = s.score[0] > s.score[1] ? 0 : 1;
     const walks = starts.map(({ key, from }, i) => {
+      const team = typeof key === 'number' ? key : key.team;
       const path = [from];
       if (from.y < LOCKER_LANE_Y) path.push({ x: from.x, y: LOCKER_LANE_Y });
-      path.push({ x: tunnelLane(i), y: LOCKER_LANE_Y }, { x: tunnelLane(i), y: LOCKER_INSIDE_Y });
-      const team = typeof key === 'number' ? key : key.team;
+      path.push(...this.aroundTable(team, i), { x: tunnelLane(i), y: LOCKER_INSIDE_Y });
       const lost = end && team !== winner;
       const walk = lost ? makeWalk(path, END_WALK_SPEED, WALK_FRAMES) : makeWalk(path, LOCKER_SPEED, RUN_FRAMES);
       // Quem espera a vez fica como estava: sentado no banco, de pé no campo (a festejar ou cabisbaixo, no fim); o
@@ -2606,6 +2893,17 @@ export class MatchView {
     this.returning = null;
   }
 
+  /** Da frente da mesa até à boca do túnel: a mesa está à frente dele, e cada equipa contorna-a pela ponta do seu banco
+   * (a casa pela esquerda do mundo, o visitante pela direita), por trás de quem lá está sentado. */
+  private aroundTable(team: TeamIndex, i: number): Point[] {
+    const lane = tunnelLane(i);
+    const span = TABLE_SPAN[tableKind(this.textures.theme)];
+    const jitter = (((i * 0.381966) % 1) - 0.5) * 0.3;
+    // Do lado da casa a passagem entre o banco e a mesa é estreita; do lado do visitante há espaço para se espalharem.
+    const side = team === 0 ? span.x0 - 0.35 + jitter : span.x1 + 0.6 + jitter * 2.6;
+    return [{ x: side, y: LOCKER_LANE_Y }, { x: side, y: LOCKER_BEHIND_Y }, { x: lane, y: LOCKER_BEHIND_Y }];
+  }
+
   /** A câmara no túnel: na ida para o balneário ao intervalo e na volta, até o último chegar (sem andar atrás da bola). */
   private tunnelShot(): boolean {
     if (this.street) return false;
@@ -2622,7 +2920,8 @@ export class MatchView {
     for (const team of [0, 1] as const) keys.push({ key: team, to: { x: team === 0 ? 8 : 23.7, y: COACH_Y } });
     const walks = new Map<Body | TeamIndex, Walk>();
     keys.forEach(({ key, to }, i) => {
-      const walk = makeWalk([{ x: tunnelLane(i), y: LOCKER_INSIDE_Y }, { x: tunnelLane(i), y: LOCKER_LANE_Y }, { x: to.x, y: LOCKER_LANE_Y }, to], LOCKER_SPEED, RUN_FRAMES);
+      const team = typeof key === 'number' ? key : key.team;
+      const walk = makeWalk([{ x: tunnelLane(i), y: LOCKER_INSIDE_Y }, ...this.aroundTable(team, i).reverse(), { x: to.x, y: LOCKER_LANE_Y }, to], LOCKER_SPEED, RUN_FRAMES);
       walk.delay = i * LOCKER_GAP_SECONDS;
       walks.set(key, walk);
     });

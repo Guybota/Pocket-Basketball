@@ -1,8 +1,8 @@
 // Os modelos 3D à volta do campo: os dois cestos (base, poste, braço, tabela com o quadrado, aro e rede), a mesa de oficiais,
 // os bancos das equipas e, no bairro, os bancos de pedra. Têm as medidas e as cores do desenho da tela 2D (art/court.ts:
-// `HOOP_SHAPE`, `SIDELINE`, `STREET_SEATS`), mas são peças a sério: com faces de lado, e cada peça à sua profundidade.
+// `HOOP_SHAPE`, `sideline`, `STREET_SEATS`), mas são peças a sério: com faces de lado, e cada peça à sua profundidade.
 import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, ShaderMaterial } from 'three';
-import { FAN_SPACING, FLOOR_AREA, HOOP_SHAPE, endBoards, TUNNEL, inAisle, SIDELINE, STREET_SEATS, seats, type CourtTheme, type Fixture, type Seat, type StepColours } from '../art/court.ts';
+import { FAN_SPACING, FLOOR_AREA, HOOP_SHAPE, endBoards, TUNNEL, inAisle, sideline, STREET_SEATS, seats, type CourtTheme, type Fixture, type Seat, type StepColours } from '../art/court.ts';
 import { INK } from '../art/sprites.ts';
 import { HOOP_U } from '../../sim/court.ts';
 
@@ -158,6 +158,19 @@ function addChairs(b: Builder, theme: CourtTheme, steps: StepColours): void {
       if (!lastSeat) continue;
       for (let y = lastSeat.y + FAN_SPACING; y < FLOOR_AREA.y1 - 0.5; y += FAN_SPACING) if (!inAisle(theme, 'end', y)) place([lastSeat.x, y, lastSeat.z], { ...lastSeat, y, along: y });
     }
+  }
+}
+
+/** O guarda-sol da mesinha da rua: o pau e a copa em oito gomos, vermelho e branco, a descer para as pontas. */
+function addParasol(b: Builder): void {
+  const [x, y] = [14.15, -9.15];
+  b.beam([x, y, 0], [x, y, 2.15], 0.04, rgb('#8a96a4'));
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i / 8) * Math.PI * 2;
+    const a1 = ((i + 1) / 8) * Math.PI * 2;
+    const r = 1.05;
+    const color = rgb(i % 2 === 0 ? '#d8402e' : '#f4efe0');
+    b.quad([x, y, 2.2], [x + Math.cos(a0) * r, y + Math.sin(a0) * r, 1.9], [x + Math.cos(a1) * r, y + Math.sin(a1) * r, 1.9], [x, y, 2.2], color);
   }
 }
 
@@ -327,10 +340,11 @@ export function buildFixtures(theme: CourtTheme, steps: StepColours | null = nul
     }
   }
   // A mesa, os bancos e, no bairro, os bancos de pedra.
-  const boxes: readonly Fixture[] = theme.open ? [...SIDELINE, ...STREET_SEATS] : [...SIDELINE, ...endBoards(theme)];
-  for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, 0, f.height, rgb(f.top), rgb(f.front));
+  const boxes: readonly Fixture[] = theme.open ? [...sideline(theme), ...STREET_SEATS] : [...sideline(theme), ...endBoards(theme)];
+  for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, f.z0 ?? 0, f.height, rgb(f.top), rgb(f.front));
   if (!theme.open && theme.slope > 0) addTunnel(b, theme);
   if (theme.windows) addGoals(b, theme);
+  if (theme.open) addParasol(b);
   // Nas tábuas da escola não há cadeiras, mas o guarda-corpos à beira do muro também lá está.
   if (steps && !steps.wood) addChairs(b, theme, steps);
   if (steps) addRail(b, theme, steps);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FAN_SPACING, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats, stairs } from './court.ts';
+import { FAN_SPACING, FLOOR_AREA, THEMES, chairPhase, courtTextures, fanHeight, fanRows, fillPolygon, seats, stairs } from './court.ts';
 
 describe('pavilhão', () => {
   it('veste as cores do clube da casa, e guarda cada versão', { tags: ['slow'] }, () => {
@@ -9,8 +9,9 @@ describe('pavilhão', () => {
     expect(courtTextures(2, '#cf3a2c')).toBe(red);
     expect(red.theme.name).toBe(plain.theme.name);
     expect(red.floor.some((p, i) => p !== plain.floor[i])).toBe(true);
-    // A bancada da textura são só cadeiras: a cor do público está nos bonecos, desenhados pela vista do jogo.
-    expect(red.walls[0]!.every((p, i) => p === plain.walls[0]![i])).toBe(true);
+    // A bancada da textura são só cadeiras: a cor do público está nos bonecos, desenhados pela vista do jogo. Na arena,
+    // porque no municipal o rodapé dos topos é da cor do clube.
+    expect(courtTextures(3, '#cf3a2c').walls[0]!.every((p, i) => p === courtTextures(3).walls[0]![i])).toBe(true);
   });
 
   it('no campo de rua só muda a pintura, porque não há bancada', () => {
@@ -94,7 +95,7 @@ describe('bancada em degraus', () => {
         for (const s of list) {
           for (const [lo, hi] of stairs(theme, s.plane)) expect(s.along <= lo - 0.42 || s.along >= hi + 0.42).toBe(true);
           if (!theme.chamfer) continue;
-          const clear = s.plane === 'side' ? Math.min(s.x - (-shift), 28 + shift - s.x) : s.plane === 'end' ? s.y - (-7 - shift) : 4 / Math.SQRT2 + shift - Math.abs(s.along);
+          const clear = s.plane === 'side' ? Math.min(s.x - (-shift), 28 + shift - s.x) : s.plane === 'end' ? s.y - (FLOOR_AREA.y0 + FLOOR_AREA.chamfer - shift) : 4 / Math.SQRT2 + shift - Math.abs(s.along);
           expect(clear).toBeGreaterThan(0.42);
         }
       }

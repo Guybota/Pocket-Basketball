@@ -16,7 +16,8 @@ export interface Sky {
 // Há espaço à volta do campo antes das bancadas, como num pavilhão a sério.
 const WALL_NEAR_X = -4;
 const WALL_FAR_X = 32;
-const WALL_Y = -11;
+// O muro do fundo fica 3,5 m para lá da lateral: entre o campo e o túnel cabem a mesa, quem lá está e uma passagem.
+const WALL_Y = -12;
 const NEAR_Y = 17;
 /** Para onde a câmara olha em repouso: um pouco para lá do meio do campo. */
 export const LOOK_Y = -1.1;
@@ -1794,14 +1795,138 @@ export interface Fixture {
   height: number;
   top: string;
   front: string;
+  /** Onde começa por baixo (um tampo, um assento); por omissão, no chão. A tela 2D desenha-a sempre desde o chão. */
+  z0?: number;
+  /** Só com a placa gráfica (pernas, cadeiras): na tela 2D, desenhadas desde o chão, eram blocos. */
+  gpuOnly?: boolean;
+  /** Uma peça da mesa: na tela 2D ordena-se com as pessoas (quem está atrás dela fica tapado), em vez de ir para trás de tudo. */
+  table?: boolean;
 }
-/** A mesa de oficiais e os bancos das equipas, encostados à lateral do fundo. O túnel fica no centro, por isso a mesa está à
- * direita dele e o banco visitante mais para a ponta. */
-export const SIDELINE: readonly Fixture[] = [
-  { x0: 16.2, x1: 19.4, y0: -10.15, y1: -9.55, height: 0.75, top: '#efe3c2', front: '#2a3040' },
-  { x0: 4, x1: 11.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
-  { x0: 20, x1: 27.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
+/**
+ * A mesa de cada liga (docs/referencias/mesas): na rua não há mesa, só um voluntário numa cadeira de plástico ao lado do
+ * marcador de folhas num tripé; na escola, uma mesa dobrável de pernas à vista; no municipal, a mesa oficial com saiote em
+ * cima de um estrado; na arena, a mesa da transmissão, comprida, com a frente de luzes e um estrado atrás. Todas ao meio
+ * da lateral, à frente do túnel (quem vai ao balneário dá a volta pelas pontas), mais perto do campo quanto mais alta a
+ * liga.
+ */
+export type TableKind = 'street' | 'school' | 'official' | 'broadcast';
+export const tableKind = (theme: CourtTheme): TableKind => (theme.open ? 'street' : theme.windows ? 'school' : theme.local ? 'official' : 'broadcast');
+/** O que a mesa ocupa no chão (com o estrado e as cadeiras): quem vai ao túnel contorna-a. */
+export const TABLE_SPAN: Record<TableKind, { x0: number; x1: number; front: number }> = {
+  street: { x0: 12.6, x1: 15.9, front: -8.3 },
+  school: { x0: 12.2, x1: 15.8, front: -8.2 },
+  official: { x0: 11.6, x1: 16.4, front: -8.0 },
+  broadcast: { x0: 11.6, x1: 16.8, front: -8.1 },
+};
+/** Quem se senta à mesa: onde (os pés; `z` é o estrado) e o que faz. */
+export type TableRole = 'flip' | 'clock' | 'whistle' | 'official' | 'speaker' | 'stats' | 'comment';
+export const TABLE_CREW: Record<TableKind, readonly { x: number; y: number; z: number; role: TableRole }[]> = {
+  street: [{ x: 14.95, y: -8.75, z: 0, role: 'flip' }],
+  school: [{ x: 12.65, y: -8.75, z: 0, role: 'clock' }, { x: 13.3, y: -8.75, z: 0, role: 'whistle' }, { x: 13.95, y: -8.75, z: 0, role: 'flip' }],
+  official: [12.45, 13.15, 13.85, 15.1, 15.75].map((x, i) => ({ x, y: -8.85, z: 0.2, role: (['clock', 'official', 'official', 'official', 'speaker'] as const)[i]! })),
+  broadcast: [12.05, 12.8, 13.55, 14.3, 15.35, 16.3].map((x, i) => ({ x, y: -8.85, z: 0.3, role: (['stats', 'stats', 'official', 'clock', 'comment', 'comment'] as const)[i]! })),
+};
+/**
+ * O que está em cima da mesa e mostra alguma coisa: o marcador de folhas, o marcador eletrónico, a seta da posse e os
+ * marcadores de faltas de equipa. São caixas 3D (o corpo, com a placa gráfica) e a vista do jogo pinta-lhes a face da frente
+ * (`y`, virada para o campo), com as letras ao tamanho do ecrã.
+ */
+export type TableFace = 'flip' | 'led' | 'arrow' | 'foul0' | 'foul1';
+export const TABLE_FACES: Record<TableKind, readonly { face: TableFace; x: number; y: number; z0: number; w: number; h: number; d: number }[]> = {
+  // Maiores do que os verdadeiros: uma cara vertical vista de cima perde altura, e com menos de ~0,8 m os algarismos de 3×5
+  // não cabiam. O marcador eletrónico do municipal vai no saiote, virado para o campo: em cima da mesa tapava os oficiais.
+  street: [{ face: 'flip', x: 13.9, y: -8.42, z0: 0.66, w: 1.45, h: 0.85, d: 0.14 }],
+  school: [{ face: 'flip', x: 15.0, y: -8.28, z0: 0.74, w: 1.45, h: 0.85, d: 0.14 }],
+  official: [
+    { face: 'led', x: 15.45, y: -8.12, z0: 0.3, w: 1.5, h: 0.62, d: 0.03 },
+    { face: 'arrow', x: 14.5, y: -8.22, z0: 0.98, w: 0.6, h: 0.5, d: 0.12 },
+    // A casa à esquerda do ecrã (x maior), como nas folhas e no marcador eletrónico.
+    { face: 'foul0', x: 16.1, y: -8.2, z0: 0.98, w: 0.42, h: 0.8, d: 0.3 },
+    { face: 'foul1', x: 11.9, y: -8.2, z0: 0.98, w: 0.42, h: 0.8, d: 0.3 },
+  ],
+  broadcast: [],
+};
+/** Uma caixa de `x0` a `x1`, `y0` a `y1`, `z0` a `z1`, só com a placa gráfica (na tela 2D ficava um bloco desde o chão). */
+const prop = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, top: string, front: string): Fixture => ({ x0, x1, y0, y1, z0, height: z1, top, front, gpuOnly: true });
+/** Os objetos 3D de cima da mesa: os corpos das caras de `TABLE_FACES`, o microfone, os portáteis e os monitores. */
+function tableProps(kind: TableKind): Fixture[] {
+  const out = TABLE_FACES[kind].map(f => prop(f.x - f.w / 2, f.x + f.w / 2, f.y - f.d, f.y, f.z0, f.z0 + f.h, '#2c3345', '#1b2230'));
+  if (kind === 'official') {
+    // O microfone do locutor: a base redonda (quadrada, a esta distância), a haste e a cabeça.
+    out.push(prop(15.33, 15.57, -8.62, -8.44, 0.98, 1.0, '#3a4252', '#1b2230'), prop(15.43, 15.47, -8.55, -8.51, 1.0, 1.3, '#8a96a4', '#5a6270'), prop(15.4, 15.5, -8.58, -8.48, 1.3, 1.4, '#3a4252', '#1b2230'));
+  }
+  if (kind === 'broadcast') {
+    // Os portáteis da estatística (a tampa aberta, de costas para o campo) e os monitores dos comentadores, num pé.
+    const at = (role: TableRole): number[] => TABLE_CREW.broadcast.filter(c => c.role === role).map(c => c.x);
+    for (const x of at('stats')) out.push(prop(x - 0.17, x + 0.17, -8.72, -8.42, 0.92, 0.94, '#aab2bc', '#8a96a4'), prop(x - 0.17, x + 0.17, -8.42, -8.39, 0.94, 1.17, '#c9d0d6', '#aab2bc'), prop(x - 0.03, x + 0.03, -8.4, -8.38, 1.02, 1.06, '#f4efe0', '#f4efe0'));
+    for (const x of at('comment')) out.push(prop(x - 0.03, x + 0.03, -8.36, -8.3, 0.92, 1.0, '#3a4252', '#1b2230'), prop(x - 0.28, x + 0.28, -8.38, -8.3, 1.0, 1.26, '#2c3345', '#1b2230'), prop(x - 0.28, x + 0.28, -8.3, -8.29, 1.22, 1.25, '#5a6270', '#5a6270'));
+  }
+  return out;
+}
+const hexOf = (c: Rgb): string => `#${c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+/** Uma cadeira de quatro pernas, virada para o campo, com as costas do lado da parede. */
+const chair = (x: number, y: number, seat: string, legs: string, back = 0.36): Fixture[] => [
+  { x0: x - 0.2, x1: x + 0.2, y0: y - 0.4, y1: y, z0: 0.41, height: 0.45, top: seat, front: seat, table: true },
+  { x0: x - 0.2, x1: x + 0.2, y0: y - 0.42, y1: y - 0.37, z0: 0.45, height: 0.45 + back, top: seat, front: seat, gpuOnly: true },
+  ...[[-0.17, -0.37], [0.15, -0.37], [-0.17, -0.03], [0.15, -0.03]].map(([dx, dy]) => ({ x0: x + dx!, x1: x + dx! + 0.03, y0: y + dy!, y1: y + dy! + 0.03, height: 0.41, top: legs, front: legs, gpuOnly: true })),
 ];
+/** As quatro pernas finas de uma mesa (só com a placa gráfica). */
+const tableLegs = (x0: number, x1: number, y0: number, y1: number, height: number, color: string): Fixture[] =>
+  [[x0 + 0.05, y0 + 0.05], [x1 - 0.08, y0 + 0.05], [x0 + 0.05, y1 - 0.08], [x1 - 0.08, y1 - 0.08]].map(([x, y]) => ({ x0: x!, x1: x! + 0.03, y0: y!, y1: y! + 0.03, height, top: color, front: color, gpuOnly: true }));
+/** As peças de cada mesa, em caixas, com o que está em cima dela (as pessoas desenham-se à parte, como bonecos). */
+function tableParts(theme: CourtTheme): Fixture[] {
+  return [...tableBody(theme), ...tableProps(tableKind(theme))];
+}
+function tableBody(theme: CourtTheme): Fixture[] {
+  const kind = tableKind(theme);
+  if (kind === 'street') {
+    // Uma mesinha de campismo de alumínio debaixo de um guarda-sol às riscas (desenhado à parte, com a placa gráfica), a
+    // cadeira de plástico branca na ponta e a geleira azul de tampa branca ao lado; o marcador de folhas vai em cima.
+    return [
+      { x0: 13.2, x1: 14.6, y0: -8.9, y1: -8.35, z0: 0.62, height: 0.66, top: '#d8dcde', front: '#a8b0b6', table: true },
+      ...tableLegs(13.2, 14.6, -8.9, -8.35, 0.62, '#8a96a4'),
+      ...chair(14.95, -8.95, '#eceae2', '#d6d2c6', 0.32),
+      { x0: 15.4, x1: 15.85, y0: -9.0, y1: -8.65, height: 0.4, top: '#f4f4f0', front: '#2f7fd0', table: true },
+    ];
+  }
+  if (kind === 'school') {
+    // Duas mesas dobráveis juntas: tampos bege finos em cima de pernas cinzentas, sem saiote; cadeiras de concha azuis.
+    return [
+      { x0: 12.3, x1: 15.7, y0: -8.85, y1: -8.2, z0: 0.7, height: 0.74, top: '#ece4d0', front: '#c9c0aa', table: true },
+      ...tableLegs(12.3, 14.0, -8.85, -8.2, 0.7, '#8a96a4'),
+      ...tableLegs(14.0, 15.7, -8.85, -8.2, 0.7, '#8a96a4'),
+      ...[12.65, 13.3, 13.95].flatMap(x => chair(x, -8.95, '#3f78c8', '#5a6270')),
+    ];
+  }
+  if (kind === 'official') {
+    // O estrado cinzento, a mesa por cima com o tampo claro e o saiote na cor do clube (o nome da câmara vai por cima, em
+    // letras), e as cadeiras pretas.
+    const skirt = hexOf(theme.paint);
+    return [
+      { x0: 11.6, x1: 16.4, y0: -9.7, y1: -8.0, height: 0.2, top: '#9a9c9e', front: '#7a7c80', table: true },
+      { x0: 11.8, x1: 16.2, y0: -8.75, y1: -8.15, z0: 0.2, height: 0.98, top: '#ece6d6', front: skirt, table: true },
+      ...TABLE_CREW.official.map(c => c.x).flatMap(x => chair(x, -9.05, '#2c3345', '#1b2230').map(f => ({ ...f, z0: (f.z0 ?? 0) + 0.2, height: f.height + 0.2 }))),
+    ];
+  }
+  // A transmissão: a mesa preta comprida com a frente de luzes (pintada por cima, como um boneco), e atrás um estrado de
+  // 0,3 m com as cadeiras altas pretas, para os comentadores verem por cima de quem está no banco.
+  return [
+    { x0: 11.6, x1: 16.8, y0: -9.9, y1: -8.75, height: 0.3, top: '#3a4252', front: '#2c3345', table: true },
+    // O tampo cinzento-escuro com o rebordo claro: todo preto, sumia-se contra o muro azul-escuro.
+    { x0: 11.6, x1: 16.8, y0: -8.75, y1: -8.1, height: 0.92, top: '#5a6270', front: '#10141c', table: true },
+    // O rebordo um nada à frente e acima do corpo: no mesmo plano, a placa gráfica mostrava ora um ora o outro.
+    { x0: 11.6, x1: 16.8, y0: -8.14, y1: -8.095, z0: 0.86, height: 0.925, top: '#c9d0d6', front: '#aab2bc', gpuOnly: true },
+    ...TABLE_CREW.broadcast.map(c => c.x).flatMap(x => chair(x, -9.05, '#10141c', '#2c3345', 0.5).map(f => ({ ...f, z0: (f.z0 ?? 0) + 0.3, height: f.height + 0.3 }))),
+  ];
+}
+/** A mesa e os bancos das equipas, do lado do fundo. O banco da casa acaba antes da mesa da arena. */
+export function sideline(theme: CourtTheme): readonly Fixture[] {
+  return [
+    ...tableParts(theme),
+    { x0: 4, x1: 10.5, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
+    { x0: 20, x1: 27.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
+  ];
+}
 /**
  * As placas soltas atrás de cada linha de fundo, nas arenas (bancada em anel, com os cantos cortados): a 2,6 m da linha, atrás do poste do
  * cesto, em quatro placas de 3,2 m, com o rebordo de cima mais escuro.
