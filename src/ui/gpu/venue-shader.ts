@@ -38,6 +38,10 @@ uniform bool endStands;
 uniform bool chamferOn;
 uniform bool hasSteps;
 uniform bool wood;
+// As cadeiras pintadas no espelho, como no traçador (o gpu-check); no jogo são modelos 3D à frente dele.
+uniform bool paintedChairs;
+// O muro a direito, com um corredor plano em cima dele à frente da primeira fila (onde fica o guarda-corpos).
+uniform bool corridor;
 uniform float zs;
 uniform float t0;
 uniform float rise;
@@ -196,6 +200,46 @@ void main() {
         tHit = max(tTread, tRiser);
         face = tTread >= tRiser ? 0 : 1;
         owner = riserOwner;
+      } else if (corridor) {
+        // Por baixo do primeiro piso: o raio bate primeiro no muro a direito (d = 0), passa-lhe por cima para o corredor ou
+        // chega ao espelho do primeiro piso, ao fundo do corredor.
+        float tV = INF;
+        int vOwner = 0;
+        for (int q = 0; q < 5; q++) {
+          if (q >= ns) break;
+          float dq = sax[q] * dirX + say[q] * dirY;
+          if (dq <= 0.0) continue;
+          float tq = -sd0[q] / dq;
+          if (tq < tV) { tV = tq; vOwner = q; }
+        }
+        if (cz + rz * tV < zs) {
+          tHit = tV;
+          onSide = skind[vOwner] == 0;
+          diag = skind[vOwner] == 2;
+          far = sax[vOwner] > 0.0;
+        } else {
+          float tC = (zs - cz) / rz;
+          float deep = -INF;
+          for (int q = 0; q < 5; q++) {
+            if (q >= ns) break;
+            deep = max(deep, sd0[q] + (sax[q] * dirX + say[q] * dirY) * tC);
+          }
+          if (deep < slope * zs) {
+            finish(deep < 0.1 ? stepColor(1, 0.0) : stepColor(0, 0.0), vec3(cx, cy, cz) + dir * tC);
+            return;
+          }
+          float tR = INF;
+          for (int q = 0; q < 5; q++) {
+            if (q >= ns) break;
+            float dq = sax[q] * dirX + say[q] * dirY;
+            if (dq <= 0.0) continue;
+            float tp = (slope * zs - sd0[q]) / dq;
+            if (tp < tR) { tR = tp; owner = q; }
+          }
+          tHit = tR;
+          face = 1;
+          below = zs;
+        }
       }
       if (face != 1 && ns > 1) {
         float deepest = -INF;
@@ -256,7 +300,7 @@ void main() {
         else if (face == 1) {
           float local = zHit - below;
           if (wood) color = fract(local / 0.3) < 0.12 ? stepColor(4, k) : stepColor(5, k);
-          else if (local < 0.55 && j > 0.0) {
+          else if (paintedChairs && local < 0.55 && j > 0.0) {
             float u = fract((c0 + db * tHit) / HALF_SEAT + phaseOf(kind, int(j) - 1));
             color = u < 0.07 || u > 0.93 ? stepColor(4, k) : local > 0.47 ? stepColor(3, k) : stepColor(2, k);
           } else color = stepColor(5, k);
@@ -332,6 +376,8 @@ export function venueUniforms(t: CourtTextures): { uniforms: Record<string, { va
     chamferOn: { value: steps !== null && theme.chamfer === true },
     hasSteps: { value: steps !== null },
     wood: { value: steps?.wood ?? false },
+    paintedChairs: { value: false },
+    corridor: { value: steps !== null && !steps.wood },
     zs: { value: steps?.zs ?? 0 },
     t0: { value: steps?.t0 ?? 0 },
     rise: { value: steps?.rise ?? 1 },

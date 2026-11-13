@@ -2,7 +2,7 @@
 // os bancos das equipas e, no bairro, os bancos de pedra. Têm as medidas e as cores do desenho da tela 2D (art/court.ts:
 // `HOOP_SHAPE`, `SIDELINE`, `STREET_SEATS`), mas são peças a sério: com faces de lado, e cada peça à sua profundidade.
 import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, ShaderMaterial } from 'three';
-import { HOOP_SHAPE, SIDELINE, STREET_SEATS, type CourtTheme, type Fixture } from '../art/court.ts';
+import { FAN_SPACING, FLOOR_AREA, HOOP_SHAPE, TUNNEL, inAisle, SIDELINE, STREET_SEATS, seats, type CourtTheme, type Fixture, type Seat, type StepColours } from '../art/court.ts';
 import { INK } from '../art/sprites.ts';
 import { HOOP_U } from '../../sim/court.ts';
 
@@ -44,6 +44,16 @@ class Builder {
     this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], front);
     this.quad([x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], side);
     this.quad([x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], side);
+  }
+  /** Uma caixa virada para `n` (para o campo), com `a` ao longo da fila: medidas em metros a partir de `o`. */
+  turned(o: V3, a: [number, number], n: [number, number], a0: number, a1: number, n0: number, n1: number, z0: number, z1: number, top: V3, front: V3): void {
+    const at = (u: number, v: number, z: number): V3 => [o[0] + a[0] * u + n[0] * v, o[1] + a[1] * u + n[1] * v, o[2] + z];
+    const side = shade(front, 0.8);
+    this.quad(at(a0, n0, z1), at(a1, n0, z1), at(a1, n1, z1), at(a0, n1, z1), top);
+    this.quad(at(a0, n1, z0), at(a1, n1, z0), at(a1, n1, z1), at(a0, n1, z1), front);
+    this.quad(at(a0, n0, z0), at(a1, n0, z0), at(a1, n0, z1), at(a0, n0, z1), shade(front, 0.7));
+    this.quad(at(a0, n0, z0), at(a0, n1, z0), at(a0, n1, z1), at(a0, n0, z1), side);
+    this.quad(at(a1, n0, z0), at(a1, n1, z0), at(a1, n1, z1), at(a1, n0, z1), side);
   }
   /** Uma barra de secção quadrada de `w` metros, de `p` a `q`, com os lados à sombra. */
   beam(p: V3, q: V3, w: number, color: V3): void {
@@ -91,7 +101,83 @@ export interface Fixtures {
   dispose(): void;
 }
 
-export function buildFixtures(theme: CourtTheme): Fixtures {
+const unpack = (c: number): V3 => [(c & 255) / 255, ((c >>> 8) & 255) / 255, ((c >>> 16) & 255) / 255];
+/** Para o campo e ao longo da fila, em cada bancada (a lateral, os topos e as diagonais dos cantos). */
+function frame(s: Seat): { n: [number, number]; a: [number, number] } {
+  const h = Math.SQRT1_2;
+  if (s.plane === 'side') return { n: [0, 1], a: [1, 0] };
+  if (s.plane === 'end') return { n: [s.far ? -1 : 1, 0], a: [0, 1] };
+  return s.far ? { n: [-h, h], a: [-h, -h] } : { n: [h, h], a: [h, -h] };
+}
+/** Altura do assento e do encosto, em metros a partir do degrau. */
+const SEAT_Z = 0.44;
+const BACK_Z = 0.86;
+/** Meia largura de uma cadeira: 0,9 m, um pouco mais larga do que um adepto com os braços. */
+const CHAIR_HALF = 0.45;
+
+/**
+ * As cadeiras da bancada, uma por lugar e da largura de um adepto: encostadas ao espelho de trás de cada piso, com o assento,
+ * o encosto e o pé. Fila a fila até ao cimo; quem está sentado fica na cadeira do seu lugar.
+ */
+function addChairs(b: Builder, theme: CourtTheme, steps: StepColours): void {
+  const top = theme.crowd?.to ?? 0;
+  for (let r = 0; r < steps.rows - 1; r++) {
+    const row = seats(theme, r);
+    if (row.length === 0 || row[0]!.z + BACK_Z > top) break;
+    const k = Math.min(steps.rows - 1, r + 1);
+    const chair = unpack(steps.chair[k]!);
+    const lit = unpack(steps.chairTop[k]!);
+    const foot = unpack(steps.gap[k]!);
+    const place = (o: V3, s: Seat): void => {
+      const { n, a } = frame(s);
+      b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.04, 0.46, SEAT_Z - 0.06, SEAT_Z, lit, chair);
+      b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.02, 0.09, SEAT_Z, BACK_Z, lit, chair);
+      b.turned(o, a, n, -0.05, 0.05, 0.12, 0.3, 0, SEAT_Z - 0.06, foot, foot);
+    };
+    for (const s of row) place([s.x, s.y, s.z], s);
+    // Nos topos, os adeptos só se sentam até a meio (y < 9): as cadeiras continuam vazias até ao fim da bancada.
+    for (const far of [false, true]) {
+      const end = row.filter(s => s.plane === 'end' && s.far === far);
+      const lastSeat = end[end.length - 1];
+      if (!lastSeat) continue;
+      for (let y = lastSeat.y + FAN_SPACING; y < FLOOR_AREA.y1 - 0.5; y += FAN_SPACING) if (!inAisle(theme, 'end', y)) place([lastSeat.x, y, lastSeat.z], { ...lastSeat, y, along: y });
+    }
+  }
+}
+
+/** O guarda-corpos à frente do corredor, no cimo do muro: postes e dois tubos, a toda a volta, menos na boca do túnel. */
+function addRail(b: Builder, theme: CourtTheme, steps: StepColours): void {
+  const { x0, x1, y0, y1, chamfer } = FLOOR_AREA;
+  const back = 0.08;
+  const c = theme.chamfer ? chamfer : 0;
+  const line: [number, number][] = [[x0 - back, y1], [x0 - back, y0 + c], [x0 + c, y0 - back], [x1 - c, y0 - back], [x1 + back, y0 + c], [x1 + back, y1]];
+  const k = theme.crowd?.dim ?? 1;
+  const metal = shade(rgb('#aab2bc'), k);
+  const z = steps.zs;
+  const run = (p: [number, number], q: [number, number]): void => {
+    const len = Math.sqrt((q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2);
+    const n = Math.max(1, Math.ceil(len / 2));
+    for (let i = 0; i <= n; i++) {
+      const s = i / n;
+      const x = p[0] + (q[0] - p[0]) * s;
+      const y = p[1] + (q[1] - p[1]) * s;
+      b.beam([x, y, z], [x, y, z + 0.9], 0.06, metal);
+    }
+    b.beam([p[0], p[1], z + 0.9], [q[0], q[1], z + 0.9], 0.07, metal);
+    b.beam([p[0], p[1], z + 0.45], [q[0], q[1], z + 0.45], 0.04, metal);
+  };
+  for (let i = 0; i + 1 < line.length; i++) {
+    const p = line[i]!;
+    const q = line[i + 1]!;
+    // A lateral do fundo abre-se na boca do túnel.
+    if (p[1] === q[1]) {
+      run(p, [TUNNEL.x0 - 0.2, p[1]]);
+      run([TUNNEL.x1 + 0.2, p[1]], q);
+    } else run(p, q);
+  }
+}
+
+export function buildFixtures(theme: CourtTheme, steps: StepColours | null = null): Fixtures {
   // Dos dois lados: assim a ordem dos cantos de cada face não importa (com um só lado, metade das faces sumia).
   const material = new ShaderMaterial({ vertexShader: FLAT_VERTEX, fragmentShader: FLAT_FRAGMENT, side: DoubleSide });
   const b = new Builder();
@@ -131,6 +217,10 @@ export function buildFixtures(theme: CourtTheme): Fixtures {
   // A mesa, os bancos e, no bairro, os bancos de pedra.
   const boxes: readonly Fixture[] = theme.open ? [...SIDELINE, ...STREET_SEATS] : SIDELINE;
   for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, 0, f.height, rgb(f.top), rgb(f.front));
+  if (steps && !steps.wood) {
+    addChairs(b, theme, steps);
+    addRail(b, theme, steps);
+  }
   const solid = new Mesh(b.geometry(), material);
   solid.frustumCulled = false;
   // A rede muda quando a bola entra: tem a sua malha, refeita só quando mexe.

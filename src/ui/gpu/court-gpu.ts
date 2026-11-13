@@ -230,7 +230,7 @@ function buildVenue(t: CourtTextures): Venue | null {
   stands.frustumCulled = false;
   scene.add(stands);
   // Os cestos, a mesa e os bancos: depois do cenário, que escreve a profundidade sem a testar, e com ela.
-  const fixtures = buildFixtures(t.theme);
+  const fixtures = buildFixtures(t.theme, t.steps);
   fixtures.group.traverse(o => (o.renderOrder = 2));
   scene.add(fixtures.group);
   return {
@@ -476,8 +476,11 @@ export class CourtGpu {
     this.renderer.setClearColor(0xff00ff, 1);
     this.last = [];
     this.withoutFence = true;
+    const painted = venue.stands.material.uniforms.paintedChairs;
+    if (painted) painted.value = true;
     const out = this.draw(view, t, width, height, 1, [0, 0], crowdFrame);
     this.withoutFence = false;
+    if (painted) painted.value = false;
     venue.floor.visible = true;
     venue.lines.visible = true;
     venue.fixtures.group.visible = true;

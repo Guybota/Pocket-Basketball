@@ -1,0 +1,8 @@
+{
+  "kind": "sheet",
+  "name": "bandeira-poses",
+  "poses": ["sit", "flagSit0", "flagSit1", "flagSit2", "flagSit3", "flagUp0", "flagUp1", "flagUp2", "flagUp3"],
+  "looks": [{ "player": 0, "kit": "blue", "street": true }, { "player": 4, "kit": "cream", "street": true }, { "player": 9, "kit": "blue", "skin": 3, "street": true }],
+  "variants": ["front", "flip"],
+  "zoom": 6
+}

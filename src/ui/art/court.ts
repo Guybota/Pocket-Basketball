@@ -521,7 +521,7 @@ export interface CourtTextures {
  * Os degraus da bancada: o primeiro piso fica 0,3 m acima do muro e cada um sobe uma fila de público (os pés dos adeptos
  * assentam no fundo de cada piso). Cores por fila, a escurecer para cima.
  */
-interface StepColours {
+export interface StepColours {
   zs: number;
   t0: number;
   rise: number;
@@ -1267,6 +1267,50 @@ export class Camera {
               tHit = Math.max(tTread, tRiser);
               face = tTread >= tRiser ? 0 : 1;
               owner = riserOwner;
+            } else if (!steps.wood) {
+              // O muro a direito (d = 0) e, em cima dele, o corredor à frente da primeira fila: o raio bate no muro, passa-lhe por
+              // cima para o corredor ou chega ao espelho do primeiro piso, ao fundo do corredor.
+              let tV = Infinity;
+              let vOwner = 0;
+              for (let p = 0; p < stands.length; p++) {
+                const st = stands[p]!;
+                const dq = st.ax * dirX + st.ay * dirY;
+                if (dq <= 0) continue;
+                const tq = -st.d0 / dq;
+                if (tq < tV) {
+                  tV = tq;
+                  vOwner = p;
+                }
+              }
+              if (cz + rz * tV < steps.zs) {
+                tHit = tV;
+                const st = stands[vOwner]!;
+                onSide = st.kind === 'side';
+                diag = st.kind === 'diag';
+                far = st.ax > 0;
+              } else {
+                const tC = (steps.zs - cz) / rz;
+                let deep = -Infinity;
+                for (const st of stands) deep = Math.max(deep, st.d0 + (st.ax * dirX + st.ay * dirY) * tC);
+                if (deep < slope * steps.zs) {
+                  pixels[row + sx] = deep < 0.1 ? steps.nosing[0]! : steps.tread[0]!;
+                  continue;
+                }
+                let tR = Infinity;
+                for (let p = 0; p < stands.length; p++) {
+                  const st = stands[p]!;
+                  const dq = st.ax * dirX + st.ay * dirY;
+                  if (dq <= 0) continue;
+                  const tp = (slope * steps.zs - st.d0) / dq;
+                  if (tp < tR) {
+                    tR = tp;
+                    owner = p;
+                  }
+                }
+                tHit = tR;
+                face = 1;
+                below = steps.zs;
+              }
             }
             if (face !== 1 && stands.length > 1) {
               const tt = tHit;

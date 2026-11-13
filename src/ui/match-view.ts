@@ -406,7 +406,6 @@ export class MatchView {
   private readonly crowdSeed: number;
   // O público, como no original: bonecos em filas na bancada, sentados, que se levantam nos momentos especiais. Os balões saem deles.
   private readonly fans: { x: number; y: number; z: number; look: Look; phase: number; flip: boolean; flag: boolean; front: boolean; zeal: number }[] = [];
-  private readonly flagColor: string;
   // No campo de rua não há bancada: há dois bancos de dois degraus, com uns quantos a ver.
   private readonly street: boolean;
   // A rede do campo de rua, numa camada à parte: quem vê o jogo do lado de fora fica atrás dela.
@@ -523,8 +522,6 @@ export class MatchView {
     const coachLook = (team: Team): Look => ({ ...lookOf({ ...team.roster[0]!, name: team.name }, 'suit'), style: 0, legs: 6, torso: 6, build: 'athletic' });
     const { theme } = this.textures;
     this.street = division === 0;
-    const shirt = theme.crowd?.shirts[0] ?? [60, 60, 60];
-    this.flagColor = `rgb(${shirt[0] | 0},${shirt[1] | 0},${shirt[2] | 0})`;
     // Doze caras diferentes chegam para uma bancada: dois terços vestem a cor da casa, o resto roupa de rua.
     const crowdKit = this.crowdTeam === 0 ? 'blue' : 'cream';
     const looks: Look[] = [];
@@ -2764,17 +2761,12 @@ export class MatchView {
       const cheering = s.tick < this.fansCheerUntil - f.zeal * 0.5 * this.fansCheerTicks && f.zeal < this.fansCheerLevel;
       const beat = this.reducedMotion ? f.phase : (s.tick >> 2) + f.phase;
       const claps = f.phase % 3 === 2;
-      const pose: PoseName = cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
+      // Na entrada, com a confiança alta, muitos trazem bandeira. Quem a tem abana-a: devagar sentado, depressa de pé a
+      // festejar (100 e 200 ms por pose), cada um no seu tempo; a bandeira faz parte do boneco, por isso tem o tamanho dele.
+      const flag = f.flag || (this.forecast?.confident && s.phase === 'intro' && f.phase % 3 === 0);
+      const wave = this.reducedMotion ? 0 : ((cheering ? this.animTick >> 1 : this.animTick >> 2) + f.phase) % 4;
+      const pose: PoseName = flag ? (`${cheering ? 'flagUp' : 'flagSit'}${wave}` as PoseName) : cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
       this.sprite(g, pose, f.look, sx | 0, sy | 0, f.flip, false, false);
-      // Na entrada, com a confiança alta, muitos trazem bandeira.
-      if (f.flag || (this.forecast?.confident && s.phase === 'intro' && f.phase % 3 === 0)) {
-        const top = (sy | 0) - this.tall(f.look, sy) - (pose === 'sit' ? 2 : 10);
-        g.fillStyle = '#5a4632';
-        g.fillRect((sx | 0) + 5, top, 1, 18);
-        g.fillStyle = this.flagColor;
-        g.fillRect((sx | 0) + 6, top, 9, 6);
-        this.toWorld([sx + 3, top - 2, sx + 18, top + 20], [f.x, f.y, f.z], 0.6, true);
-      }
       if (this.flashFans?.has(i)) {
         // Uma fotografia: um píxel branco na cara de quem a tira.
         const face = (sy | 0) - this.tall(f.look, sy) + 3;

@@ -35,7 +35,9 @@ interface PoseShape {
   jump?: number;
   ball?: Offset;
   /** Um objeto na mão direita: a garrafa de água do descanso, ou a prancheta do treinador; ou o troféu nas duas mãos. */
-  prop?: 'bottle' | 'board' | 'trophy';
+  prop?: 'bottle' | 'board' | 'trophy' | 'flag';
+  /** Com a bandeira: quanto o pau se inclina (píxeis no cimo, para fora) e em que tempo vai o ondular do pano (0 a 3). */
+  flag?: readonly [number, number];
 }
 
 const POSES = {
@@ -124,6 +126,17 @@ const POSES = {
   clap1: (L: number): PoseShape => ({ a: [3, 1], b: [-3, 1], f: [-2, L], g: [2, L] }),
   cheer1: (L: number): PoseShape => ({ a: [-4, -5], b: [4, -5], f: [-1, L - 1], g: [1, L - 1], jump: 4 }),
   sit: (L: number): PoseShape => ({ a: [-2, 3], b: [2, 3], f: [-3, 3], g: [3, 3], jump: 3 - L }),
+  // A abanar a bandeira, sentado: a mão ao lado da cabeça (por dentro dela, o pau parecia espetado no cabelo) e o pau a
+  // inclinar de um lado para o outro, com o pano a ondular atrás dele.
+  flagSit0: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -6], f: [-3, 3], g: [3, 3], jump: 3 - L, prop: 'flag', flag: [-2, 0] }),
+  flagSit1: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -7], f: [-3, 3], g: [3, 3], jump: 3 - L, prop: 'flag', flag: [0, 1] }),
+  flagSit2: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -6], f: [-3, 3], g: [3, 3], jump: 3 - L, prop: 'flag', flag: [2, 2] }),
+  flagSit3: (L: number): PoseShape => ({ a: [-2, 3], b: [3, -7], f: [-3, 3], g: [3, 3], jump: 3 - L, prop: 'flag', flag: [0, 3] }),
+  // De pé a festejar: o outro punho no ar, o pau bem alto, e um salto de 1 px a meio do abano.
+  flagUp0: (L: number): PoseShape => ({ a: [-4, -6], b: [3, -9], f: [-2, L], g: [2, L], prop: 'flag', flag: [-2, 0] }),
+  flagUp1: (L: number): PoseShape => ({ a: [-4, -7], b: [3, -10], f: [-1, L - 1], g: [1, L - 1], jump: 1, prop: 'flag', flag: [0, 1] }),
+  flagUp2: (L: number): PoseShape => ({ a: [-4, -6], b: [3, -9], f: [-2, L], g: [2, L], prop: 'flag', flag: [2, 2] }),
+  flagUp3: (L: number): PoseShape => ({ a: [-4, -7], b: [3, -10], f: [-1, L - 1], g: [1, L - 1], jump: 1, prop: 'flag', flag: [0, 3] }),
   // Reações: punhos no ar depois de um cesto decisivo, mãos na cabeça depois de um erro ou de uma falta, cabisbaixo a perder.
   fists: (L: number): PoseShape => ({ a: [-5, -7], b: [5, -7], f: [-2, L], g: [2, L], jump: 2 }),
   handsHead: (L: number): PoseShape => ({ a: [-2, -9], b: [2, -9], f: [-2, L], g: [2, L] }),
@@ -282,8 +295,11 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   leg(shape.f, hipLeft + 1, true);
   leg(shape.g, hipLeft + body.hips - body.leg - 1, false);
   rect(hipLeft, hipY - 1, body.hips, 4, trouserColor);
-  rect(hipLeft, hipY + 2, 2, 1, kit.trim);
-  rect(hipLeft + body.hips - 2, hipY + 2, 2, 1, kit.trim);
+  // O debrum na bainha dos calções; de calças não há bainha, e lia-se como pintas soltas a meio das pernas.
+  if (!trousers) {
+    rect(hipLeft, hipY + 2, 2, 1, kit.trim);
+    rect(hipLeft + body.hips - 2, hipY + 2, 2, 1, kit.trim);
+  }
   const top = hipY - T;
   const shoulderLeft = hx - (body.shoulder >> 1);
   const shoulderRight = shoulderLeft + body.shoulder - 1;
@@ -298,6 +314,24 @@ function buildSprite(pose: PoseName, look: Look, back: boolean, withBall: boolea
   const rightCrosses = -shape.b[0] > Math.abs(shape.b[1]);
   if (back && leftCrosses) drawLeftArm();
   if (back && rightCrosses) drawRightArm();
+  if (shape.prop === 'flag' && shape.flag) {
+    // A bandeira na mão direita, atrás do braço: o pau de madeira (com a ponta clara) e o pano na cor da camisola com uma
+    // faixa da cor dos detalhes. O lado do pau fica preso e a ponta solta ondula em troços de dois píxeis.
+    const [tilt, frame] = shape.flag;
+    const hx0 = rightArm + shape.b[0];
+    const hy0 = top + 1 + shape.b[1];
+    const px = hx0 + tilt;
+    const py = hy0 - 12;
+    limb(hx0, hy0 + 1, px, py, 1, () => '#5a4632');
+    rect(px, py - 1, 1, 1, '#f4efe0');
+    const phase = (frame / 4) * Math.PI * 2;
+    const wave = (c: number): number => ((c >> 1) / 3) * Math.sin(phase - (c >> 1) * 1.1);
+    for (let c = 0; c < 8; c++) {
+      const y = py + Math.round(wave(c) * 1.2);
+      const falling = c > 1 && wave(c) < wave(c - 2) - 0.12;
+      for (let r = 0; r < 5; r++) put(px + 1 + c, y + r, r >= 3 ? kit.trim : falling ? kit.shade : kit.jersey);
+    }
+  }
   // O tronco é desenhado linha a linha, dos ombros à cintura.
   for (let row = 0; row < T; row++) {
     const width = Math.round(body.shoulder + ((body.waist - body.shoulder) * row) / Math.max(1, T - 1));
