@@ -2,7 +2,7 @@
 // os bancos das equipas e, no bairro, os bancos de pedra. Têm as medidas e as cores do desenho da tela 2D (art/court.ts:
 // `HOOP_SHAPE`, `SIDELINE`, `STREET_SEATS`), mas são peças a sério: com faces de lado, e cada peça à sua profundidade.
 import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, ShaderMaterial } from 'three';
-import { FAN_SPACING, FLOOR_AREA, HOOP_SHAPE, TUNNEL, inAisle, SIDELINE, STREET_SEATS, seats, type CourtTheme, type Fixture, type Seat, type StepColours } from '../art/court.ts';
+import { FAN_SPACING, FLOOR_AREA, HOOP_SHAPE, endBoards, TUNNEL, inAisle, SIDELINE, STREET_SEATS, seats, type CourtTheme, type Fixture, type Seat, type StepColours } from '../art/court.ts';
 import { INK } from '../art/sprites.ts';
 import { HOOP_U } from '../../sim/court.ts';
 
@@ -44,6 +44,13 @@ class Builder {
     this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], front);
     this.quad([x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1], side);
     this.quad([x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], side);
+  }
+  /** Um quadrilátero com uma cor por canto: a placa mistura-as pelo meio (o túnel escurece para o fundo). */
+  blend(a: V3, b: V3, c: V3, d: V3, ca: V3, cb: V3, cc: V3, cd: V3): void {
+    for (const [p, col] of [[a, ca], [b, cb], [c, cc], [a, ca], [c, cc], [d, cd]] as [V3, V3][]) {
+      this.pos.push(...p);
+      this.tint.push(...col);
+    }
   }
   /** Uma caixa virada para `n` (para o campo), com `a` ao longo da fila: medidas em metros a partir de `o`. */
   turned(o: V3, a: [number, number], n: [number, number], a0: number, a1: number, n0: number, n1: number, z0: number, z1: number, top: V3, front: V3): void {
@@ -177,6 +184,42 @@ function addRail(b: Builder, theme: CourtTheme, steps: StepColours): void {
   }
 }
 
+/**
+ * O túnel por baixo da bancada da lateral: a boca em betão (as ombreiras e o lintel, com o tampo até à bancada) e, lá
+ * dentro, um corredor de 8 m com chão, teto e paredes a escurecer até ao escuro do fundo.
+ */
+function addTunnel(b: Builder, theme: CourtTheme): void {
+  const { x0, x1, height: h } = TUNNEL;
+  const y = FLOOR_AREA.y0;
+  const back = y - 8;
+  const deep = theme.slope * (h + 0.2) + 0.05;
+  const lit = (c: V3): V3 => (theme.tint ? [c[0] * theme.tint[0], c[1] * theme.tint[1], c[2] * theme.tint[2]] : c);
+  const c = (r: number, g: number, bl: number, k = 1): V3 => lit([(r / 255) * k, (g / 255) * k, (bl / 255) * k]);
+  const frame = c(150, 152, 150);
+  const frameTop = c(170, 172, 168);
+  b.box(x0 - 0.2, x0, y - deep, y, 0, h, frameTop, frame);
+  b.box(x1, x1 + 0.2, y - deep, y, 0, h, frameTop, frame);
+  b.box(x0 - 0.2, x1 + 0.2, y - deep, y, h, h + 0.2, frameTop, frame);
+  // Por dentro, um nada para dentro da boca, para não se misturar com as ombreiras.
+  const i0 = x0 + 0.01;
+  const i1 = x1 - 0.01;
+  const top = h - 0.01;
+  const floorNear = c(66, 62, 64);
+  const floorFar = c(66, 62, 64, 0.2);
+  b.blend([i0, y, 0.01], [i1, y, 0.01], [i1, back, 0.01], [i0, back, 0.01], floorNear, floorNear, floorFar, floorFar);
+  const ceilNear = c(40, 42, 54);
+  const ceilFar = c(40, 42, 54, 0.25);
+  b.blend([i0, y, top], [i1, y, top], [i1, back, top], [i0, back, top], ceilNear, ceilNear, ceilFar, ceilFar);
+  for (const [x, k] of [[i0, 1], [i1, 0.82]] as const) {
+    const near = c(70, 72, 88, k);
+    const far = c(70, 72, 88, k * 0.2);
+    b.blend([x, y, 0], [x, y, top], [x, back, top], [x, back, 0], near, near, far, far);
+  }
+  // O fundo, às escuras.
+  const end = c(14, 15, 20);
+  b.quad([i0, back, 0], [i1, back, 0], [i1, back, top], [i0, back, top], end);
+}
+
 export function buildFixtures(theme: CourtTheme, steps: StepColours | null = null): Fixtures {
   // Dos dois lados: assim a ordem dos cantos de cada face não importa (com um só lado, metade das faces sumia).
   const material = new ShaderMaterial({ vertexShader: FLAT_VERTEX, fragmentShader: FLAT_FRAGMENT, side: DoubleSide });
@@ -215,8 +258,9 @@ export function buildFixtures(theme: CourtTheme, steps: StepColours | null = nul
     }
   }
   // A mesa, os bancos e, no bairro, os bancos de pedra.
-  const boxes: readonly Fixture[] = theme.open ? [...SIDELINE, ...STREET_SEATS] : SIDELINE;
+  const boxes: readonly Fixture[] = theme.open ? [...SIDELINE, ...STREET_SEATS] : [...SIDELINE, ...endBoards(theme)];
   for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, 0, f.height, rgb(f.top), rgb(f.front));
+  if (!theme.open && theme.slope > 0) addTunnel(b, theme);
   if (steps && !steps.wood) {
     addChairs(b, theme, steps);
     addRail(b, theme, steps);

@@ -412,7 +412,8 @@ export const THEMES: readonly CourtTheme[] = [
     ambient: 0.68,
     spot: 0.42,
     reflection: 0.28,
-    boards: [[232, 98, 42], [16, 22, 44]],
+    // Laranja e azul-noite: o azul quase preto de antes lia-se como um buraco no muro.
+    boards: [[232, 98, 42], [34, 52, 110]],
     boardText: [250, 240, 214],
     crowd: { from: 1, to: 16, density: 0.92, seats: [[24, 28, 54], [20, 24, 46]], shirts: [[60, 90, 170], [200, 200, 210], [190, 70, 60], [240, 190, 70], [80, 90, 120]], dim: 0.55 },
     flashes: true,
@@ -664,16 +665,76 @@ const floorLevelFor = (t: CourtTextures, floorT: number): { data: Uint32Array; w
 /** As cores do clube da casa: o garrafão, o círculo, a orla do campo e metade da bancada. */
 function dressed(theme: CourtTheme, accent: string): CourtTheme {
   const rgb = hexRgb(accent);
+  // O garrafão tem de se destacar do soalho pela claridade, e não só pela cor: num clube laranja sobre a madeira escura
+  // mal se via. Uma tinta escura (laranja, vermelho, azul) escurece até ficar longe da madeira; uma clara (amarelo, branco),
+  // ou uma que nem a 0,5 lá chegasse, fica como é, para não passar a castanho ou a cinzento. No alcatrão da rua, nunca.
+  const luma = (c: Rgb): number => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const wood = luma(theme.floor(14, 0, 0.5, 0));
+  let k = 0.85;
+  if (!theme.open && luma(rgb) < 150 && luma(shade(rgb, k)) < wood && wood - luma(shade(rgb, 0.5)) >= 50) while (wood - luma(shade(rgb, k)) < 50) k -= 0.05;
   return {
     ...theme,
-    paint: shade(rgb, 0.85),
-    center: shade(rgb, 0.85),
+    paint: shade(rgb, k),
+    center: shade(rgb, k),
     apron: theme.crowd ? () => shade(rgb, 0.5) : theme.apron,
     crowd: theme.crowd && { ...theme.crowd, shirts: [rgb, rgb, rgb, ...theme.crowd.shirts] },
   };
 }
 
+/**
+ * As placas de publicidade da lateral, [de, até] em x. Com os cantos cortados, só na parte da lateral que se vê (entre as
+ * dobras), duas de cada lado do túnel: as de 6,4 m ficavam com as letras cortadas na dobra.
+ */
+function sideBoards(theme: CourtTheme): [number, number][] {
+  if (theme.chamfer) {
+    const a = WALL_NEAR_X + CHAMFER;
+    const b = WALL_FAR_X - CHAMFER;
+    const t0 = TUNNEL.x0 - 0.2;
+    const t1 = TUNNEL.x1 + 0.2;
+    const l = (t0 - a) / 2;
+    const r = (b - t1) / 2;
+    return [[a, a + l], [a + l, t0], [t1, t1 + r], [t1 + r, b]];
+  }
+  const out: [number, number][] = [];
+  for (let k = 0; k < Math.floor(SIDE_WALL_SPAN / BOARD_WIDTH); k++) {
+    const x0 = WALL_NEAR_X + k * BOARD_WIDTH;
+    // A placa que fica na boca do túnel não leva texto, senão as letras ficavam por cima dele.
+    if (theme.slope > 0 && x0 + BOARD_WIDTH > TUNNEL.x0 - 0.2 && x0 < TUNNEL.x1 + 0.2) continue;
+    out.push([x0, x0 + BOARD_WIDTH]);
+  }
+  return out;
+}
+
+/**
+ * Onde cai, na textura das paredes, um ponto do muro de um canto cortado: os cantos usam as pontas da faixa da lateral (os
+ * 4 m que a dobra esconde), esticadas ao comprimento da diagonal e seguidas com a lateral na dobra.
+ */
+export const diagAlong = (hx: number, hy: number, far: boolean): number =>
+  far
+    ? Math.min(SIDE_WALL_SPAN, Math.max(SIDE_WALL_SPAN - CHAMFER, SIDE_WALL_SPAN - ((WALL_FAR_X - hx - hy + WALL_Y) / 2 + CHAMFER / 2)))
+    : Math.min(CHAMFER, Math.max(0, (hx - WALL_NEAR_X - hy + WALL_Y) / 2 + CHAMFER / 2));
+
+/** O fundo do túnel: a porta iluminada, entre 0,3 e 0,7 da largura e de 0,12 a 0,62 da altura da boca. */
+const TUNNEL_DOOR = { x0: 0.3, x1: 0.7, z0: 0.12, z1: 0.62 } as const;
+/** Por dentro do túnel, de 0 a 1 na largura (tx) e na altura (tz) da boca. */
+function tunnelInside(tx: number, tz: number): Rgb {
+  const { x0, x1, z0, z1 } = TUNNEL_DOOR;
+  if (tx > x0 && tx < x1 && tz > z0 && tz < z1) {
+    // A porta: luz quente, com um batente escuro à volta.
+    return tx < x0 + 0.03 || tx > x1 - 0.03 || tz > z1 - 0.04 ? [70, 62, 52] : [214, 190, 138];
+  }
+  // Quanto se anda da boca para a porta (0 na boca, 1 na porta), por cada uma das quatro faces.
+  const left = tx / x0;
+  const right = (1 - tx) / (1 - x1);
+  const depth = Math.min(1, left, right);
+  if (tz < z0 * depth) return shade([66, 62, 64], 1 - 0.35 * Math.min(1, tz / z0));
+  if (tz > 1 - (1 - z1) * depth) return shade([34, 36, 46], 1 - 0.3 * Math.min(1, (1 - tz) / (1 - z1)));
+  const k = 1 - 0.4 * depth;
+  return shade(tx < 0.5 ? [52, 54, 66] : [42, 44, 56], k);
+}
+
 function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: number): Uint32Array {
+  const boards = sideBoards(theme);
   const wall = new Uint32Array(wallW * wallH);
   for (let j = 0; j < wallH; j++) {
     const z = (j + 0.5) / WALL_SCALE;
@@ -683,12 +744,19 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
       const x = u + WALL_NEAR_X;
       const tunnelFrame = theme.slope > 0 && u < SIDE_WALL_SPAN && x > TUNNEL.x0 - 0.2 && x < TUNNEL.x1 + 0.2 && z < TUNNEL.height + 0.2;
       if (tunnelFrame) {
-        // A boca do túnel: escura por dentro, com uma moldura clara.
-        color = x > TUNNEL.x0 && x < TUNNEL.x1 && z < TUNNEL.height ? [22, 24, 32] : [150, 152, 150];
+        // A boca do túnel, com uma moldura clara; por dentro, o corredor pintado em perspetiva: o chão, o teto e as duas
+        // paredes a fugir para a porta do fundo, iluminada.
+        color = x > TUNNEL.x0 && x < TUNNEL.x1 && z < TUNNEL.height ? tunnelInside((x - TUNNEL.x0) / (TUNNEL.x1 - TUNNEL.x0), z / TUNNEL.height) : [150, 152, 150];
       } else if (theme.boards.length > 0 && z < BOARD_HEIGHT) {
-        const k = Math.floor(u / BOARD_WIDTH);
-        // Vistas de lado, as placas do topo do campo ocupam muito ecrã, por isso ficam mais discretas.
-        const base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.6);
+        const k = theme.chamfer && u < SIDE_WALL_SPAN ? boards.findIndex(([a, b]) => x >= a && x < b) : Math.floor(u / BOARD_WIDTH);
+        let base: Rgb;
+        if (k < 0) {
+          // Nos cantos cortados, uma placa do clube: na cor dele, com uma risca da segunda cor ao meio.
+          const [one, two] = theme.banner ?? [theme.boards[0]!, theme.boardText];
+          base = z > 0.42 && z < 0.58 ? two : one;
+        }
+        // Vistas de lado, as placas do topo do campo ocupam muito ecrã, por isso ficam um pouco mais discretas.
+        else base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.82);
         color = z > BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
       } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL && (u < SIDE_WALL_SPAN || theme.endStands !== false)) {
         // O muro baixo entre as placas e a primeira fila; dos dois lados do túnel, a faixa da claque, às riscas nas cores do clube.
@@ -707,15 +775,12 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
     const scale = 2;
     const top = Math.round(((BOARD_HEIGHT - 0.1) * WALL_SCALE - 5 * scale) / 2) + 1;
     const ink = packRgb(theme.boardText);
-    const boardsOnSide = Math.floor(SIDE_WALL_SPAN / BOARD_WIDTH);
-    for (let k = 0; k < boardsOnSide; k++) {
-      // A placa que fica na boca do túnel não leva texto, senão as letras ficavam por cima dele.
-      const x0 = WALL_NEAR_X + k * BOARD_WIDTH;
-      if (theme.slope > 0 && x0 + BOARD_WIDTH > TUNNEL.x0 - 0.2 && x0 < TUNNEL.x1 + 0.2) continue;
+    boards.forEach(([x0, x1], i) => {
+      const k = theme.chamfer ? i : Math.round((x0 - WALL_NEAR_X) / BOARD_WIDTH);
       const label = SPONSORS[(k + Math.floor((theme.shift ?? 0) * SPONSORS.length)) % SPONSORS.length]!;
-      const start = k * BOARD_WIDTH * WALL_SCALE;
+      const start = (x0 - WALL_NEAR_X) * WALL_SCALE;
       const width = label.length * 4 * scale - scale;
-      const left = Math.round(start + (BOARD_WIDTH * WALL_SCALE + width) / 2);
+      const left = Math.round(start + ((x1 - x0) * WALL_SCALE + width) / 2);
       [...label].forEach((ch, index) => {
         const glyph = FONT[ch] ?? '00000';
         for (let row = 0; row < 5; row++) {
@@ -732,7 +797,7 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
           }
         }
       });
-    }
+    });
   }
   return wall;
 }
@@ -825,7 +890,12 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
       const x = wx < 14 ? wx : 28 - wx; // O campo é simétrico: só a metade esquerda precisa de desenho.
       const noise = hash(Math.floor(x * 5), Math.floor(y * 5));
       let color: Rgb;
-      if (x < 0 || Math.abs(y) > 7.5) color = theme.apron(noise);
+      if (x < 0 || Math.abs(y) > 7.5) {
+        color = theme.apron(noise);
+        // A 1 m das linhas a orla escurece um pouco, para a faixa entre as linhas e o muro não ser um plano liso. Sem risca:
+        // uma risca clara lia-se como uma segunda linha do campo.
+        if (theme.steps && !theme.woodSteps && Math.max(-x, Math.abs(y) - 7.5) >= 1) color = shade(color, 0.88);
+      }
       else if (x < 5.8 && Math.abs(y) < 2.45) color = theme.paint;
       else if ((14 - x) * (14 - x) + y * y < 1.8 * 1.8) {
         color = isCenterSeam(wx, y) ? theme.line(1) : theme.center;
@@ -1399,7 +1469,7 @@ export class Camera {
         }
         // A diagonal usa a faixa dos topos da textura (sem letras), perto do canto.
         // Nos topos nunca se vai à faixa da lateral: nos cantos, para lá da bancada, aparecia o público pintado da lateral.
-        const along = hit === Infinity ? 0 : diag ? SIDE_WALL_SPAN + 0.5 : onSide ? cx + dirX * hit - WALL_NEAR_X : Math.max(SIDE_WALL_SPAN, cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN);
+        const along = hit === Infinity ? 0 : diag ? diagAlong(cx + dirX * hit, cy + dirY * hit, far) : onSide ? cx + dirX * hit - WALL_NEAR_X : Math.max(SIDE_WALL_SPAN, cy + dirY * hit - WALL_Y + SIDE_WALL_SPAN);
         const z = hit === Infinity ? WALL_Z_SPAN : cz + rz * hit;
         const wu = Math.max(0, Math.min(t.wallW - 1, (along * WALL_SCALE) | 0));
         const wv = Math.max(0, Math.min(t.wallH - 1, (z * WALL_SCALE) | 0));
@@ -1542,6 +1612,22 @@ export const SIDELINE: readonly Fixture[] = [
   { x0: 4, x1: 11.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
   { x0: 20, x1: 27.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
 ];
+/**
+ * As placas soltas atrás de cada linha de fundo, nos pavilhões com bancada em degraus: a 2,6 m da linha, atrás do poste do
+ * cesto, em quatro placas de 3,2 m, com o rebordo de cima mais escuro.
+ */
+export function endBoards(theme: CourtTheme): Fixture[] {
+  if (!theme.steps || theme.woodSteps || theme.boards.length === 0) return [];
+  const hex = (c: Rgb): string => `#${c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+  return [false, true].flatMap(far =>
+    [0, 1, 2, 3].map(k => {
+      const x0 = far ? 28 + 2.45 : -2.6;
+      // O laranja das placas e a cor do clube, alternadas: na cor das placas do muro, fundiam-se com as que ficam atrás.
+      const c = tinted((k + (far ? 1 : 0)) % 2 === 0 ? theme.boards[0]! : (theme.banner?.[0] ?? theme.boards[1 % theme.boards.length]!), theme.tint);
+      return { x0, x1: x0 + 0.15, y0: -6.4 + k * 3.2, y1: -6.4 + (k + 1) * 3.2 - 0.04, height: 0.9, top: hex(shade(c, 0.6)), front: hex(c) };
+    }),
+  );
+}
 /** Os bancos de pedra do bairro, atrás dos cestos: o degrau alto atrás, o baixo à frente, virados para o campo. */
 export const STREET_SEATS: readonly Fixture[] = [false, true].flatMap(far =>
   ([[-7.2, -3.4], [3.4, 7.2]] as const).flatMap(([y0, y1]) => {

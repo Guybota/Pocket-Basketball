@@ -478,9 +478,13 @@ export class CourtGpu {
     this.withoutFence = true;
     const painted = venue.stands.material.uniforms.paintedChairs;
     if (painted) painted.value = true;
+    const hole = venue.stands.material.uniforms.tunnelHole;
+    const holeWas = hole?.value;
+    if (hole) hole.value = false;
     const out = this.draw(view, t, width, height, 1, [0, 0], crowdFrame);
     this.withoutFence = false;
     if (painted) painted.value = false;
+    if (hole) hole.value = holeWas;
     venue.floor.visible = true;
     venue.lines.visible = true;
     venue.fixtures.group.visible = true;

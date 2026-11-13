@@ -42,6 +42,8 @@ uniform bool wood;
 uniform bool paintedChairs;
 // O muro a direito, com um corredor plano em cima dele à frente da primeira fila (onde fica o guarda-corpos).
 uniform bool corridor;
+// O túnel é um modelo 3D (fixtures.ts): pela boca dele, o cenário fica ao fundo de tudo, para o modelo se ver lá dentro.
+uniform bool tunnelHole;
 uniform float zs;
 uniform float t0;
 uniform float rise;
@@ -74,6 +76,12 @@ const float HALF_SEAT = ${f(FAN_SPACING / 2)};
 vec4 stepColor(int kind, float k) { return texelFetch(stepMap, ivec2(kind, int(k)), 0); }
 // Como no traçador: o texel por truncatura, preso à textura. (Filtrá-las não baixava o tremor e misturava, nas dobras, a
 // coluna de outra parede.)
+// Os cantos cortados usam as pontas da faixa da lateral, esticadas ao comprimento da diagonal (court.ts: diagAlong).
+float diagAlong(float hx, float hy, bool isFar) {
+  return isFar
+    ? clamp(SIDE_SPAN - ((FAR_X - hx - hy + WALL_Y) / 2.0 + CHAMFER / 2.0), SIDE_SPAN - CHAMFER, SIDE_SPAN)
+    : clamp((hx - NEAR_X - hy + WALL_Y) / 2.0 + CHAMFER / 2.0, 0.0, CHAMFER);
+}
 vec4 wallColor(float along, float z) {
   ivec2 size = textureSize(wallMap, 0);
   int u = clamp(int(along * WALL_SCALE), 0, size.x - 1);
@@ -117,6 +125,16 @@ void main() {
     float hx = cx + dirX * floorT;
     float hy = cy + dirY * floorT;
     if (hx > NEAR_X && hx < FAR_X && hy > WALL_Y && (!chamferOn || (hx - NEAR_X + hy - WALL_Y > CHAMFER && FAR_X - hx + hy - WALL_Y > CHAMFER))) discard;
+  }
+  if (tunnelHole && dirY < 0.0) {
+    float tF = (WALL_Y - cy) / dirY;
+    float hx = cx + dirX * tF;
+    float hz = cz + rz * tF;
+    if (hx > TX0 && hx < TX1 && hz >= 0.0 && hz < TH) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      gl_FragDepth = 1.0;
+      return;
+    }
   }
 
   float sideOffset = cy - WALL_Y + slope * cz;
@@ -318,7 +336,7 @@ void main() {
       hit = tHit;
     }
   }
-  float along = hit >= INF ? 0.0 : diag ? SIDE_SPAN + 0.5 : onSide ? cx + dirX * hit - NEAR_X : max(SIDE_SPAN, cy + dirY * hit - WALL_Y + SIDE_SPAN);
+  float along = hit >= INF ? 0.0 : diag ? diagAlong(cx + dirX * hit, cy + dirY * hit, far) : onSide ? cx + dirX * hit - NEAR_X : max(SIDE_SPAN, cy + dirY * hit - WALL_Y + SIDE_SPAN);
   float z = hit >= INF ? WALL_Z_SPAN : cz + rz * hit;
   vec4 color = wallColor(along, z);
   if (hit >= INF) {
@@ -378,6 +396,7 @@ export function venueUniforms(t: CourtTextures): { uniforms: Record<string, { va
     wood: { value: steps?.wood ?? false },
     paintedChairs: { value: false },
     corridor: { value: steps !== null && !steps.wood },
+    tunnelHole: { value: theme.slope > 0 },
     zs: { value: steps?.zs ?? 0 },
     t0: { value: steps?.t0 ?? 0 },
     rise: { value: steps?.rise ?? 1 },

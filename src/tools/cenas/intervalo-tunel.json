@@ -1,0 +1,11 @@
+{
+  "kind": "scene",
+  "name": "intervalo-tunel",
+  "force": { "type": "periodEnd", "period": 2 },
+  "division": 3,
+  "before": 0.5,
+  "after": 16,
+  "fps": 10,
+  "crop": null,
+  "zoom": 1
+}

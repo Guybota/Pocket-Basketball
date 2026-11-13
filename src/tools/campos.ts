@@ -1,18 +1,19 @@
 // Fotografa os campos para os ver e comparar depressa: cada um de longe e de cima, com o pavilhão inteiro, e com a câmara
 // do jogo nas duas pontas e ao meio. O cenário vem da placa gráfica, como no jogo; os bonecos encolhem com a distância da
 // câmara (`Camera.depthScale`).
-// npm run campos [-- divisões, ex.: 2 3]  →  dist-check/campos/
+// npm run campos [-- divisões, ex.: 2 3] [--cor=#e8622a, a cor do clube da casa]  →  dist-check/campos/
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { withAnimPage } from './anim-browser.ts';
 
 const OUT = 'dist-check/campos';
 mkdirSync(OUT, { recursive: true });
-const divisions = process.argv.slice(2).map(Number).filter(n => Number.isInteger(n));
+const divisions = process.argv.slice(2).filter(a => !a.startsWith('--')).map(Number).filter(n => Number.isInteger(n));
+const color = process.argv.find(a => a.startsWith('--cor='))?.slice(6);
 const list = divisions.length > 0 ? divisions : [0, 1, 2, 3, 4];
 
 await withAnimPage(async page => {
   for (const division of list) {
-    const shots = await page.evaluate(async division => {
+    const shots = await page.evaluate(async ({ division, color }) => {
       const MV = await import('/src/ui/match-view.ts' as string);
       const CL = await import('/src/ui/club.ts' as string);
       const TW = await import('/src/ui/art/town.ts' as string);
@@ -28,7 +29,7 @@ await withAnimPage(async page => {
         canvas.height = h * art;
         canvas.dataset.artScale = String(art);
         const view: any = new MV.MatchView(canvas.getContext('2d')!, CL.clubTeam(club), CL.opponentOf(club), CL.weekSeed(club), division, { announce: () => {}, event: () => {}, sound: () => {} },
-          [true, false], 1, undefined, undefined, club.kits[0].jersey, 1, undefined, club.emblem, club.emblem, undefined, TW.weatherFor(1));
+          [true, false], 1, undefined, undefined, color ?? club.kits[0].jersey, 1, undefined, club.emblem, club.emblem, undefined, TW.weatherFor(1));
         for (let i = 0; i < 200; i++) view.stepSim();
         return { view, canvas };
       };
@@ -53,8 +54,8 @@ await withAnimPage(async page => {
         out[`jogo-x${x}`] = canvas.toDataURL();
       }
       return out;
-    }, division);
-    for (const [k, png] of Object.entries(shots)) writeFileSync(`${OUT}/d${division}-${k}.png`, Buffer.from(png.split(',')[1]!, 'base64'));
+    }, { division, color });
+    for (const [k, png] of Object.entries(shots)) writeFileSync(`${OUT}/d${division}${color ? `-${color.slice(1)}` : ''}-${k}.png`, Buffer.from(png.split(',')[1]!, 'base64'));
     console.log(`divisão ${division}: ${Object.keys(shots).length} imagens`);
   }
 }, e => console.log('ERRO', e), true);
