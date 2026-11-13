@@ -11,7 +11,7 @@ import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { courtGpu } from './gpu/loader.ts';
 import type { WorldSprite } from './gpu/sprite-layer.ts';
-import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
+import { CLOSED_GYM, Camera, FAN_SPACING, SIDELINE, STAND, STREET_SEATS, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
 import {
@@ -39,6 +39,40 @@ let speechFontLoaded = false;
 const speechFontReady = (): boolean =>
   (speechFontLoaded ||= typeof document !== 'undefined' && [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Jersey 15' && f.status === 'loaded'));
 /** Quantos píxeis da tela há por píxel de arte (o layout escreve-o na tela do jogo; nas outras é 1). */
+/** Um ponto do mundo, em metros (z para cima). */
+type Vec3 = readonly [number, number, number];
+/** Uma caixa no ecrã, em píxeis da arte: esquerda, cima, direita, baixo. */
+type Box = readonly [number, number, number, number];
+/**
+ * Uma coisa do mundo a desenhar por ordem (`y`, os pés no ecrã). Com a placa gráfica, `world` diz onde está no mundo: os
+ * bonecos que desenhar vão para lá com essa profundidade, e o resto do que pintar dentro de `box` (sombra, bola, cesto) é
+ * copiado para lá, à profundidade de `world` aproximado `bias` metros da câmara.
+ */
+interface Drawable {
+  y: number;
+  draw: () => void;
+  /** Só na tela 2D: com a placa gráfica, é um modelo 3D do cenário (os cestos, a mesa, os bancos). */
+  cpuOnly?: boolean;
+  world?: Vec3;
+  box?: Box;
+  bias?: number;
+}
+/** Quanto quem está no chão se aproxima da câmara, em metros, no mundo da placa gráfica: um nada, à frente da sua sombra. */
+const GROUND_BIAS = 0.05;
+/** A sombra de raio `r` (píxeis da arte) numa imagem, para a placa gráfica: a mesma de `drawShadow`, guardada por tamanho. */
+const shadowImages = new Map<number, HTMLCanvasElement>();
+function shadowImage(r: number): HTMLCanvasElement {
+  let image = shadowImages.get(r);
+  if (!image) {
+    image = document.createElement('canvas');
+    image.width = 2 * r;
+    image.height = 4;
+    // `drawShadow` pinta de x - r - 1 a x + r - 1 e de y - 2 a y + 1, com x deslocado um píxel.
+    drawShadow(image.getContext('2d')!, r - 1, 2, r);
+    shadowImages.set(r, image);
+  }
+  return image;
+}
 const artScaleOf = (canvas: HTMLCanvasElement): number => Math.max(1, Math.round(Number(canvas.dataset.artScale ?? 1)));
 
 const HOOP_LEFT = 1.575;
@@ -1524,18 +1558,11 @@ export class MatchView {
   }
 
   /** Quem está no banco, a mesa de oficiais e os treinadores. */
-  private addSideline(drawables: { y: number; draw: () => void }[], time: number): void {
+  private addSideline(drawables: Drawable[], time: number): void {
     const { g, s, camera } = this;
     // A mesa e os bancos estão encostados à parede, por isso desenham-se antes de tudo o resto.
-    drawables.push({
-      y: -Infinity,
-      draw: () => {
-        // O túnel fica no centro, por isso a mesa está à direita dele e o banco visitante mais para a ponta.
-        drawBox(g, camera, 16.2, 19.4, -10.15, -9.55, 0.75, '#efe3c2', '#2a3040');
-        drawBox(g, camera, 4, 11.4, -10.05, -9.8, 0.4, '#3a4252', '#1b2230');
-        drawBox(g, camera, 20, 27.4, -10.05, -9.8, 0.4, '#3a4252', '#1b2230');
-      },
-    });
+    // Com a placa gráfica, a mesa e os bancos são modelos 3D do cenário.
+    for (const f of SIDELINE) drawables.push(this.boxDrawable(f.x0, f.x1, f.y0, f.y1, f.height, f.top, f.front));
     for (const team of [0, 1] as const) {
       const benchers = s.bodies.filter(b => b.team === team && b.slot === -1);
       const startX = team === 0 ? 4.4 : 20.3;
@@ -1551,7 +1578,7 @@ export class MatchView {
         if (held) {
           const [hx, hy] = camera.project(held.x, held.y);
           this.drawn.bodies.set(b, { x: hx, y: hy, lift: 0, pose: held.pose, height: this.tall(this.view(b).look, hy), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
-          drawables.push({ y: hy, draw: () => this.sprite(g, held.pose, this.view(b).look, hx, hy, held.flip, held.back, false, held.legs) });
+          drawables.push({ y: hy, world: [held.x, held.y, 0], draw: () => this.sprite(g, held.pose, this.view(b).look, hx, hy, held.flip, held.back, false, held.legs) });
           return;
         }
         const locker = toLocker ? this.lockerAt(b) : null;
@@ -1562,7 +1589,7 @@ export class MatchView {
           const pose: PoseName = locker.moving ? locker.pose : locker.wait;
           const back = locker.moving && locker.dy < -Math.abs(locker.dx);
           this.drawn.bodies.set(b, { x: lx, y: ly, lift: 0, pose, height: this.tall(this.view(b).look, ly), world: { x: locker.x, y: locker.y }, back });
-          drawables.push({ y: ly, draw: () => this.sprite(g, pose, this.view(b).look, lx, ly, locker.dx < 0, back, false) });
+          drawables.push({ y: ly, world: [locker.x, locker.y, 0], draw: () => this.sprite(g, pose, this.view(b).look, lx, ly, locker.dx < 0, back, false) });
           return;
         }
         if (leaving.has(b)) return;
@@ -1587,7 +1614,8 @@ export class MatchView {
         const pose: PoseName = cheering && seated ? (Math.floor(this.animTick / 3) + i) % 2 ? 'cheer0' : 'cheer1' : seated ? 'sit' : walking ? RUN_FRAMES[Math.floor(time * 6) % 4]! : 'idle';
         const flip = walking ? dx < 0 : HUDDLE_CENTRE[team][0] < pos.x;
         this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose, height: this.tall(this.view(b).look, sy), world: { ...pos } });
-        drawables.push({ y: sy, draw: () => this.sprite(g, pose, this.view(b).look, sx, sy, flip, false, false) });
+        // Sentado, fica à frente do banco: no mundo, a face da frente do banco (mais alta) passava por cima das pernas.
+        drawables.push({ y: sy, world: [pos.x, pos.y + (seated ? 0.4 : 0), 0], draw: () => this.sprite(g, pose, this.view(b).look, sx, sy, flip, false, false) });
       });
       const coachLocker = toLocker ? this.lockerAt(team) : null;
       if (coachLocker) {
@@ -1595,7 +1623,7 @@ export class MatchView {
         const [lx, ly] = camera.project(coachLocker.x, coachLocker.y);
         const pose: PoseName = coachLocker.moving ? coachLocker.pose : coachLocker.wait;
         const back = coachLocker.moving && coachLocker.dy < -Math.abs(coachLocker.dx);
-        drawables.push({ y: ly, draw: () => {
+        drawables.push({ y: ly, world: [coachLocker.x, coachLocker.y, 0], draw: () => {
           this.shadow(g, lx, ly);
           this.sprite(g, pose, this.coaches[team], lx, ly, coachLocker.dx < 0, back, false);
         } });
@@ -1624,6 +1652,7 @@ export class MatchView {
       const coachPose: PoseName = s.tick < this.coachUpsetUntil[team] ? 'handsHead' : cheering ? (Math.floor(this.animTick / 3) % 2 ? 'cheer0' : 'fists') : walking ? RUN_FRAMES[coachFrame]! : huddle ? ((this.animTick >> 5) % 3 === 2 ? 'point' : 'board') : standing;
       drawables.push({
         y: cy,
+        world: [pos.x, pos.y, 0],
         draw: () => {
           this.shadow(g, cx, cy);
           this.sprite(g, coachPose, this.coaches[team], cx, cy, walking && dx < 0, false, false);
@@ -1633,7 +1662,7 @@ export class MatchView {
   }
 
   /** Quem vai a caminho do banco: a andar da última posição em campo até ao seu lugar, e depois senta-se. */
-  private addExits(drawables: { y: number; draw: () => void }[], alpha: number): void {
+  private addExits(drawables: Drawable[], alpha: number): void {
     const { g, s, camera } = this;
     for (let i = this.exits.length - 1; i >= 0; i--) {
       const e = this.exits[i]!;
@@ -1648,7 +1677,7 @@ export class MatchView {
         const withBall = jump.withBall === true;
         const flip = this.motionOf(e.body).flip;
         this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: this.tall(look, dy), world: { x: dunk.x, y: dunk.y } });
-        drawables.push({ y: dy, draw: () => {
+        drawables.push({ y: dy, world: [dunk.x, dunk.y, 0], draw: () => {
           this.shadow(g, dx, dy);
           this.sprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall, undefined, dy);
         } });
@@ -1663,7 +1692,7 @@ export class MatchView {
       const [sx, sy] = camera.project(world.x, world.y);
       const pose = RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]!;
       this.drawn.bodies.set(e.body, { x: sx, y: sy, lift: 0, pose, height: this.tall(look, sy), world });
-      drawables.push({ y: sy, draw: () => this.sprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
+      drawables.push({ y: sy, world: [world.x, world.y, 0], draw: () => this.sprite(g, pose, look, sx, sy, e.to.x < e.from.x, true, false) });
     }
   }
 
@@ -1750,82 +1779,8 @@ export class MatchView {
     const excited = s.tick < this.excitedUntil;
     const beat = (this.animTick >> 2) % 2;
     const crowdFrame = excited ? (this.excitement >= 0.5 ? 3 : 1) + beat : (this.animTick >> 5) % 3 === 0 ? 1 : 0;
-    // O cenário (chão, linhas, bancadas e paredes, ou o exterior do campo de rua) na placa gráfica, à resolução do ecrã. Sem
-    // WebGL 2, com WebGL por software, ou com o contexto perdido, fica no traçador de raios, como antes.
-    const frame = this.reducedMotion ? 0 : crowdFrame;
-    const gpu = courtGpu();
-    // O público dos pavilhões vai com o cenário para a placa gráfica, com a profundidade de cada um. No campo de rua fica na
-    // tela 2D: a rede, desenhada depois de quem está de fora, ficava por cima dele.
-    const crowd: WorldSprite[] = [];
-    if (gpu && !theme.open) {
-      this.spriteMode = 'collect';
-      this.spriteSink = crowd;
-      this.drawFans();
-      this.spriteMode = 'draw';
-    }
-    const gpuScene = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame, crowd) ?? null;
-    this.gpuFloor = gpuScene;
-    // Flashes de fotografia nas bancadas: ao acaso, mas pelo animTick, para duas gravações da mesma cena saírem iguais.
-    const flashes: [number, number][] = [];
-    if (excited && theme.flashes && !this.reducedMotion) {
-      for (let i = 0; i < 6; i++) {
-        const h = Math.imul(this.animTick * 6 + i + 1, 2654435761) >>> 0;
-        flashes.push([(h >>> 8) % camera.width, h % Math.max(1, Math.floor(camera.height * 0.25))]);
-      }
-    }
-    if (gpuScene) {
-      g.save();
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.drawImage(gpuScene, 0, 0);
-      g.restore();
-      // Um píxel da arte cada um, como no traçador.
-      g.fillStyle = '#ffffff';
-      for (const [x, y] of flashes) g.fillRect(x, y, 1, 1);
-      this.sceneStale = true;
-    } else {
-      let fresh = camera.drawScene(this.pixels, this.textures, frame, this.fence?.pixels);
-      if (flashes.length > 0) {
-        // Os flashes sujam os píxeis do cenário, que têm de se refazer na imagem seguinte.
-        for (const [x, y] of flashes) this.pixels[y * camera.width + x] = 0xffffffff;
-        camera.forgetScene();
-        fresh = true;
-      }
-      // Com a imagem aproximada, ou com a câmara parada, o cenário passa por uma tela à parte: `putImageData` ignora a
-      // aproximação, `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai
-      // direto, que é uma cópia a menos.
-      if (this.zoom > 1.001 || !fresh || this.art > 1) {
-        if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
-          this.scene = document.createElement('canvas');
-          this.scene.width = camera.width;
-          this.scene.height = camera.height;
-          this.sceneStale = true;
-        }
-        if (fresh || this.sceneStale) {
-          this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
-          if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
-        }
-        this.sceneStale = false;
-        g.drawImage(this.scene, 0, 0);
-      } else {
-        g.putImageData(this.image, 0, 0);
-        if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
-        this.sceneStale = true;
-      }
-    }
-    this.drawOutsiders();
-    // A rede do campo de rua, por cima de quem está do lado de fora.
-    const gpuFence = gpuScene && theme.open ? gpu!.drawFence(this.textures) : null;
-    if (gpuFence) {
-      g.save();
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.drawImage(gpuFence, 0, 0);
-      g.restore();
-    } else if (this.fence && !gpuScene) g.drawImage(this.fence.canvas, 0, 0);
-    // Com o público na placa gráfica, aqui só ficam as bandeiras, quem dorme e os bancos da rua.
-    this.spriteMode = gpuScene && !theme.open ? 'skip' : 'draw';
-    this.drawFans();
-    this.spriteMode = 'draw';
-    const drawables: { y: number; draw: () => void }[] = [];
+    const drawables: Drawable[] = [];
+    const swishes: [number, number] = [0, 0];
     this.addSideline(drawables, time);
     this.addExits(drawables, alpha);
     this.addHumor(drawables);
@@ -1833,8 +1788,11 @@ export class MatchView {
       const outward = hoopX < 14 ? -1 : 1;
       const swish = hoopX === this.swishHoop && s.tick < this.swishUntil ? (this.swishUntil - s.tick) / SWISH_TICKS : 0;
       const hoopY = camera.project(hoopX + outward * 0.5, 0, 0)[1];
-      drawables.push({ y: hoopY, draw: () => drawHoopBack(g, camera, theme, hoopX, swish) });
-      drawables.push({ y: hoopY + HOOP_FRONT_OFFSET, draw: () => drawHoopFront(g, camera, hoopX, swish) });
+      // Com a placa gráfica, o cesto é um modelo 3D do cenário (a rede abre com `swish`).
+      if (hoopX === HOOP_LEFT) swishes[0] = swish;
+      else swishes[1] = swish;
+      drawables.push({ y: hoopY, cpuOnly: true, draw: () => drawHoopBack(g, camera, theme, hoopX, swish) });
+      drawables.push({ y: hoopY + HOOP_FRONT_OFFSET, cpuOnly: true, draw: () => drawHoopFront(g, camera, hoopX, swish) });
     }
     // Quem já entrou no túnel deixa de se ver; nos cenários de teste, só quem `visible` deixar.
     // Na ida para o balneário, quem já passou a porta.
@@ -1846,7 +1804,7 @@ export class MatchView {
         const look = held.trophy ? { ...this.view(b).look, trophy: held.trophy } : this.view(b).look;
         const [sx, sy] = camera.project(held.x, held.y);
         this.drawn.bodies.set(b, { x: sx, y: sy, lift: 0, pose: held.pose, height: this.tall(look, sy), world: { x: held.x, y: held.y }, back: held.back, legs: held.legs });
-        return { body: b as Body | null, x: sx, y: sy, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: held.back, legs: held.legs };
+        return { body: b as Body | null, x: sx, y: sy, wx: held.x, wy: held.y, lift: 0, pose: held.pose, withBall: false, look, flip: held.flip, back: held.back, legs: held.legs };
       }
       const prev = this.view(b).prev;
       let x = prev.x + (b.x - prev.x) * alpha;
@@ -1890,17 +1848,20 @@ export class MatchView {
       const legs = motion.moving && lift === 0 && !crouching && !LOCOMOTION.test(pose) && (poseFeet(pose) <= 2 || CHEERS.has(pose)) ? RUN_FRAMES[this.view(b).steps % 4] : undefined;
       this.drawn.bodies.get(b)!.legs = legs;
       this.view(b).striding = legs !== undefined || LOCOMOTION.test(pose);
-      return { body: b as Body | null, x: sx, y: sy, lift, pose, withBall, look, flip, back, legs };
+      return { body: b as Body | null, x: sx, y: sy, wx: dunk.x, wy: dunk.y, lift, pose, withBall, look, flip, back, legs };
     });
     const { referee } = this;
     // Depois do corte para o dobro, o árbitro já não está no plano da cerimónia.
     if (!this.visible && !lifted) {
-      const [refereeX, refereeY] = camera.project(referee.prevX + (referee.x - referee.prevX) * alpha, referee.prevY + (referee.y - referee.prevY) * alpha);
+      const refereeWorld = { x: referee.prevX + (referee.x - referee.prevX) * alpha, y: referee.prevY + (referee.y - referee.prevY) * alpha };
+      const [refereeX, refereeY] = camera.project(refereeWorld.x, refereeWorld.y);
       const signalling = s.tick < referee.signalUntil;
       placed.push({
         body: null,
         x: refereeX,
         y: refereeY,
+        wx: refereeWorld.x,
+        wy: refereeWorld.y,
         lift: 0,
         pose: signalling ? 'cheer0' : referee.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle',
         withBall: false,
@@ -1910,10 +1871,6 @@ export class MatchView {
         legs: undefined,
       });
     }
-    // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
-    if (theme.reflection > 0) {
-      for (const p of placed) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection, p.legs, this.depth(p.y));
-    }
     // A poeira fica no chão, atrás de quem a levantou: sobe, abre e esbate-se.
     for (const q of this.puffs) {
       const age = (s.tick + alpha - q.born) / PUFF_TICKS;
@@ -1921,6 +1878,8 @@ export class MatchView {
       const [qx, qy] = camera.project(q.x, q.y);
       drawables.push({
         y: qy - 1,
+        world: [q.x, q.y, 0],
+        box: [qx - 10, qy - 14, qx + 10, qy + 4],
         draw: () => {
           g.globalAlpha = 0.9 * (1 - age);
           g.fillStyle = '#fff6e4';
@@ -1937,6 +1896,7 @@ export class MatchView {
     for (const p of placed) {
       drawables.push({
         y: p.y,
+        world: [p.wx, p.wy, 0],
         draw: () => {
           this.shadow(g, p.x, p.y);
           this.sprite(g, p.pose, p.look, p.x, p.y - p.lift, p.flip, p.back, p.withBall, p.legs, p.y);
@@ -1959,7 +1919,8 @@ export class MatchView {
       const target: [number, number] = [carrier.x + (carrier.flip ? -(inHand[0] + 1) : inHand[0]) * k, carrier.y - carrier.lift + inHand[1] * k];
       const [bx, by] = this.placeBall(target, 'hand');
       this.trail.length = 0;
-      drawables.push({ y: carrier.y + 0.001, draw: () => this.drawBallAt(g, bx, by, k) });
+      // Na mão, a bola fica à frente de quem a leva.
+      drawables.push({ y: carrier.y + 0.001, world: [carrier.wx, carrier.wy, 0], box: [bx - 8 * k - 2, by - 8 * k - 2, bx + 8 * k + 2, by + 8 * k + 2], bias: GROUND_BIAS + 0.05, draw: () => this.drawBallAt(g, bx, by, k) });
     } else if (!lifted) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
@@ -1981,10 +1942,18 @@ export class MatchView {
       // Junto ao cesto, a bola fica entre a parte de trás e a da frente, para atravessar o aro.
       const nearbyHoop = [HOOP_LEFT, HOOP_RIGHT].find(hoopX => Math.abs(x - hoopX) < BALL_IN_HOOP_RANGE && Math.abs(y) < BALL_IN_HOOP_RANGE);
       const ballLayer = nearbyHoop === undefined ? gy : camera.project(nearbyHoop + (nearbyHoop < 14 ? -0.5 : 0.5), 0, 0)[1] + HOOP_FRONT_OFFSET / 2;
+      // No mundo, a sombra fica no chão e a bola (com o rasto) no sítio onde está, entre as peças do aro como no mundo.
+      drawables.push({ y: ballLayer - 0.001, world: [x, y, 0], draw: () => this.shadow(g, gx, gy, 3) });
+      const xs = [bx, ...this.trail.map(t => t[0])];
+      const ys = [by, ...this.trail.map(t => t[1])];
       drawables.push({
         y: ballLayer,
+        // Como na tela 2D, na ordem do chão por baixo dela, logo à frente de quem está no mesmo sítio (a lançar, a receber);
+        // junto ao cesto, no sítio onde está, para passar por dentro do aro.
+        world: nearbyHoop === undefined ? [x, y, 0] : [x, y, z],
+        bias: nearbyHoop === undefined ? GROUND_BIAS + 0.05 : 0,
+        box: [Math.min(...xs) - 8, Math.min(...ys) - 8, Math.max(...xs) + 8, Math.max(...ys) + 8],
         draw: () => {
-          this.shadow(g, gx, gy, 3);
           this.trail.forEach(([tx, ty], i) => {
             g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
             g.fillRect((tx | 0) - 1, (ty | 0) - 1, 3, 3);
@@ -1997,12 +1966,103 @@ export class MatchView {
       this.ballDrawnAt = null;
     }
     drawables.sort((a, b) => a.y - b.y);
-    for (const d of drawables) d.draw();
+    // Os reflexos vão por baixo de tudo, senão apareciam por cima de outros jogadores.
+    const reflections = theme.reflection > 0 ? placed : [];
+    // O cenário (chão, linhas, bancadas e paredes, ou o exterior do campo de rua) e tudo o que está no mundo (público,
+    // jogadores, bancos, cestos, bola, sombras, reflexos) vão para a placa gráfica, à resolução do ecrã, cada coisa com a sua
+    // profundidade. Sem WebGL 2, com WebGL por software, ou com o contexto perdido, fica tudo na tela 2D, como antes.
+    const frame = this.reducedMotion ? 0 : crowdFrame;
+    // Flashes de fotografia nas bancadas: ao acaso, mas pelo animTick, para duas gravações da mesma cena saírem iguais.
+    const flashes: [number, number][] = [];
+    if (excited && theme.flashes && !this.reducedMotion) {
+      for (let i = 0; i < 6; i++) {
+        const h = Math.imul(this.animTick * 6 + i + 1, 2654435761) >>> 0;
+        flashes.push([(h >>> 8) % camera.width, h % Math.max(1, Math.floor(camera.height * 0.25))]);
+      }
+    }
+    const gpu = courtGpu();
+    let gpuScene: HTMLCanvasElement | null = null;
+    if (gpu) {
+      // A tela 2D serve de rascunho: os bonecos vão diretos para a placa, e o resto pinta-se aqui e copia-se.
+      const world: WorldSprite[] = [];
+      this.clearCanvas();
+      this.spriteMode = 'collect';
+      this.spriteSink = world;
+      this.captureUsed = 0;
+      // No mundo, cada flash sai da cara de um adepto que se vê.
+      const seen = this.fans.map((f, i) => ({ i, p: camera.project(f.x, f.y, f.z + 1.2) })).filter(({ p }) => p[0] >= 0 && p[0] < camera.width && p[1] >= 2 && p[1] < camera.height).map(({ i }) => i);
+      this.flashFans = new Set(seen.length > 0 ? flashes.map(([x, y]) => seen[(x * 31 + y) % seen.length]!) : []);
+      try {
+        this.drawOutsiders();
+        this.drawFans();
+        for (const p of reflections) world.push(this.reflection(p, theme.reflection));
+        for (const d of drawables) {
+          if (d.cpuOnly) continue;
+          this.spriteWorld = d.world ?? null;
+          d.draw();
+          this.spriteWorld = null;
+          if (d.box && d.world) {
+            const copy = this.capture(d.box, d.world, d.bias ?? 0);
+            if (copy) world.push(copy);
+          }
+        }
+      } finally {
+        this.flashFans = null;
+        this.spriteWorld = null;
+        this.spriteMode = 'draw';
+      }
+      this.clearCanvas();
+      gpuScene = gpu.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame, world, swishes);
+    }
+    this.gpuFloor = gpuScene;
+    if (gpuScene) {
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(gpuScene, 0, 0);
+      g.restore();
+      this.sceneStale = true;
+    } else {
+      let fresh = camera.drawScene(this.pixels, this.textures, frame, this.fence?.pixels);
+      if (flashes.length > 0) {
+        // Os flashes sujam os píxeis do cenário, que têm de se refazer na imagem seguinte.
+        for (const [x, y] of flashes) this.pixels[y * camera.width + x] = 0xffffffff;
+        camera.forgetScene();
+        fresh = true;
+      }
+      // Com a imagem aproximada, ou com a câmara parada, o cenário passa por uma tela à parte: `putImageData` ignora a
+      // aproximação, `drawImage` não, e parada a tela já tem a imagem certa. Com a câmara a andar e sem aproximação vai
+      // direto, que é uma cópia a menos.
+      if (this.zoom > 1.001 || !fresh || this.art > 1) {
+        if (!this.scene || this.scene.width !== camera.width || this.scene.height !== camera.height) {
+          this.scene = document.createElement('canvas');
+          this.scene.width = camera.width;
+          this.scene.height = camera.height;
+          this.sceneStale = true;
+        }
+        if (fresh || this.sceneStale) {
+          this.scene.getContext('2d')!.putImageData(this.image, 0, 0);
+          if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
+        }
+        this.sceneStale = false;
+        g.drawImage(this.scene, 0, 0);
+      } else {
+        g.putImageData(this.image, 0, 0);
+        if (this.fence) this.fence.canvas.getContext('2d')!.putImageData(this.fence.image, 0, 0);
+        this.sceneStale = true;
+      }
+      this.drawOutsiders();
+      if (this.fence) g.drawImage(this.fence.canvas, 0, 0);
+      this.drawFans();
+      for (const p of reflections) drawReflection(g, p.pose, p.look, p.x, p.y, p.flip, p.back, theme.reflection, p.legs, this.depth(p.y));
+      for (const d of drawables) d.draw();
+    }
     if (this.ballTrace) this.ballTrace.push({ tick: s.tick, mode: this.ballDrawnAt ? this.ballMode : 'none', x: this.ballDrawnAt ? this.ballDrawnAt[0] * this.zoom + this.zoomShift[0] : NaN, y: this.ballDrawnAt ? this.ballDrawnAt[1] * this.zoom + this.zoomShift[1] : NaN, phase: s.phase, zoom: this.zoom, dt: this.frameSeconds });
     this.drawCarrier(alpha);
     this.drawNameTags(alpha);
     this.drawFloaters();
     this.drawBubbles();
+    if (this.ownerSpeech) this.speech('ANDA CÁ BOBI!', this.ownerSpeech[0], this.ownerSpeech[1], this.ownerSpeech[2], 21);
+    this.ownerSpeech = null;
     this.drawForecast();
     this.drawCeremony();
     this.drawBigScore();
@@ -2140,16 +2200,107 @@ export class MatchView {
     const scale = this.depth(feet);
     // Um boneco com o sítio no mundo (`spriteWorld`) vai para a placa gráfica: guarda-se no `collect`, salta-se no `skip`.
     if (this.spriteWorld && this.spriteMode !== 'draw') {
-      if (this.spriteMode === 'collect') this.spriteSink.push({ ...spriteQuad(pose, look, x, y, flip, back, withBall, legs, scale), feet: this.spriteWorld });
+      // Nas bancadas, um cartão em pé (o degrau de trás cortava os braços no ar); no chão, todo à profundidade dos pés, como
+      // na ordem da tela 2D: o cartão em pé ficava à frente da bola que o boneco tem nas mãos e do poste que tem atrás.
+      if (this.spriteMode === 'collect') this.spriteSink.push({ ...spriteQuad(pose, look, x, y, flip, back, withBall, legs, scale), feet: this.spriteWorld, ...(this.inStands ? {} : { flat: true, bias: GROUND_BIAS }) });
       return;
     }
     drawSprite(g, pose, look, x, y, flip, back, withBall, legs, scale);
   }
-  /** Os bonecos para a placa gráfica: `collect` guarda-os em `spriteSink` (com os pés em `spriteWorld`), `skip` não os
-   * desenha na tela 2D (a placa já os desenhou), `draw` desenha-os nela como sempre. */
-  private spriteMode: 'draw' | 'collect' | 'skip' = 'draw';
+  /** Os bonecos para a placa gráfica: `collect` guarda-os em `spriteSink` (com os pés em `spriteWorld`), `draw` desenha-os na
+   * tela 2D como sempre. */
+  private spriteMode: 'draw' | 'collect' = 'draw';
   private spriteSink: WorldSprite[] = [];
-  private spriteWorld: readonly [number, number, number] | null = null;
+  private spriteWorld: Vec3 | null = null;
+  /** Os bonecos que se desenham agora estão nas bancadas (os adeptos). */
+  private inStands = false;
+  /** O balão do dono do cão desta imagem (quem fala, a cabeça e os pés): desenha-se com a interface, por cima do mundo. */
+  private ownerSpeech: [number, number, number] | null = null;
+  /** Os adeptos que tiram uma fotografia nesta imagem (com a placa gráfica). */
+  private flashFans: Set<number> | null = null;
+  // As telas para onde se copia o que não é boneco, reaproveitadas de imagem para imagem.
+  private readonly capturePool: HTMLCanvasElement[] = [];
+  private captureUsed = 0;
+
+  /** Limpa a tela inteira, que com a placa gráfica serve de rascunho. */
+  private clearCanvas(): void {
+    const { g } = this;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+    g.restore();
+  }
+
+  /**
+   * Copia o que se pintou na tela dentro de `box` (píxeis da arte) para uma imagem do mundo em `world`, e apaga-o da tela.
+   * A cópia fica à resolução do ecrã, por isso sai igual ao que a tela teria.
+   */
+  private capture(box: Box, world: Vec3, bias: number): WorldSprite | null {
+    const { g } = this;
+    const m = g.getTransform();
+    const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
+    const y0 = Math.max(0, Math.floor(box[1] * m.d + m.f));
+    const x1 = Math.min(g.canvas.width, Math.ceil(box[2] * m.a + m.e));
+    const y1 = Math.min(g.canvas.height, Math.ceil(box[3] * m.d + m.f));
+    if (x1 <= x0 || y1 <= y0) return null;
+    const w = x1 - x0;
+    const h = y1 - y0;
+    // A placa gráfica guarda o tamanho de uma imagem da primeira vez que a recebe: uma tela reaproveitada só cresce, em
+    // degraus de 64, e usa-se o canto de baixo à esquerda (o primeiro texel da placa, com as imagens viradas).
+    let copy = this.capturePool[this.captureUsed];
+    if (!copy || copy.width < w || copy.height < h) {
+      if (copy) courtGpu()?.forget(copy);
+      copy = document.createElement('canvas');
+      copy.width = Math.ceil(w / 64) * 64;
+      copy.height = Math.ceil(h / 64) * 64;
+      this.capturePool[this.captureUsed] = copy;
+    }
+    this.captureUsed++;
+    const c = copy.getContext('2d')!;
+    c.clearRect(0, 0, copy.width, copy.height);
+    c.drawImage(g.canvas, x0, y0, w, h, 0, copy.height - h, w, h);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(x0, y0, w, h);
+    g.restore();
+    // De volta a píxeis da arte, antes da aproximação, como os bonecos.
+    return { image: copy, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
+  }
+
+  /** No passe para a placa gráfica, copia para o mundo o que acabou de se pintar em `box`; fora dele, não faz nada. */
+  private toWorld(box: Box, world: Vec3, bias = 0, upright = false): void {
+    if (this.spriteMode !== 'collect') return;
+    const copy = this.capture(box, world, bias);
+    // `upright`: em pé como um boneco (uma bandeira), senão o degrau de trás cortava-a.
+    if (copy) this.spriteSink.push(upright ? { ...copy, flat: false } : copy);
+  }
+
+  /** A caixa, no ecrã, de uns pontos do mundo. */
+  private boxOf(points: readonly Vec3[]): Box {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const [x, y, z] of points) {
+      const [sx, sy] = this.camera.project(x, y, z);
+      xs.push(sx);
+      ys.push(sy);
+    }
+    return [Math.min(...xs) - 3, Math.min(...ys) - 3, Math.max(...xs) + 3, Math.max(...ys) + 3];
+  }
+
+  /** Uma caixa de madeira (a mesa, um banco), só na tela 2D: com a placa gráfica é um modelo 3D do cenário. */
+  private boxDrawable(x0: number, x1: number, y0: number, y1: number, height: number, top: string, front: string): Drawable {
+    // Encostadas à parede: desenham-se antes de tudo o resto.
+    return { y: -Infinity, cpuOnly: true, draw: () => drawBox(this.g, this.camera, x0, x1, y0, y1, height, top, front) };
+  }
+
+  /** O reflexo de um jogador no chão polido, para a placa gráfica: o boneco virado ao contrário, quase transparente. */
+  private reflection(p: { pose: PoseName; look: Look; x: number; y: number; wx: number; wy: number; flip: boolean; back: boolean; legs?: PoseName }, strength: number): WorldSprite {
+    const q = spriteQuad(p.pose, p.look, p.x, p.y, p.flip, p.back, false, p.legs, this.depth(p.y));
+    // Como em `drawReflection`: virado à volta da linha dos pés.
+    const mirrored = 2 * (p.y | 0) + 1 - (q.top + q.height);
+    // Atrás de tudo o que está no chão à volta.
+    return { ...q, top: mirrored, mirror: true, feet: [p.wx, p.wy, 0], alpha: strength, flat: true, bias: -0.3 };
+  }
 
   /** A altura de um boneco com os pés na linha `y`, já com o tamanho da distância: para o que fica por cima da cabeça. */
   private tall(look: Look, y: number): number {
@@ -2158,7 +2309,14 @@ export class MatchView {
 
   /** A sombra de um boneco, do tamanho dele. */
   private shadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 7): void {
-    drawShadow(g, x, y, Math.max(2, Math.round(radius * this.depth(y))));
+    const r = Math.max(2, Math.round(radius * this.depth(y)));
+    // Com a placa gráfica, uma imagem guardada por tamanho, no chão por baixo de quem a faz: sem a pintar e copiar.
+    if (this.spriteMode === 'collect' && this.spriteWorld) {
+      const [wx, wy] = this.spriteWorld;
+      this.spriteSink.push({ image: shadowImage(r), left: (x | 0) + 1 - r, top: (y | 0) - 2, width: 2 * r, height: 4, flip: false, feet: [wx, wy, 0], alpha: 1, flat: true, bias: 0 });
+      return;
+    }
+    drawShadow(g, x, y, r);
   }
 
   /** O centro do grande plano do apito final: a bola, onde estão os jogadores. */
@@ -2440,24 +2598,29 @@ export class MatchView {
   private drawOutsiders(): void {
     const { g, s, camera } = this;
     if (!this.street) return;
-    for (const [tx, ty] of [[-9, -5], [-8.5, 6], [5, -15], [21, -16.5], [37, -3], [36.5, 7]] as const) this.drawTree(tx, ty);
+    for (const [tx, ty] of [[-9, -5], [-8.5, 6], [5, -15], [21, -16.5], [37, -3], [36.5, 7]] as const) {
+      const box = this.drawTree(tx, ty);
+      if (box) this.toWorld(box, [tx, ty, 0]);
+    }
     const cheering = s.tick < this.fansCheerUntil;
     for (const o of this.outsiders) {
       const [sx, sy] = camera.project(o.x, o.y);
       if (sx < -20 || sx > camera.width + 20) continue;
       const beat = this.reducedMotion ? o.phase : (s.tick >> 2) + o.phase;
       const pose: PoseName = cheering ? (beat % 2 ? 'cheer0' : 'cheer1') : ((s.tick >> 4) + o.phase) % 7 === 0 ? 'cheer0' : 'idle';
+      this.spriteWorld = [o.x, o.y, 0];
       this.sprite(g, pose, o.look, sx | 0, sy | 0, o.flip, false, false);
     }
+    this.spriteWorld = null;
   }
 
-  /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. */
-  private drawTree(x: number, y: number): void {
+  /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. Devolve a caixa onde a pintou, ou `null`. */
+  private drawTree(x: number, y: number): Box | null {
     const { g, camera } = this;
     const [sx, sy] = camera.project(x, y);
     const [, topY] = camera.project(x, y, 5);
     const h = sy - topY;
-    if (sx < -40 || sx > camera.width + 40 || h < 6) return;
+    if (sx < -40 || sx > camera.width + 40 || h < 6) return null;
     const trunk = Math.max(2, Math.round(h * 0.12));
     g.fillStyle = '#5a4632';
     g.fillRect(Math.round(sx - trunk / 2), Math.round(sy - h * 0.45), trunk, Math.round(h * 0.45));
@@ -2470,10 +2633,11 @@ export class MatchView {
         g.fillRect(Math.round(sx + ox - half), Math.round(sy + oy + dy), Math.round(half * 2), 1);
       }
     }
+    return [sx - r * 1.9 - 3, sy - h * 0.72 - r - 3, sx + r * 1.9 + 3, sy + 3];
   }
 
   /** O cão do bairro e o pombo do aro: entram na ordem de profundidade como os outros bonecos. Nada disto mexe no jogo. */
-  private addHumor(drawables: { y: number; draw: () => void }[]): void {
+  private addHumor(drawables: Drawable[]): void {
     const { g, s, camera } = this;
     const { theme } = this.textures;
     const beat = this.reducedMotion ? 0 : this.animTick >> 2;
@@ -2488,19 +2652,24 @@ export class MatchView {
       const [ox, oy] = camera.project(owner.x, owner.y);
       const look = this.ownerLook;
       if (t >= OWNER_PATH[1]![0]) {
+        // A caixa apanha também o cão ao colo.
         drawables.push({
           y: oy,
+          world: [owner.x, owner.y, 0],
+          box: [ox - 16, oy - 24, ox + 16, oy + 4],
           draw: () => {
             this.shadow(g, ox, oy);
             this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
             if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
-            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, (oy | 0) - this.tall(look, oy) + 2, oy | 0, 21);
+            if (t < DOG_PICKED) this.ownerSpeech = [ox, (oy | 0) - this.tall(look, oy) + 2, oy | 0];
           },
         });
       }
       if (!carried) {
         drawables.push({
           y: dy,
+          world: [dog.x, dog.y, 0],
+          box: [dx - 14, dy - 16, dx + 14, dy + 4],
           draw: () => {
             this.shadow(g, dx, dy, 4);
             drawDog(g, dx | 0, dy | 0, dog.dx < 0, dog.moving ? beat : this.animTick >> 3, !dog.moving);
@@ -2520,7 +2689,7 @@ export class MatchView {
         const f = Math.max(0, flying);
         const [px, py] = camera.project(hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09);
         const layer = camera.project(hoopX - inward * 0.5, 0, 0)[1] + HOOP_FRONT_OFFSET + 0.1;
-        drawables.push({ y: layer, draw: () => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
+        drawables.push({ y: layer, world: [hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09], box: [px - 12, py - 14, px + 12, py + 4], draw: () => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
       }
     }
   }
@@ -2565,15 +2734,8 @@ export class MatchView {
     const { g, s, camera } = this;
     if (this.fans.length === 0) return;
     if (this.street) {
-      // Os bancos atrás dos cestos: o degrau alto atrás, o baixo à frente, virados para o campo.
-      for (const far of [false, true]) {
-        for (const [y0, y1] of [[-7.2, -3.4], [3.4, 7.2]] as const) {
-          const high = far ? STAND.farX - 2.4 : STAND.nearX + 1.4;
-          drawBox(g, camera, high, high + 1, y0, y1, 0.9, '#8a8f96', '#5d636c');
-          const low = far ? STAND.farX - 3.4 : STAND.nearX + 2.4;
-          drawBox(g, camera, low, low + 1, y0, y1, 0.45, '#8a8f96', '#5d636c');
-        }
-      }
+      // Os bancos de pedra atrás dos cestos; com a placa gráfica, são modelos 3D do cenário.
+      if (this.spriteMode !== 'collect') for (const f of STREET_SEATS) drawBox(g, camera, f.x0, f.x1, f.y0, f.y1, f.height, f.top, f.front);
     }
     const sad = s.tick < this.fansSadUntil;
     const asleep = this.humor.sleeper && Math.abs(s.score[0] - s.score[1]) >= this.humor.blowout ? this.sleeperFan : -1;
@@ -2581,6 +2743,7 @@ export class MatchView {
       const [sx, sy] = camera.project(f.x, f.y, f.z);
       if (sx < -20 || sx > camera.width + 20 || sy < -10 || sy > camera.height + 40) continue;
       this.spriteWorld = [f.x, f.y, f.z];
+      this.inStands = true;
       if (i === asleep) {
         // Numa goleada, alguém dorme sentado: a cabeça cai de vez em quando e os «Z» sobem.
         const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
@@ -2593,6 +2756,7 @@ export class MatchView {
           text(g, 'Z', zx + 1, zy + 1, '#1b2230', 1);
           text(g, 'Z', zx, zy, '#fbf6e2', 1);
         }
+        this.toWorld([sx - 4, top - 22, sx + 16, top + 2], [f.x, f.y, f.z], 0.6);
         continue;
       }
       // Cada adepto tem o seu entusiasmo: só se levanta se o momento valer mais do que ele pede, e os menos entusiastas
@@ -2609,10 +2773,18 @@ export class MatchView {
         g.fillRect((sx | 0) + 5, top, 1, 18);
         g.fillStyle = this.flagColor;
         g.fillRect((sx | 0) + 6, top, 9, 6);
+        this.toWorld([sx + 3, top - 2, sx + 18, top + 20], [f.x, f.y, f.z], 0.6, true);
+      }
+      if (this.flashFans?.has(i)) {
+        // Uma fotografia: um píxel branco na cara de quem a tira.
+        const face = (sy | 0) - this.tall(f.look, sy) + 3;
+        g.fillStyle = '#ffffff';
+        g.fillRect((sx | 0) + 1, face, 1, 1);
+        this.toWorld([sx - 1, face - 1, sx + 3, face + 2], [f.x, f.y, f.z], 0.8, true);
       }
     }
-    // Os outros bonecos (jogadores, bancos) não têm sítio no mundo: vão para a tela 2D.
     this.spriteWorld = null;
+    this.inStands = false;
   }
 
   /** Os balões da bancada: por cima de um adepto da primeira fila, e desaparecem passados dois segundos. */

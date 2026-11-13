@@ -95,7 +95,19 @@ Cada fase acaba com `npm run check`, `npm run browser-check`, `npm run gpu-check
 6. **Bonecos no mundo 3D (em curso, opção C escolhida pelo dono a 13 de novembro).**
    - **Feito: o público dos pavilhões fechados.** Cada adepto é um retângulo no mesmo sítio e tamanho da tela 2D (`spriteQuad`), desenhado pela placa (`src/ui/gpu/sprite-layer.ts`) com a profundidade dos pés no mundo: em baixo a dos pés, em cima a de um ponto 1,8 m acima, 0,6 m mais perto da câmara. Fica à frente ou atrás das peças 3D do cenário como no mundo. Os bonecos entram na chave do cache, por isso a câmara parada continua a não refazer nada.
    - **Feito: o tamanho noutras câmaras.** `Camera.depthScale` multiplica pela lente e pela distância da câmara a que olha, em relação à do jogo (na do jogo, 1). `npm run campos` mostra o pavilhão inteiro com toda a gente em proporção.
-   - **Por fazer:** o público do campo de rua (a rede), os bancos e quem lá está, os jogadores, a bola, as sombras e os reflexos; as bandeiras, os «Z» e os flashes, que continuam na tela 2D e com o tamanho da câmara do jogo.
+   - **Feito: tudo o que está no mundo (13 de novembro).**
+     - **Bonecos:** jogadores, árbitro, bancos, treinadores, saídas, público (também o do bairro e o de fora da rede) e o dono do cão vão para a placa como os adeptos. Quem está no chão é um cartão plano à profundidade dos pés, como a ordem da tela 2D; os adeptos das bancadas, um cartão em pé.
+     - **Sombras:** uma imagem guardada por tamanho.
+     - **Bola, rasto, pó, cão, pombo, árvores, bandeiras, «Z» e flashes:** pintados na tela 2D, que serve de rascunho, e copiados para uma imagem do mundo à profundidade certa (`capture`).
+     - **Reflexos:** o boneco virado, meio transparente.
+   - **Modelos 3D (src/ui/gpu/fixtures.ts):**
+     - os cestos: base, poste, braço, tabela com moldura e quadrado, aro e rede que abre com a bola;
+     - a mesa de oficiais, os bancos das equipas e os bancos de pedra do bairro, com faces de lado.
+   - **A rede do campo de rua:** desenhada na placa por cima de tudo, com a profundidade de cada fio.
+   - **Na tela 2D, por cima:** só a interface (balões, letreiros, nomes, a seta de quem tem a bola, a faixa da falta, o marcador).
+   - **Por fazer:**
+     - com a câmara parada, as cópias impedem a placa de reaproveitar a imagem (5–7 ms por imagem numa RTX 4070, contra 2–3 ms antes);
+     - os flashes quase não se veem no Pavilhão Municipal.
 
 ## Riscos
 

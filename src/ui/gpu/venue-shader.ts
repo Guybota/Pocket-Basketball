@@ -385,6 +385,7 @@ uniform vec4 fenceColor;
 uniform vec4 postColor;
 uniform vec4 veilColor;
 uniform bool fencePass;
+uniform bool blendFence;
 
 const float INF = 1e30;
 const float NEAR_X = ${f(FLOOR_AREA.x0)};
@@ -483,18 +484,23 @@ void main() {
 
   if (fencePass) {
     int mesh = 0;
-    if (dirY < 0.0 && aS >= NEAR_X && aS <= FAR_X) mesh = fenceAt(mesh, tS, aS, true, cz, rz, floorT, fwS);
+    // A distância da rede que se vê, para a profundidade: quem está do lado de fora fica atrás dela, quem está dentro à frente.
+    float tMesh = 0.0;
+    int was = 0;
+    if (dirY < 0.0 && aS >= NEAR_X && aS <= FAR_X) { mesh = fenceAt(mesh, tS, aS, true, cz, rz, floorT, fwS); if (mesh != was) tMesh = tS; was = mesh; }
     if (dirX < 0.0) {
-      if (aN >= WALL_Y) mesh = fenceAt(mesh, tN, aN, false, cz, rz, floorT, fwN);
+      if (aN >= WALL_Y) { mesh = fenceAt(mesh, tN, aN, false, cz, rz, floorT, fwN); if (mesh != was) tMesh = tN; }
     } else if (dirX > 0.0) {
-      if (aF >= WALL_Y) mesh = fenceAt(mesh, tF, aF, false, cz, rz, floorT, fwF);
+      if (aF >= WALL_Y) { mesh = fenceAt(mesh, tF, aF, false, cz, rz, floorT, fwF); if (mesh != was) tMesh = tF; }
     }
     if (mesh == 0) discard;
-    // A tela tem a transparência pré-multiplicada.
     vec4 c = mesh == 1 ? vec4(postColor.rgb * postColor.a, postColor.a) : mesh == 2 ? vec4(veilColor.rgb * veilColor.a, veilColor.a)
       : mix(vec4(fenceColor.rgb, 1.0) * fenceColor.a * meshCover, vec4(veilColor.rgb, 1.0) * veilColor.a, veilMix);
     if (c.a <= 0.0) discard;
-    gl_FragColor = c;
+    // Numa tela à parte (\`drawFence\`), a transparência vai pré-multiplicada; por cima do mundo, a mistura da placa fá-lo.
+    gl_FragColor = blendFence ? vec4(c.rgb / c.a, c.a) : c;
+    vec4 clip = viewProj * vec4(vec3(cx, cy, cz) + vec3(dirX, dirY, rz) * tMesh, 1.0);
+    gl_FragDepth = clamp(0.5 * clip.z / clip.w + 0.5, 0.0, 1.0);
     return;
   }
 
@@ -557,6 +563,7 @@ export function openUniforms(t: CourtTextures): { uniforms: Record<string, { val
     postColor: { value: rgba(OPEN_SHAPE.post) },
     veilColor: { value: rgba(OPEN_SHAPE.veil) },
     fencePass: { value: false },
+    blendFence: { value: false },
   };
   return {
     uniforms,

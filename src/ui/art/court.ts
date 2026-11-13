@@ -1478,6 +1478,37 @@ export function pixelLine(g: CanvasRenderingContext2D, x0: number, y0: number, x
 
 const RIM_RADIUS = 0.28;
 const RIM_Z = 3.05;
+/** As medidas do cesto, para os modelos 3D da placa gráfica serem iguais ao desenho. */
+export const HOOP_SHAPE = { rimRadius: RIM_RADIUS, rimZ: RIM_Z, board: 0.375, pole: 2.675, arm: 3.5, boardBottom: 2.9, boardTop: 3.95, boardHalf: 0.9 } as const;
+
+/** Uma caixa à volta do campo (mesa, banco, assento de pedra): de x0 a x1, de y0 a y1, com esta altura e as cores do tampo e da frente. */
+export interface Fixture {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  height: number;
+  top: string;
+  front: string;
+}
+/** A mesa de oficiais e os bancos das equipas, encostados à lateral do fundo. O túnel fica no centro, por isso a mesa está à
+ * direita dele e o banco visitante mais para a ponta. */
+export const SIDELINE: readonly Fixture[] = [
+  { x0: 16.2, x1: 19.4, y0: -10.15, y1: -9.55, height: 0.75, top: '#efe3c2', front: '#2a3040' },
+  { x0: 4, x1: 11.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
+  { x0: 20, x1: 27.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
+];
+/** Os bancos de pedra do bairro, atrás dos cestos: o degrau alto atrás, o baixo à frente, virados para o campo. */
+export const STREET_SEATS: readonly Fixture[] = [false, true].flatMap(far =>
+  ([[-7.2, -3.4], [3.4, 7.2]] as const).flatMap(([y0, y1]) => {
+    const high = far ? WALL_FAR_X - 2.4 : WALL_NEAR_X + 1.4;
+    const low = far ? WALL_FAR_X - 3.4 : WALL_NEAR_X + 2.4;
+    return [
+      { x0: high, x1: high + 1, y0, y1, height: 0.9, top: '#8a8f96', front: '#5d636c' },
+      { x0: low, x1: low + 1, y0, y1, height: 0.45, top: '#8a8f96', front: '#5d636c' },
+    ];
+  }),
+);
 
 /** Parte de trás do cesto: poste, tabela e o que fica atrás da bola quando ela entra. */
 export function drawHoopBack(g: CanvasRenderingContext2D, cam: Camera, theme: CourtTheme, hoopX: number, swish: number): void {

@@ -5,6 +5,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   AlwaysDepth,
+  LessEqualDepth,
   DataTexture,
   DoubleSide,
   LinearMipmapLinearFilter,
@@ -25,6 +26,7 @@ import {
 import { FLOOR_AREA, courtLinePaths, type Camera, type CourtTextures } from '../art/court.ts';
 import { OPEN_FRAGMENT, VENUE_FRAGMENT, VENUE_VERTEX, openUniforms, venueUniforms } from './venue-shader.ts';
 import { SpriteLayer, type WorldSprite } from './sprite-layer.ts';
+import { buildFixtures, type Fixtures } from './fixtures.ts';
 
 /** A largura verdadeira das linhas (5 cm) e o mínimo no ecrã, em píxeis: ao longe nunca ficam mais finas do que isto. */
 const LINE_HALF = 0.025;
@@ -38,6 +40,8 @@ interface Venue {
   floor: Mesh;
   floorTexture: DataTexture;
   lines: Mesh<BufferGeometry, ShaderMaterial>;
+  /** Os cestos, a mesa e os bancos, em modelos 3D. */
+  fixtures: Fixtures;
   /** O pavilhão por dentro (bancadas e paredes), com uma textura das paredes por imagem do público. */
   stands: { material: ShaderMaterial; walls: Texture[] };
   dispose(): void;
@@ -211,7 +215,8 @@ function buildVenue(t: CourtTextures): Venue | null {
     depthWrite: false,
   });
   const lines = new Mesh(lineGeometry, lineMaterial);
-  lines.renderOrder = 2;
+  // As linhas depois do cenário e antes dos cestos e dos bancos, que lhes ficam por cima.
+  lines.renderOrder = 1.5;
   lines.frustumCulled = false;
   scene.add(lines);
 
@@ -224,14 +229,20 @@ function buildVenue(t: CourtTextures): Venue | null {
   stands.renderOrder = 1;
   stands.frustumCulled = false;
   scene.add(stands);
+  // Os cestos, a mesa e os bancos: depois do cenário, que escreve a profundidade sem a testar, e com ela.
+  const fixtures = buildFixtures(t.theme);
+  fixtures.group.traverse(o => (o.renderOrder = 2));
+  scene.add(fixtures.group);
   return {
     scene,
     open,
     floor,
     floorTexture,
     lines,
+    fixtures,
     stands: { material: standMaterial, walls: venue.walls },
     dispose() {
+      fixtures.dispose();
       standGeometry.dispose();
       standMaterial.dispose();
       venue.dispose();
@@ -250,6 +261,9 @@ export class CourtGpu {
   private readonly camera = new PerspectiveCamera();
   private readonly venues = new Map<CourtTextures, Venue | null>();
   private readonly sprites = new SpriteLayer();
+  private frames = 0;
+  // O `gpu-check` compara o cenário sem a rede, que tem a sua própria comparação (`drawFence`).
+  private withoutFence = false;
   private readonly eye = new Vector3();
   private lost = false;
   // Um shader que não compila neste driver: o jogo fica de vez no traçador de raios.
@@ -341,15 +355,16 @@ export class CourtGpu {
    * píxeis da arte, como a transformação da tela 2D), mostra só essa parte, à resolução toda. `sprites`: os bonecos a pôr
    * por cima, com a profundidade dos pés. Devolve a tela, ou `null`.
    */
-  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0], crowdFrame = 0, sprites: readonly WorldSprite[] = []): HTMLCanvasElement | null {
+  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0], crowdFrame = 0, sprites: readonly WorldSprite[] = [], swish: readonly [number, number] = [0, 0]): HTMLCanvasElement | null {
     // O evento da perda só chega depois: no próprio frame, pergunta-se ao contexto.
     if (this.failed || this.lost || this.renderer.getContext().isContextLost()) return null;
     const venue = this.venue(t);
     if (!venue) return null;
     const pose = view.pose();
-    const key: unknown[] = [venue, crowdFrame, width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
-    // Os bonecos entram na chave: com a câmara parada e o público quieto, a imagem já está na tela.
-    for (const s of sprites) key.push(s.image, s.left, s.top, s.width, s.flip, s.feet[0], s.feet[1], s.feet[2]);
+    const key: unknown[] = [venue, crowdFrame, swish[0], swish[1], width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
+    // Os bonecos entram na chave: com a câmara parada e o público quieto, a imagem já está na tela. Uma cópia de um desenho
+    // pode ter mudado sem mudar de tela, por isso com cópias refaz-se sempre.
+    for (const s of sprites) key.push(s.image, s.left, s.top, s.width, s.flip, s.feet[0], s.feet[1], s.feet[2], s.dynamic ? ++this.frames : 0);
     if (key.length === this.last.length && key.every((v, i) => v === this.last[i])) return this.canvas;
     this.last = key;
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -385,6 +400,7 @@ export class CourtGpu {
     (v.shift!.value as Vector2).set(shift[0], shift[1]);
     (v.viewProj!.value as Matrix4).multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     v.wallMap!.value = venue.stands.walls[crowdFrame] ?? venue.stands.walls[0];
+    venue.fixtures.setSwish(swish[0], swish[1]);
     this.renderer.render(venue.scene, this.camera);
     if (sprites.length > 0) {
       // Os bonecos por cima, sem limpar a profundidade das bancadas: ficam atrás do que estiver mais perto da câmara.
@@ -392,6 +408,30 @@ export class CourtGpu {
       this.renderer.autoClear = false;
       this.renderer.render(this.sprites.scene, this.camera);
       this.renderer.autoClear = true;
+    }
+    if (venue.open && !this.withoutFence) {
+      // A rede do campo de rua por cima de tudo, mas com a profundidade de cada fio: tapa quem está do lado de fora e fica
+      // atrás de quem está dentro.
+      const m = venue.stands.material;
+      venue.floor.visible = false;
+      venue.lines.visible = false;
+    venue.fixtures.group.visible = false;
+      m.uniforms.fencePass!.value = true;
+      m.uniforms.blendFence!.value = true;
+      m.transparent = true;
+      m.depthFunc = LessEqualDepth;
+      m.depthWrite = false;
+      this.renderer.autoClear = false;
+      this.renderer.render(venue.scene, this.camera);
+      this.renderer.autoClear = true;
+      m.uniforms.fencePass!.value = false;
+      m.uniforms.blendFence!.value = false;
+      m.transparent = false;
+      m.depthFunc = AlwaysDepth;
+      m.depthWrite = true;
+      venue.floor.visible = true;
+      venue.lines.visible = true;
+    venue.fixtures.group.visible = true;
     }
     return this.failed ? null : this.canvas;
   }
@@ -405,6 +445,7 @@ export class CourtGpu {
     if (!venue?.open || this.failed || this.lost || this.renderer.getContext().isContextLost()) return null;
     venue.floor.visible = false;
     venue.lines.visible = false;
+    venue.fixtures.group.visible = false;
     venue.stands.material.uniforms.fencePass!.value = true;
     venue.stands.material.uniforms.exactFence!.value = exact;
     this.renderer.setClearColor(0x000000, 0);
@@ -414,9 +455,15 @@ export class CourtGpu {
     venue.stands.material.uniforms.exactFence!.value = false;
     venue.floor.visible = true;
     venue.lines.visible = true;
+    venue.fixtures.group.visible = true;
     // A tela já não tem o cenário: o próximo `draw` refaz-se mesmo com a câmara parada.
     this.last = [];
     return this.failed ? null : this.canvas;
+  }
+
+  /** Esquece a textura de uma imagem que já não se vai usar. */
+  forget(image: HTMLCanvasElement): void {
+    this.sprites.forget(image);
   }
 
   /** Para o `gpu-check`: só as bancadas e as paredes, com magenta onde o shader deixa o chão. */
@@ -425,11 +472,15 @@ export class CourtGpu {
     if (!venue) return null;
     venue.floor.visible = false;
     venue.lines.visible = false;
+    venue.fixtures.group.visible = false;
     this.renderer.setClearColor(0xff00ff, 1);
     this.last = [];
+    this.withoutFence = true;
     const out = this.draw(view, t, width, height, 1, [0, 0], crowdFrame);
+    this.withoutFence = false;
     venue.floor.visible = true;
     venue.lines.visible = true;
+    venue.fixtures.group.visible = true;
     this.renderer.setClearColor(0x000000, 1);
     this.last = [];
     return out;
