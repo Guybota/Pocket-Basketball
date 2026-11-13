@@ -289,9 +289,9 @@ Cada ponto aprovado foi confirmado no código e no histórico.
 - **B:** a instabilidade do `browser-check` ficou resolvida a 12 de novembro, com três voltas seguidas sem falhas.
 - **G1, linhas do chão sem serrilhado:** resolvido pela placa gráfica.
 - **G1, cartas do combo sem inclinação:** resolvido; já não rodam (`style.css:1079`).
+- **G1, balões (13 de novembro):** a letra do jogo à resolução do ecrã, escolhida pelo dono numa maqueta, com a seta a apontar para quem fala.
 
 **Por fazer:**
-- **G1, só os balões:** o texto dos balões e dos letreiros é desenhado a 2× e os bonecos a 1×. É sobretudo uma questão de gosto, e a decisão é do dono: desenhar o texto à resolução do ecrã ou aceitar a diferença.
 - **I11:** ficou de fora, de propósito, a escala inteira em janelas com menos de 360 px.
 
 **Recusado e que continua de fora:** C (equilíbrio), D3, D7, D12–D17, E13, F6–F14, F16, J.
