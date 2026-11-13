@@ -19,6 +19,7 @@
     "sound-wavs": "node src/tools/sound-wavs.ts",
     "review": "node src/tools/review.ts",
     "gpu-check": "node src/tools/gpu-check.ts",
+    "campos": "node src/tools/campos.ts",
     "sequences": "node src/tools/sequences.ts",
     "build-page": "node src/tools/build-page.ts",
     "build-mock": "node src/tools/build-mock.ts",
