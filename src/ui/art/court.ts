@@ -250,6 +250,9 @@ const badminton = (cx: number): [number, number][][] => [
 const SCHOOL_LINES: CourtTheme['extraLines'] = [
   { color: [128, 160, 108], lines: [...badminton(7), ...badminton(21)] },
   { color: [176, 98, 72], lines: [[[5, -4.5], [23, -4.5], [23, 4.5], [5, 4.5], [5, -4.5]], [[11, -4.5], [11, 4.5]], [[17, -4.5], [17, 4.5]]] },
+  // As laterais do campo de andebol e futsal: os topos ficam para lá das paredes, e o meio continua o do basquetebol.
+  // A 9,4 m do meio e não aos 10 do regulamento: a 10 m passava por baixo do banco.
+  { color: [92, 108, 138], lines: [[[-4, -9.4], [32, -9.4]], [[-4, 9.4], [32, 9.4]], [[14, -9.4], [14, -7.5]], [[14, 7.5], [14, 9.4]]] },
 ];
 
 /** As paredes dos topos do ginásio (y ao longo da parede): espaldares, o marcador de abas e cartazes de papel. */
@@ -358,7 +361,8 @@ export const THEMES: readonly CourtTheme[] = [
     ambient: 0.9,
     spot: 0.1,
     reflection: 0.1,
-    boards: [[58, 128, 124], [226, 214, 182]],
+    // Sem placas de patrocinadores: numa escola, a parede tem a faixa de proteção (`schoolPad`).
+    boards: [],
     boardText: [40, 60, 70],
     crowd: { from: 1, to: 4.5, density: 0.3, seats: [[52, 86, 134], [44, 74, 116]], shirts: [[60, 110, 170], [190, 80, 60], [240, 210, 110], [90, 150, 110]], dim: 1, rowStep: 0.9 },
     flashes: false,
@@ -597,6 +601,42 @@ function stepColours(theme: CourtTheme): StepColours | null {
   return { zs, t0, rise, rows, wood: false, ...out };
 }
 
+type Patch = readonly [number, number, number, number];
+/**
+ * Os remendos do alcatrão de um bairro: [x, y, largura, fundo] em metros, de tamanhos diferentes e sem simetria, cada
+ * bairro os seus (`seed`). Só no alcatrão dentro do campo, longe dos garrafões e uns dos outros, para se verem todos.
+ */
+function streetPatches(seed: number): Patch[] {
+  const out: Patch[] = [];
+  for (let i = 0; out.length < 5 && i < 60; i++) {
+    const w = 0.9 + hash(i, seed + 93) * 1.6;
+    const h = 0.7 + hash(i, seed + 94) * 1.2;
+    const x = 0.3 + hash(i, seed + 91) * (27.4 - w);
+    const y = -7.2 + hash(i, seed + 92) * (14.4 - h);
+    const key = (px: number): boolean => px < 6.2 || px > 21.8;
+    if ((key(x) || key(x + w)) && y < 2.8 && y + h > -2.8) continue;
+    if (out.some(([ox, oy, ow, oh]) => x < ox + ow + 1.5 && x + w > ox - 1.5 && y < oy + oh + 1.5 && y + h > oy - 1.5)) continue;
+    out.push([x, y, w, h]);
+  }
+  return out;
+}
+
+/**
+ * O desgaste do alcatrão da rua (só no alcatrão: não mexe no garrafão nem no círculo): manchas mais claras e gastas
+ * debaixo de cada cesto, onde mais se joga, aos bocados (por quadrados de 0,6 m, um sim e outro não); remendos de alcatrão
+ * mais escuro e liso, soltos; juntas do betão a cada 8 m. `wx` é a posição verdadeira, sem o espelho do meio campo.
+ */
+function streetWear(c: Rgb, wx: number, y: number, patches: readonly Patch[], strength = 1): Rgb {
+  let out = c;
+  for (const hx of [3, 25]) {
+    const near = 1 - ((wx - hx) / 4.2) ** 2 - (y / 3.4) ** 2;
+    if (near > 0 && hash(Math.floor(wx / 0.6), Math.floor(y / 0.6) + 70) < 0.55 + near * 0.4) out = mix(out, [156, 156, 150], 0.38 * strength * Math.min(1, near * 1.6));
+  }
+  for (const [px, py, w, h] of patches) if (wx > px && wx < px + w && y > py && y < py + h) out = mix(out, [62, 66, 72], 0.3);
+  if (frac((wx + 8) / 8) < 0.0075 || frac((y + 12) / 8) < 0.0075) out = shade(out, 0.92);
+  return out;
+}
+
 const textureCache = new Map<string, CourtTextures>();
 
 /** Uma textura a metade: cada texel é a média de quatro. */
@@ -733,6 +773,24 @@ function tunnelInside(tx: number, tz: number): Rgb {
   return shade(tx < 0.5 ? [52, 54, 66] : [42, 44, 56], k);
 }
 
+/**
+ * Nos ginásios de escola, a faixa de proteção das paredes: almofadas até 1,8 m (até ao muro, por baixo da
+ * bancada), com juntas a cada 1,2 m e a aresta de cima clara. Os espaldares dos topos ficam por cima dela.
+ */
+function schoolPad(theme: CourtTheme, u: number, z: number): Rgb | null {
+  if (!theme.windows) return null;
+  const end = u >= SIDE_WALL_SPAN;
+  const top = !end && theme.crowd ? theme.crowd.from + CROWD_WALL : 1.8;
+  if (z >= top) return null;
+  const y = u - SIDE_WALL_SPAN + WALL_Y;
+  if (end && y > -9.5 && y < -3 && z < 2.8) return null;
+  // Num tom calmo de meia-luz que não é o do equipamento da casa (na cor do clube, o banco da casa sumia-se nela):
+  // azul-acinzentado no ginásio da escola, verde-acinzentado no pavilhão dos treinos.
+  const pad: Rgb = theme.crowd ? [98, 112, 134] : [84, 116, 104];
+  if (z > top - 0.1) return mix(pad, [240, 240, 236], 0.35);
+  return frac(u / 1.2) < 0.12 ? shade(pad, 0.78) : pad;
+}
+
 function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: number): Uint32Array {
   const boards = sideBoards(theme);
   const wall = new Uint32Array(wallW * wallH);
@@ -743,7 +801,9 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
       let color: Rgb;
       const x = u + WALL_NEAR_X;
       const tunnelFrame = theme.slope > 0 && u < SIDE_WALL_SPAN && x > TUNNEL.x0 - 0.2 && x < TUNNEL.x1 + 0.2 && z < TUNNEL.height + 0.2;
-      if (tunnelFrame) {
+      const pad = tunnelFrame ? null : schoolPad(theme, u, z);
+      if (pad) color = pad;
+      else if (tunnelFrame) {
         // A boca do túnel, com uma moldura clara; por dentro, o corredor pintado em perspetiva: o chão, o teto e as duas
         // paredes a fugir para a porta do fundo, iluminada.
         color = x > TUNNEL.x0 && x < TUNNEL.x1 && z < TUNNEL.height ? tunnelInside((x - TUNNEL.x0) / (TUNNEL.x1 - TUNNEL.x0), z / TUNNEL.height) : [150, 152, 150];
@@ -883,20 +943,35 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
   const floorW = Math.ceil((WALL_FAR_X - WALL_NEAR_X) * FLOOR_SCALE);
   const floorH = Math.ceil((NEAR_Y - WALL_Y) * FLOOR_SCALE);
   const floor = new Uint32Array(floorW * floorH);
+  const patches = theme.open ? streetPatches(Math.floor((theme.shift ?? 0) * 997)) : [];
   for (let j = 0; j < floorH; j++) {
     const y = WALL_Y + (j + 0.5) / FLOOR_SCALE;
     for (let i = 0; i < floorW; i++) {
       const wx = WALL_NEAR_X + (i + 0.5) / FLOOR_SCALE;
       const x = wx < 14 ? wx : 28 - wx; // O campo é simétrico: só a metade esquerda precisa de desenho.
-      const noise = hash(Math.floor(x * 5), Math.floor(y * 5));
+      // Na rua o chão não é simétrico (manchas e remendos com a posição verdadeira); nos pavilhões o soalho é.
+      const noise = theme.open ? hash(Math.floor(wx * 5), Math.floor(y * 5)) : hash(Math.floor(x * 5), Math.floor(y * 5));
       let color: Rgb;
-      if (x < 0 || Math.abs(y) > 7.5) {
+      if ((x < 0 || Math.abs(y) > 7.5) && theme.windows) {
+        // Num ginásio de escola, o soalho vai de parede a parede, um nada mais escuro fora do campo.
+        const row = Math.floor(y / 0.55);
+        const plank = hash(row, Math.floor((wx + hash(row, 3) * 4) / 3.1)) - 0.5;
+        color = shade(theme.floor(x, y, noise, plank), 0.93);
+        if (theme.seams && frac(y / 0.55) < 0.07) color = [color[0] - 16, color[1] - 16, color[2] - 16];
+      } else if ((x < 0 || Math.abs(y) > 7.5) && theme.open) {
+        // Na rua, como num polidesportivo: uma faixa verde gasta à volta das linhas, e o alcatrão para lá dela (cor de
+        // tijolo, confundia-se com a pele dos jogadores).
+        const out = Math.max(-x, Math.abs(y) - 7.5);
+        // 1,6 m: os bancos de pedra baixos ficam por inteiro na faixa e os altos no alcatrão.
+        color = out < 1.6 ? [74 + noise * 6, 118 + noise * 8, 92 + noise * 6] : theme.apron(noise);
+      } else if (x < 0 || Math.abs(y) > 7.5) {
         color = theme.apron(noise);
         // A 1 m das linhas a orla escurece um pouco, para a faixa entre as linhas e o muro não ser um plano liso. Sem risca:
         // uma risca clara lia-se como uma segunda linha do campo.
         if (theme.steps && !theme.woodSteps && Math.max(-x, Math.abs(y) - 7.5) >= 1) color = shade(color, 0.88);
       }
-      else if (x < 5.8 && Math.abs(y) < 2.45) color = theme.paint;
+      // Na rua, a tinta do garrafão é a primeira a gastar-se.
+      else if (x < 5.8 && Math.abs(y) < 2.45) color = theme.open ? streetWear(theme.paint, wx, y, [], 0.5) : theme.paint;
       else if ((14 - x) * (14 - x) + y * y < 1.8 * 1.8) {
         color = isCenterSeam(wx, y) ? theme.line(1) : theme.center;
         // A câmara está do lado do y positivo: o topo do emblema fica para o lado de lá do campo (y negativo).
@@ -913,7 +988,8 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
       else {
         const row = Math.floor(y / 0.55);
         const plank = hash(row, Math.floor((wx + hash(row, 3) * 4) / 3.1)) - 0.5;
-        color = theme.floor(x, y, noise, plank);
+        color = theme.floor(theme.open ? wx : x, y, noise, plank);
+        if (theme.open) color = streetWear(color, wx, y, patches);
         if (theme.seams && frac(y / 0.55) < 0.07) color = [color[0] - 16, color[1] - 16, color[2] - 16];
         if (theme.stain && x >= 0 && (x - HOOP_U) * (x - HOOP_U) + y * y < THREE_RADIUS * THREE_RADIUS && Math.abs(y) < THREE_CORNER_V) color = shade(color, 0.86);
       }

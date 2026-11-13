@@ -567,7 +567,7 @@ export class MatchView {
       // E quem vê do lado de fora da rede, encostado a ela.
       // Pela ordem em que chegam: com pouca gente só os primeiros, com casa cheia todos.
       const spots = [[2.2, STAND.y - 0.9], [3.4, STAND.y - 0.7], [9.5, STAND.y - 0.8], [18.8, STAND.y - 0.9], [20.1, STAND.y - 0.7], [26, STAND.y - 0.8], [STAND.nearX - 0.9, 1.2], [STAND.farX + 0.9, -0.6],
-        [7, STAND.y - 0.8], [14.2, STAND.y - 0.9], [23.2, STAND.y - 0.7], [0.6, STAND.y - 0.8], [11.6, STAND.y - 0.7], [29.4, STAND.y - 0.9], [STAND.nearX - 0.9, -2.2], [STAND.farX + 0.9, 2.4], [5.6, STAND.y - 0.8], [16.6, STAND.y - 0.8]] as const;
+        [7, STAND.y - 0.8], [17.6, STAND.y - 0.9], [23.2, STAND.y - 0.7], [0.6, STAND.y - 0.8], [11.6, STAND.y - 0.7], [29.4, STAND.y - 0.9], [STAND.nearX - 0.9, -2.2], [STAND.farX + 0.9, 2.4], [5.6, STAND.y - 0.8], [16.6, STAND.y - 0.8]] as const;
       for (const [k, [x, y]] of spots.entries()) {
         const i = k + 3;
         if (k / spots.length > fill - 0.3) continue;
@@ -626,9 +626,9 @@ export class MatchView {
     return { image, pixels: new Uint32Array(image.data.buffer), canvas: layer };
   }
 
-  /** Uma paragem com a equipa junta ao banco: desconto, ou fim de período sem ser o intervalo. */
+  /** Uma paragem com a equipa junta ao banco: desconto, fim de período sem ser o intervalo, e o intervalo na rua. */
   holding(): boolean {
-    return this.s.phase === 'timeout' || (this.s.phase === 'break' && this.s.period !== 2);
+    return this.s.phase === 'timeout' || (this.s.phase === 'break' && (this.s.period !== 2 || this.street));
   }
 
   /** `ballX` é a bola desenhada, entre dois passos: a da simulação só muda 20 vezes por segundo e a câmara andava aos soluços. */
@@ -1578,7 +1578,7 @@ export class MatchView {
       const startX = team === 0 ? 4.4 : 20.3;
       const leaving = new Set(this.exits.filter(e => e.body.team === team).map(e => e.body));
       const cheering = s.tick < this.benchCheerUntil[team] || (s.phase === 'end' && s.score[team] > s.score[team === 0 ? 1 : 0]);
-      const inHuddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
+      const inHuddle = this.holding();
       // Ao intervalo, o banco e o treinador também vão para o balneário, pelo túnel, a passo mais rápido; voltam na segunda parte.
       const toLocker = this.locker !== null;
       const speed = COACH_SPEED;
@@ -1593,10 +1593,11 @@ export class MatchView {
         }
         const locker = toLocker ? this.lockerAt(b) : this.returnAt(b);
         if (locker) {
-          if (locker.done || this.inTunnel(locker.y)) return;
+          if ((locker.done && !this.street) || this.inTunnel(locker.y)) return;
           // À espera da vez, continua sentado.
           const [lx, ly] = camera.project(locker.x, locker.y);
-          const pose: PoseName = locker.moving ? locker.pose : locker.wait;
+          // Na rua, quem já saiu fica de pé do lado de fora da rede.
+          const pose: PoseName = locker.moving ? locker.pose : locker.done ? 'idle' : locker.wait;
           const back = locker.moving && locker.dy < -Math.abs(locker.dx);
           this.drawn.bodies.set(b, { x: lx, y: ly, lift: 0, pose, height: this.tall(this.view(b).look, ly), world: { x: locker.x, y: locker.y }, back });
           drawables.push({ y: ly, world: [locker.x, locker.y, 0], draw: () => this.sprite(g, pose, this.view(b).look, lx, ly, locker.dx < 0, back, false) });
@@ -1629,7 +1630,7 @@ export class MatchView {
       });
       const coachLocker = toLocker ? this.lockerAt(team) : this.returnAt(team);
       if (coachLocker) {
-        if (coachLocker.done || this.inTunnel(coachLocker.y)) continue;
+        if ((coachLocker.done && !this.street) || this.inTunnel(coachLocker.y)) continue;
         const [lx, ly] = camera.project(coachLocker.x, coachLocker.y);
         const pose: PoseName = coachLocker.moving ? coachLocker.pose : coachLocker.wait;
         const back = coachLocker.moving && coachLocker.dy < -Math.abs(coachLocker.dx);
@@ -1641,7 +1642,7 @@ export class MatchView {
       }
       // O treinador anda à frente do seu banco e para nas pontas, a pensar com a mão no queixo ou a apontar para o campo.
       // Nas paragens vai ter com a equipa, e fala-lhes de prancheta na mão.
-      const huddle = s.phase === 'timeout' || (s.phase === 'break' && s.period !== 2);
+      const huddle = this.holding();
       const coachBase = team === 0 ? 8 : 23.7;
       // O alvo é a roda da equipa, ou um passeio em frente ao banco; o treinador vai lá a andar, ao seu passo.
       const target: Point = huddle ? { x: HUDDLE_CENTRE[team][0], y: HUDDLE_CENTRE[team][1] } : { x: coachBase + Math.sin(time * 0.5 + team * 2) * 2.2, y: COACH_Y };
@@ -1813,7 +1814,7 @@ export class MatchView {
     // Na ida para o balneário, quem já passou a porta.
     const inside = (b: Body): boolean => {
       const at = this.lockerAt(b);
-      return at ? at.done || this.inTunnel(at.y) : this.inTunnel(b.y);
+      return at ? (at.done && !this.street) || this.inTunnel(at.y) : this.inTunnel(b.y);
     };
     const onCourt = [...s.court[0], ...s.court[1]].filter(b => !inside(b) && !this.ceremonyHides(b) && (!this.visible || this.visible(b)));
     const placed = onCourt.map(b => {
@@ -2223,7 +2224,7 @@ export class MatchView {
     const scale = this.depth(feet);
     // Um boneco com o sítio no mundo (`spriteWorld`) vai para a placa gráfica: guarda-se no `collect`, salta-se no `skip`.
     // Quem entra no túnel desvanece-se no escuro, até deixar de se ver; quem sai aparece do escuro.
-    const fade = this.spriteWorld && !this.inStands ? this.tunnelFade(this.spriteWorld[1]) : 1;
+    const fade = this.spriteWorld && !this.inStands && !this.outside ? this.tunnelFade(this.spriteWorld[1]) : 1;
     if (fade <= 0) return;
     if (this.spriteWorld && this.spriteMode !== 'draw') {
       // Nas bancadas, um cartão em pé (o degrau de trás cortava os braços no ar); no chão, todo à profundidade dos pés, como
@@ -2243,6 +2244,8 @@ export class MatchView {
   private spriteMode: 'draw' | 'collect' = 'draw';
   private spriteSink: WorldSprite[] = [];
   private spriteWorld: Vec3 | null = null;
+  /** Os bonecos que se desenham agora estão do lado de fora da rede da rua. */
+  private outside = false;
   /** Os bonecos que se desenham agora estão nas bancadas (os adeptos). */
   private inStands = false;
   /** O balão do dono do cão desta imagem (quem fala, a cabeça e os pés): desenha-se com a interface, por cima do mundo. */
@@ -2342,7 +2345,7 @@ export class MatchView {
   private shadow(g: CanvasRenderingContext2D, x: number, y: number, radius = 7): void {
     const r = Math.max(2, Math.round(radius * this.depth(y)));
     // Com a placa gráfica, uma imagem guardada por tamanho, no chão por baixo de quem a faz: sem a pintar e copiar.
-    const fade = this.spriteWorld && !this.inStands ? this.tunnelFade(this.spriteWorld[1]) : 1;
+    const fade = this.spriteWorld && !this.inStands && !this.outside ? this.tunnelFade(this.spriteWorld[1]) : 1;
     if (fade <= 0) return;
     if (this.spriteMode === 'collect' && this.spriteWorld) {
       const [wx, wy] = this.spriteWorld;
@@ -2522,9 +2525,10 @@ export class MatchView {
     if (!this.toLocker()) {
       if (this.locker) {
         // De volta: os titulares saem do túnel pela simulação; os suplentes e os treinadores saem do fundo do túnel, um
-        // de cada vez, para o banco (no fim do jogo ninguém volta).
+        // de cada vez, para o banco (no fim do jogo ninguém volta). Na rua, a simulação põe os titulares no lugar durante o
+        // ecrã do intervalo, como nos pavilhões.
         this.locker = null;
-        if (s.phase !== 'end') this.startReturn();
+        if (s.phase !== 'end' && !this.street) this.startReturn();
         for (const b of s.bodies) this.view(b).huddle = undefined;
         this.coachPos[0] = null;
         this.coachPos[1] = null;
@@ -2532,6 +2536,24 @@ export class MatchView {
       return;
     }
     if (this.locker) return;
+    if (this.street) {
+      // Na rua não há balneário: ao intervalo, cada equipa junta-se à frente do seu banco, como num desconto. A simulação
+      // leva os titulares para a porta da rede; o desenho põe-nos na roda, e os do banco e o treinador ficam onde estão.
+      const walks = new Map<Body | TeamIndex, Walk>();
+      for (const team of [0, 1] as const) {
+        s.court[team].forEach((b, i) => {
+          const [hx, hy] = huddleSpot(team, [0, 2, 4, 6, 7][i]!);
+          // A trote, para a roda se formar antes do fim do intervalo.
+          const walk = makeWalk([{ x: b.x, y: b.y }, { x: hx, y: hy }], LOCKER_SPEED, RUN_FRAMES);
+          // No fim do jogo, na roda, quem ganhou festeja e quem perdeu fica de cabeça baixa.
+          if (s.phase === 'end') walk.wait = team === (s.score[0] > s.score[1] ? 0 : 1) ? 'cheer0' : 'slump';
+          walks.set(b, walk);
+        });
+      }
+      this.locker = { start: this.animTime, end: 0, walks };
+      this.returning = null;
+      return;
+    }
     const starts: { key: Body | TeamIndex; from: Point }[] = [...s.court[0], ...s.court[1]].map(b => ({ key: b, from: { x: b.x, y: b.y } }));
     for (const team of [0, 1] as const) {
       s.bodies.filter(b => b.team === team && b.slot === -1).forEach((b, i) => {
@@ -2583,6 +2605,7 @@ export class MatchView {
 
   /** A câmara no túnel: na ida para o balneário ao intervalo e na volta, até o último chegar (sem andar atrás da bola). */
   private tunnelShot(): boolean {
+    if (this.street) return false;
     return this.locker !== null || (this.returning !== null && this.animTime < this.returning.end);
   }
 
@@ -2620,14 +2643,16 @@ export class MatchView {
     return this.gpuFloor !== null && !theme.open && theme.slope > 0;
   }
 
-  /** Se quem está em y já vai tão fundo no túnel que não se vê. */
+  /** Se quem está em y já vai tão fundo no túnel que não se vê (na rua, ninguém: ficam à vista do lado de fora). */
   private inTunnel(y: number): boolean {
+    if (this.street) return false;
     return y <= STAND.y - (this.tunnel3d() ? TUNNEL_FADE[1] : 0.4);
   }
 
   /** De 1 a 0, quanto se vê quem está em y: no túnel 3D desvanece-se no escuro lá dentro; sem ele, à boca (a 0,4 m de
    * cada lado da parede), em vez de aparecer ou desaparecer de um frame para o outro. */
   private tunnelFade(y: number): number {
+    if (this.street) return 1;
     const [near, far] = this.tunnel3d() ? TUNNEL_FADE : [-0.4, 0.4];
     const depth = STAND.y - y;
     return depth <= near ? 1 : depth >= far ? 0 : 1 - (depth - near) / (far - near);
@@ -2694,6 +2719,8 @@ export class MatchView {
       if (box) this.toWorld(box, [tx, ty, 0]);
     }
     const cheering = s.tick < this.fansCheerUntil;
+    // Quem está do lado de fora da rede não se desvanece (`tunnelFade` é para quem entra ou sai do campo).
+    this.outside = true;
     for (const o of this.outsiders) {
       const [sx, sy] = camera.project(o.x, o.y);
       if (sx < -20 || sx > camera.width + 20) continue;
@@ -2703,6 +2730,7 @@ export class MatchView {
       this.sprite(g, pose, o.look, sx | 0, sy | 0, o.flip, false, false);
     }
     this.spriteWorld = null;
+    this.outside = false;
   }
 
   /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. Devolve a caixa onde a pintou, ou `null`. */

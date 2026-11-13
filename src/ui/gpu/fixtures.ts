@@ -220,6 +220,47 @@ function addTunnel(b: Builder, theme: CourtTheme): void {
   b.quad([i0, back, 0], [i1, back, 0], [i1, back, top], [i0, back, top], end);
 }
 
+/**
+ * As balizas de andebol do ginásio da escola, arrumadas contra a parede de cada topo, ao lado do cesto (atrás dele, o poste
+ * ficava a meio da baliza): 3 × 2 m, com os postes e a barra às riscas, em tons calmos para não competirem com o aro, e a
+ * rede de fios grossos o bastante para não cintilarem, até à parede, 1 m atrás.
+ */
+function addGoals(b: Builder, theme: CourtTheme): void {
+  const lit = (c: V3): V3 => (theme.tint ? [c[0] * theme.tint[0], c[1] * theme.tint[1], c[2] * theme.tint[2]] : c);
+  const red = lit(rgb('#b0645a'));
+  const white = lit(rgb('#e2ded4'));
+  const net = lit(rgb('#a4a8ae'));
+  const striped = (p: V3, q: V3): void => {
+    const len = Math.sqrt((q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2);
+    const n = Math.max(1, Math.round(len / 0.2));
+    for (let i = 0; i < n; i++) {
+      const a = i / n;
+      const c = (i + 1) / n;
+      b.beam([p[0] + (q[0] - p[0]) * a, p[1] + (q[1] - p[1]) * a, p[2] + (q[2] - p[2]) * a], [p[0] + (q[0] - p[0]) * c, p[1] + (q[1] - p[1]) * c, p[2] + (q[2] - p[2]) * c], 0.08, i % 2 === 0 ? red : white);
+    }
+  };
+  for (const far of [false, true]) {
+    const wall = far ? FLOOR_AREA.x1 : FLOOR_AREA.x0;
+    const out = far ? 1 : -1;
+    const front = wall - out * 1;
+    const back = wall - out * 0.05;
+    const y0 = 2.6;
+    const y1 = 5.6;
+    // Os postes e a barra, às riscas.
+    striped([front, y0, 0], [front, y0, 2]);
+    striped([front, y1, 0], [front, y1, 2]);
+    striped([front, y0, 2], [front, y1, 2]);
+    // A rede: só a de trás, encostada à parede, em fios de 4 cm a cada 0,75 m, e os bordos de cima e dos lados até ela.
+    // Com as três faces cheias de fios grossos, lia-se como uma grade de ferro.
+    for (let y = y0; y <= y1 + 0.001; y += 0.75) b.beam([back, y, 0], [back, y, 2], 0.04, net);
+    for (let z = 0.5; z <= 2.001; z += 0.75) b.beam([back, y0, z], [back, y1, z], 0.04, net);
+    for (const y of [y0, y1]) {
+      b.beam([front, y, 2], [back, y, 2], 0.04, net);
+      b.beam([front, y, 0.02], [back, y, 0.02], 0.04, net);
+    }
+  }
+}
+
 export function buildFixtures(theme: CourtTheme, steps: StepColours | null = null): Fixtures {
   // Dos dois lados: assim a ordem dos cantos de cada face não importa (com um só lado, metade das faces sumia).
   const material = new ShaderMaterial({ vertexShader: FLAT_VERTEX, fragmentShader: FLAT_FRAGMENT, side: DoubleSide });
@@ -261,6 +302,7 @@ export function buildFixtures(theme: CourtTheme, steps: StepColours | null = nul
   const boxes: readonly Fixture[] = theme.open ? [...SIDELINE, ...STREET_SEATS] : [...SIDELINE, ...endBoards(theme)];
   for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, 0, f.height, rgb(f.top), rgb(f.front));
   if (!theme.open && theme.slope > 0) addTunnel(b, theme);
+  if (theme.windows) addGoals(b, theme);
   if (steps && !steps.wood) {
     addChairs(b, theme, steps);
     addRail(b, theme, steps);
