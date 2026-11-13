@@ -584,10 +584,13 @@ export class MatchView {
       for (let row = fanRows(theme) - 1; row >= 0; row--) {
         // Os lugares da fila (laterais, cantos e topos), já sem as escadas e a frente do túnel.
         for (const spot of seats(theme, row)) {
-          if (seat(n++) >= density) continue;
+          // Na sala municipal, o meio da bancada cheio, as pontas meio vazias, e a claque num bloco cheio no canto.
+          const claque = theme.local === true && spot.x > 22.5;
+          const here = !theme.local ? density : claque ? 0.97 : Math.abs(spot.x - 14) < 7.5 ? Math.min(0.95, density * 1.35) : density * 0.45;
+          if (seat(n++) >= here) continue;
           const flip = spot.plane === 'side' ? n % 3 === 0 : spot.far;
           const front = row === 0 && spot.plane === 'side';
-          this.fans.push({ x: spot.x, y: spot.y, z: spot.z, look: looks[n % looks.length]!, phase: n, flip, flag: spot.plane === 'side' && seat(n * 7 + 3) < 0.05, front, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
+          this.fans.push({ x: spot.x, y: spot.y, z: spot.z, look: looks[n % looks.length]!, phase: n, flip, flag: spot.plane === 'side' && seat(n * 7 + 3) < (claque ? 0.4 : 0.05), front, zeal: ((n * 2654435761) >>> 0) / 4294967296 });
         }
       }
     }

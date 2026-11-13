@@ -166,6 +166,8 @@ export const CROWD_FRAMES = 5;
 
 // Marcas inventadas para a publicidade, sem acentos.
 // Cada pavilhão começa a lista num sítio diferente, por isso as placas mudam de clube para clube.
+/** O comércio da terra, nas placas da sala municipal (nomes inventados, sem acentos: a letra das placas não os tem). */
+const LOCAL_SPONSORS = ['TALHO ZE', 'FARMACIA SOL', 'OTICA', 'CAFE DO LARGO', 'ADEGA', 'OFICINA RUI', 'BAZAR', 'CAMARA MUNICIPAL', 'FLORISTA', 'SALAO', 'CONSTRUTORA', 'LOJA 7', 'SAPATARIA', 'TASCA DO TONI', 'BRICO', 'MERCEARIA', 'PADARIA', 'QUIOSQUE'] as const;
 const SPONSORS = ['SOPA DA AVO', 'PASTEL BAR', 'SESTA FM', 'BIFANA MAX', 'BAILARICO', 'CAFE CENTRAL', 'BICA BOA', 'TALHO LUIS', 'GRELHADOS', 'BOLO REI', 'TREMOCO FM', 'FERRAGENS ZE'] as const;
 
 const hash = (a: number, b: number): number => {
@@ -228,6 +230,8 @@ export interface CourtTheme {
   woodSteps?: boolean;
   /** Sem público nos topos: são paredes. */
   endStands?: boolean;
+  /** Uma sala municipal: publicidade local desencontrada no muro, paredes claras, placar e portas nos topos. */
+  local?: boolean;
   /** A inclinação das paredes dos topos (por omissão a das bancadas); zero é uma parede a direito. */
   endSlope?: number;
   /** Acima da bancada da lateral, a parede sobe a direito em vez de continuar a recuar. */
@@ -278,6 +282,45 @@ function schoolEnd(y: number, z: number, t: CourtTheme): Rgb {
     }
   }
   return t.wallColor;
+}
+
+/**
+ * As paredes da sala municipal. Na lateral, por cima da bancada, bloco pintado com uma faixa de chapa translúcida (a luz
+ * de fora) a 9,6–10,6 m. Nos topos (y ao longo da parede): rodapé de 1,2 m na cor do clube, o placar eletrónico a 4,4 m,
+ * uma porta de emergência verde com o sinal de saída por cima, o extintor, e o bloco claro com as juntas.
+ */
+function municipalWall(u: number, z: number, t: CourtTheme): Rgb {
+  const block = t.wallColor;
+  if (z > 9.6 && z < 10.6) return frac(u / 1.5) < 0.12 ? [150, 156, 160] : [226, 236, 238];
+  if (u < SIDE_WALL_SPAN) return block;
+  const y = u - SIDE_WALL_SPAN + WALL_Y;
+  // O placar: moldura escura, os dois resultados e o relógio a meio, de segmentos.
+  if (y > -2.4 && y < 2.4 && z > 4.4 && z < 6.2) {
+    if (y < -2.3 || y > 2.3 || z < 4.5 || z > 6.1) return [40, 42, 48];
+    // Os segmentos apagados (um «88» escuro): o resultado e o tempo estão no ecrã do jogo, e um 00–00 pintado mentia.
+    const eight = (c: number): boolean => {
+      const dy = Math.abs(y - c);
+      if (dy > 0.32 || z < 4.8 || z > 5.8) return false;
+      return dy > 0.2 || z < 4.92 || z > 5.68 || Math.abs(z - 5.3) < 0.06;
+    };
+    if (eight(-1.75) || eight(-1.05) || eight(1.05) || eight(1.75)) return [44, 30, 30];
+    if (Math.abs(y) < 0.4 && z > 5.2 && z < 5.7 && (Math.abs(y) > 0.3 || z < 5.28 || z > 5.62)) return [46, 42, 30];
+    return [18, 20, 26];
+  }
+  // A porta de emergência, do lado de lá (onde a câmara a apanha inteira), com o sinal verde por cima.
+  if (y > -8.6 && y < -7.2) {
+    if (z < 2.15) return y < -8.55 || y > -7.25 || z > 2.1 ? [60, 66, 62] : Math.abs(y + 7.9) < 0.05 ? [40, 90, 60] : [62, 140, 92];
+    if (z > 2.3 && z < 2.6 && y > -8.3 && y < -7.5) return [70, 200, 110];
+  }
+  // O extintor vermelho ao lado da porta.
+  if (y > -6.9 && y < -6.6 && z > 0.9 && z < 1.55) return z > 1.45 ? [40, 40, 44] : [200, 52, 44];
+  // O rodapé na cor do garrafão (a do equipamento), baixo e acinzentado: com 2,4 m de cor viva, ocupava o canto do ecrã.
+  const club = mix(t.paint, [128, 128, 128], 0.35);
+  if (z < 1.2) return z > 1.13 ? shade(club, 0.75) : shade(club, 0.9);
+  // As juntas do bloco: horizontais de 0,6 em 0,6 m e verticais desencontradas, com 2 texels, um nada mais escuras.
+  const course = Math.floor(z / 0.6);
+  if (frac(z / 0.6) < 0.1 || frac((y + (course % 2) * 0.6) / 1.2) < 0.05) return shade(block, 0.95);
+  return block;
 }
 
 /** Um campo por divisão, pela mesma ordem de DIVISIONS. */
@@ -379,21 +422,31 @@ export const THEMES: readonly CourtTheme[] = [
     center: [23, 115, 122],
     line: () => [252, 246, 228],
     apron: () => [20, 88, 98],
-    wall: (_u, _z, t) => t.wallColor,
-    wallColor: [70, 50, 52],
+    // Uma sala, não um anel: a bancada só na lateral do fundo, num primeiro andar por cima de um muro alto (com a porta dos
+    // balneários), e nos topos paredes de bloco com o placar e as portas. Paredes claras e luz igual em todo o lado.
+    wall: (u, z, t) => municipalWall(u, z, t),
+    wallColor: [212, 206, 194],
     slope: 0.7,
     seams: true,
     pole: '#3a4557',
     board: '#f4f4ee',
-    ambient: 0.84,
-    spot: 0.2,
-    reflection: 0.12,
-    boards: [[232, 98, 42], [248, 240, 216], [43, 95, 217], [242, 194, 48]],
+    ambient: 0.96,
+    spot: 0.08,
+    reflection: 0.1,
+    // Os fundos das placas do comércio local: amarelo, azul-claro, salmão, verde-água e lilás. Sem branco, creme, azul,
+    // vermelho nem verde, as cores mais comuns dos equipamentos: o banco à frente da placa sumia-se nela.
+    boards: [[236, 196, 72], [156, 190, 214], [232, 160, 128], [120, 186, 170], [188, 160, 216]],
     boardText: [27, 34, 48],
-    crowd: { from: 1, to: 16, density: 0.72, seats: [[128, 62, 54], [112, 54, 48]], shirts: [[43, 95, 217], [43, 95, 217], [244, 239, 224], [207, 58, 44], [242, 194, 48], [70, 80, 96]], dim: 0.68 },
+    crowd: { from: 1, to: 7.9, density: 0.62, seats: [[128, 62, 54], [112, 54, 48]], shirts: [[43, 95, 217], [43, 95, 217], [244, 239, 224], [207, 58, 44], [242, 194, 48], [70, 80, 96]], dim: 0.94, rowStep: 1.1 },
     flashes: true,
     steps: true,
-    chamfer: true,
+    endStands: false,
+    endSlope: 0,
+    wallAbove: true,
+    local: true,
+    // Só as linhas do voleibol (as laterais e as de ataque), num amarelo-torrado esbatido, com cerca de um terço do contraste
+    // do branco do basquetebol; sem os topos, que faziam linha dupla com a do lance livre, e sem a do meio, que é a dele.
+    extraLines: [{ color: [226, 196, 120], lines: [[[5, -4.5], [23, -4.5]], [[5, 4.5], [23, 4.5]], [[11, -4.5], [11, 4.5]], [[17, -4.5], [17, 4.5]]] }],
   },
   {
     name: 'Grande Arena',
@@ -575,7 +628,8 @@ function stepColours(theme: CourtTheme): StepColours | null {
     const woodOut = Object.fromEntries(Object.entries(woodTones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, () => packRgb(tinted(shade(c, crowd.dim), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
     return { zs, t0, rise, rows, wood: true, ...woodOut };
   }
-  const tread = mix(seat, [128, 128, 132], 0.62);
+  // Na sala municipal, betão claro à vista (bancada clara, com cara); nas arenas, escuro.
+  const tread = theme.local ? ([186, 184, 178] as Rgb) : mix(seat, [128, 128, 132], 0.62);
   // As cadeiras mais claras do que o betão por trás (nas arenas escuras confundiam-se), com a aresta de cima ao sol;
   // as escadas no tom do piso e com rebordo, para não parecerem pilares; a frincha pouco escura, para não piscar a andar.
   const chair = mix(seat, [236, 236, 236], 0.14);
@@ -588,7 +642,7 @@ function stepColours(theme: CourtTheme): StepColours | null {
     chair,
     chairTop: mix(seat, [236, 236, 236], 0.32),
     gap: shade(chair, 0.8),
-    riser: shade(mix(seat, [24, 24, 30], 0.72), 0.8),
+    riser: theme.local ? ([128, 128, 126] as Rgb) : shade(mix(seat, [24, 24, 30], 0.72), 0.8),
     aisleTread: stairTread,
     aisleRiser: shade(stairTread, 0.8),
     aisleSide: shade(stairTread, 0.9),
@@ -597,7 +651,7 @@ function stepColours(theme: CourtTheme): StepColours | null {
     // O lado dos blocos de cadeiras é do betão dos pisos, à sombra: escuro como o espelho, lia-se como um buraco.
     cutSide: shade(tread, 0.86),
   };
-  const out = Object.fromEntries(Object.entries(tones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, (_, j) => packRgb(tinted(shade(c, crowd.dim * (1 - (0.45 * j) / rows)), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
+  const out = Object.fromEntries(Object.entries(tones).map(([name, c]) => [name, Uint32Array.from({ length: rows }, (_, j) => packRgb(tinted(shade(c, crowd.dim * (1 - ((theme.local ? 0.15 : 0.45) * j) / rows)), theme.tint)))])) as unknown as Omit<StepColours, 'zs' | 't0' | 'rise' | 'rows' | 'wood'>;
   return { zs, t0, rise, rows, wood: false, ...out };
 }
 
@@ -736,6 +790,21 @@ function sideBoards(theme: CourtTheme): [number, number][] {
     return [[a, a + l], [a + l, t0], [t1, t1 + r], [t1 + r, b]];
   }
   const out: [number, number][] = [];
+  if (theme.local) {
+    // Numa sala municipal, cada comércio paga a sua placa: larguras diferentes e falhas de muro nu entre algumas.
+    const widths = [3, 4.5, 3.6, 7, 3, 5.2, 4.2];
+    let k = Math.floor((theme.shift ?? 0) * widths.length);
+    for (const [from, to] of [[WALL_NEAR_X + 0.4, TUNNEL.x0 - 0.4], [TUNNEL.x1 + 0.4, WALL_FAR_X - 0.4]] as const) {
+      let x = from;
+      while (x < to - 1.5) {
+        const w = Math.min(widths[k % widths.length]!, to - x);
+        out.push([x, x + w]);
+        x += w + (hash(k, 77) < 0.45 ? 0.3 + hash(k, 78) * 0.7 : 0.08);
+        k++;
+      }
+    }
+    return out;
+  }
   for (let k = 0; k < Math.floor(SIDE_WALL_SPAN / BOARD_WIDTH); k++) {
     const x0 = WALL_NEAR_X + k * BOARD_WIDTH;
     // A placa que fica na boca do túnel não leva texto, senão as letras ficavam por cima dele.
@@ -793,6 +862,8 @@ function schoolPad(theme: CourtTheme, u: number, z: number): Rgb | null {
 
 function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: number): Uint32Array {
   const boards = sideBoards(theme);
+  // Na sala municipal, as placas sobem 0,45 m no muro: a mesa e os suplentes sentados tapavam a metade de baixo das letras.
+  const boardFloor = theme.local ? 0.45 : 0;
   const wall = new Uint32Array(wallW * wallH);
   for (let j = 0; j < wallH; j++) {
     const z = (j + 0.5) / WALL_SCALE;
@@ -807,21 +878,24 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
         // A boca do túnel, com uma moldura clara; por dentro, o corredor pintado em perspetiva: o chão, o teto e as duas
         // paredes a fugir para a porta do fundo, iluminada.
         color = x > TUNNEL.x0 && x < TUNNEL.x1 && z < TUNNEL.height ? tunnelInside((x - TUNNEL.x0) / (TUNNEL.x1 - TUNNEL.x0), z / TUNNEL.height) : [150, 152, 150];
-      } else if (theme.boards.length > 0 && z < BOARD_HEIGHT) {
-        const k = theme.chamfer && u < SIDE_WALL_SPAN ? boards.findIndex(([a, b]) => x >= a && x < b) : Math.floor(u / BOARD_WIDTH);
+      } else if (theme.boards.length > 0 && z >= boardFloor && z < boardFloor + BOARD_HEIGHT && !(theme.local && u >= SIDE_WALL_SPAN)) {
+        const k = (theme.chamfer || theme.local) && u < SIDE_WALL_SPAN ? boards.findIndex(([a, b]) => x >= a && x < b) : Math.floor(u / BOARD_WIDTH);
         let base: Rgb;
-        if (k < 0) {
+        // Nas falhas entre as placas da sala municipal, o muro nu.
+        if (k < 0 && theme.local) base = [150, 150, 146];
+        else if (k < 0) {
           // Nos cantos cortados, uma placa do clube: na cor dele, com uma risca da segunda cor ao meio.
           const [one, two] = theme.banner ?? [theme.boards[0]!, theme.boardText];
           base = z > 0.42 && z < 0.58 ? two : one;
         }
         // Vistas de lado, as placas do topo do campo ocupam muito ecrã, por isso ficam um pouco mais discretas.
-        else base = shade(theme.boards[k % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.82);
-        color = z > BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
+        else base = shade(theme.boards[(theme.local ? k * 2 + Math.floor((theme.shift ?? 0) * 5) : k) % theme.boards.length]!, u < SIDE_WALL_SPAN ? 1 : 0.82);
+        color = z > boardFloor + BOARD_HEIGHT - 0.06 ? shade(base, 0.7) : base;
       } else if (theme.crowd && z >= BOARD_HEIGHT && z < theme.crowd.from + CROWD_WALL && (u < SIDE_WALL_SPAN || theme.endStands !== false)) {
         // O muro baixo entre as placas e a primeira fila; dos dois lados do túnel, a faixa da claque, às riscas nas cores do clube.
         const top = theme.crowd.from + CROWD_WALL;
-        const onBanner = theme.banner && u < SIDE_WALL_SPAN && ((x > 2.4 && x < 10.6) || (x > 17.4 && x < 25.6)) && z < top - 0.1;
+        // Na sala municipal o muro é alto: a faixa fica só numa tira de 0,5 m por baixo da grade.
+        const onBanner = !theme.local && theme.banner && u < SIDE_WALL_SPAN && ((x > 2.4 && x < 10.6) || (x > 17.4 && x < 25.6)) && z < top - 0.1;
         if (onBanner) color = shade(theme.banner![frac(x / 1.2) < 0.5 ? 0 : 1], z > top - 0.16 || z < BOARD_HEIGHT + 0.06 ? 0.7 : 1);
         else color = z > top - 0.08 ? [120, 120, 118] : [156, 156, 150];
       } else {
@@ -833,11 +907,28 @@ function buildWall(theme: CourtTheme, frame: number, wallW: number, wallH: numbe
   if (theme.boards.length > 0) {
     // A parede lateral é vista com o eixo invertido, por isso o texto escreve-se ao contrário.
     const scale = 2;
-    const top = Math.round(((BOARD_HEIGHT - 0.1) * WALL_SCALE - 5 * scale) / 2) + 1;
-    const ink = packRgb(theme.boardText);
+    const top = Math.round(((BOARD_HEIGHT - 0.1) * WALL_SCALE - 5 * scale) / 2) + 1 + Math.round(boardFloor * WALL_SCALE);
+    const used = new Set<string>();
     boards.forEach(([x0, x1], i) => {
-      const k = theme.chamfer ? i : Math.round((x0 - WALL_NEAR_X) / BOARD_WIDTH);
-      const label = SPONSORS[(k + Math.floor((theme.shift ?? 0) * SPONSORS.length)) % SPONSORS.length]!;
+      const k = theme.chamfer || theme.local ? i : Math.round((x0 - WALL_NEAR_X) / BOARD_WIDTH);
+      let label: string = SPONSORS[(k + Math.floor((theme.shift ?? 0) * SPONSORS.length)) % SPONSORS.length]!;
+      let ink = packRgb(theme.boardText);
+      if (theme.local) {
+        // O comércio da terra, com o nome que caiba na placa, e a letra escura ou clara conforme o fundo.
+        // O primeiro nome por usar que caiba, a partir de um ponto de cada clube: sem repetir na mesma sala.
+        const start0 = Math.floor((theme.shift ?? 0) * LOCAL_SPONSORS.length);
+        label = '';
+        for (let j = 0; j < LOCAL_SPONSORS.length; j++) {
+          const name = LOCAL_SPONSORS[(start0 + k + j) % LOCAL_SPONSORS.length]!;
+          if (!used.has(name) && name.length * 0.4 + 0.4 <= x1 - x0) {
+            label = name;
+            used.add(name);
+            break;
+          }
+        }
+        const bg = theme.boards[(k * 2 + Math.floor((theme.shift ?? 0) * 5)) % theme.boards.length]!;
+        ink = packRgb(0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2] > 140 ? [27, 34, 48] : [250, 244, 226]);
+      }
       const start = (x0 - WALL_NEAR_X) * WALL_SCALE;
       const width = label.length * 4 * scale - scale;
       const left = Math.round(start + ((x1 - x0) * WALL_SCALE + width) / 2);
@@ -877,6 +968,7 @@ function venueSeed(emblem: Emblem): number {
 const WOOD_TONES: readonly Rgb[] = [[1, 1, 1], [1.08, 0.97, 0.84], [0.86, 0.8, 0.78], [1.03, 1.05, 1.1]];
 const STREET_TONES: readonly Rgb[] = [[1, 1, 1], [0.86, 1.22, 0.96], [1.3, 1, 0.86]];
 const SCHOOL_WALLS: readonly Rgb[] = [[236, 226, 196], [212, 230, 208], [222, 228, 240]];
+const MUNICIPAL_WALLS: readonly Rgb[] = [[212, 206, 194], [200, 208, 210], [216, 208, 184]];
 const HALL_WALLS: readonly Rgb[] = [[70, 50, 52], [42, 56, 72], [58, 62, 46]];
 const SEAT_SHADOW: Rgb = [40, 40, 46];
 
@@ -903,7 +995,7 @@ function clubVenue(theme: CourtTheme, emblem: Emblem): CourtTheme {
     crowd: theme.crowd && { ...theme.crowd, seats: [mix(primary, SEAT_SHADOW, 0.35), mix(primary, SEAT_SHADOW, 0.5)] },
     banner: [primary, secondary],
     stain: r(10) < 0.5,
-    wallColor: theme.windows ? pick(SCHOOL_WALLS, 6) : theme.slope >= 0.8 ? mix(theme.wallColor, primary, 0.2) : pick(HALL_WALLS, 6),
+    wallColor: theme.windows ? pick(SCHOOL_WALLS, 6) : theme.local ? pick(MUNICIPAL_WALLS, 6) : theme.slope >= 0.8 ? mix(theme.wallColor, primary, 0.2) : pick(HALL_WALLS, 6),
     windows: theme.windows && { ...theme.windows, period: pick([0.45, 0.6, 0.8], 7) },
   };
 }
@@ -952,8 +1044,8 @@ export function courtTextures(division: number | CourtTheme, accent?: string, em
       // Na rua o chão não é simétrico (manchas e remendos com a posição verdadeira); nos pavilhões o soalho é.
       const noise = theme.open ? hash(Math.floor(wx * 5), Math.floor(y * 5)) : hash(Math.floor(x * 5), Math.floor(y * 5));
       let color: Rgb;
-      if ((x < 0 || Math.abs(y) > 7.5) && theme.windows) {
-        // Num ginásio de escola, o soalho vai de parede a parede, um nada mais escuro fora do campo.
+      if ((x < 0 || Math.abs(y) > 7.5) && (theme.windows || theme.local)) {
+        // Num ginásio de escola e na sala municipal, o soalho vai de parede a parede, um nada mais escuro fora do campo.
         const row = Math.floor(y / 0.55);
         const plank = hash(row, Math.floor((wx + hash(row, 3) * 4) / 3.1)) - 0.5;
         color = shade(theme.floor(x, y, noise, plank), 0.93);
@@ -1689,11 +1781,11 @@ export const SIDELINE: readonly Fixture[] = [
   { x0: 20, x1: 27.4, y0: -10.05, y1: -9.8, height: 0.4, top: '#3a4252', front: '#1b2230' },
 ];
 /**
- * As placas soltas atrás de cada linha de fundo, nos pavilhões com bancada em degraus: a 2,6 m da linha, atrás do poste do
+ * As placas soltas atrás de cada linha de fundo, nas arenas (bancada em anel, com os cantos cortados): a 2,6 m da linha, atrás do poste do
  * cesto, em quatro placas de 3,2 m, com o rebordo de cima mais escuro.
  */
 export function endBoards(theme: CourtTheme): Fixture[] {
-  if (!theme.steps || theme.woodSteps || theme.boards.length === 0) return [];
+  if (!theme.steps || !theme.chamfer || theme.boards.length === 0) return [];
   const hex = (c: Rgb): string => `#${c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
   return [false, true].flatMap(far =>
     [0, 1, 2, 3].map(k => {

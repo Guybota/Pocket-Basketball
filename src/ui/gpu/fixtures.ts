@@ -137,6 +137,15 @@ function addChairs(b: Builder, theme: CourtTheme, steps: StepColours): void {
     const foot = unpack(steps.gap[k]!);
     const place = (o: V3, s: Seat): void => {
       const { n, a } = frame(s);
+      // Na sala municipal, a cor do clube nos blocos do meio e na claque (no canto); nas pontas, cadeiras cinzentas escuras,
+      // que se leem como lugares vazios contra o betão claro.
+      if (theme.local && Math.abs(s.x - 14) > 7.5 && s.x < 22.5) {
+        const grey = unpack(steps.riser[k]!);
+        b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.04, 0.46, SEAT_Z - 0.06, SEAT_Z, shade(grey, 0.95), shade(grey, 0.82));
+        b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.02, 0.09, SEAT_Z, BACK_Z, shade(grey, 0.95), shade(grey, 0.82));
+        b.turned(o, a, n, -0.05, 0.05, 0.12, 0.3, 0, SEAT_Z - 0.06, foot, foot);
+        return;
+      }
       b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.04, 0.46, SEAT_Z - 0.06, SEAT_Z, lit, chair);
       b.turned(o, a, n, -CHAIR_HALF, CHAIR_HALF, 0.02, 0.09, SEAT_Z, BACK_Z, lit, chair);
       b.turned(o, a, n, -0.05, 0.05, 0.12, 0.3, 0, SEAT_Z - 0.06, foot, foot);
@@ -157,7 +166,8 @@ function addRail(b: Builder, theme: CourtTheme, steps: StepColours): void {
   const { x0, x1, y0, y1, chamfer } = FLOOR_AREA;
   const back = 0.08;
   const c = theme.chamfer ? chamfer : 0;
-  const line: [number, number][] = [[x0 - back, y1], [x0 - back, y0 + c], [x0 + c, y0 - back], [x1 - c, y0 - back], [x1 + back, y0 + c], [x1 + back, y1]];
+  // Sem bancadas nos topos (a sala municipal), só à frente da lateral.
+  const line: [number, number][] = theme.endStands === false ? [[x0 + 0.3, y0 - back], [x1 - 0.3, y0 - back]] : [[x0 - back, y1], [x0 - back, y0 + c], [x0 + c, y0 - back], [x1 - c, y0 - back], [x1 + back, y0 + c], [x1 + back, y1]];
   const k = theme.crowd?.dim ?? 1;
   const metal = shade(rgb('#aab2bc'), k);
   const z = steps.zs;
@@ -195,11 +205,29 @@ function addTunnel(b: Builder, theme: CourtTheme): void {
   const deep = theme.slope * (h + 0.2) + 0.05;
   const lit = (c: V3): V3 => (theme.tint ? [c[0] * theme.tint[0], c[1] * theme.tint[1], c[2] * theme.tint[2]] : c);
   const c = (r: number, g: number, bl: number, k = 1): V3 => lit([(r / 255) * k, (g / 255) * k, (bl / 255) * k]);
-  const frame = c(150, 152, 150);
-  const frameTop = c(170, 172, 168);
+  // Na sala municipal é a porta do balneário: aro metálico azul-acinzentado e as duas folhas abertas para dentro, com
+  // um óculo cada; nas arenas, a boca de betão do túnel.
+  const frame = theme.local ? c(92, 104, 120) : c(150, 152, 150);
+  const frameTop = theme.local ? c(110, 122, 138) : c(170, 172, 168);
   b.box(x0 - 0.2, x0, y - deep, y, 0, h, frameTop, frame);
   b.box(x1, x1 + 0.2, y - deep, y, 0, h, frameTop, frame);
   b.box(x0 - 0.2, x1 + 0.2, y - deep, y, h, h + 0.2, frameTop, frame);
+  if (theme.local) {
+    const leaf = c(126, 140, 156);
+    const glass = c(40, 52, 66);
+    const half = (x1 - x0) / 2;
+    for (const [hinge, dir] of [[x0 + 0.02, 1], [x1 - 0.02, -1]] as const) {
+      // A folha aberta a 80° para dentro: ainda à vista da câmara e fora do caminho de quem passa.
+      const hy = y - 0.08;
+      const ex = hinge + dir * half * 0.174;
+      const ey = hy - half * 0.985;
+      const at = (k: number, z: number): V3 => [hinge + (ex - hinge) * k, hy + (ey - hy) * k, z];
+      b.quad(at(0, 0.03), at(1, 0.03), at(1, h - 0.1), at(0, h - 0.1), leaf);
+      // O óculo 3 cm à frente da folha, do lado do corredor: no mesmo plano, lutava com ela e cintilava.
+      const g = (k: number, z: number): V3 => { const p = at(k, z); return [p[0] + dir * 0.03, p[1], p[2]]; };
+      b.quad(g(0.3, 1.45), g(0.7, 1.45), g(0.7, 1.85), g(0.3, 1.85), glass);
+    }
+  }
   // Por dentro, um nada para dentro da boca, para não se misturar com as ombreiras.
   const i0 = x0 + 0.01;
   const i1 = x1 - 0.01;
