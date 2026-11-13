@@ -451,8 +451,8 @@ const ENLARGED_LIMIT = 200;
  * boneco fica maior ou mais pequeno com a distância, como no Calciobit: o mesmo desenho, ampliado primeiro com píxeis
  * inteiros e depois ajustado ao tamanho certo, por isso só as bordas ficam um pouco suaves.
  */
-export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, scale = 1): void {
-  if (legs === pose) legs = undefined;
+/** A imagem de um boneco (guardada, a 1×) e a chave dela. */
+function poseImage(pose: PoseName, look: Look, back: boolean, withBall: boolean, legs?: PoseName): { key: string; sprite: HTMLCanvasElement; lean: number | undefined } {
   const key = `${pose}|${legs ?? ''}|${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.legs}|${look.torso}|${look.build}|${back}|${withBall}|${look.street === true}|${look.trophy ?? ''}`;
   const lean = legs ? undefined : LEAN[pose];
   let sprite = cache.get(key);
@@ -461,6 +461,36 @@ export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Lo
     sprite = lean === undefined ? built : leaned(built, lean);
     remember(cache, key, sprite, 3000);
   }
+  return { key, sprite, lean };
+}
+
+/** Onde `drawSprite` poria o boneco, em píxeis da arte, sem o desenhar: a imagem (a 1×), o retângulo e se fica virado. Para a
+ * placa gráfica desenhar os bonecos no mesmo sítio e com o mesmo tamanho. */
+export interface SpriteQuad {
+  image: HTMLCanvasElement;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  flip: boolean;
+}
+export function spriteQuad(pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, scale = 1): SpriteQuad {
+  if (legs === pose) legs = undefined;
+  const { sprite, lean } = poseImage(pose, look, back, withBall, legs);
+  // O retângulo em coordenadas do boneco (a âncora nos pés), virado se for o caso, depois na escala e no sítio: as mesmas
+  // contas das transformações de `drawSprite`.
+  const half = sprite.width >> 1;
+  const lx = lean !== undefined ? -half - Math.round((lean / 90) * 12) : -ANCHOR_X;
+  const ly = lean !== undefined ? -half : -ANCHOR_Y;
+  const tx = x | 0;
+  const ty = lean !== undefined ? (y | 0) - Math.round((lean / 90) * 3) : y | 0;
+  const left = flip ? -(lx + sprite.width) : lx;
+  return { image: sprite, left: tx + left * scale, top: ty + ly * scale, width: sprite.width * scale, height: sprite.height * scale, flip };
+}
+
+export function drawSprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, scale = 1): void {
+  if (legs === pose) legs = undefined;
+  const { key, sprite, lean } = poseImage(pose, look, back, withBall, legs);
   if (lean !== undefined) {
     // À medida que cai, o corpo fica centrado onde estava e encostado ao chão.
     const half = sprite.width >> 1;

@@ -1,6 +1,6 @@
-// Fotografa os campos para os ver e comparar depressa: cada um de longe e de cima, com o pavilhão inteiro (só o cenário,
-// com os cestos, os bancos e a mesa, sem pessoas, que têm o tamanho da câmara do jogo e aqui ficavam gigantes), e com a
-// câmara do jogo nas duas pontas e ao meio, com toda a gente. O cenário vem da placa gráfica, como no jogo.
+// Fotografa os campos para os ver e comparar depressa: cada um de longe e de cima, com o pavilhão inteiro, e com a câmara
+// do jogo nas duas pontas e ao meio. O cenário vem da placa gráfica, como no jogo; os bonecos encolhem com a distância da
+// câmara (`Camera.depthScale`).
 // npm run campos [-- divisões, ex.: 2 3]  →  dist-check/campos/
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { withAnimPage } from './anim-browser.ts';
@@ -32,11 +32,10 @@ await withAnimPage(async page => {
         for (let i = 0; i < 200; i++) view.stepSim();
         return { view, canvas };
       };
-      // De longe e de cima: o pavilhão inteiro, sem pessoas.
+      // De longe e de cima: o pavilhão inteiro, sem os balões nem os nomes, que são da câmara do jogo.
       {
         const { view, canvas } = make(3, 640, 360);
-        view.visible = () => false;
-        for (const hide of ['sprite', 'shadow', 'drawFans', 'drawOutsiders', 'drawBubbles', 'drawFloaters', 'drawNameTags', 'drawCarrier', 'addHumor', 'addExits']) view[hide] = () => {};
+        for (const hide of ['drawBubbles', 'drawFloaters', 'drawNameTags', 'drawCarrier']) view[hide] = () => {};
         const cam = view.camera;
         cam.tune({ cy: 30, cz: 26, lookY: -1, focal: 260 });
         const aim = cam.aim.bind(cam);

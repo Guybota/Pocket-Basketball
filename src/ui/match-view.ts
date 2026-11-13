@@ -10,6 +10,7 @@ import type { MoveId, Player, Team } from '../sim/types.ts';
 import { placeShotBall } from '../sim/match-ball.ts';
 import { MOVE_INFO } from './narrate.ts';
 import { courtGpu } from './gpu/loader.ts';
+import type { WorldSprite } from './gpu/sprite-layer.ts';
 import { CLOSED_GYM, Camera, FAN_SPACING, STAND, TUNNEL, courtTextures, drawBox, drawHoopBack, drawHoopFront, fanRows, seats, type CourtTextures, type Sky } from './art/court.ts';
 import { text, textWidth } from './art/font.ts';
 import { crowdLine, type CrowdMood } from './crowd.ts';
@@ -19,6 +20,7 @@ import {
   drawReflection,
   drawShadow,
   drawSprite,
+  spriteQuad,
   kitColors,
   lookOf,
   poseFeet,
@@ -1752,7 +1754,16 @@ export class MatchView {
     // WebGL 2, com WebGL por software, ou com o contexto perdido, fica no traçador de raios, como antes.
     const frame = this.reducedMotion ? 0 : crowdFrame;
     const gpu = courtGpu();
-    const gpuScene = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame) ?? null;
+    // O público dos pavilhões vai com o cenário para a placa gráfica, com a profundidade de cada um. No campo de rua fica na
+    // tela 2D: a rede, desenhada depois de quem está de fora, ficava por cima dele.
+    const crowd: WorldSprite[] = [];
+    if (gpu && !theme.open) {
+      this.spriteMode = 'collect';
+      this.spriteSink = crowd;
+      this.drawFans();
+      this.spriteMode = 'draw';
+    }
+    const gpuScene = gpu?.draw(camera, this.textures, camera.width * this.art, camera.height * this.art, this.zoom > 1.001 ? this.zoom : 1, this.zoomShift, frame, crowd) ?? null;
     this.gpuFloor = gpuScene;
     // Flashes de fotografia nas bancadas: ao acaso, mas pelo animTick, para duas gravações da mesma cena saírem iguais.
     const flashes: [number, number][] = [];
@@ -1810,7 +1821,10 @@ export class MatchView {
       g.drawImage(gpuFence, 0, 0);
       g.restore();
     } else if (this.fence && !gpuScene) g.drawImage(this.fence.canvas, 0, 0);
+    // Com o público na placa gráfica, aqui só ficam as bandeiras, quem dorme e os bancos da rua.
+    this.spriteMode = gpuScene && !theme.open ? 'skip' : 'draw';
     this.drawFans();
+    this.spriteMode = 'draw';
     const drawables: { y: number; draw: () => void }[] = [];
     this.addSideline(drawables, time);
     this.addExits(drawables, alpha);
@@ -2123,8 +2137,19 @@ export class MatchView {
   /** Um boneco no mundo, maior ou mais pequeno com a distância. */
   private sprite(g: CanvasRenderingContext2D, pose: PoseName, look: Look, x: number, y: number, flip: boolean, back: boolean, withBall: boolean, legs?: PoseName, feet = y): void {
     // `feet`: num salto, o tamanho vem do chão, onde está a sombra, e não da altura a que o boneco vai.
-    drawSprite(g, pose, look, x, y, flip, back, withBall, legs, this.depth(feet));
+    const scale = this.depth(feet);
+    // Um boneco com o sítio no mundo (`spriteWorld`) vai para a placa gráfica: guarda-se no `collect`, salta-se no `skip`.
+    if (this.spriteWorld && this.spriteMode !== 'draw') {
+      if (this.spriteMode === 'collect') this.spriteSink.push({ ...spriteQuad(pose, look, x, y, flip, back, withBall, legs, scale), feet: this.spriteWorld });
+      return;
+    }
+    drawSprite(g, pose, look, x, y, flip, back, withBall, legs, scale);
   }
+  /** Os bonecos para a placa gráfica: `collect` guarda-os em `spriteSink` (com os pés em `spriteWorld`), `skip` não os
+   * desenha na tela 2D (a placa já os desenhou), `draw` desenha-os nela como sempre. */
+  private spriteMode: 'draw' | 'collect' | 'skip' = 'draw';
+  private spriteSink: WorldSprite[] = [];
+  private spriteWorld: readonly [number, number, number] | null = null;
 
   /** A altura de um boneco com os pés na linha `y`, já com o tamanho da distância: para o que fica por cima da cabeça. */
   private tall(look: Look, y: number): number {
@@ -2555,6 +2580,7 @@ export class MatchView {
     for (const [i, f] of this.fans.entries()) {
       const [sx, sy] = camera.project(f.x, f.y, f.z);
       if (sx < -20 || sx > camera.width + 20 || sy < -10 || sy > camera.height + 40) continue;
+      this.spriteWorld = [f.x, f.y, f.z];
       if (i === asleep) {
         // Numa goleada, alguém dorme sentado: a cabeça cai de vez em quando e os «Z» sobem.
         const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
@@ -2585,6 +2611,8 @@ export class MatchView {
         g.fillRect((sx | 0) + 6, top, 9, 6);
       }
     }
+    // Os outros bonecos (jogadores, bancos) não têm sítio no mundo: vão para a tela 2D.
+    this.spriteWorld = null;
   }
 
   /** Os balões da bancada: por cima de um adepto da primeira fila, e desaparecem passados dois segundos. */

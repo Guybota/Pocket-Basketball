@@ -92,6 +92,11 @@ Cada fase acaba com `npm run check`, `npm run browser-check`, `npm run gpu-check
    - O protótipo (`src/prototype/`, `prototipo-3d.html`) saiu.
    - O three.js chega à parte (`src/ui/gpu/loader.ts`): o arranque voltou a ~179 KB comprimidos e a placa gráfica (~139 KB) vem a seguir, com o traçador a desenhar entretanto. A página única (`build-page`) leva tudo num só ficheiro.
 
+6. **Bonecos no mundo 3D (em curso, opção C escolhida pelo dono a 13 de novembro).**
+   - **Feito: o público dos pavilhões fechados.** Cada adepto é um retângulo no mesmo sítio e tamanho da tela 2D (`spriteQuad`), desenhado pela placa (`src/ui/gpu/sprite-layer.ts`) com a profundidade dos pés no mundo: em baixo a dos pés, em cima a de um ponto 1,8 m acima, 0,6 m mais perto da câmara. Fica à frente ou atrás das peças 3D do cenário como no mundo. Os bonecos entram na chave do cache, por isso a câmara parada continua a não refazer nada.
+   - **Feito: o tamanho noutras câmaras.** `Camera.depthScale` multiplica pela lente e pela distância da câmara a que olha, em relação à do jogo (na do jogo, 1). `npm run campos` mostra o pavilhão inteiro com toda a gente em proporção.
+   - **Por fazer:** o público do campo de rua (a rede), os bancos e quem lá está, os jogadores, a bola, as sombras e os reflexos; as bandeiras, os «Z» e os flashes, que continuam na tela 2D e com o tamanho da câmara do jogo.
+
 ## Riscos
 
 - **Telemóveis fracos:**

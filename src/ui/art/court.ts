@@ -889,6 +889,10 @@ export const FLOOR_AREA = { x0: WALL_NEAR_X, x1: WALL_FAR_X, y0: WALL_Y, y1: NEA
 /** As medidas das paredes e da sua textura, para a placa gráfica fazer as mesmas contas do traçador de raios. */
 export const WALL_SHAPE = { scale: WALL_SCALE, zSpan: WALL_Z_SPAN, sideSpan: SIDE_WALL_SPAN } as const;
 
+/** A câmara do jogo: onde está (y, z), para onde olha em repouso e a lente. Os bonecos têm o tamanho certo para esta. */
+const GAME_TUNING = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL };
+const lookDistance = (t: { cy: number; cz: number; lookY: number }): number => Math.sqrt((t.lookY - t.cy) * (t.lookY - t.cy) + t.cz * t.cz);
+
 export class Camera {
   lookX = 14;
   lookY = LOOK_Y;
@@ -908,7 +912,7 @@ export class Camera {
 
   /** O enquadramento é igual em qualquer ecrã: mudam só os píxeis disponíveis. */
   /** A posição da câmara: onde está (y, z), para onde olha em repouso e a lente. Afinável, para se experimentarem enquadramentos. */
-  tuning = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL };
+  tuning = { ...GAME_TUNING };
 
   setViewport(width: number, height: number): void {
     this.width = width;
@@ -1070,7 +1074,9 @@ export class Camera {
     const near = drop(sy);
     const middle = drop(this.project(this.lookX, 0)[1]);
     if (near <= 0 || middle <= 0) return 1;
-    return Math.max(0.65, Math.min(1.35, Math.sqrt(near / middle)));
+    // Noutra câmara (mais longe, ou com outra lente), todos os bonecos mudam na mesma proporção que o mundo; na do jogo, 1.
+    const view = (this.tuning.focal / BASE_FOCAL) * (lookDistance(GAME_TUNING) / lookDistance(this.tuning));
+    return Math.max(0.65, Math.min(1.35, Math.sqrt(near / middle))) * view;
   }
 
   project(x: number, y: number, z = 0): [number, number] {

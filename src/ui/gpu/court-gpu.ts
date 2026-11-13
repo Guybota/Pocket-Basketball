@@ -1,5 +1,6 @@
-// O cenário do campo na placa gráfica (three.js), à resolução do ecrã. Fase 1: o chão e as linhas; o resto continua no
-// traçador de raios (`Camera.drawScene`), que deixa o chão transparente por cima desta imagem. Ver docs/08-plano-gpu.md.
+// O cenário do campo na placa gráfica (three.js), à resolução do ecrã: o chão e as linhas como malhas, as bancadas e as
+// paredes (ou o exterior do campo de rua) num shader, e por cima os bonecos que lhe passarem, com a profundidade dos pés.
+// Ver docs/08-plano-gpu.md.
 import {
   BufferAttribute,
   BufferGeometry,
@@ -23,6 +24,7 @@ import {
 } from 'three';
 import { FLOOR_AREA, courtLinePaths, type Camera, type CourtTextures } from '../art/court.ts';
 import { OPEN_FRAGMENT, VENUE_FRAGMENT, VENUE_VERTEX, openUniforms, venueUniforms } from './venue-shader.ts';
+import { SpriteLayer, type WorldSprite } from './sprite-layer.ts';
 
 /** A largura verdadeira das linhas (5 cm) e o mínimo no ecrã, em píxeis: ao longe nunca ficam mais finas do que isto. */
 const LINE_HALF = 0.025;
@@ -247,6 +249,8 @@ export class CourtGpu {
   private readonly renderer: WebGLRenderer;
   private readonly camera = new PerspectiveCamera();
   private readonly venues = new Map<CourtTextures, Venue | null>();
+  private readonly sprites = new SpriteLayer();
+  private readonly eye = new Vector3();
   private lost = false;
   // Um shader que não compila neste driver: o jogo fica de vez no traçador de raios.
   private failed = false;
@@ -334,15 +338,18 @@ export class CourtGpu {
 
   /**
    * Desenha o cenário do pavilhão (chão, linhas, bancadas e paredes) com a câmara do jogo, `width`×`height` píxeis. Com a imagem aproximada (`zoom` e `shift`, em
-   * píxeis da arte, como a transformação da tela 2D), mostra só essa parte, à resolução toda. Devolve a tela, ou `null`.
+   * píxeis da arte, como a transformação da tela 2D), mostra só essa parte, à resolução toda. `sprites`: os bonecos a pôr
+   * por cima, com a profundidade dos pés. Devolve a tela, ou `null`.
    */
-  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0], crowdFrame = 0): HTMLCanvasElement | null {
+  draw(view: Camera, t: CourtTextures, width: number, height: number, zoom = 1, shift: readonly [number, number] = [0, 0], crowdFrame = 0, sprites: readonly WorldSprite[] = []): HTMLCanvasElement | null {
     // O evento da perda só chega depois: no próprio frame, pergunta-se ao contexto.
     if (this.failed || this.lost || this.renderer.getContext().isContextLost()) return null;
     const venue = this.venue(t);
     if (!venue) return null;
     const pose = view.pose();
-    const key = [venue, crowdFrame, width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
+    const key: unknown[] = [venue, crowdFrame, width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
+    // Os bonecos entram na chave: com a câmara parada e o público quieto, a imagem já está na tela.
+    for (const s of sprites) key.push(s.image, s.left, s.top, s.width, s.flip, s.feet[0], s.feet[1], s.feet[2]);
     if (key.length === this.last.length && key.every((v, i) => v === this.last[i])) return this.canvas;
     this.last = key;
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false);
@@ -379,6 +386,13 @@ export class CourtGpu {
     (v.viewProj!.value as Matrix4).multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     v.wallMap!.value = venue.stands.walls[crowdFrame] ?? venue.stands.walls[0];
     this.renderer.render(venue.scene, this.camera);
+    if (sprites.length > 0) {
+      // Os bonecos por cima, sem limpar a profundidade das bancadas: ficam atrás do que estiver mais perto da câmara.
+      this.sprites.set(sprites, pose.width, pose.height, zoom, shift, v.viewProj!.value as Matrix4, this.eye.set(px, py, pz));
+      this.renderer.autoClear = false;
+      this.renderer.render(this.sprites.scene, this.camera);
+      this.renderer.autoClear = true;
+    }
     return this.failed ? null : this.canvas;
   }
 
