@@ -1978,7 +1978,6 @@ export class MatchView {
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
     if (this.ballTrace) this.ballTrace.push({ tick: s.tick, mode: this.ballDrawnAt ? this.ballMode : 'none', x: this.ballDrawnAt ? this.ballDrawnAt[0] * this.zoom + this.zoomShift[0] : NaN, y: this.ballDrawnAt ? this.ballDrawnAt[1] * this.zoom + this.zoomShift[1] : NaN, phase: s.phase, zoom: this.zoom, dt: this.frameSeconds });
-    this.drawRain();
     this.drawCarrier(alpha);
     this.drawNameTags(alpha);
     this.drawFloaters();
@@ -2491,25 +2490,6 @@ export class MatchView {
         const layer = camera.project(hoopX - inward * 0.5, 0, 0)[1] + HOOP_FRONT_OFFSET + 0.1;
         drawables.push({ y: layer, draw: () => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
       }
-    }
-  }
-
-  /** A chuva no campo de rua: riscas inclinadas por cima de tudo, e salpicos no chão. */
-  private drawRain(): void {
-    if (!this.textures.theme.rain) return;
-    const { g, camera } = this;
-    const { width: w, height: h } = camera;
-    const t = this.reducedMotion ? 0 : this.animTime;
-    g.fillStyle = 'rgba(206,220,240,0.55)';
-    for (let n = 0; n < 90; n++) {
-      const y = ((n * 53) % h + t * 260 + n * 11) % h;
-      const x = ((n * 97) % w - y * 0.25 + w * 2) % w;
-      g.fillRect(x | 0, y | 0, 1, 4);
-    }
-    g.fillStyle = 'rgba(226,236,250,0.8)';
-    for (let n = 0; n < 16; n++) {
-      if ((this.animTick + n * 5) % 14 > 1) continue;
-      g.fillRect(((n * 131 + (this.animTick >> 4) * 37) % w) | 0, (h * 0.45 + ((n * 71) % (h * 0.55))) | 0, 2, 1);
     }
   }
 

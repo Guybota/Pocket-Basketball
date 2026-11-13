@@ -27,19 +27,17 @@ describe('mapa da cidade', () => {
     expect(townHit(360, 574, 1, 0.02, 0.02)).toBeNull();
   });
 
-  it('a luz e o tempo mudam com a semana: setembro limpo, dezembro de noite, janeiro com neve, chuva às vezes', () => {
-    expect(weatherFor(1)).toMatchObject({ tint: null, night: false, snow: false, rain: false, sun: false, hour: 'day' });
+  it('a luz e o tempo mudam com a semana: setembro limpo, dezembro de noite, janeiro com neve', () => {
+    expect(weatherFor(1)).toMatchObject({ tint: null, night: false, snow: false, sun: false, hour: 'day' });
     expect(weatherFor(14).night).toBe(true);
     expect(weatherFor(14).hour).toBe('night');
     // Em dezembro há luzes de Natal; em janeiro já não.
     expect(weatherFor(14).lights).toBe(true);
     expect(weatherFor(18).lights).toBe(false);
     expect(weatherFor(18).snow).toBe(true);
-    // A chuva volta (G7): algumas semanas, nunca com neve nem em dezembro; o sol forte é sempre de dia.
+    // O sol forte é sempre de dia.
     const season = Array.from({ length: 29 }, (_, n) => weatherFor(n + 1));
-    // O dono do projeto tirou a chuva (3 e 7 de novembro de 2026).
-    expect(season.some(w => w.rain)).toBe(false);
-    expect(season.some(w => w.sun && (w.rain || w.hour !== 'day'))).toBe(false);
+    expect(season.some(w => w.sun && w.hour !== 'day')).toBe(false);
     expect(weatherFor(8)).toEqual(weatherFor(8));
   });
 

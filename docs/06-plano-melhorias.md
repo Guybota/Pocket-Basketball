@@ -282,7 +282,7 @@ Cada ponto aprovado foi confirmado no código e no histórico.
 | E2 | O zoom com os dedos voltou e depois saiu outra vez, a pedido. |
 | E3 | A barra do treinador ficou só com ícones; o resto do E3 está feito. |
 | E14 | A Torre mantém o nome e mostra a data da última cópia. |
-| G7 | Ficaram as horas do dia e o sol; a chuva saiu. O código da chuva continua lá, mas já não corre: o `weatherFor` dá sempre `rain = false`. |
+| G7 | Ficaram as horas do dia e o sol; a chuva saiu, também do código (13 de novembro). |
 | I1 | O cenário passou todo para a placa gráfica ([08-plano-gpu.md](08-plano-gpu.md)), o que vai além da cache proposta. |
 
 **Resolvido antes do previsto:**
@@ -293,7 +293,6 @@ Cada ponto aprovado foi confirmado no código e no histórico.
 **Por fazer:**
 - **G1, só os balões:** o texto dos balões e dos letreiros é desenhado a 2× e os bonecos a 1×. É sobretudo uma questão de gosto, e a decisão é do dono: desenhar o texto à resolução do ecrã ou aceitar a diferença.
 - **I11:** ficou de fora, de propósito, a escala inteira em janelas com menos de 360 px.
-- **Limpeza:** tirar o código da chuva, que já não corre (`drawRain`, as poças em `underSky`, `Sky.rain`), ou guardá-lo se a chuva puder voltar.
 
 **Recusado e que continua de fora:** C (equilíbrio), D3, D7, D12–D17, E13, F6–F14, F16, J.
 

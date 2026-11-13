@@ -100,7 +100,7 @@ export interface TownDress {
   festive: boolean;
 }
 
-/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, neve em certas semanas do inverno, chuva de vez em quando
+/** Quando acontece a semana: manhã clara, tarde dourada, anoitecer, noite, neve em certas semanas do inverno
  * e um ou outro dia de sol forte. Em dezembro, luzes de Natal nas casas e no pavilhão. `hour` é a hora do jogo da semana, para a luz do campo. */
 export type Weather = Sky & { tint: string | null; snow: boolean; night: boolean; lights: boolean };
 export function weatherFor(week: number): Weather {
@@ -122,9 +122,8 @@ export function weatherFor(week: number): Weather {
   // Em dezembro joga-se sempre à noite; nas outras semanas, um jogo em quatro é ao fim da tarde e outro à noite.
   const hour: Sky['hour'] = first ? 'day' : month === 3 || (h >>> 8) % 4 === 3 ? 'night' : (h >>> 8) % 4 === 2 ? 'evening' : 'day';
   // Não chove: o dono do projeto tirou a chuva (3 e 7 de novembro de 2026). Sol forte de dia, no princípio e no fim da época.
-  const rain = false;
-  const sun = !first && !rain && hour === 'day' && (month <= 1 || month >= 6) && (h >>> 16) % 3 === 0;
-  return { ...season, rain, sun, hour };
+  const sun = !first && hour === 'day' && (month <= 1 || month >= 6) && (h >>> 16) % 3 === 0;
+  return { ...season, sun, hour };
 }
 
 function buildTown(width: number, height: number, division: number, dress: TownDress): Town {
@@ -719,22 +718,5 @@ export function drawTown(g: Pixels, width: number, height: number, division: num
   if (weather.sun) {
     g.fillStyle = 'rgba(255,238,170,0.14)';
     g.fillRect(0, 0, width, height);
-  }
-  if (weather.rain) {
-    // Céu carregado, riscas inclinadas a cair depressa e salpicos que acendem e apagam no chão.
-    g.fillStyle = 'rgba(50,70,100,0.24)';
-    g.fillRect(0, 0, width, height);
-    g.fillStyle = 'rgba(206,220,240,0.6)';
-    for (let n = 0; n < 140; n++) {
-      const y = ((n * 61) % height + (now / 1000) * 300 + n * 7) % height;
-      const x = ((n * 97) % width - y * 0.25 + width * 2) % width;
-      g.fillRect(Math.round(x), Math.round(y), 1, 4);
-    }
-    g.fillStyle = 'rgba(226,236,250,0.8)';
-    const tick = Math.floor(now / 50);
-    for (let n = 0; n < 24; n++) {
-      if ((tick + n * 5) % 14 > 1) continue;
-      g.fillRect((n * 131 + Math.floor(tick / 16) * 37) % width, (n * 89 + Math.floor(tick / 16) * 53) % height, 2, 1);
-    }
   }
 }

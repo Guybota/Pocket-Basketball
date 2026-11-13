@@ -6,10 +6,9 @@ import { FONT } from './font.ts';
 
 type Rgb = readonly [number, number, number];
 
-/** A hora e o tempo do jogo: mudam a luz, as janelas e, no campo de rua, o céu e o chão molhado. */
+/** A hora e o tempo do jogo: mudam a luz, as janelas e, no campo de rua, o céu. */
 export interface Sky {
   hour: 'day' | 'evening' | 'night';
-  rain: boolean;
   /** Um dia de sol forte. */
   sun: boolean;
 }
@@ -198,7 +197,6 @@ export interface CourtTheme {
   /** A luz do dia ou da noite, multiplicada em cada canal do chão e das paredes. */
   tint?: Rgb;
   hour?: Sky['hour'];
-  rain?: boolean;
   /** De 0 a 1: onde começa a lista de patrocinadores e por quanto se desloca o pano de fundo do bairro. Muda de clube para clube. */
   shift?: number;
   /** O soalho dentro da linha de 3 pontos fica mais escuro, envernizado de outra cor. */
@@ -311,9 +309,9 @@ export const THEMES: readonly CourtTheme[] = [
         // À noite só algumas janelas estão acesas, e o resto do prédio fica no escuro.
         if (window) return !night ? [228, 220, 170] : hash(Math.floor(u * 1.4), Math.floor(z * 1.1)) < 0.55 ? [250, 214, 130] : [40, 44, 66];
         const c = z > height - 0.2 ? shade(tone, 0.7) : tone;
-        return night ? shade(c, 0.36) : t.rain ? shade(c, 0.8) : c;
+        return night ? shade(c, 0.36) : c;
       }
-      if (Math.sin(u * 0.9) * 0.7 + 3.3 > z) return night ? [22, 48, 44] : t.rain ? [52, 102, 80] : [62, 134, 92];
+      if (Math.sin(u * 0.9) * 0.7 + 3.3 > z) return night ? [22, 48, 44] : [62, 134, 92];
       return t.sky ?? [156, 206, 226];
     },
     wallColor: [156, 206, 226],
@@ -785,20 +783,10 @@ function clubVenue(theme: CourtTheme, emblem: Emblem): CourtTheme {
   };
 }
 
-// Poças no alcatrão molhado: uma oval achatada em algumas células de 2,5 × 1,6 m, que reflete o céu.
-const puddle = (x: number, y: number): boolean => {
-  const i = Math.floor(x / 2.5);
-  const j = Math.floor(y / 1.6);
-  if (hash(i + 7, j) < 0.7) return false;
-  const dx = (x - (i + 0.5) * 2.5) / 0.8;
-  const dy = (y - (j + 0.5) * 1.6) / 0.35;
-  return dx * dx + dy * dy < 1;
-};
-
-/** A hora e o tempo: a luz, as janelas e, ao ar livre, o céu; à chuva, o alcatrão escurece e ganha poças. */
+/** A hora e o tempo: a luz, as janelas e, ao ar livre, o céu. */
 function underSky(theme: CourtTheme, sky: Sky): CourtTheme {
   const open = theme.open === true;
-  const base: CourtTheme = { ...theme, hour: sky.hour, rain: sky.rain && open };
+  const base: CourtTheme = { ...theme, hour: sky.hour };
   const windows = (color: Rgb): CourtTheme['windows'] => theme.windows && { ...theme.windows, color };
   if (sky.hour === 'night') {
     return open
@@ -806,12 +794,6 @@ function underSky(theme: CourtTheme, sky: Sky): CourtTheme {
       : { ...base, ambient: theme.ambient * 0.86, spot: theme.spot + 0.16, tint: [0.94, 0.95, 1.03], windows: windows([34, 42, 74]) };
   }
   if (sky.hour === 'evening') return { ...base, sky: [236, 164, 120], ambient: theme.ambient * 0.96, tint: [1.06, 0.93, 0.82], windows: windows([246, 176, 118]) };
-  if (sky.rain) {
-    if (!open) return { ...base, windows: windows([150, 164, 178]) };
-    const floor = theme.floor;
-    const grey: Rgb = [150, 160, 172];
-    return { ...base, sky: grey, ambient: theme.ambient * 0.86, tint: [0.9, 0.94, 1], floor: (x, y, n, p) => (puddle(x, y) ? mix(floor(x, y, n, p), grey, 0.45) : floor(x, y, n, p)) };
-  }
   if (sky.sun) return { ...base, sky: [110, 184, 236], ambient: theme.ambient * 1.07, tint: [1.04, 1.02, 0.95], windows: windows([236, 248, 252]) };
   return base;
 }
@@ -822,7 +804,7 @@ const CREST_METRES = 3;
 /** As texturas calculam-se uma vez por divisão, cor da casa, emblema do dono do pavilhão e tempo. Desenhar um frame é só consultá-las. */
 export function courtTextures(division: number | CourtTheme, accent?: string, emblem?: Emblem, sky?: Sky): CourtTextures {
   // Um tema em vez da divisão serve as maquetas de cenários novos.
-  const key = `${typeof division === 'number' ? division : division.name}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}|${sky ? `${sky.hour}${sky.rain}${sky.sun}` : ''}`;
+  const key = `${typeof division === 'number' ? division : division.name}|${accent ?? ''}|${emblem ? JSON.stringify(emblem) : ''}|${sky ? `${sky.hour}${sky.sun}` : ''}`;
   const cached = textureCache.get(key);
   if (cached) return cached;
   let theme = typeof division === 'number' ? VENUES[division]! : division;
