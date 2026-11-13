@@ -1357,7 +1357,8 @@ export class Camera {
     const nearOffset = cx - WALL_NEAR_X + endSlope * cz;
     const farOffset = WALL_FAR_X + endSlope * cz - cx;
     // Onde a bancada da lateral acaba e a parede sobe a direito, quando sobe.
-    const standTop = t.theme.wallAbove && t.theme.crowd ? t.theme.crowd.to : Infinity;
+    // Sem bancada (o pavilhão dos treinos), a parede é toda a direito: inclinada como a bancada, parecia tombar para trás.
+    const standTop = !t.theme.crowd ? 0 : t.theme.wallAbove ? t.theme.crowd.to : Infinity;
     const wallAboveY = WALL_Y - slope * standTop;
     // Os cantos cortados: a distância da câmara para lá de cada diagonal, medida na perpendicular.
     const chamfer = t.steps !== null && t.theme.chamfer === true;
@@ -1464,6 +1465,27 @@ export class Camera {
         }
         // Acima da bancada, a parede da lateral sobe a direito: o raio que passou por cima dela bate nessa parede.
         if (onSide && !diag && cz + rz * hit > standTop && dirY < 0) hit = (cy - wallAboveY) / -dirY;
+        else if (!onSide && !diag && dirY < 0) {
+          // Nos cantos, essa parede a direito tapa o bocado do topo que fica por trás dela (senão via-se uma cunha do topo).
+          const tW = (cy - wallAboveY) / -dirY;
+          if (tW < hit && cz + rz * tW > standTop) {
+            hit = tW;
+            onSide = true;
+            far = false;
+          }
+        }
+        // E por baixo: o bocado do topo que fica dentro da bancada (atrás do muro e debaixo da passagem ou dos degraus) está
+        // tapado por ela; o raio volta ao plano da bancada da lateral, e os degraus encontram o que bate primeiro.
+        if (!onSide && !diag && dirY < 0 && hit < Infinity && t.steps && t.theme.endStands === false) {
+          const d = WALL_Y - (cy + dirY * hit);
+          const z = cz + rz * hit;
+          const dSide = dirY + slope * rz;
+          if (d > 0 && z < standTop && (z < t.steps.zs || slope * z < d) && dSide < 0) {
+            hit = -sideOffset / dSide;
+            onSide = true;
+            far = false;
+          }
+        }
         // Cada bancada tem a sua faixa na textura: o texto da publicidade só fica na lateral. Acima de tudo, o teto.
         // Nos pavilhões com degraus, o raio que bate no plano da bancada recua até ao degrau que encontrou primeiro.
         const steps = t.steps;
@@ -1505,7 +1527,7 @@ export class Camera {
               tHit = Math.max(tTread, tRiser);
               face = tTread >= tRiser ? 0 : 1;
               owner = riserOwner;
-            } else if (!steps.wood) {
+            } else {
               // O muro a direito (d = 0) e, em cima dele, o corredor à frente da primeira fila: o raio bate no muro, passa-lhe por
               // cima para o corredor ou chega ao espelho do primeiro piso, ao fundo do corredor.
               let tV = Infinity;

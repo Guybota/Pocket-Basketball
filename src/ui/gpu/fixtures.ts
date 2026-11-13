@@ -331,10 +331,9 @@ export function buildFixtures(theme: CourtTheme, steps: StepColours | null = nul
   for (const f of boxes) b.box(f.x0, f.x1, f.y0, f.y1, 0, f.height, rgb(f.top), rgb(f.front));
   if (!theme.open && theme.slope > 0) addTunnel(b, theme);
   if (theme.windows) addGoals(b, theme);
-  if (steps && !steps.wood) {
-    addChairs(b, theme, steps);
-    addRail(b, theme, steps);
-  }
+  // Nas tábuas da escola não há cadeiras, mas o guarda-corpos à beira do muro também lá está.
+  if (steps && !steps.wood) addChairs(b, theme, steps);
+  if (steps) addRail(b, theme, steps);
   const solid = new Mesh(b.geometry(), material);
   solid.frustumCulled = false;
   // A rede muda quando a bola entra: tem a sua malha, refeita só quando mexe.

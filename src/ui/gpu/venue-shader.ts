@@ -189,6 +189,16 @@ void main() {
     }
   }
   if (onSide && !diag && cz + rz * hit > standTop && dirY < 0.0) hit = (cy - wallAboveY) / -dirY;
+  else if (!onSide && !diag && dirY < 0.0 && standTop < 1e29) {
+    float tW = (cy - wallAboveY) / -dirY;
+    if (tW < hit && cz + rz * tW > standTop) { hit = tW; onSide = true; far = false; }
+  }
+  if (!onSide && !diag && dirY < 0.0 && hit < INF && hasSteps && !endStands) {
+    float dW = WALL_Y - (cy + dirY * hit);
+    float zW = cz + rz * hit;
+    float dS = dirY + slope * rz;
+    if (dW > 0.0 && zW < standTop && (zW < zs || slope * zW < dW) && dS < 0.0) { hit = -sideOffset / dS; onSide = true; far = false; }
+  }
 
   if (hasSteps && hit < INF && rz < 0.0 && (onSide || diag || endStands) && cz + rz * hit < standTop) {
     float zIn = cz + rz * hit;
@@ -389,13 +399,13 @@ export function venueUniforms(t: CourtTextures): { uniforms: Record<string, { va
     rows: { value: rows },
     slope: { value: theme.slope },
     endSlope: { value: theme.endSlope ?? theme.slope },
-    standTop: { value: theme.wallAbove && theme.crowd ? theme.crowd.to : 1e30 },
+    standTop: { value: !theme.crowd ? 0 : theme.wallAbove ? theme.crowd.to : 1e30 },
     endStands: { value: theme.endStands !== false },
     chamferOn: { value: steps !== null && theme.chamfer === true },
     hasSteps: { value: steps !== null },
     wood: { value: steps?.wood ?? false },
     paintedChairs: { value: false },
-    corridor: { value: steps !== null && !steps.wood },
+    corridor: { value: steps !== null },
     tunnelHole: { value: theme.slope > 0 },
     zs: { value: steps?.zs ?? 0 },
     t0: { value: steps?.t0 ?? 0 },
