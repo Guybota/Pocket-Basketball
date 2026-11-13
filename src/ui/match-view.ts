@@ -29,6 +29,13 @@ import {
   type PoseName,
 } from './art/sprites.ts';
 
+/** A letra dos balões de fala: a da interface do jogo, em píxeis da arte (à resolução do ecrã, porque a tela está ampliada). */
+const SPEECH_FONT = '12px "Jersey 15"';
+let speechFontLoaded = false;
+/** Se a letra dos balões já chegou. O `document.fonts.check` diz que sim mesmo sem a folha das letras (sem rede), e aí saía
+ * uma letra do sistema; por isso procura-se a letra carregada, e guarda-se quando chega. */
+const speechFontReady = (): boolean =>
+  (speechFontLoaded ||= typeof document !== 'undefined' && [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Jersey 15' && f.status === 'loaded'));
 /** Quantos píxeis da tela há por píxel de arte (o layout escreve-o na tela do jogo; nas outras é 1). */
 const artScaleOf = (canvas: HTMLCanvasElement): number => Math.max(1, Math.round(Number(canvas.dataset.artScale ?? 1)));
 
@@ -2462,7 +2469,7 @@ export class MatchView {
             this.shadow(g, ox, oy);
             this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
             if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
-            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, Math.max(28, (oy | 0) - this.tall(look, oy) - 22));
+            if (t < DOG_PICKED) this.speech('ANDA CÁ BOBI!', ox, (oy | 0) - this.tall(look, oy) + 2, oy | 0, 21);
           },
         });
       }
@@ -2493,20 +2500,39 @@ export class MatchView {
     }
   }
 
-  /** Um balão de fala, igual aos da bancada, com a ponta em `fx`. */
-  private speech(label: string, fx: number, top: number): void {
+  /**
+   * Um balão de fala para quem tem a cabeça em (`fx`, `head`) e os pés em `foot`. A caixa fica por cima da cabeça, com a seta
+   * para baixo; se aí passasse acima de `minTop` (a linha do marcador), fica por baixo dos pés, com a seta para cima, para
+   * nunca tapar quem fala. A caixa segue quem fala e fica dentro do ecrã; a seta desliza pela caixa para apontar sempre para
+   * essa pessoa. `sink`: quantos píxeis o balão de cima nasce mais perto da cabeça, antes de assentar (o lado escolhe-se sem isso).
+   */
+  private speech(label: string, fx: number, head: number, foot: number, minTop: number, sink = 0): void {
     const { g, camera } = this;
-    const w = textWidth(label, 2) + 8;
+    // A letra do jogo à resolução do ecrã, com os acentos direitos; enquanto não chegar (ou sem rede), a letra de píxeis a 2×.
+    const smooth = speechFontReady();
+    if (smooth) g.font = SPEECH_FONT;
+    const w = Math.ceil(smooth ? g.measureText(label).width : textWidth(label, 2)) + 10;
+    const h = smooth ? 15 : 21;
     const x = Math.max(6, Math.min(camera.width - w - 6, (fx | 0) - (w >> 1)));
-    const y = top;
+    // A ponta da seta fica 6 píxeis acima da cabeça, ou 1 abaixo dos pés; a seta tem 3 de altura.
+    const above = head - 9 - h >= minTop;
+    // Por baixo não sobe: a seta pisava os pés de quem fala.
+    const y = above ? Math.max(minTop, head - 9 - h + sink) : Math.max(minTop, foot + 5);
+    const tip = Math.max(x + 5, Math.min(x + w - 6, fx | 0));
+    // A seta: um triângulo de píxeis com a ponta para quem fala, contornado a tinta. `edge` é a linha da caixa de onde sai.
+    const edge = above ? y + h : y - 1;
+    const step = above ? 1 : -1;
     g.fillStyle = '#1b2230';
-    // A caixa sobe 6 píxeis acima do texto para caberem os acentos.
-    g.fillRect(x - 1, y - 7, w + 2, 22);
-    g.fillRect(x + (w >> 1) - 2, y + 15, 5, 3);
+    g.fillRect(x - 1, y - 1, w + 2, h + 2);
+    for (let k = 0; k < 4; k++) g.fillRect(tip - 3 + k, edge + step * k, 7 - 2 * k, 1);
     g.fillStyle = '#fbf6e2';
-    g.fillRect(x, y - 6, w, 20);
-    g.fillRect(x + (w >> 1) - 1, y + 14, 3, 3);
-    text(g, label, x + 4, y + 2, '#1b2230', 2);
+    g.fillRect(x, y, w, h);
+    for (let k = 0; k < 3; k++) g.fillRect(tip - 2 + k, edge + step * k, 5 - 2 * k, 1);
+    if (smooth) {
+      g.fillStyle = '#1b2230';
+      g.textBaseline = 'middle';
+      g.fillText(label, x + 5, y + h / 2 + 0.5);
+    } else text(g, label, x + 5, y + 8, '#1b2230', 2);
   }
 
   /** O público: sentado quase sempre, de pé a festejar um cesto da casa, de mãos na cabeça com um da visita. Alguns têm bandeira. */
@@ -2576,9 +2602,9 @@ export class MatchView {
       }
       const fan = this.fans[b.fan]!;
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
-      // Por cima da cabeça do adepto. Nasce um pouco mais abaixo e sobe, como quem se levanta da cadeira.
-      // A caixa começa 7 píxeis acima do texto, e nunca acima da linha do marcador, que a tapava.
-      this.speech(b.label, fx, Math.max(FLOATER_MIN_TOP + 7, (fy | 0) - this.tall(fan.look, fy) - 24 - Math.min(4, age)));
+      // Por cima da cabeça do adepto, e nunca acima da linha do marcador, que a tapava. Nasce um pouco mais abaixo e sobe,
+      // como quem se levanta da cadeira.
+      this.speech(b.label, fx, (fy | 0) - this.tall(fan.look, fy), fy | 0, FLOATER_MIN_TOP, 4 - Math.min(4, age));
     }
   }
 
