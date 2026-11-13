@@ -2,7 +2,7 @@
 
 Feito a partir de oito revisões independentes: mercado, opinião dos jogadores, interface, mecânicas, progressão, cenários e som, código e um teste de jogo de uma época inteira. Os relatórios completos, com fontes e referências `ficheiro:linha`, estão em [06-relatorios/](06-relatorios/).
 
-**Nada disto está feito.** Cada linha tem um código (ex.: `B3`). Para cada um, responde **sim**, **não** ou **muda assim: …**. As linhas marcadas com ❓ precisam de uma escolha tua antes de começar. As marcadas com 📜 mudam o contrato (testes ou formato dos dados) e por isso precisam de aprovação explícita.
+**Estado em 13 de novembro de 2026: está quase tudo feito.** Ver [Revisão do estado](#revisão-do-estado-13-de-novembro-de-2026), no fim. As tabelas ficam como foram propostas, para se saber o que se pediu e porquê. Cada linha tem um código (ex.: `B3`). As marcadas com ❓ precisaram de uma escolha; as marcadas com 📜 mudam o contrato (testes ou formato dos dados).
 
 Esforço: XS < 1 h · S ≈ meio dia · M ≈ 1–2 dias · L ≈ uma semana ou mais.
 
@@ -266,3 +266,35 @@ O determinismo está bem: gerador exato, só funções matemáticas exatas, orde
 - **Fica de fora do I11:** a escala inteira em janelas de computador com menos de 360 px (pediria layouts mais estreitos do que 360).
 - **Instável:** no `browser-check`, a espera por uma carta a 8× pode passar dos 60 s com a máquina ocupada.
 - **Por fazer (aprovado):** D6, D10, D11; E1, E2, E4–E12, E14, E15; F1–F5, F15, F17; G1, G3–G8; H1, H3, H4.
+
+## Revisão do estado (13 de novembro de 2026)
+
+Cada ponto aprovado foi confirmado no código e no histórico.
+
+**Feito:** A (todos); B1–B7; D1, D2, D4, D5, D6, D8, D10, D11; E1, E3–E12, E14, E15; F1–F5, F15, F17; G2–G6, G8; H1–H4; I1–I10.
+
+**Feito, mas diferente do proposto (por decisão do dono):**
+
+| Código | O que ficou |
+|---|---|
+| D9 | Estava recusado e foi feito depois, a pedido: botão X1 / X2 / X4 na barra do treinador e tecla V. |
+| E1 | Alvos de 44 px, exceto as linhas das listas, que ficam com 34 px. |
+| E2 | O zoom com os dedos voltou e depois saiu outra vez, a pedido. |
+| E3 | A barra do treinador ficou só com ícones; o resto do E3 está feito. |
+| E14 | A Torre mantém o nome e mostra a data da última cópia. |
+| G7 | Ficaram as horas do dia e o sol; a chuva saiu. O código da chuva continua lá, mas já não corre: o `weatherFor` dá sempre `rain = false`. |
+| I1 | O cenário passou todo para a placa gráfica ([08-plano-gpu.md](08-plano-gpu.md)), o que vai além da cache proposta. |
+
+**Resolvido antes do previsto:**
+- **B:** a instabilidade do `browser-check` ficou resolvida a 12 de novembro, com três voltas seguidas sem falhas.
+- **G1, linhas do chão sem serrilhado:** resolvido pela placa gráfica.
+- **G1, cartas do combo sem inclinação:** resolvido; já não rodam (`style.css:1079`).
+
+**Por fazer:**
+- **G1, só os balões:** o texto dos balões e dos letreiros é desenhado a 2× e os bonecos a 1×. É sobretudo uma questão de gosto, e a decisão é do dono: desenhar o texto à resolução do ecrã ou aceitar a diferença.
+- **I11:** ficou de fora, de propósito, a escala inteira em janelas com menos de 360 px.
+- **Limpeza:** tirar o código da chuva, que já não corre (`drawRain`, as poças em `underSky`, `Sky.rain`), ou guardá-lo se a chuva puder voltar.
+
+**Recusado e que continua de fora:** C (equilíbrio), D3, D7, D12–D17, E13, F6–F14, F16, J.
+
+O plano está esgotado. As ideias seguintes vêm da comparação com o Calciobit ([referencias/pocket-basketball/comparacao-calciobit.md](referencias/pocket-basketball/comparacao-calciobit.md)) e do que a placa gráfica agora permite (peças 3D no pavilhão).
