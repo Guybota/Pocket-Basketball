@@ -1707,7 +1707,7 @@ export class MatchView {
       const paint = (w: number, h: number): HTMLCanvasElement =>
         f.face === 'flip' ? this.flipFace(w, h, flipping)
         : f.face === 'led' ? this.ledFace(w, h)
-        : f.face === 'arrow' ? this.arrowFace(w, h, s.period % 2 === 0)
+        : f.face === 'arrow' ? this.arrowFace(w, h, this.possessionArrowLeft())
         : this.foulFace(w, h, s.teamFouls[f.face === 'foul0' ? 0 : 1]);
       // Uma moldura de um palmo: a cara ocupa a frente menos 3 cm à volta.
       this.face(drawables, [f.x - f.w / 2 + 0.03, f.y + 0.015], [f.x + f.w / 2 - 0.03, f.y + 0.015], f.z0 + 0.03, f.z0 + f.h - 0.03, paint);
@@ -1843,15 +1843,38 @@ export class MatchView {
     return image;
   }
 
+  /**
+   * Para onde aponta a seta da posse alternada, à esquerda do ecrã ou não; `null` quando não há reposição a seguir. O jogo
+   * não tem bolas presas, por isso a posse alternada é a reposição do início do período: para quem perdeu a bola ao alto
+   * no 2.º e no 4.º, para quem a ganhou no 3.º (como em `beginPeriod`). Como na FIBA, a seta só passa para a outra equipa
+   * quando essa reposição acaba (o relógio ainda não andou), e aponta para o cesto que a equipa ataca: o deste período, e
+   * ao intervalo o do seguinte. A equipa 0 ataca o x maior na primeira parte (como em `cameraTarget`).
+   */
+  private possessionArrowLeft(): boolean | null {
+    const s = this.s;
+    if (s.period === 0 || s.phase === 'intro' || s.phase === 'jump' || s.phase === 'end') return null;
+    // A reposição do início deste período ainda não acabou: o relógio ainda está cheio.
+    const throwIn = s.period >= 2 && s.period <= 4 && s.clock >= seconds(B.periodSeconds);
+    const owed = throwIn ? s.period : s.period + 1;
+    // O prolongamento começa com bola ao alto, e não com reposição.
+    if (owed > 4) return null;
+    const team = owed % 2 === 1 ? s.firstOffense : 1 - s.firstOffense;
+    const half = throwIn || s.phase === 'break' ? owed : s.period;
+    const attacksPlusX = (team === 0) !== half >= 3;
+    // No ecrã: o x maior do mundo fica à esquerda ou à direita conforme a câmara.
+    const plusXLeft = this.camera.project(15, -8, 1)[0] < this.camera.project(14, -8, 1)[0];
+    return attacksPlusX === plusXLeft;
+  }
+
   /** A cara da seta da posse alternada: a seta vermelha, para a esquerda ou para a direita do ecrã, sobre escuro. */
-  private arrowFace(w: number, h: number, left: boolean): HTMLCanvasElement {
+  private arrowFace(w: number, h: number, left: boolean | null): HTMLCanvasElement {
     const key = `arrow|${w}|${h}|${left}`;
     const cached = this.boardCache.get(key);
     if (cached) return cached;
     const rows = ['..R.....', '.RR.....', 'RRRRRRR.', '.RR.....', '..R.....'];
     const image = this.faceCanvas(w, h, INK);
     remember(this.boardCache, key, image, 64);
-    if (h < 5) return image;
+    if (h < 5 || left === null) return image;
     const c = image.getContext('2d')!;
     const [ox, oy] = [(w - 7) >> 1, (h - 5) >> 1];
     c.fillStyle = TABLE_RED;
