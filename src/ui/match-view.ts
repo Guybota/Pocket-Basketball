@@ -682,12 +682,11 @@ export class MatchView {
     if (this.s.phase === 'end') return [LOCKER_DOOR_X, this.camera.tuning.lookY];
     // Na ida para o balneário ao intervalo e na volta, a câmara fica no túnel, para se ver quem entra e quem sai.
     if (this.tunnelShot()) return [LOCKER_DOOR_X, this.camera.tuning.lookY];
-    // Na paragem olha-se para o banco da casa, inclinado para baixo.
-    if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, -1.5];
+    // Na paragem olha-se para o banco da casa, um pouco mais para lá do que em repouso.
+    if (this.holding()) return [HUDDLE_CENTRE[0][0] + 1.5, this.camera.tuning.lookY - 0.4];
     // No início, toda a gente está à volta do círculo: olha-se para o meio do campo.
     if (this.s.phase === 'intro' || this.s.phase === 'jump') return [ballX, this.camera.tuning.lookY];
-    // Olhar um pouco à frente da bola, para o cesto atacado ficar sempre à vista. Quando a bola desce para a linha de baixo,
-    // a câmara inclina-se, senão quem a tem ficava cortado pelo fundo do ecrã.
+    // Olhar um pouco à frente da bola, para o cesto atacado ficar sempre à vista.
     const secondHalf = this.s.period >= 3;
     const attacksRight = (this.s.offense === 0) !== secondHalf;
     const lookY = this.camera.tuning.lookY;
@@ -1973,10 +1972,11 @@ export class MatchView {
         const pose = jump.pose ?? 'dunk';
         const withBall = jump.withBall === true;
         const flip = this.motionOf(e.body).flip;
-        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift: dunk.lift, pose, height: this.tall(look, dy), world: { x: dunk.x, y: dunk.y } });
+        const lift = dunk.lift * this.depth(dy);
+        this.drawn.bodies.set(e.body, { x: dx, y: dy, lift, pose, height: this.tall(look, dy), world: { x: dunk.x, y: dunk.y } });
         drawables.push({ y: dy, world: [dunk.x, dunk.y, 0], draw: () => {
           this.shadow(g, dx, dy);
-          this.sprite(g, pose, look, dx, dy - dunk.lift, flip, false, withBall, undefined, dy);
+          this.sprite(g, pose, look, dx, dy - lift, flip, false, withBall, undefined, dy);
         } });
         continue;
       }
@@ -2145,7 +2145,8 @@ export class MatchView {
         motion.drawnBackLock = s.tick + TURN_LOCK_TICKS;
       }
       const back = falling ? b.fallProne && pose.startsWith('fall') : motion.drawnBack && backable;
-      const lift = this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha);
+      // Os saltos estão em píxeis de boneco a meio do campo da câmara antiga: crescem e encolhem com o boneco, como a bola.
+      const lift = (this.tipLift(b, alpha) + this.reboundLift(b, alpha) + dunk.lift + this.shotLift(b, alpha)) * this.depth(sy);
       this.drawn.bodies.set(b, { x: sx, y: sy, lift, pose, height: this.tall(look, sy), world: { x: dunk.x, y: dunk.y }, back });
       // Um gesto de pés no chão feito a andar leva as pernas da corrida: os braços e a bola são do gesto, os pés andam.
       // O agachamento do afundanço não: esse fica preso ao sítio (`dunkLift`).
@@ -3303,7 +3304,8 @@ export class MatchView {
         const head = (drawn.y | 0) - Math.round(drawn.lift) - Math.round(this.poseTop(drawn.pose, look) * k);
         // Num afundanço conta-se já com o ponto mais alto que aí vem: a pose de afundar no topo do salto, junto ao aro.
         const hoopGround = camera.project(this.attackedHoop(f.body!.team), 0)[1] | 0;
-        const peak = f.dunk ? Math.min(head, hoopGround - DUNK_LIFT - Math.round(this.poseTop('dunk', look) * k), (drawn.y | 0) - DUNK_LIFT - Math.round(this.poseTop('dunk', look) * k)) : head;
+        const reach = Math.round((DUNK_LIFT + this.poseTop('dunk', look)) * k);
+        const peak = f.dunk ? Math.min(head, hoopGround - reach, (drawn.y | 0) - reach) : head;
         // Por cima, à direita ou à esquerda decide-se uma vez, no primeiro frame, onde tapar menos os outros bonecos; e a
         // palavra depois só sobe: nunca salta de sítio.
         if (f.top === undefined) f.beside = this.floaterSide(f.body!, drawn.x | 0, drawn.y | 0, peak, peak - FLOATER_GAP - height, Math.max(FLOATER_MIN_TOP, head), width, height);

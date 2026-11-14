@@ -20,7 +20,7 @@ const WALL_FAR_X = 32;
 const WALL_Y = -12;
 const NEAR_Y = 17;
 /** Para onde a câmara olha em repouso: um pouco para lá do meio do campo. */
-export const LOOK_Y = -1.1;
+export const LOOK_Y = -1.8;
 /** Quantas filas de público cabem na bancada deste pavilhão. */
 const rowStep = (theme: CourtTheme): number => theme.crowd?.rowStep ?? FAN_ROW_STEP;
 export const fanRows = (theme: CourtTheme): number => (theme.crowd ? Math.min(5, Math.floor((theme.crowd.to - theme.crowd.from - CROWD_WALL) / rowStep(theme))) : 0);
@@ -1128,9 +1128,12 @@ export const FLOOR_AREA = { x0: WALL_NEAR_X, x1: WALL_FAR_X, y0: WALL_Y, y1: NEA
 /** As medidas das paredes e da sua textura, para a placa gráfica fazer as mesmas contas do traçador de raios. */
 export const WALL_SHAPE = { scale: WALL_SCALE, zSpan: WALL_Z_SPAN, sideSpan: SIDE_WALL_SPAN } as const;
 
-/** A câmara do jogo: onde está (y, z), para onde olha em repouso e a lente. Os bonecos têm o tamanho certo para esta. */
-const GAME_TUNING = { cy: 11.8, cz: 11, lookY: LOOK_Y, focal: BASE_FOCAL };
+/** A câmara do jogo: onde está (y, z), para onde olha em repouso e a lente. */
+// Mais alta e mais atrás do que era (11,8 / 11 / -1,1), para caberem a mesa, os bancos e a primeira fila do público.
+const GAME_TUNING = { cy: 13.5, cz: 13, lookY: LOOK_Y, focal: BASE_FOCAL };
 const lookDistance = (t: { cy: number; cz: number; lookY: number }): number => Math.sqrt((t.lookY - t.cy) * (t.lookY - t.cy) + t.cz * t.cz);
+/** A distância para que os bonecos foram desenhados (a da câmara antiga): mais longe, encolhem com o mundo. */
+const SPRITE_DISTANCE = lookDistance({ cy: 11.8, cz: 11, lookY: -1.1 });
 
 export class Camera {
   lookX = 14;
@@ -1313,8 +1316,8 @@ export class Camera {
     const near = drop(sy);
     const middle = drop(this.project(this.lookX, 0)[1]);
     if (near <= 0 || middle <= 0) return 1;
-    // Noutra câmara (mais longe, ou com outra lente), todos os bonecos mudam na mesma proporção que o mundo; na do jogo, 1.
-    const view = (this.tuning.focal / BASE_FOCAL) * (lookDistance(GAME_TUNING) / lookDistance(this.tuning));
+    // Noutra câmara (mais longe, ou com outra lente), todos os bonecos mudam na mesma proporção que o mundo.
+    const view = (this.tuning.focal / BASE_FOCAL) * (SPRITE_DISTANCE / lookDistance(this.tuning));
     return Math.max(0.65, Math.min(1.35, Math.sqrt(near / middle))) * view;
   }
 

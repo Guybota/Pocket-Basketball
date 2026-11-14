@@ -89,10 +89,11 @@ await withAnimPage(async page => {
           const a = cpu[i]!;
           const b = g[i]!;
           if ((a & 0xffffff) === (b & 0xffffff)) continue;
-          diff++;
           let m = 0;
           for (let s = 0; s < 24; s += 8) m = Math.max(m, Math.abs(((a >>> s) & 255) - ((b >>> s) & 255)));
           maxCh = Math.max(maxCh, m);
+          // Um tom da fila vizinha (até 6/255, como na rede) é arredondamento; só conta o que vai além disso.
+          if (m > 6) diff++;
           if (m > 12) big++;
         }
       }
