@@ -174,8 +174,9 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     const height = stage === 'match' ? MATCH_STAGE_HEIGHT : court ? Math.max(MATCH_STAGE_HEIGHT, Math.floor(stageHeight / scale)) : Math.ceil(stageHeight / scale);
     // No jogo, a tela tem a resolução do ecrã: a arte amplia-se por este inteiro, e os bonecos podem ter qualquer tamanho,
     // maiores à frente e mais pequenos atrás, como no Calciobit. Nos outros ecrãs, a tela é da arte e o CSS amplia-a.
-    // O inteiro logo acima dos píxeis do ecrã por píxel de arte: a tela tem sempre pelo menos a resolução do ecrã.
-    const artScale = court ? Math.max(1, Math.min(6, Math.ceil(scale * dpr - 0.001))) : 1;
+    // O inteiro logo acima dos píxeis do ecrã por píxel de arte, até ×5: a ×6 (o iPhone deitado) a tela tinha mais píxeis
+    // do que o ecrã e o telemóvel não aguentava as imagens por segundo; a ×5 tem menos 31 % e quase não se nota.
+    const artScale = court ? Math.max(1, Math.min(5, Math.ceil(scale * dpr - 0.001))) : 1;
     canvas.dataset.artScale = String(artScale);
     // Na escala exata, os píxeis ficam nítidos; entre duas, o ajuste suaviza um nada as bordas, em vez de os pôr desiguais.
     canvas.style.imageRendering = court && Math.abs(scale * dpr - artScale) > 0.001 ? 'auto' : '';

@@ -62,6 +62,8 @@ interface Drawable {
   bias?: number;
   /** Um cartão em pé com esta altura em metros (a cara de um objeto), em vez de deitado à profundidade dos pés. */
   tall?: number;
+  /** Uma cópia que se guarda na sua tela (`slot`) e só se volta a pintar quando `key` muda. */
+  cache?: { slot: string; key: string };
 }
 /** As cores das coisas da mesa: o papel das folhas, o vermelho das setas e das faltas, os algarismos de luz e a ardósia. */
 const PAPER = '#f4efe0';
@@ -1690,14 +1692,15 @@ export class MatchView {
       const [cx, cy] = camera.project(x1, y, z1);
       const [, ay2] = camera.project(x0, y, z0);
       const [, cy2] = camera.project(x1, y, z0);
+      // A câmara olha para o fundo: o x do mundo cresce para a esquerda do ecrã.
+      const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
+      const dir = cx < ax ? -1 : 1;
+      const picture = paint(cols, Math.max(1, Math.round(Math.max(ay2 - ay, cy2 - cy))));
+      const key = `${this.canvasId(picture)}|${scroll}|${ax}|${ay}|${cx}|${cy}|${ay2}|${cy2}`;
       // Um cartão em pé da altura da cara, com os pés em baixo: a profundidade acompanha a cara, e quem passa à frente da
       // mesa fica à frente dela (com os pés em cima, toda à profundidade do cimo, pintava-se por cima de quem passava).
-      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
+      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, cache: { slot: `${x0}|${y}|${z0}`, key }, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
         g.imageSmoothingEnabled = false;
-        // A câmara olha para o fundo: o x do mundo cresce para a esquerda do ecrã.
-        const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
-        const dir = cx < ax ? -1 : 1;
-        const picture = paint(cols, Math.max(1, Math.round(Math.max(ay2 - ay, cy2 - cy))));
         for (let c = 0; c < cols; c++) {
           const f = c / cols;
           const top = ay + (cy - ay) * f;
@@ -1732,12 +1735,12 @@ export class MatchView {
     if (cached) return cached;
     const rows = ['..R.....', '.RR.....', 'RRRRRRR.', '.RR.....', '..R.....'];
     const image = this.faceCanvas(w, h, INK);
+    remember(this.boardCache, key, image, 64);
     if (h < 5) return image;
     const c = image.getContext('2d')!;
     const [ox, oy] = [(w - 7) >> 1, (h - 5) >> 1];
     c.fillStyle = TABLE_RED;
     rows.forEach((row, y) => [...row].forEach((ch, x) => ch === 'R' && c.fillRect(ox + (left ? x : 6 - x), oy + y, 1, 1)));
-    remember(this.boardCache, key, image, 64);
     return image;
   }
 
@@ -1825,6 +1828,7 @@ export class MatchView {
     const cached = this.boardCache.get(key);
     if (cached) return cached;
     const image = this.faceCanvas(w, h, INK);
+    remember(this.boardCache, key, image, 64);
     const c = image.getContext('2d')!;
     if (h < 7) return image;
     const label = `${a}-${b}`;
@@ -1834,7 +1838,6 @@ export class MatchView {
     c.fillStyle = LED_AMBER;
     c.fillRect(x + String(a).length * 4, y + 2, 3, 1);
     text(c, String(b), x + (String(a).length + 1) * 4, y, LED_RED, 1);
-    remember(this.boardCache, key, image, 64);
     return image;
   }
 
@@ -2332,7 +2335,7 @@ export class MatchView {
           if (d.cpuOnly) continue;
           this.spriteWorld = d.world ?? null;
           if (d.box && d.world) {
-            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw);
+            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.cache);
             if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall } : copy);
           } else d.draw(g);
           this.spriteWorld = null;
@@ -2571,6 +2574,11 @@ export class MatchView {
   // As telas para onde se copia o que não é boneco, reaproveitadas de imagem para imagem.
   private readonly capturePool: HTMLCanvasElement[] = [];
   private captureUsed = 0;
+  private readonly trees = new Map<number, { image: HTMLCanvasElement; cx: number; cy: number }>();
+  /** As caras da mesa, cada uma na sua tela: com a câmara parada e a cara igual, a imagem não volta à placa gráfica. */
+  private readonly faceSlots = new Map<string, { image: HTMLCanvasElement; key: string }>();
+  private readonly canvasIds = new WeakMap<HTMLCanvasElement, number>();
+  private nextCanvasId = 0;
 
   /** Limpa a tela inteira, que com a placa gráfica serve de rascunho. */
   private clearCanvas(): void {
@@ -2586,7 +2594,7 @@ export class MatchView {
    * resolução do ecrã, por isso sai igual ao que a tela do jogo teria. Pinta-se lá diretamente: pintar na tela do jogo e
    * copiar obrigava o browser a acabar a tela inteira a cada cópia, e com muita poeira o jogo afundava no iPhone.
    */
-  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void): WorldSprite | null {
+  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void, cache?: { slot: string; key: string }): WorldSprite | null {
     const { g } = this;
     const m = g.getTransform();
     const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
@@ -2596,17 +2604,23 @@ export class MatchView {
     if (x1 <= x0 || y1 <= y0) return null;
     const w = x1 - x0;
     const h = y1 - y0;
+    const sprite = (image: HTMLCanvasElement, dynamic: boolean): WorldSprite => ({ image, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic });
+    // Uma cópia guardada que não mudou (a câmara parada, a cara igual) já está na placa gráfica.
+    const slot = cache && this.faceSlots.get(cache.slot);
+    const key = cache && `${cache.key}|${x0}|${y0}|${w}|${h}|${m.a}|${m.d}|${m.e}|${m.f}`;
+    if (slot && slot.key === key) return sprite(slot.image, false);
     // A placa gráfica guarda o tamanho de uma imagem da primeira vez que a recebe: uma tela reaproveitada só cresce, em
     // degraus de 64, e usa-se o canto de baixo à esquerda (o primeiro texel da placa, com as imagens viradas).
-    let copy = this.capturePool[this.captureUsed];
+    let copy = cache ? slot?.image : this.capturePool[this.captureUsed];
     if (!copy || copy.width < w || copy.height < h) {
       if (copy) courtGpu()?.forget(copy);
       copy = document.createElement('canvas');
       copy.width = Math.ceil(w / 64) * 64;
       copy.height = Math.ceil(h / 64) * 64;
-      this.capturePool[this.captureUsed] = copy;
+      if (!cache) this.capturePool[this.captureUsed] = copy;
     }
-    this.captureUsed++;
+    if (cache) this.faceSlots.set(cache.slot, { image: copy, key: key! });
+    else this.captureUsed++;
     const c = copy.getContext('2d')!;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, copy.width, copy.height);
@@ -2616,7 +2630,14 @@ export class MatchView {
     c.globalAlpha = 1;
     paint(c);
     // De volta a píxeis da arte, antes da aproximação, como os bonecos.
-    return { image: copy, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
+    return sprite(copy, true);
+  }
+
+  /** Um número para cada tela, para entrar nas chaves das cópias guardadas. */
+  private canvasId(image: HTMLCanvasElement): number {
+    let id = this.canvasIds.get(image);
+    if (id === undefined) this.canvasIds.set(image, (id = this.nextCanvasId++));
+    return id;
   }
 
   /** Pinta `paint` na tela do jogo ou, no passe para a placa gráfica, numa imagem do mundo com o que cabe em `box`. */
@@ -3049,7 +3070,10 @@ export class MatchView {
     if (!this.street) return;
     for (const [tx, ty] of [[-9, -5], [-8.5, 6], [5, -15], [21, -16.5], [37, -3], [36.5, 7]] as const) {
       const tree = this.tree(tx, ty);
-      if (tree) this.toWorld(tree.box, [tx, ty, 0], tree.paint);
+      if (!tree) continue;
+      // Na placa gráfica, uma imagem guardada por altura: pintá-la e reenviá-la a cada frame pesava no telemóvel.
+      if (this.spriteMode === 'collect') this.spriteSink.push(tree.sprite);
+      else tree.paint(g);
     }
     const cheering = s.tick < this.fansCheerUntil;
     // Quem está do lado de fora da rede não se desvanece (`tunnelFade` é para quem entra ou sai do campo).
@@ -3067,13 +3091,31 @@ export class MatchView {
   }
 
   /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. A caixa e como a pintar, ou `null` fora do ecrã. */
-  private tree(x: number, y: number): { box: Box; paint: (g: CanvasRenderingContext2D) => void } | null {
+  private tree(x: number, y: number): { sprite: WorldSprite; paint: (g: CanvasRenderingContext2D) => void } | null {
     const [sx, sy] = this.camera.project(x, y);
     const [, topY] = this.camera.project(x, y, 5);
     const h = sy - topY;
     if (sx < -40 || sx > this.camera.width + 40 || h < 6) return null;
-    const r = h * 0.3;
-    return { box: [sx - r * 1.9 - 3, sy - h * 0.72 - r - 3, sx + r * 1.9 + 3, sy + 3], paint: g => this.paintTree(g, sx, sy, h) };
+    const { image, cx, cy } = this.treeImage(Math.round(h));
+    const sprite: WorldSprite = { image, left: Math.round(sx) - cx, top: Math.round(sy) - cy, width: image.width, height: image.height, flip: false, feet: [x, y, 0], alpha: 1, flat: true, bias: 0 };
+    return { sprite, paint: g => this.paintTree(g, sx, sy, h) };
+  }
+
+  /** A árvore de altura `h` (píxeis da arte) numa imagem, com o pé em (`cx`, `cy`). */
+  private treeImage(h: number): { image: HTMLCanvasElement; cx: number; cy: number } {
+    let tree = this.trees.get(h);
+    if (!tree) {
+      const r = h * 0.3;
+      const cx = Math.ceil(r * 1.9) + 2;
+      const cy = Math.ceil(h * 0.72 + r) + 2;
+      const image = document.createElement('canvas');
+      image.width = 2 * cx + 1;
+      image.height = cy + 2;
+      this.paintTree(image.getContext('2d')!, cx, cy, h);
+      tree = { image, cx, cy };
+      remember(this.trees, h, tree, 24);
+    }
+    return tree;
   }
 
   private paintTree(g: CanvasRenderingContext2D, sx: number, sy: number, h: number): void {

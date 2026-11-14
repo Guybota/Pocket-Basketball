@@ -7,7 +7,8 @@ import { build } from 'vite';
 await build({ logLevel: 'warn', build: { outDir: 'dist-page', emptyOutDir: true, rollupOptions: { output: { inlineDynamicImports: true } } } });
 const assets = readdirSync('dist-page/assets');
 const read = (extension: string): string => {
-  const file = assets.find(name => name.endsWith(extension));
+  // O jogo é o `index-…`: ao lado há outros ficheiros (o Worker dos sons, que a página única não leva e dispensa).
+  const file = assets.find(name => name.startsWith('index-') && name.endsWith(extension));
   if (!file) throw new Error(`Falta o ficheiro ${extension} em dist-page/assets`);
   return readFileSync(`dist-page/assets/${file}`, 'utf8');
 };

@@ -1,11 +1,8 @@
 import type { Sound } from './match-view.ts';
 
 import { MUSIC_THEMES, scheduleSection, songShape, type Instrument, type MusicKit, type MusicTheme } from './music.ts';
-import {
-  SR, applause, babble, backboard, crowdBabble, roar, type Mood, brass, chains, chirp, chime, clapBeat, crowd, glock, horn, makeRng, rim, roomImpulse, shout, slap, snare,
-  squeak, swish, thud, timpani, whistle,
-  type Rng, type Room, type Sample, type Shout,
-} from './synth.ts';
+import { SR, makeRng, roomImpulse, type Mood, type Room, type Sample, type Shout } from './synth.ts';
+import { cook, type Recipe } from './sound-recipes.ts';
 
 export { MUSIC_THEMES, type MusicTheme };
 
@@ -62,6 +59,11 @@ export class GameAudio {
   private impulses = new Map<Venue, AudioBuffer>();
   /** Amostras por calcular nos momentos livres. */
   private queue: (() => unknown)[] = [];
+  /** O Worker que calcula os sons à parte; `null` sem Worker (nos testes, ou se falhar), e então calculam-se nos momentos livres. */
+  private worker: Worker | null | undefined;
+  /** Dentro de um pedido ao Worker: `set` encomenda o som em vez de o calcular. */
+  private ordering = false;
+  private ordered = new Map<string, { count: number; recipe: Recipe }>();
   /** De 0 (sem público) a 1 (arena cheia). */
   private crowdLevel = 0.6;
   private venue: Venue = 'hall';
@@ -126,7 +128,6 @@ export class GameAudio {
     this.room.connect(this.effectsBus);
     this.wet = ctx.createGain();
     this.wet.connect(this.effectsBus);
-    this.applyVenue();
     // Um limitador a sério no fim: o compressor sozinho deixa passar picos acima de 0 dB quando tudo toca junto.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -3;
@@ -140,6 +141,8 @@ export class GameAudio {
       () => this.whistles(), () => this.horns(205, 0.35), () => this.horns(150, 1), () => this.horns(310, 0.55), () => this.slaps(0),
       () => this.slaps(0.5), () => this.slaps(1), () => this.thuds(), () => this.squeaks(),
       () => this.note('snare', 0), ...[72, 78, 84].map(m => () => this.note('brass', m)), () => this.voices('hey'), () => this.voices('oh'));
+    // A bancada do pavilhão depois dos sons de todos os jogos: o Worker faz um de cada vez, e o aro e o apito vêm primeiro.
+    this.applyVenue();
     // A música pedida antes do primeiro toque começa agora.
     const pending = this.theme;
     this.theme = 'none';
@@ -271,18 +274,56 @@ export class GameAudio {
     if (talkers) this.warm(() => this.murmur());
     if (voices) {
       const people = crowdReactors(this.venue);
-      this.warmEach(this.roarKey('good'), ROAR_VARIANTS, r => roar(people, 5, r, 'good'));
-      this.warmEach(this.roarKey('miss'), ROAR_VARIANTS, r => roar(people, 5, r, 'miss'));
-      this.warmEach(this.roarKey('shame'), ROAR_VARIANTS, r => roar(people, 4, r, 'shame'));
+      this.warmEach(this.roarKey('good'), ROAR_VARIANTS, ['roar', people, 5, 'good']);
+      this.warmEach(this.roarKey('miss'), ROAR_VARIANTS, ['roar', people, 5, 'miss']);
+      this.warmEach(this.roarKey('shame'), ROAR_VARIANTS, ['roar', people, 4, 'shame']);
     }
-    if (talkers) this.warmEach(this.bedKey(), BED_VARIANTS, r => crowdBabble(talkers, 4, r));
+    if (talkers) this.warmEach(this.bedKey(), BED_VARIANTS, ['crowdBabble', talkers, 4]);
   }
 
   /** Calcula as amostras uma de cada vez, quando o browser está livre, para não prender nenhum frame muito tempo. */
   private warm(...jobs: (() => unknown)[]): void {
+    const worker = this.soundWorker();
+    if (worker) {
+      // Cada `set` lá dentro vira uma encomenda ao Worker, e o jogo não espera por nenhuma.
+      this.ordering = true;
+      try {
+        for (const job of jobs) job();
+      } finally {
+        this.ordering = false;
+      }
+      return;
+    }
     const idle = this.queue.length === 0;
     this.queue.push(...jobs);
     if (idle) this.pump();
+  }
+
+  private soundWorker(): Worker | null {
+    if (this.worker !== undefined) return this.worker;
+    this.worker = null;
+    if (typeof Worker === 'undefined') return null;
+    try {
+      const worker = new Worker(new URL('./sound-worker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (event: MessageEvent<{ key: string; samples: Sample[] }>) => {
+        const { key, samples } = event.data;
+        this.ordered.delete(key);
+        // Se entretanto foi preciso e se calculou aqui, fica o que já está a tocar.
+        if (this.context && !this.sets.has(key)) this.sets.set(key, samples.map(sample => this.toBuffer(sample, SR)));
+      };
+      // Sem o ficheiro do Worker (a página única, por exemplo), volta-se aos momentos livres com o que faltar.
+      worker.onerror = () => {
+        worker.terminate();
+        this.worker = null;
+        const left = [...this.ordered];
+        this.ordered.clear();
+        this.warm(...left.map(([key, { count, recipe }]) => () => this.set(key, count, recipe)));
+      };
+      this.worker = worker;
+    } catch {
+      this.worker = null;
+    }
+    return this.worker;
   }
 
   private pump(): void {
@@ -295,14 +336,19 @@ export class GameAudio {
   }
 
   /** As variantes de um som, calculadas da primeira vez que são precisas. A semente vem do nome: saem sempre iguais. */
-  private set(key: string, count: number, make: (r: Rng) => Sample): AudioBuffer[] {
+  private set(key: string, count: number, recipe: Recipe): AudioBuffer[] {
     let list = this.sets.get(key);
-    if (!list) {
-      let seed = 0;
-      for (let i = 0; i < key.length; i++) seed = (seed * 31 + key.charCodeAt(i)) | 0;
-      list = Array.from({ length: count }, (_, i) => this.toBuffer(make(makeRng(seed + i * 7919)), SR));
-      this.sets.set(key, list);
+    if (list) return list;
+    if (this.ordering && this.worker) {
+      if (!this.ordered.has(key)) {
+        this.ordered.set(key, { count, recipe });
+        this.worker.postMessage({ key, count, recipe });
+      }
+      return [];
     }
+    // Preciso já: calcula-se aqui, mesmo que esteja encomendado (a resposta do Worker fica de fora).
+    list = cook(key, count, recipe).map(sample => this.toBuffer(sample, SR));
+    this.sets.set(key, list);
     return list;
   }
 
@@ -313,36 +359,36 @@ export class GameAudio {
     return buffer;
   }
 
-  private rims(): AudioBuffer[] { return this.set('rim', 3, rim); }
+  private rims(): AudioBuffer[] { return this.set('rim', 3, ['rim']); }
   /** Na rua a tabela é de metal e a rede de corrente; nos pavilhões, vidro e nylon. */
   private boards(): AudioBuffer[] {
-    return this.venue === 'street' ? this.set('board:metal', 3, r => backboard(r, 'metal')) : this.set('board', 3, backboard);
+    return this.venue === 'street' ? this.set('board:metal', 3, ['board', 'metal']) : this.set('board', 3, ['board', 'glass']);
   }
-  private nets(): AudioBuffer[] { return this.venue === 'street' ? this.set('chains', 3, chains) : this.set('swish', 3, swish); }
-  private whistles(): AudioBuffer[] { return this.set('whistle', 3, r => whistle(0.34, r)); }
+  private nets(): AudioBuffer[] { return this.venue === 'street' ? this.set('chains', 3, ['chains']) : this.set('swish', 3, ['swish']); }
+  private whistles(): AudioBuffer[] { return this.set('whistle', 3, ['whistle', 0.34]); }
   private horns(frequency: number, seconds: number): AudioBuffer[] {
-    return this.set(`horn:${frequency}:${seconds}`, 1, r => horn(frequency, seconds, r));
+    return this.set(`horn:${frequency}:${seconds}`, 1, ['horn', frequency, seconds]);
   }
-  private squeaks(): AudioBuffer[] { return this.set('squeak', 6, squeak); }
-  private slaps(force: 0 | 0.5 | 1): AudioBuffer[] { return this.set(`slap:${force}`, 3, r => slap(force, r)); }
-  private thuds(): AudioBuffer[] { return this.set('thud', 3, thud); }
-  private chimes(midi: number): AudioBuffer[] { return this.set(`chime:${midi}`, 1, r => chime(midi, r)); }
+  private squeaks(): AudioBuffer[] { return this.set('squeak', 6, ['squeak']); }
+  private slaps(force: 0 | 0.5 | 1): AudioBuffer[] { return this.set(`slap:${force}`, 3, ['slap', force]); }
+  private thuds(): AudioBuffer[] { return this.set('thud', 3, ['thud']); }
+  private chimes(midi: number): AudioBuffer[] { return this.set(`chime:${midi}`, 1, ['chime', midi]); }
   private clapBeats(): AudioBuffer[] {
     const people = Math.max(4, Math.round(CROWDS[this.venue].claps / 3));
-    return this.set(`clapBeat:${people}`, 3, r => clapBeat(people, r));
+    return this.set(`clapBeat:${people}`, 3, ['clapBeat', people]);
   }
-  private voices(kind: Shout): AudioBuffer[] { return this.set(`voice:${kind}`, 4, r => shout(kind, r)); }
+  private voices(kind: Shout): AudioBuffer[] { return this.set(`voice:${kind}`, 4, ['shout', kind]); }
   private cheers(kind: Shout): AudioBuffer[] {
     const { voices } = CROWDS[this.venue];
-    return this.set(`crowd:${kind}:${voices}`, 2, r => crowd(kind, voices, r));
+    return this.set(`crowd:${kind}:${voices}`, 2, ['crowd', kind, voices]);
   }
   private clapping(): AudioBuffer[] {
     const { claps } = CROWDS[this.venue];
-    return this.set(`claps:${claps}`, 2, r => applause(claps, 2.6, r));
+    return this.set(`claps:${claps}`, 2, ['applause', claps, 2.6]);
   }
   private murmur(): AudioBuffer[] {
     const { talkers } = CROWDS[this.venue];
-    return this.set(`babble:${talkers}:far`, 3, r => babble(talkers, 2.4, r, MURMUR_CUTOFF));
+    return this.set(`babble:${talkers}:far`, 3, ['babble', talkers, 2.4, MURMUR_CUTOFF]);
   }
 
   /**
@@ -354,8 +400,8 @@ export class GameAudio {
     for (let i = 0; i < count; i++) list.push(...(this.sets.get(`${prefix}#${i}`) ?? []));
     return list;
   }
-  private warmEach(prefix: string, count: number, make: (r: Rng) => Sample): void {
-    for (let i = 0; i < count; i++) this.warm(() => this.set(`${prefix}#${i}`, 1, make));
+  private warmEach(prefix: string, count: number, recipe: Recipe): void {
+    for (let i = 0; i < count; i++) this.warm(() => this.set(`${prefix}#${i}`, 1, recipe));
   }
   private bedKey(): string { return `bed:${CROWDS[this.venue].talkers}`; }
   private roarKey(mood: Mood): string { return `roar:${mood}:${crowdReactors(this.venue)}`; }
@@ -402,12 +448,11 @@ export class GameAudio {
 
   /** Uma nota de um instrumento: a amostra mais perto e a velocidade que a põe no tom. */
   private note(instrument: Instrument, midi: number): { buffer: AudioBuffer; rate: number } {
-    if (instrument === 'snare') return { buffer: this.set('snare', 3, snare)[Math.abs(midi) % 3]!, rate: 1 };
+    if (instrument === 'snare') return { buffer: this.set('snare', 3, ['snare'])[Math.abs(midi) % 3]!, rate: 1 };
     // Uma amostra por meia oitava (por oitava no glockenspiel): o timbre quase não muda dentro dela.
     const step = instrument === 'glock' ? 12 : 6;
     const root = Math.round(midi / step) * step;
-    const make = { brass, glock, timpani }[instrument];
-    return { buffer: this.set(`${instrument}:${root}`, 1, r => make(root, r))[0]!, rate: Math.pow(2, (midi - root) / 12) };
+    return { buffer: this.set(`${instrument}:${root}`, 1, [instrument, root])[0]!, rate: Math.pow(2, (midi - root) / 12) };
   }
 
   /** Toca uma das variantes, com um pouco de tom ao acaso; `seconds` corta-a mais cedo, a desvanecer. */
@@ -587,7 +632,7 @@ export class GameAudio {
       case 'street':
         this.nextAmbience = now + 700 + Math.random() * 1500;
         // Pássaros: o vento e o trânsito, como ruído a crescer e a desfazer-se, soavam a mar.
-        if (roll < 0.35) this.shot(this.set('chirp', 4, chirp), 0.012, { pan: Math.random() * 1.6 - 0.8 });
+        if (roll < 0.35) this.shot(this.set('chirp', 4, ['chirp']), 0.012, { pan: Math.random() * 1.6 - 0.8 });
         else if (roll < 0.44) for (const [k, f] of [[0, 392], [0.28, 330]] as const) this.tone('square', f, f, 0.22, 0.005, k);
         else if (roll < 0.78) this.shoutOnce(0.012);
         else this.squeak(0.012);
