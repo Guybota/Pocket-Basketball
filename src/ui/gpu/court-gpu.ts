@@ -404,7 +404,7 @@ export class CourtGpu {
     this.renderer.render(venue.scene, this.camera);
     if (sprites.length > 0) {
       // Os bonecos por cima, sem limpar a profundidade das bancadas: ficam atrás do que estiver mais perto da câmara.
-      this.sprites.set(sprites, pose.width, pose.height, zoom, shift, v.viewProj!.value as Matrix4, this.eye.set(px, py, pz));
+      this.sprites.set(sprites, pose.width, pose.height, zoom, shift, v.viewProj!.value as Matrix4, this.eye.set(px, py, pz), width / pose.width);
       this.renderer.autoClear = false;
       this.renderer.render(this.sprites.scene, this.camera);
       this.renderer.autoClear = true;

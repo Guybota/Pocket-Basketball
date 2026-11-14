@@ -28,6 +28,13 @@ export interface WorldSprite extends SpriteQuad {
    * tela 2D não conta. A ponta da esquerda do ecrã vem primeiro, para os triângulos ficarem virados para a câmara.
    */
   corners?: readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+  /**
+   * O ponto de apoio no ecrã (píxeis da arte): onde está de facto (x, y) e o ponto a partir do qual `left`/`top` foram
+   * contados (rx, ry). Arredonda-se só o ponto de apoio ao píxel do ecrã, e o retângulo fica à distância fixa dele: o
+   * boneco, a sombra, o reflexo e o que leva na mão partilham o mesmo apoio e andam no mesmo instante, sem tremer uns em
+   * relação aos outros. Sem isto, arredonda-se o canto.
+   */
+  anchor?: readonly [number, number, number, number];
   /** Numa cara (`corners`), quantos texels a imagem desliza para a esquerda, a dar a volta (a faixa de luzes a correr). */
   scroll?: number;
   /** Numa cara, quantos texels da imagem cabem nela de ponta a ponta, se não forem todos (a faixa, mais comprida, a correr). */
@@ -181,10 +188,15 @@ export class SpriteLayer {
    * Põe o que se desenha nesta imagem. `artW`×`artH` é a tela em píxeis da arte; `zoom` e `shift` a aproximação, como na
    * tela 2D; `vp` a projeção da câmara three.js, e `eye` onde ela está.
    */
-  set(list: readonly WorldSprite[], artW: number, artH: number, zoom: number, shift: readonly [number, number], vp: Matrix4, eye: Vector3): void {
+  set(list: readonly WorldSprite[], artW: number, artH: number, zoom: number, shift: readonly [number, number], vp: Matrix4, eye: Vector3, pixels = 1): void {
     this.vp.copy(vp);
-    const ndcX = (x: number): number => ((x * zoom + shift[0]) / artW) * 2 - 1;
-    const ndcY = (y: number): number => 1 - ((y * zoom + shift[1]) / artH) * 2;
+    // As bordas ao píxel do ecrã (`pixels` por píxel da arte): o boneco desliza com o mundo aos saltos de um píxel do ecrã,
+    // que não se veem, e os texels ficam nítidos. Sem arredondar nada, cada borda caía a meio de um píxel e esborratava.
+    // Só o canto se arredonda; a largura e a altura ficam as mesmas (arredondadas cada borda por si, o boneco ficava ora com
+    // N ora com N+1 píxeis e os texels mudavam de imagem para imagem).
+    const snap = (v: number): number => Math.round(v * pixels) / pixels;
+    const ndcX = (x: number): number => (x / artW) * 2 - 1;
+    const ndcY = (y: number): number => 1 - (y / artH) * 2;
     const distance = (s: WorldSprite): number => (eye.x - s.feet[0]) ** 2 + (eye.y - s.feet[1]) ** 2 + (eye.z - s.feet[2]) ** 2;
     const solid = list.filter(s => s.alpha === undefined);
     // Do mais longe para o mais perto; a empatar, pela ordem em que vieram (a da tela 2D).
@@ -193,7 +205,12 @@ export class SpriteLayer {
       mesh.visible = true;
       mesh.renderOrder = order;
       const u = mesh.material.uniforms;
-      (u.rect!.value as Vector4).set(ndcX(s.left), ndcY(s.top + s.height), ndcX(s.left + s.width), ndcY(s.top));
+      const [x0, y0] = s.anchor
+        ? [snap(s.anchor[0] * zoom + shift[0]) + snap((s.left - s.anchor[2]) * zoom), snap(s.anchor[1] * zoom + shift[1]) + snap((s.top - s.anchor[3]) * zoom)]
+        : [snap(s.left * zoom + shift[0]), snap(s.top * zoom + shift[1])];
+      const w = snap(s.width * zoom);
+      const h = snap(s.height * zoom);
+      (u.rect!.value as Vector4).set(ndcX(x0), ndcY(y0 + h), ndcX(x0 + w), ndcY(y0));
       // Um pouco mais perto da câmara: o degrau onde o boneco assenta não o corta.
       const near = (p: readonly [number, number, number], out: Vector3): void => {
         this.toEye.set(eye.x - p[0], eye.y - p[1], eye.z - p[2]).normalize().multiplyScalar(s.bias ?? FEET_BIAS);

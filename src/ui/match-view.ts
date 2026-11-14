@@ -62,6 +62,8 @@ interface Drawable {
   world?: Vec3;
   box?: Box;
   bias?: number;
+  /** A cópia já vem pintada no sítio exato (a bola no ar): não leva o ponto de apoio de `world` (ver `capture`). */
+  exact?: boolean;
   /** Uma cara plana de um objeto: na placa gráfica, a imagem colada aos quatro cantos (ver `WorldSprite.corners`). */
   plane?: { image: HTMLCanvasElement; corners: Corners; scroll: number; span: number; dynamic: boolean };
 }
@@ -2333,7 +2335,7 @@ export class MatchView {
             // Na placa gráfica, uma imagem guardada por passo e lado, como as sombras: numa transição há dezenas de nuvens,
             // e pintá-las e reenviá-las à placa a cada frame afundava o iPhone. Esbate-se pela transparência da imagem.
             const step = Math.min(PUFF_TICKS - 1, Math.floor(age * PUFF_TICKS));
-            this.spriteSink.push({ image: puffImage(step, q.side), left: (qx | 0) - PUFF_X, top: (qy | 0) - PUFF_Y, width: PUFF_W, height: PUFF_H, flip: false, feet: [q.x, q.y, 0], alpha: 0.9 * (1 - age), flat: true, bias: 0 });
+            this.spriteSink.push({ image: puffImage(step, q.side), anchor: [qx, qy, qx, qy], left: qx - PUFF_X, top: qy - PUFF_Y, width: PUFF_W, height: PUFF_H, flip: false, feet: [q.x, q.y, 0], alpha: 0.9 * (1 - age), flat: true, bias: 0 });
             return;
           }
           g.globalAlpha = 0.9 * (1 - age);
@@ -2369,7 +2371,7 @@ export class MatchView {
       const [bx, by] = this.placeBall(target, 'hand');
       this.trail.length = 0;
       // Na mão, a bola fica à frente de quem a leva.
-      drawables.push({ y: carrier.y + 0.001, world: [carrier.wx, carrier.wy, 0], box: [bx - 8 * k - 2, by - 8 * k - 2, bx + 8 * k + 2, by + 8 * k + 2], bias: GROUND_BIAS + 0.05, draw: g => this.drawBallAt(g, bx, by, k) });
+      drawables.push({ y: carrier.y + 0.001, world: [carrier.wx, carrier.wy, 0], box: [bx - 8 * k - 2, by - 8 * k - 2, bx + 8 * k + 2, by + 8 * k + 2], bias: GROUND_BIAS + 0.05, draw: g => (this.spriteMode === 'collect' ? this.drawBallAt(g, bx - (carrier.x - (carrier.x | 0)), by - (carrier.y - (carrier.y | 0)), k) : this.drawBallAt(g, bx, by, k)) });
     } else if (!lifted) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
@@ -2402,12 +2404,15 @@ export class MatchView {
         world: nearbyHoop === undefined ? [x, y, 0] : [x, y, z],
         bias: nearbyHoop === undefined ? GROUND_BIAS + 0.05 : 0,
         box: [Math.min(...xs) - 8, Math.min(...ys) - 8, Math.max(...xs) + 8, Math.max(...ys) + 8],
+        exact: true,
         draw: g => {
           this.trail.forEach(([tx, ty], i) => {
             g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
-            g.fillRect((tx | 0) - 1, (ty | 0) - 1, 3, 3);
+            // Na placa gráfica, como a bola, ao píxel do ecrã.
+            const [rx, ry] = this.spriteMode === 'collect' ? this.toScreenPixel(g, tx, ty) : [tx | 0, ty | 0];
+            g.fillRect(rx - 1, ry - 1, 3, 3);
           });
-          drawBall(g, bx, by);
+          this.drawBallAt(g, bx, by, 1);
         },
       });
     } else {
@@ -2452,7 +2457,7 @@ export class MatchView {
             const { image, corners, scroll, span, dynamic } = d.plane;
             world.push({ image, left: 0, top: 0, width: 0, height: 0, flip: false, feet: d.world, corners, scroll, span, dynamic, bias: d.bias ?? 0 });
           } else if (d.box && d.world) {
-            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw);
+            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.exact);
             if (copy) world.push(copy);
           } else d.draw(g);
           this.spriteWorld = null;
@@ -2517,7 +2522,13 @@ export class MatchView {
     this.drawNameTags(alpha);
     this.drawFloaters();
     this.drawBubbles();
-    if (this.ownerSpeech) this.speech('ANDA CÁ BOBI!', this.ownerSpeech[0], this.ownerSpeech[1], this.ownerSpeech[2], 21);
+    if (this.ownerSpeech) {
+      const [ox, head, foot, oy] = this.ownerSpeech;
+      this.g.save();
+      this.followSprite(ox, oy);
+      this.speech('ANDA CÁ BOBI!', ox, head, foot, 21);
+      this.g.restore();
+    }
     this.ownerSpeech = null;
     this.drawForecast();
     this.drawCeremony();
@@ -2637,9 +2648,12 @@ export class MatchView {
 
   /** A bola na mão, com o tamanho do boneco que a leva (o mesmo desenho que vinha dentro dele). */
   private drawBallAt(g: CanvasRenderingContext2D, x: number, y: number, k: number): void {
-    if (k === 1) return drawBall(g, x, y);
+    // Na placa gráfica, ao píxel do ecrã e não ao da arte: a cópia desliza com o mundo e a bola continua nítida.
+    const exact = this.spriteMode === 'collect';
+    if (k === 1 && !exact) return drawBall(g, x, y);
+    const [tx, ty] = exact ? this.toScreenPixel(g, x, y) : [x | 0, y | 0];
     g.save();
-    g.translate(x | 0, y | 0);
+    g.translate(tx, ty);
     g.scale(k, k);
     drawBall(g, 0, 0);
     g.restore();
@@ -2665,7 +2679,7 @@ export class MatchView {
     if (this.spriteWorld && this.spriteMode !== 'draw') {
       // Nas bancadas, um cartão em pé (o degrau de trás cortava os braços no ar); no chão, todo à profundidade dos pés, como
       // na ordem da tela 2D: o cartão em pé ficava à frente da bola que o boneco tem nas mãos e do poste que tem atrás.
-      if (this.spriteMode === 'collect') this.spriteSink.push({ ...spriteQuad(pose, look, x, y, flip, back, withBall, legs, scale), feet: this.spriteWorld, ...(this.inStands ? {} : { flat: true, bias: GROUND_BIAS }), ...(fade < 1 ? { alpha: fade } : {}) });
+      if (this.spriteMode === 'collect') this.spriteSink.push({ ...spriteQuad(pose, look, x, y, flip, back, withBall, legs, scale), anchor: [x, feet, x, feet], feet: this.spriteWorld, ...(this.inStands ? {} : { flat: true, bias: GROUND_BIAS }), ...(fade < 1 ? { alpha: fade } : {}) });
       return;
     }
     if (fade < 1) {
@@ -2684,8 +2698,9 @@ export class MatchView {
   private outside = false;
   /** Os bonecos que se desenham agora estão nas bancadas (os adeptos). */
   private inStands = false;
-  /** O balão do dono do cão desta imagem (quem fala, a cabeça e os pés): desenha-se com a interface, por cima do mundo. */
-  private ownerSpeech: [number, number, number] | null = null;
+  /** O balão do dono do cão desta imagem, desenhado com a interface por cima do mundo: x, a cabeça e os pés no ecrã, e o y
+   * dos pés sem arredondar (para o balão o acompanhar). */
+  private ownerSpeech: [number, number, number, number] | null = null;
   /** Os adeptos que tiram uma fotografia nesta imagem (com a placa gráfica). */
   private flashFans: Set<number> | null = null;
   // As telas para onde se copia o que não é boneco, reaproveitadas de imagem para imagem.
@@ -2707,7 +2722,7 @@ export class MatchView {
    * resolução do ecrã, por isso sai igual ao que a tela do jogo teria. Pinta-se lá diretamente: pintar na tela do jogo e
    * copiar obrigava o browser a acabar a tela inteira a cada cópia, e com muita poeira o jogo afundava no iPhone.
    */
-  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void): WorldSprite | null {
+  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void, exact = false): WorldSprite | null {
     const { g } = this;
     const m = g.getTransform();
     const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
@@ -2737,7 +2752,11 @@ export class MatchView {
     c.globalAlpha = 1;
     paint(c);
     // De volta a píxeis da arte, antes da aproximação, como os bonecos.
-    return { image: copy, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
+    // O que se pinta à volta de um ponto do mundo (o cão, o pombo, os «Z», os flashes, a bola na mão) vem arredondado ao
+    // píxel da arte: o apoio é esse ponto, e a cópia desliza com o mundo e com quem a leva.
+    const [px, py] = this.camera.project(world[0], world[1], world[2]);
+    const anchor = exact ? undefined : ([px, py, px | 0, py | 0] as const);
+    return { image: copy, used: [w, h], anchor, left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
   }
 
   /** Pinta `paint` na tela do jogo ou, no passe para a placa gráfica, numa imagem do mundo com o que cabe em `box`. */
@@ -2773,9 +2792,9 @@ export class MatchView {
   private reflection(p: { pose: PoseName; look: Look; x: number; y: number; wx: number; wy: number; flip: boolean; back: boolean; legs?: PoseName }, strength: number): WorldSprite {
     const q = spriteQuad(p.pose, p.look, p.x, p.y, p.flip, p.back, false, p.legs, this.depth(p.y));
     // Como em `drawReflection`: virado à volta da linha dos pés.
-    const mirrored = 2 * (p.y | 0) + 1 - (q.top + q.height);
+    const mirrored = 2 * p.y + 1 - (q.top + q.height);
     // Atrás de tudo o que está no chão à volta.
-    return { ...q, top: mirrored, mirror: true, feet: [p.wx, p.wy, 0], alpha: strength, flat: true, bias: -0.3 };
+    return { ...q, anchor: [p.x, p.y, p.x, p.y], top: mirrored, mirror: true, feet: [p.wx, p.wy, 0], alpha: strength, flat: true, bias: -0.3 };
   }
 
   /** A altura de um boneco com os pés na linha `y`, já com o tamanho da distância: para o que fica por cima da cabeça. */
@@ -2791,7 +2810,7 @@ export class MatchView {
     if (fade <= 0) return;
     if (this.spriteMode === 'collect' && this.spriteWorld) {
       const [wx, wy] = this.spriteWorld;
-      this.spriteSink.push({ image: shadowImage(r), left: (x | 0) + 1 - r, top: (y | 0) - 2, width: 2 * r, height: 4, flip: false, feet: [wx, wy, 0], alpha: fade, flat: true, bias: 0 });
+      this.spriteSink.push({ image: shadowImage(r), anchor: [x, y, x, y], left: x + 1 - r, top: y - 2, width: 2 * r, height: 4, flip: false, feet: [wx, wy, 0], alpha: fade, flat: true, bias: 0 });
       return;
     }
     g.save();
@@ -3152,6 +3171,8 @@ export class MatchView {
       const prev = this.view(b).prev;
       const [x, y] = camera.project(prev.x + (b.x - prev.x) * alpha, prev.y + (b.y - prev.y) * alpha);
       const top = (y | 0) - this.tall(this.view(b).look, y) - 4;
+      g.save();
+      this.followSprite(x, y);
       g.fillStyle = '#1b2230';
       g.fillRect((x | 0) - 4, top - 5, 9, 2);
       g.fillRect((x | 0) - 3, top - 3, 7, 2);
@@ -3161,7 +3182,25 @@ export class MatchView {
       g.fillRect((x | 0) - 3, top - 4, 7, 2);
       g.fillRect((x | 0) - 2, top - 2, 5, 2);
       g.fillRect((x | 0) - 1, top, 3, 1);
+      g.restore();
     }
+  }
+
+  /**
+   * Na tela 2D, por cima de um boneco que está em (`x`, `y`): com a placa gráfica, o boneco não arredonda o sítio ao píxel
+   * da arte, por isso o que se desenha preso a ele (o nome, a seta, a marca) junta a fração, ao píxel do ecrã para ficar
+   * nítido. Sem placa gráfica, nada.
+   */
+  private followSprite(x: number, y: number): void {
+    if (!this.gpuFloor) return;
+    const [rx, ry] = this.toScreenPixel(this.g, x - (x | 0), y - (y | 0));
+    this.g.translate(rx, ry);
+  }
+
+  /** (`x`, `y`) em píxeis da arte, arredondado ao píxel do ecrã da tela `g`. */
+  private toScreenPixel(g: CanvasRenderingContext2D, x: number, y: number): [number, number] {
+    const { a, d } = g.getTransform();
+    return [Math.round(x * a) / a, Math.round(y * d) / d];
   }
 
   /** Do lado de fora da rede: as árvores e quem parou a ver, de pé, encostado à rede. Desenham-se antes da rede, para ficarem atrás dela. */
@@ -3184,7 +3223,7 @@ export class MatchView {
       const beat = this.reducedMotion ? o.phase : (s.tick >> 2) + o.phase;
       const pose: PoseName = cheering ? (beat % 2 ? 'cheer0' : 'cheer1') : ((s.tick >> 4) + o.phase) % 7 === 0 ? 'cheer0' : 'idle';
       this.spriteWorld = [o.x, o.y, 0];
-      this.sprite(g, pose, o.look, sx | 0, sy | 0, o.flip, false, false);
+      this.sprite(g, pose, o.look, sx, sy, o.flip, false, false);
     }
     this.spriteWorld = null;
     this.outside = false;
@@ -3197,7 +3236,7 @@ export class MatchView {
     const h = sy - topY;
     if (sx < -40 || sx > this.camera.width + 40 || h < 6) return null;
     const { image, cx, cy } = this.treeImage(Math.round(h));
-    const sprite: WorldSprite = { image, left: Math.round(sx) - cx, top: Math.round(sy) - cy, width: image.width, height: image.height, flip: false, feet: [x, y, 0], alpha: 1, flat: true, bias: 0 };
+    const sprite: WorldSprite = { image, anchor: [sx, sy, sx, sy], left: sx - cx, top: sy - cy, width: image.width, height: image.height, flip: false, feet: [x, y, 0], alpha: 1, flat: true, bias: 0 };
     return { sprite, paint: g => this.paintTree(g, sx, sy, h) };
   }
 
@@ -3256,9 +3295,9 @@ export class MatchView {
           box: [ox - 16, oy - 24, ox + 16, oy + 4],
           draw: g => {
             this.shadow(g, ox, oy);
-            this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
+            this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox, oy, owner.dx < 0, owner.dy < 0 && owner.moving, false);
             if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
-            if (t < DOG_PICKED) this.ownerSpeech = [ox, (oy | 0) - this.tall(look, oy) + 2, oy | 0];
+            if (t < DOG_PICKED) this.ownerSpeech = [ox, (oy | 0) - this.tall(look, oy) + 2, oy | 0, oy];
           },
         });
       }
@@ -3286,7 +3325,7 @@ export class MatchView {
         const f = Math.max(0, flying);
         const [px, py] = camera.project(hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09);
         const layer = camera.project(hoopX - inward * 0.5, 0, 0)[1] + HOOP_FRONT_OFFSET + 0.1;
-        drawables.push({ y: layer, world: [hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09], box: [px - 12, py - 14, px + 12, py + 4], draw: g => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
+        drawables.push({ y: layer, world: [hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09], box: [px - 12, py - 14, px + 13, py + 6], draw: g => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
       }
     }
   }
@@ -3344,9 +3383,9 @@ export class MatchView {
       if (i === asleep) {
         // Numa goleada, alguém dorme sentado: a cabeça cai de vez em quando e os «Z» sobem.
         const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
-        this.sprite(g, 'sit', f.look, sx | 0, (sy | 0) + nod, f.flip, false, false);
+        this.sprite(g, 'sit', f.look, sx, sy + nod, f.flip, false, false);
         const top = (sy | 0) - this.tall(f.look, sy);
-        this.toWorld([sx - 4, top - 22, sx + 16, top + 2], [f.x, f.y, f.z], g => {
+        this.toWorld([sx - 4, top - 22, sx + 17, top + 4], [f.x, f.y, f.z], g => {
           for (let k = 0; k < 3; k++) {
             const p = this.reducedMotion ? k / 3 : ((this.animTick + k * 14) % 42) / 42;
             const zx = (sx | 0) + 3 + Math.round(p * 6);
@@ -3367,7 +3406,7 @@ export class MatchView {
       const flag = f.flag || (this.forecast?.confident && s.phase === 'intro' && f.phase % 3 === 0);
       const wave = this.reducedMotion ? 0 : ((cheering ? this.animTick >> 1 : this.animTick >> 2) + f.phase) % 4;
       const pose: PoseName = flag ? (`${cheering ? 'flagUp' : 'flagSit'}${wave}` as PoseName) : cheering ? (claps ? (beat % 2 ? 'clap0' : 'clap1') : beat % 2 ? 'cheer0' : 'cheer1') : sad && f.phase % 2 === 0 ? 'handsHead' : 'sit';
-      this.sprite(g, pose, f.look, sx | 0, sy | 0, f.flip, false, false);
+      this.sprite(g, pose, f.look, sx, sy, f.flip, false, false);
       if (this.flashFans?.has(i)) {
         // Uma fotografia: um píxel branco na cara de quem a tira.
         const face = (sy | 0) - this.tall(f.look, sy) + 3;
@@ -3398,7 +3437,11 @@ export class MatchView {
       const [fx, fy] = camera.project(fan.x, fan.y, fan.z);
       // Por cima da cabeça do adepto, e nunca acima da linha do marcador, que a tapava. Nasce um pouco mais abaixo e sobe,
       // como quem se levanta da cadeira.
+      // O balão vai com o adepto, que na placa gráfica desliza ao píxel do ecrã.
+      this.g.save();
+      this.followSprite(fx, fy);
       this.speech(b.label, fx, (fy | 0) - this.tall(fan.look, fy), fy | 0, FLOATER_MIN_TOP, 4 - Math.min(4, age));
+      this.g.restore();
     }
   }
 
@@ -3519,7 +3562,10 @@ export class MatchView {
     const prev = this.view(holder).prev;
     const [x, y] = camera.project(prev.x + (holder.x - prev.x) * alpha, prev.y + (holder.y - prev.y) * alpha);
     const bob = (s.tick >> 3) % 2;
+    g.save();
+    this.followSprite(x, y);
     drawCarrierArrow(g, x, y - this.tall(this.view(holder).look, y) - 3 - bob);
+    g.restore();
     this.drawTargets(alpha);
   }
 
@@ -3572,11 +3618,14 @@ export class MatchView {
       const left = Math.max(1, Math.min(camera.width - w - 1, (x | 0) - (w >> 1)));
       // A caixa tem espaço por cima das letras para os acentos (Simão, Gonçalves) e por baixo para a cedilha.
       const top = Math.max(1, (y | 0) - this.tall(this.view(b).look, y) - 14);
+      g.save();
+      this.followSprite(x, y);
       g.fillStyle = b.team === 0 ? '#2b5fd9' : '#cf3a2c';
       g.fillRect(left, top, w, 11);
       g.fillStyle = '#1b2230';
       g.fillRect(left, top + 11, w, 1);
       text(g, label, left + 2, top + 4, '#fbf6e2', 1);
+      g.restore();
     }
   }
 

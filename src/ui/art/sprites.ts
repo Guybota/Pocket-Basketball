@@ -539,8 +539,10 @@ export function spriteQuad(pose: PoseName, look: Look, x: number, y: number, fli
   const half = sprite.width >> 1;
   const lx = lean !== undefined ? -half - Math.round((lean / 90) * 12) : -ANCHOR_X;
   const ly = lean !== undefined ? -half : -ANCHOR_Y;
-  const tx = x | 0;
-  const ty = lean !== undefined ? (y | 0) - Math.round((lean / 90) * 3) : y | 0;
+  // Sem arredondar: na placa gráfica o boneco fica onde o mundo o põe, e desliza com o chão em vez de andar aos saltos de
+  // um píxel da arte (o desenho dele não muda; só o sítio). A tela 2D arredonda em `drawSprite`.
+  const tx = x;
+  const ty = lean !== undefined ? y - Math.round((lean / 90) * 3) : y;
   const left = flip ? -(lx + sprite.width) : lx;
   return { image: sprite, left: tx + left * scale, top: ty + ly * scale, width: sprite.width * scale, height: sprite.height * scale, flip };
 }
