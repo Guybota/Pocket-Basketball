@@ -46,6 +46,8 @@ const speechFontReady = (): boolean =>
 type Vec3 = readonly [number, number, number];
 /** Uma caixa no ecrã, em píxeis da arte: esquerda, cima, direita, baixo. */
 type Box = readonly [number, number, number, number];
+/** Os quatro cantos de uma cara plana no mundo (ver `WorldSprite.corners`). */
+type Corners = NonNullable<WorldSprite['corners']>;
 /**
  * Uma coisa do mundo a desenhar por ordem (`y`, os pés no ecrã). Com a placa gráfica, `world` diz onde está no mundo: os
  * bonecos que desenhar vão para lá com essa profundidade, e o resto do que pintar dentro de `box` (sombra, bola, cesto) é
@@ -64,6 +66,8 @@ interface Drawable {
   tall?: number;
   /** Uma cópia que se guarda na sua tela (`slot`) e só se volta a pintar quando `key` muda. */
   cache?: { slot: string; key: string };
+  /** Uma cara plana: os seus quatro cantos no mundo, para a placa gráfica (ver `WorldSprite.corners`). */
+  corners?: Corners;
 }
 /** As cores das coisas da mesa: o papel das folhas, o vermelho das setas e das faltas, os algarismos de luz e a ardósia. */
 const PAPER = '#f4efe0';
@@ -1697,16 +1701,22 @@ export class MatchView {
       const dir = cx < ax ? -1 : 1;
       const picture = paint(cols, Math.max(1, Math.round(Math.max(ay2 - ay, cy2 - cy))));
       const key = `${this.canvasId(picture)}|${scroll}|${ax}|${ay}|${cx}|${cy}|${ay2}|${cy2}`;
-      // Um cartão em pé da altura da cara, com os pés em baixo: a profundidade acompanha a cara, e quem passa à frente da
-      // mesa fica à frente dela (com os pés em cima, toda à profundidade do cimo, pintava-se por cima de quem passava).
-      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, cache: { slot: `${x0}|${y}|${z0}`, key }, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
+      // Na placa gráfica vai com os quatro cantos no mundo (`corners`), com 4 cm de margem à volta: a forma e a profundidade
+      // saem certas em qualquer ponto. Um retângulo direito no ecrã, visto de lado, dava à base de uma ponta a profundidade
+      // do cimo, e a faixa de 5 m da arena metia-se atrás do tampo, cortada na diagonal.
+      // A ponta da esquerda do ecrã primeiro, para os triângulos ficarem virados para a câmara.
+      const m = 0.04;
+      const [left, right] = dir < 0 ? [x1 + m, x0 - m] : [x0 - m, x1 + m];
+      const corners: Corners = [[left, y + 0.01, z0 - m], [left, y + 0.01, z1 + m], [right, y + 0.01, z0 - m], [right, y + 0.01, z1 + m]];
+      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, corners, cache: { slot: `${x0}|${y}|${z0}`, key }, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
         g.imageSmoothingEnabled = false;
         for (let c = 0; c < cols; c++) {
           const f = c / cols;
           const top = ay + (cy - ay) * f;
           const bottom = ay2 + (cy2 - ay2) * f;
           const source = Math.floor((dir < 0 ? 1 - f - 1e-6 : f) * cols);
-          g.drawImage(picture, (source + scroll) % picture.width, 0, 1, picture.height, Math.round(ax) + dir * c, Math.round(top), 1, Math.max(1, Math.round(bottom - top)));
+          // Para a esquerda, a coluna c fica à esquerda de ax: senão a cara inteira saía um píxel à direita do sítio.
+          g.drawImage(picture, (source + scroll) % picture.width, 0, 1, picture.height, Math.round(ax) + dir * c - (dir < 0 ? 1 : 0), Math.round(top), 1, Math.max(1, Math.round(bottom - top)));
         }
       } });
     };
@@ -1773,8 +1783,8 @@ export class MatchView {
     const key = `skirt|${w}|${h}|${paint.join()}`;
     const cached = this.boardCache.get(key);
     if (cached) return cached;
-    // Os acentos sobem 3 linhas acima da letra.
-    const label = 'MUNICÍPIO';
+    // Os acentos sobem 3 linhas acima da letra. Onde «MUNICÍPIO» não cabe (a câmara ao meio), «CÂMARA», sem cortar letras.
+    const label = 'MUNICÍPIO'.length * 4 + 1 <= w ? 'MUNICÍPIO' : 'CÂMARA';
     const image = document.createElement('canvas');
     image.width = w;
     image.height = h;
@@ -2336,7 +2346,7 @@ export class MatchView {
           this.spriteWorld = d.world ?? null;
           if (d.box && d.world) {
             const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.cache);
-            if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall } : copy);
+            if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall, corners: d.corners } : copy);
           } else d.draw(g);
           this.spriteWorld = null;
         }

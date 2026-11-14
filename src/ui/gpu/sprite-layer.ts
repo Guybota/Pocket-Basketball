@@ -24,6 +24,13 @@ export interface WorldSprite extends SpriteQuad {
   dynamic?: boolean;
   /** Só o canto de baixo à esquerda da imagem, com esta largura e altura em texels (uma tela reaproveitada maior). */
   used?: readonly [number, number];
+  /**
+   * Uma cara plana no mundo (a faixa da mesa), pelos seus quatro cantos: uma ponta em baixo e em cima, depois a outra. A
+   * placa gráfica projeta-os, e a forma e a profundidade saem certas em cada ponto; a imagem continua a ler-se no retângulo
+   * de sempre. Um cartão em pé, com a câmara de lado, tinha numa ponta a base à profundidade do cimo. A ponta da esquerda
+   * do ecrã vem primeiro, para os triângulos ficarem virados para a câmara.
+   */
+  corners?: readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
 }
 
 /**
@@ -40,6 +47,11 @@ const TEXTURES = 1500;
 const SPRITE_VERTEX = /* glsl */ `
 uniform vec4 rect;
 uniform vec3 feet;
+uniform float plane;
+uniform vec3 c0;
+uniform vec3 c1;
+uniform vec3 c2;
+uniform vec3 c3;
 uniform mat4 vp;
 uniform float flip;
 uniform float mirror;
@@ -51,8 +63,15 @@ void main() {
   vec4 high = vp * vec4(feet + vec3(0.0, 0.0, tall), 1.0);
   vec2 p = mix(rect.xy, rect.zw, position.xy);
   float z = mix(low.z / low.w, high.z / high.w, position.y * upright);
+  if (plane > 0.5) {
+    // Já dividido por w: no ecrã, a profundidade de um plano e a posição na imagem variam em linha reta.
+    vec4 q = vp * vec4(mix(mix(c0, c1, position.y), mix(c2, c3, position.y), position.x), 1.0);
+    p = q.xy / q.w;
+    z = q.z / q.w;
+  }
+  vec2 inside = (p - rect.xy) / (rect.zw - rect.xy);
   gl_Position = vec4(p, clamp(z, -1.0, 1.0), 1.0);
-  vUv = vec2(flip > 0.5 ? 1.0 - position.x : position.x, mirror > 0.5 ? 1.0 - position.y : position.y);
+  vUv = vec2(flip > 0.5 ? 1.0 - inside.x : inside.x, mirror > 0.5 ? 1.0 - inside.y : inside.y);
 }`;
 
 // Texels nítidos (a borda entre dois num só píxel do ecrã). Recortado, o que fica e o que sai decide-se pelo texel em que o
@@ -128,6 +147,11 @@ export class SpriteLayer {
         uniforms: {
           rect: { value: new Vector4() },
           feet: { value: new Vector3() },
+          plane: { value: 0 },
+          c0: { value: new Vector3() },
+          c1: { value: new Vector3() },
+          c2: { value: new Vector3() },
+          c3: { value: new Vector3() },
           vp: { value: this.vp },
           flip: { value: 0 },
           mirror: { value: 0 },
@@ -168,8 +192,13 @@ export class SpriteLayer {
       const u = mesh.material.uniforms;
       (u.rect!.value as Vector4).set(ndcX(s.left), ndcY(s.top + s.height), ndcX(s.left + s.width), ndcY(s.top));
       // Um pouco mais perto da câmara: o degrau onde o boneco assenta não o corta.
-      this.toEye.set(eye.x - s.feet[0], eye.y - s.feet[1], eye.z - s.feet[2]).normalize().multiplyScalar(s.bias ?? FEET_BIAS);
-      (u.feet!.value as Vector3).set(s.feet[0] + this.toEye.x, s.feet[1] + this.toEye.y, s.feet[2] + this.toEye.z);
+      const near = (p: readonly [number, number, number], out: Vector3): void => {
+        this.toEye.set(eye.x - p[0], eye.y - p[1], eye.z - p[2]).normalize().multiplyScalar(s.bias ?? FEET_BIAS);
+        out.set(p[0] + this.toEye.x, p[1] + this.toEye.y, p[2] + this.toEye.z);
+      };
+      near(s.feet, u.feet!.value as Vector3);
+      s.corners?.forEach((corner, k) => near(corner, u[`c${k}`]!.value as Vector3));
+      u.plane!.value = s.corners ? 1 : 0;
       u.flip!.value = s.flip ? 1 : 0;
       u.mirror!.value = s.mirror ? 1 : 0;
       u.upright!.value = s.flat ? 0 : 1;
