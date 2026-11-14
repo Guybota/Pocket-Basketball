@@ -2,11 +2,11 @@
 // a 30 imagens por segundo: para ver cintilação, saltos e passeios que as fotografias paradas não mostram.
 // node src/tools/gravar.ts <divisão> <momento> [segundos antes] [segundos depois]  →  dist-check/gravar/<divisão>-<momento>/
 // Momentos: ressalto (a transição a seguir), afundanco (um que entra), inicio (a bola ao alto), intervalo; varrimento: a câmara a andar
-// devagar a partir de x = <antes>, durante <depois> segundos, com tudo parado (para medir cintilação).
+// devagar a partir de x = <antes>, durante <depois> segundos, com tudo parado no passo [passos] (200; para medir cintilação).
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { withAnimPage } from './anim-browser.ts';
 
-const [division = 3, moment = 'ressalto', before = 0.5, after = 3.5] = process.argv.slice(2).map((a, i) => (i === 1 ? a : Number(a))) as [number, string, number, number];
+const [division = 3, moment = 'ressalto', before = 0.5, after = 3.5, steps = 200] = process.argv.slice(2).map((a, i) => (i === 1 ? a : Number(a))) as [number, string, number, number, number];
 const OUT = `dist-check/gravar/${division}-${moment}`;
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -14,7 +14,7 @@ const FPS = 30;
 
 await withAnimPage(async page => {
   // Primeiro, sem desenhar, o passo em que o momento acontece; depois, o mesmo jogo outra vez, desenhado à volta dele.
-  const frames = await page.evaluate(async ({ division, moment, before, after, FPS }) => {
+  const frames = await page.evaluate(async ({ division, moment, before, after, FPS, steps }) => {
     const MV = await import('/src/ui/match-view.ts' as string);
     const CL = await import('/src/ui/club.ts' as string);
     const G = await import('/src/ui/gpu/loader.ts' as string);
@@ -47,7 +47,7 @@ await withAnimPage(async page => {
       canvas.dataset.artScale = '2';
       const view = make(canvas);
       view.drawBubbles = () => {};
-      for (let i = 0; i < 200; i++) view.stepSim();
+      for (let i = 0; i < steps; i++) view.stepSim();
       const cam = view.camera;
       const aim = cam.aim.bind(cam);
       let x = before;
@@ -58,7 +58,7 @@ await withAnimPage(async page => {
         view.render(0, 0, 0);
         out.push(canvas.toDataURL());
       }
-      return { frames: out, hit: 200 };
+      return { frames: out, hit: steps };
     }
     const probe = make(document.createElement('canvas'));
     while (hit < 0 && tick < 30000) {
@@ -90,7 +90,7 @@ await withAnimPage(async page => {
       out.push(canvas.toDataURL());
     }
     return { frames: out, hit };
-  }, { division, moment, before, after, FPS });
+  }, { division, moment, before, after, FPS, steps });
   if ('error' in frames) {
     console.log(frames.error);
     return;

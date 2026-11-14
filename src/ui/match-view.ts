@@ -64,6 +64,8 @@ interface Drawable {
   bias?: number;
   /** A cópia já vem pintada no sítio exato (a bola no ar): não leva o ponto de apoio de `world` (ver `capture`). */
   exact?: boolean;
+  /** O ponto do mundo cujo apoio a cópia usa, se não for `world` (a bola colada a alguém: o apoio dele, a profundidade dela). */
+  anchorAt?: Vec3;
   /** Uma cara plana de um objeto: na placa gráfica, a imagem colada aos quatro cantos (ver `WorldSprite.corners`). */
   plane?: { image: HTMLCanvasElement; corners: Corners; scroll: number; span: number; dynamic: boolean };
 }
@@ -82,6 +84,9 @@ const GHOST = 0.2;
 const GROUND_BIAS = 0.05;
 /** Quantos texels por metro têm as caras dos objetos (o placar, a mesa): pintadas uma vez, como uma textura. */
 const FACE_TEXELS = 14;
+/** A bola está com alguém (para ir com o ponto de apoio dele) a menos disto dos pés, em metros, e abaixo desta altura. */
+const BALL_HAND_REACH = 0.8;
+const BALL_HAND_HEIGHT = 2.6;
 /** A sombra de raio `r` (píxeis da arte) numa imagem, para a placa gráfica: a mesma de `drawShadow`, guardada por tamanho. */
 const shadowImages = new Map<number, HTMLCanvasElement>();
 function shadowImage(r: number): HTMLCanvasElement {
@@ -2420,15 +2425,23 @@ export class MatchView {
       drawables.push({ y: ballLayer - 0.001, world: [x, y, 0], draw: () => this.shadow(g, gx, gy, 3) });
       const xs = [bx, ...this.trail.map(t => t[0])];
       const ys = [by, ...this.trail.map(t => t[1])];
+      // Colada a alguém (a receber, no ressalto), a bola vai com o ponto de apoio dele no ecrã, como a bola na mão: com o
+      // seu próprio, dava o degrau de um píxel noutra imagem e tremia em relação a ele. A profundidade continua a dela.
+      const holder = nearbyHoop === undefined && this.trail.length === 0 ? this.touching(bx, by, x, y, z) : null;
       drawables.push({
         y: ballLayer,
         // Como na tela 2D, na ordem do chão por baixo dela, logo à frente de quem está no mesmo sítio (a lançar, a receber);
         // junto ao cesto, no sítio onde está, para passar por dentro do aro.
         world: nearbyHoop === undefined ? [x, y, 0] : [x, y, z],
+        anchorAt: holder ? [holder.world.x, holder.world.y, 0] : undefined,
         bias: nearbyHoop === undefined ? GROUND_BIAS + 0.05 : 0,
         box: [Math.min(...xs) - 8, Math.min(...ys) - 8, Math.max(...xs) + 8, Math.max(...ys) + 8],
-        exact: true,
+        exact: !holder,
         draw: g => {
+          if (holder && this.spriteMode === 'collect') {
+            this.drawBallAt(g, bx - (holder.x - (holder.x | 0)), by - (holder.y - (holder.y | 0)), 1);
+            return;
+          }
           this.trail.forEach(([tx, ty], i) => {
             g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
             // Na placa gráfica, como a bola, ao píxel do ecrã.
@@ -2480,7 +2493,7 @@ export class MatchView {
             const { image, corners, scroll, span, dynamic } = d.plane;
             world.push({ image, left: 0, top: 0, width: 0, height: 0, flip: false, feet: d.world, corners, scroll, span, dynamic, bias: d.bias ?? 0 });
           } else if (d.box && d.world) {
-            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.exact);
+            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.exact, d.anchorAt);
             if (copy) world.push(copy);
           } else d.draw(g);
           this.spriteWorld = null;
@@ -2682,6 +2695,24 @@ export class MatchView {
     g.restore();
   }
 
+  /**
+   * Quem tem a bola desenhada em (`x`, `y`) encostada ao corpo, no ecrã, e está mesmo com ela no mundo (a bola em
+   * `wx`, `wy`, à altura `wz`): o mais perto na horizontal do ecrã, ou ninguém. Só pelo ecrã, um passe alto por cima de
+   * alguém mais ao fundo ficava preso a ele, e com a profundidade dele.
+   */
+  private touching(x: number, y: number, wx: number, wy: number, wz: number): { x: number; y: number; world: Point } | null {
+    if (wz > BALL_HAND_HEIGHT) return null;
+    let best: { x: number; y: number; world: Point } | null = null;
+    let gap = 10;
+    for (const d of this.drawn.bodies.values()) {
+      if (y < d.y - d.lift - d.height - 6 || y > d.y + 2 || Math.abs(x - d.x) >= gap) continue;
+      if ((d.world.x - wx) * (d.world.x - wx) + (d.world.y - wy) * (d.world.y - wy) > BALL_HAND_REACH * BALL_HAND_REACH) continue;
+      gap = Math.abs(x - d.x);
+      best = d;
+    }
+    return best;
+  }
+
   /** O tamanho de um boneco com os pés na linha `y`, na tela do jogo (num ecrã de densidade 1 fica mais suave). */
   private depth(y: number): number {
     if (!this.perspective) return 1;
@@ -2745,7 +2776,7 @@ export class MatchView {
    * resolução do ecrã, por isso sai igual ao que a tela do jogo teria. Pinta-se lá diretamente: pintar na tela do jogo e
    * copiar obrigava o browser a acabar a tela inteira a cada cópia, e com muita poeira o jogo afundava no iPhone.
    */
-  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void, exact = false): WorldSprite | null {
+  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void, exact = false, anchorAt: Vec3 = world): WorldSprite | null {
     const { g } = this;
     const m = g.getTransform();
     const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
@@ -2777,7 +2808,7 @@ export class MatchView {
     // De volta a píxeis da arte, antes da aproximação, como os bonecos.
     // O que se pinta à volta de um ponto do mundo (o cão, o pombo, os «Z», os flashes, a bola na mão) vem arredondado ao
     // píxel da arte: o apoio é esse ponto, e a cópia desliza com o mundo e com quem a leva.
-    const [px, py] = this.camera.project(world[0], world[1], world[2]);
+    const [px, py] = this.camera.project(anchorAt[0], anchorAt[1], anchorAt[2]);
     const anchor = exact ? undefined : ([px, py, px | 0, py | 0] as const);
     return { image: copy, used: [w, h], anchor, left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
   }
