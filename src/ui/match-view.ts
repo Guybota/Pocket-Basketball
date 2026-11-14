@@ -141,7 +141,6 @@ const WALK_FRAMES: readonly PoseName[] = ['walk0', 'walk1', 'walk0', 'walk2'];
 const DRIBBLE_RUN_FRAMES: readonly PoseName[] = ['dribRun0', 'dribRun1', 'dribRun2', 'dribRun3'];
 const HOLD_RUN_FRAMES: readonly PoseName[] = ['holdRun0', 'holdRun1', 'holdRun2', 'holdRun3'];
 // A letra do jogo só tem maiúsculas sem acentos.
-const MOVE_LABELS: Record<MoveId, string> = { crossover: 'CROSSOVER', stepBack: 'STEP-BACK', alleyOop: 'ALLEY-OOP', powerDunk: 'AFUNDANÇO', pickpocket: 'MÃO RÁPIDA' };
 const STEP_BACK_TICKS = 5;
 // Uma substituição demora isto a andar entre o banco e a linha.
 const RUN_BANNERS = [8, 12, 16];
@@ -242,9 +241,7 @@ const REFEREE_STEP = 0.26;
 const REFEREE_SIGNAL_TICKS = 22;
 // Ao intervalo a imagem escurece enquanto as equipas saem, e clareia quando voltam.
 const FADE_IN_TICKS = 20;
-// O nome de um movimento fica este espaço, em píxeis, acima do ponto mais alto do boneco; e nunca acima desta linha,
-// onde estão a faixa e o marcador.
-const FLOATER_GAP = 3;
+// As palavras e os balões nunca sobem acima desta linha, onde estão a faixa e o marcador.
 const FLOATER_MIN_TOP = 40;
 // Quanto tempo fica um aviso no ecrã (o mesmo que bannerUntil em main.ts).
 export const ANNOUNCE_TICKS = 36;
@@ -252,6 +249,8 @@ export const ANNOUNCE_TICKS = 36;
 // levanta o troféu quando todos lá estão (no mínimo ao fim de CEREMONY_LIFT_SECONDS), a subir e descer a cada
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
 // O momento grande: a imagem parada e o resultado grande a meio do campo, no máximo três vezes por jogo.
+/** Um movimento especial que dá cesto só é momento grande no último período e com a diferença até isto. */
+const BIG_MOVE_LEAD = 6;
 const BIG_MOMENTS_MAX = 3;
 // Um afundanço com o defensor mais perto do que isto (m) é um poster.
 const POSTER_RANGE = 1.5;
@@ -345,16 +344,6 @@ interface Floater {
   y: number;
   z: number;
   born: number;
-  /** Quem fez o movimento: a palavra segue-o, por cima da cabeça. */
-  body?: Body;
-  /** O movimento acaba num afundanço: a palavra conta logo com a altura do salto. */
-  dunk?: boolean;
-  /** Ao lado: a linha da cabeça no primeiro frame, de onde a palavra sobe. */
-  base?: number;
-  /** Sem espaço por cima dele, a palavra fica ao lado, à direita (1) ou à esquerda (-1), até desaparecer. */
-  beside?: 1 | -1;
-  /** A linha mais alta onde a palavra já esteve: só sobe, para não andar para cima e para baixo com o salto de quem a fez. */
-  top?: number;
 }
 
 export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'bigMiss' | 'shame' | 'awayCheer' | 'awayMiss' | 'card' | 'bump';
@@ -455,8 +444,6 @@ export class MatchView {
   /** A decisão do portador que a vista já espreitou (`peekShot`). */
   private peekedDecision = -1;
   private readonly floaters: Floater[] = [];
-  /** Quantos píxeis acima dos pés chega cada pose, medido uma vez no próprio desenho: braços no ar e salto incluídos. */
-  private readonly poseTops = new Map<string, number>();
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   private moveAnnouncedAt = -Infinity;
@@ -968,16 +955,14 @@ export class MatchView {
           break;
         case 'move':
           if (body) {
-            // Cada movimento tem a sua pose e o nome por cima de quem o fez. O afundanço e o alley-oop acabam na pose de afundar, com o lançamento.
+            // Cada movimento tem a sua pose; o nome vai só no aviso de baixo (um aviso por movimento). O afundanço e o alley-oop
+            // acabam na pose de afundar, com o lançamento.
             if (e.move === 'crossover') this.view(body).override = { pose: 'crossover', until: s.tick + STRIKE_TICKS, withBall: true };
             if (e.move === 'pickpocket') this.view(body).override = { pose: 'snatch', until: s.tick + STRIKE_TICKS, withBall: true };
             if (e.move === 'stepBack') {
               this.view(body).slide = { ...this.view(body).prev, start: s.tick };
               this.view(body).stepBack = s.tick;
             }
-            // No alley-oop, a palavra vai por cima de quem recebe e afunda, que é quem se vê; o evento é de quem passa.
-            const anchor = e.move === 'alleyOop' && s.flight?.kind === 'pass' ? s.flight.target : body;
-            this.floaters.push({ label: MOVE_LABELS[e.move!], x: anchor.x, y: anchor.y, z: 2.6, born: s.tick, body: anchor, dunk: e.move === 'alleyOop' || e.move === 'powerDunk' });
           }
           this.excitedUntil = s.tick + 30;
           if (e.team === this.crowdTeam) this.fansReact(true, 24);
@@ -1210,7 +1195,8 @@ export class MatchView {
     callbacks.sound(e.team !== this.crowdTeam ? 'awayCheer' : loud && !poster ? 'bigCheer' : 'cheer');
     if (poster) callbacks.sound('shame');
     // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada.
-    if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS) callbacks.announce('Afundanço!');
+    // O aviso de um movimento é longo (o dobro): enquanto está no ecrã, o cesto é dessa jogada e não leva outro aviso.
+    if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS * 2) callbacks.announce('Afundanço!');
     if (s.clock <= 20) {
       callbacks.announce('Sobre o apito!');
       this.excitedUntil = s.tick + 60;
@@ -1223,9 +1209,12 @@ export class MatchView {
     const late = s.period >= 4 && s.clock < 600;
     const lead = s.score[e.team] - s.score[e.team === 0 ? 1 : 0];
     const moved = this.moveTeam === e.team && s.tick - this.moveAnnouncedAt <= ANNOUNCE_TICKS * 2;
-    // Um cesto sobre o apito só conta com o jogo por decidir; os movimentos especiais deixam sempre um momento para o fim.
+    // Só cestos que decidem: um cesto sobre o apito do último período (ou do prolongamento) com o jogo por decidir, e um
+    // movimento especial no último período com o jogo apertado (num jogo houve três, dois no primeiro período), que deixa
+    // sempre um momento para o fim.
     const close = Math.abs(lead) <= 8;
-    const big = (moved && this.bigMoments < BIG_MOMENTS_MAX - 1) || (s.clock <= 20 && close) || (late && lead > 0 && lead <= e.points!) || (late && lead === 0 && e.points === 3);
+    const decisive = s.period >= 4 && Math.abs(lead) <= BIG_MOVE_LEAD;
+    const big = (moved && decisive && this.bigMoments < BIG_MOMENTS_MAX - 1) || (s.clock <= 20 && s.period >= 4 && close) || (late && lead > 0 && lead <= e.points!) || (late && lead === 0 && e.points === 3);
     if (big && this.bigMoments < BIG_MOMENTS_MAX) {
       this.bigMoments++;
       const before: [number, number] = [s.score[0], s.score[1]];
@@ -1233,6 +1222,8 @@ export class MatchView {
       // A ficha de quem marcou, por baixo do resultado: o nome, os pontos de hoje e quem passou.
       const card = body ? `${body.player.name.toUpperCase()} - ${body.line.points} PONTOS${e.other ? `, ASSISTE ${e.other.toUpperCase()}` : ''}` : '';
       this.bigScore = { team: e.team, start: this.realTime, before, after: [s.score[0], s.score[1]], card };
+      // As palavras do campo que já lá estavam saem: escondidas, voltavam a aparecer depois, fora de tempo.
+      this.floaters.length = 0;
     }
   }
 
@@ -2214,10 +2205,11 @@ export class MatchView {
     }
     // Na paragem a imagem aproxima-se do banco da casa, e volta ao normal quando o jogo recomeça; a arte continua a ser
     // desenhada ao tamanho de sempre e é a imagem toda que cresce, por isso fica nítida ao dobro.
-    // Na bola ao alto, como num grande plano: corte seco para o dobro sobre o círculo, e recuo em ~0,3 s quando a bola é tocada.
-    const tipping = s.phase === 'jump';
+    // Na bola ao alto, como num grande plano: aproxima-se ao dobro sobre o círculo, e recua quando a bola é tocada.
+    // Começa no fim da apresentação, para a bola ser lançada já com a imagem ao dobro.
+    const tipping = s.phase === 'jump' || (s.phase === 'intro' && s.jump !== null && s.timer <= seconds(0.5));
     // No apito final, até a saída ou a cerimónia começarem, um grande plano de quem está à volta da bola.
-    const ending = s.phase === 'end' && this.ceremony === null && this.exitStart === null;
+    const ending = s.phase === 'end' && this.ceremony === null && this.exitStart === null && !this.bigScore;
     // Um lance livre com o jogo apertado no fim é o par do penálti: grande plano de quem lança, com o nome e a conta de hoje.
     const shooter = s.phase === 'freeThrow' && s.freeThrow && !s.freeThrow.returning && s.period >= 4 && s.clock < 1200 && Math.abs(s.score[0] - s.score[1]) <= 5 ? s.freeThrow.shooter : null;
     // Enquanto lança, a faixa fica parada a meio do fundido de entrada; quando acaba, sai como a da falta.
@@ -2228,12 +2220,14 @@ export class MatchView {
       this.freeThrowUntil = this.realTime + 1.5;
       this.foulMoment = { body: shooter, start: this.realTime - 0.3, label: `LANCE LIVRE: ${name.toUpperCase()} - ${made}/${tries.length} HOJE` };
     }
-    const fouling = this.foulMoment !== null && (this.realTime - this.foulMoment.start < FOUL_ZOOM_SECONDS || this.realTime < this.freeThrowUntil) && !this.holding();
+    // Durante o momento grande, nem o grande plano da falta: o resultado tem a cena só para ele (a faixa espera por ele).
+    const fouling = this.foulMoment !== null && !this.bigScore && (this.realTime - this.foulMoment.start < FOUL_ZOOM_SECONDS || this.realTime < this.freeThrowUntil) && !this.holding();
     if (tipping || fouling || ending) this.jumpZoom = true;
     const wantZoom = this.holding() || lifted || tipping || fouling || ending ? 2 : 1;
-    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * (this.jumpZoom ? 10 : 4)));
-    // O recuo da bola ao alto acaba mais cedo, a 5 % do fim: são ~0,3 s com escalas fracionárias, e não meio segundo.
-    if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || tipping || fouling || ending || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
+    // A aproximar e a afastar desliza em ~0,5 s, como o desconto: entrar de repente a 2× era um corte seco.
+    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * (this.jumpZoom ? 6 : 4)));
+    // O fim acaba mais cedo, a 5 % (o resto são escalas fracionárias); a cerimónia e o movimento reduzido não deslizam.
+    if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
     if (this.zoom === 1) this.jumpZoom = false;
     // A arte amplia-se sem suavizar; só os bonecos (drawSprite) ligam a suavização, e voltam a desligá-la.
     g.imageSmoothingEnabled = false;
@@ -2891,6 +2885,11 @@ export class MatchView {
   private drawFoulStrip(): void {
     const f = this.foulMoment;
     if (!f) return;
+    // Com o resultado grande no ecrã, a faixa da falta espera por ele (e o grande plano da falta também).
+    if (this.bigScore) {
+      f.start = this.realTime;
+      return;
+    }
     const t = this.realTime - f.start;
     if (t >= FOUL_STRIP_SECONDS) {
       this.foulMoment = null;
@@ -3501,57 +3500,11 @@ export class MatchView {
     }
   }
 
-  /** O ponto mais alto de uma pose, em píxeis acima dos pés, com bola e com os braços. */
-  private poseTop(pose: PoseName, look: Look): number {
-    const key = `${pose}|${look.legs}|${look.torso}`;
-    let top = this.poseTops.get(key);
-    if (top === undefined) {
-      const c = document.createElement('canvas');
-      c.width = 48;
-      c.height = 96;
-      const g = c.getContext('2d', { willReadFrequently: true })!;
-      drawSprite(g, pose, look, 24, 80, false, false, true);
-      const { data } = g.getImageData(0, 0, c.width, c.height);
-      let row = 0;
-      while (row < c.height && !data.slice(row * c.width * 4, (row + 1) * c.width * 4).some((v, i) => i % 4 === 3 && v > 0)) row++;
-      top = row < c.height ? 80 - row : spriteHeight(look);
-      this.poseTops.set(key, top);
-    }
-    return top;
-  }
-
-  /** Onde pôr o nome de um movimento: por cima (undefined), à direita (1) ou à esquerda (-1) de quem o fez. Por cima, nunca
-   * acima da faixa do marcador; fica o lugar que cabe no ecrã e tapa menos píxeis dos bonecos: dos outros como estão, e
-   * de quem o fez desde o ponto mais alto que vai ter (`peak`, as mãos no aro num afundanço) até aos pés. A empatar, por
-   * cima. */
-  private floaterSide(actor: Body, x: number, y: number, peak: number, aboveTop: number, sideTop: number, width: number, height: number): 1 | -1 | undefined {
-    const covered = (left: number, top: number): number => {
-      if (left < 2 || left + width > this.camera.width - 2) return Infinity;
-      let area = Math.max(0, Math.min(left + width, x + 7) - Math.max(left, x - 7)) * Math.max(0, Math.min(top + height, y) - Math.max(top, peak));
-      for (const [b, d] of this.drawn.bodies) {
-        if (b === actor) continue;
-        const x0 = Math.max(left, d.x - 7);
-        const x1 = Math.min(left + width, d.x + 7);
-        const y0 = Math.max(top, d.y - d.lift - d.height - 6);
-        const y1 = Math.min(top + height, d.y - d.lift);
-        if (x1 > x0 && y1 > y0) area += (x1 - x0) * (y1 - y0);
-      }
-      return area;
-    };
-    const options: [1 | -1 | undefined, number][] = [
-      [undefined, covered(x - (width >> 1), Math.max(FLOATER_MIN_TOP, aboveTop))],
-      [1, covered(x + 9, sideTop)],
-      [-1, covered(x - 9 - width, sideTop)],
-    ];
-    let best = options[0]!;
-    for (const option of options) if (option[1] < best[1]) best = option;
-    // Sem nenhum que caiba, encosta-se ao lado com mais espaço.
-    if (best[1] === Infinity) return x + 9 + width <= this.camera.width - 2 ? 1 : -1;
-    return best[0];
-  }
 
   private drawFloaters(): void {
     const { g, s, camera } = this;
+    // O resultado grande tem a cena só para ele: o «+2» e o «FALTA» por cima dele empilhavam-se em sete textos.
+    if (this.bigScore) return;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i]!;
       const age = s.tick - f.born;
@@ -3567,42 +3520,11 @@ export class MatchView {
       const width = textWidth(f.label, scale);
       // A altura da palavra: 5 linhas, a sombra e a cedilha.
       const height = 6 * scale + 1;
-      let left: number;
-      let top: number;
-      const drawn = f.body && this.drawn.bodies.get(f.body);
-      // Quem fez o movimento e não se vê (nos cenários de teste, escondido) não leva palavra, em vez de ela aparecer noutro sítio.
-      if (f.body && !drawn) continue;
-      if (word && drawn) {
-        // A palavra segue quem fez o movimento, por cima do ponto mais alto da pose, e sobe devagar. Sem espaço em cima,
-        // por baixo da faixa do marcador, encosta-se ao lado dele: nunca por cima do corpo.
-        const look = this.view(f.body!).look;
-        const k = this.depth(drawn.y);
-        const head = (drawn.y | 0) - Math.round(drawn.lift) - Math.round(this.poseTop(drawn.pose, look) * k);
-        // Num afundanço conta-se já com o ponto mais alto que aí vem: a pose de afundar no topo do salto, junto ao aro.
-        const hoopGround = camera.project(this.attackedHoop(f.body!.team), 0)[1] | 0;
-        const reach = Math.round((DUNK_LIFT + this.poseTop('dunk', look)) * k);
-        const peak = f.dunk ? Math.min(head, hoopGround - reach, (drawn.y | 0) - reach) : head;
-        // Por cima, à direita ou à esquerda decide-se uma vez, no primeiro frame, onde tapar menos os outros bonecos; e a
-        // palavra depois só sobe: nunca salta de sítio.
-        if (f.top === undefined) f.beside = this.floaterSide(f.body!, drawn.x | 0, drawn.y | 0, peak, peak - FLOATER_GAP - height, Math.max(FLOATER_MIN_TOP, head), width, height);
-        if (f.beside !== undefined) {
-          // Ao lado, a altura é a da cabeça no primeiro frame: mudar de pose ou saltar não a faz andar aos saltos.
-          f.base ??= head;
-          top = Math.max(FLOATER_MIN_TOP, f.base - rise);
-          left = f.beside > 0 ? (drawn.x | 0) + 9 : (drawn.x | 0) - 9 - width;
-        } else {
-          top = Math.max(FLOATER_MIN_TOP, peak - FLOATER_GAP - height - rise);
-          left = (drawn.x | 0) - (width >> 1);
-        }
-        top = f.top = Math.min(f.top ?? top, top);
-        left = Math.max(2, Math.min(camera.width - width - 2, left));
-      } else {
-        // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés de quem a disse.
-        const below = word && y < camera.height * 0.38;
-        top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(FLOATER_MIN_TOP, (y | 0) - 14 - rise));
-        // Num canto, a palavra encosta à margem em vez de sair do ecrã.
-        left = word ? Math.max(2, Math.min(camera.width - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
-      }
+      // No topo do ecrã, a faixa e o marcador tapariam a palavra: aí, fica aos pés de quem a disse.
+      const below = word && y < camera.height * 0.38;
+      const top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(FLOATER_MIN_TOP, (y | 0) - 14 - rise));
+      // Num canto, a palavra encosta à margem em vez de sair do ecrã.
+      const left = word ? Math.max(2, Math.min(camera.width - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
       // A caixa ocupada: os acentos sobem 3 linhas, a cedilha desce 1 e a sombra mais 1 píxel.
       const accent = /[ÁÀÂÃÉÊÍÓÔÕÚ]/.test(f.label) ? 3 * scale : 0;
       this.drawn.labels.push([left, top - accent, width + 1, accent + height]);

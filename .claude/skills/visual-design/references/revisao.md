@@ -285,7 +285,7 @@ Página só para verificação, servida pelo Vite. Expõe `window.__anim` com:
 
 ### 6.2 `src/tools/anim-check.ts`
 
-Arranca o Vite (porta 4176), abre `anim.html` num Chromium do `playwright-core` (Edge no Windows, `BROWSER_PATH`/`BROWSER_CHANNEL` noutros), chama as funções de `__anim` e grava PNG em `dist-check/`. Falha se um movimento não aconteceu em nenhuma semente ou se não apareceu o nome por cima do jogador. Não mede píxeis.
+Arranca o Vite (porta 4176), abre `anim.html` num Chromium do `playwright-core` (Edge no Windows, `BROWSER_PATH`/`BROWSER_CHANNEL` noutros), chama as funções de `__anim` e grava PNG em `dist-check/`. Falha se um movimento não aconteceu em nenhuma semente ou se não deu exatamente um aviso com o seu nome. Não mede píxeis.
 
 ### 6.3 `src/tools/browser-check.ts`
 
@@ -506,7 +506,7 @@ Pedido do dono: o revisor tem de poder **exportar folhas de sprites** de uma ani
 | frente, costas e virado | **pés a deslizar** e tremor da âncora com o corpo a andar |
 | um efeito isolado (pó, confete), frame a frame | **ordem de desenho** e oclusões: quem fica à frente, a rede da rua, o público |
 | ícones, emblemas, retratos, letra | **contexto**: legibilidade no chão do pavilhão, com sombra, reflexo e luz do tempo |
-| comparação rápida antes/depois de uma correção de píxeis | **quando acontece**: o movimento é escolhido pela simulação? aparece o nome por cima? os outros reagem? |
+| comparação rápida antes/depois de uma correção de píxeis | **quando acontece**: o movimento é escolhido pela simulação? aparece o aviso? os outros reagem? |
 | | trocas de pose e de orientação (`TURN_LOCK_TICKS`), velocidades 2× e 4×, movimento reduzido |
 | | fluxos de interface (desconto de tempo, substituição) |
 
@@ -545,7 +545,7 @@ Em Markdown, curto, com as imagens ao lado. Estrutura:
 - **Frames:** 30–40 · O afundanço lê-se pouco em silhueta contra o público (`silhuetas.png`); sem medida.
 
 ## Visto e sem problemas
-- paleta e alfa em todas as variantes; frente/costas/virado; 4× e movimento reduzido; nome por cima do jogador.
+- paleta e alfa em todas as variantes; frente/costas/virado; 4× e movimento reduzido; um aviso por movimento.
 
 ## Não verificado
 - velocidade 4× (não gravada); pavilhão da divisão 0.

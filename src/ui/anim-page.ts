@@ -6,6 +6,7 @@ import { MOVES, type MoveId } from '../sim/types.ts';
 import { drawSprite, lookOf, type PoseName } from './art/sprites.ts';
 import { clubTeam, newClub, opponentOf, weekSeed } from './club.ts';
 import { MatchView } from './match-view.ts';
+import { MOVE_INFO } from './narrate.ts';
 import { scene, sheet } from './review.ts';
 import { loadCourtGpu, useCourtGpu } from './gpu/loader.ts';
 
@@ -54,14 +55,15 @@ function seedFor(move: MoveId): { seed: number; tick: number } | null {
 }
 
 /** Imagens seguidas à volta de quem fez o movimento, uma por passo da simulação. */
-function moveStrip(move: MoveId, frames: number): { image: string; floaters: number } | null {
+function moveStrip(move: MoveId, frames: number): { image: string; announced: number } | null {
   const found = seedFor(move);
   if (!found) return null;
   const club = newClub(found.seed, 3);
   const canvas = document.createElement('canvas');
   canvas.width = 360;
   canvas.height = 216;
-  const view = new MatchView(canvas.getContext('2d')!, clubTeam(club), opponentOf(club), weekSeed(club), 3, { announce: () => {}, event: () => {}, sound: () => {} });
+  const said: string[] = [];
+  const view = new MatchView(canvas.getContext('2d')!, clubTeam(club), opponentOf(club), weekSeed(club), 3, { announce: m => said.push(m), event: () => {}, sound: () => {} });
   const s: MatchState = view.s;
   while (s.tick < found.tick) view.stepSim();
   const actor = s.events.find(e => e.type === 'move' && e.move === move && e.tick === found.tick)!;
@@ -70,8 +72,8 @@ function moveStrip(move: MoveId, frames: number): { image: string; floaters: num
   strip.width = STRIP_W * frames;
   strip.height = STRIP_H;
   const out = strip.getContext('2d')!;
-  // Só vale a pena ver os passos a partir de quando o movimento aconteceu, por isso contam-se os rótulos nessa altura.
-  const floaters = (view as unknown as { floaters: { label: string }[] }).floaters.filter(f => f.label.length > 3).length;
+  // O aviso do movimento, com o nome dele (é o único aviso: não há palavra no campo).
+  const announced = said.filter(m => m === `${MOVE_INFO[move].name}!`).length;
   for (let frame = 0; frame < frames; frame++) {
     view.render(1, 0.05);
     const [cx, cy] = (view as unknown as { camera: { project(x: number, y: number): [number, number] } }).camera.project(body.x, body.y);
@@ -80,7 +82,7 @@ function moveStrip(move: MoveId, frames: number): { image: string; floaters: num
     out.drawImage(canvas, sx, sy, STRIP_W, STRIP_H, frame * STRIP_W, 0, STRIP_W, STRIP_H);
     view.stepSim();
   }
-  return { image: strip.toDataURL(), floaters };
+  return { image: strip.toDataURL(), announced };
 }
 
 type Humor = 'dog' | 'pigeon' | 'sleeper';

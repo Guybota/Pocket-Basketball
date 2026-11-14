@@ -31,15 +31,15 @@ await withAnimPage(async page => {
   save('poses', await page.evaluate(() => (window as unknown as { __anim: { poseSheet(): string } }).__anim.poseSheet()));
   const moves = await page.evaluate(() => (window as unknown as { __anim: { moves: readonly string[] } }).__anim.moves);
   for (const move of moves) {
-    const result = await page.evaluate(m => (window as unknown as { __anim: { moveStrip(move: string, frames: number): { image: string; floaters: number } | null } }).__anim.moveStrip(m, 8), move);
+    const result = await page.evaluate(m => (window as unknown as { __anim: { moveStrip(move: string, frames: number): { image: string; announced: number } | null } }).__anim.moveStrip(m, 8), move);
     if (!result) {
       failed = true;
       console.log(`FALHOU ${move}: não aconteceu em nenhum dos jogos`);
       continue;
     }
-    if (result.floaters === 0) {
+    if (result.announced !== 1) {
       failed = true;
-      console.log(`FALHOU ${move}: sem o nome por cima do jogador`);
+      console.log(`FALHOU ${move}: ${result.announced} avisos com o nome do movimento, em vez de um`);
     }
     save(`movimento-${move}`, result.image);
   }

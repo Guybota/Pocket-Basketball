@@ -24,6 +24,12 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 
 ### Defeitos novos
 
+> **Resolvidos a 14 de novembro de 2026:** o defeito antigo 3 e os novos N3, N4, N5 e N7.
+> - Cada movimento tem um só aviso, o de baixo, com o nome completo; a palavra por cima do jogador saiu (e com ela o N7).
+> - Com o resultado grande no ecrã, não há palavras no campo nem grande plano da falta; a faixa da falta espera por ele.
+> - Momentos grandes só nos cestos que decidem, no último período ou no prolongamento: cerca de 0,4 por jogo em 40 jogos.
+> - Os grandes planos da bola ao alto, da falta e do fim deslizam em ~0,5 s; a bola ao alto já está a 2× quando a bola sobe.
+
 **Média**
 - **N3. Textos empilhados.** Num afundanço com falta que é também momento grande ficam até sete textos no ecrã ao mesmo tempo (a palavra do movimento, «+2», o resultado grande, «FALTA», a ficha de quem marcou, o aviso do movimento e a faixa da falta). *Ideia:* uma ordem de prioridade com uma só zona de faixas; o momento grande esconde as palavras do mundo.
 - **N4. Momentos grandes a mais.** Três num jogo, dois no primeiro período, todos depois de um movimento especial. *Ideia:* exigir também peso no jogo (último período, diferença curta, reviravolta) ou um limite por jogo.
