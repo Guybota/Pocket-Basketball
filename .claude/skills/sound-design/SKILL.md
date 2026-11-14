@@ -90,7 +90,7 @@ Os relatórios marcam o grau de confiança de cada número, de [M]/[F] (medido o
   - O coro: todos na mesma nota, a entrar juntos e a aguentá-la.
   - O que resultou: cada voz chega à nota em 0,15 a 0,45 s e fica lá, mas cada uma na sua nota, com 2 a 3 semitons de diferença entre elas, com tremor (±4 % de altura e volume) e rouquidão. Durações de 1 a 2,6 s, entradas espalhadas por 0,1 a 0,8 s, e perto de metade volta a gritar. O hold é do grupo, não de cada voz.
   - A reação tem de ficar uns 8 dB acima do rumor, ou as vogais não se notam. Mede o RMS das duas janelas.
-- **A bancada é cara de calcular.** Uma reação de 14 vozes leva 45 a 90 ms, e o rumor de 8 vozes ~50 ms (o limite é ~15 ms). Calcula cada variante sozinha num momento livre (`warmEach`), toca só as que já estão prontas (`ready`) e, enquanto não há nenhuma, usa os sons antigos e baratos. Nunca as calcules a meio do jogo.
+- **A bancada é cara de calcular.** Uma reação de 14 vozes leva 45 a 90 ms, e o rumor de 8 vozes ~50 ms (o limite é ~15 ms). Encomenda cada variante ao Worker (`warmEach`, que passa a receita de `sound-recipes.ts`), toca só as que já estão prontas (`ready`) e, enquanto não há nenhuma, usa os sons antigos e baratos. Nunca as calcules no fio do jogo.
 
 ### Traduzir queixas em parâmetros
 

@@ -21,7 +21,7 @@ import { GUEST_RIVAL } from './airport.ts';
 import { clubIdentity } from './art/identity.ts';
 import { keepAwake } from './awake.ts';
 import { TOWER_NOTE, firedHtml, introBars, matchLeagueSummary, titleStandings, officialLabel, seasonReportHtml, seasonTopStats, townOverlay } from './season-screens.ts';
-import { ANNOUNCE_TICKS, MatchView, type Sound } from './match-view.ts';
+import { ANNOUNCE_SECONDS, MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
@@ -41,7 +41,8 @@ import { initKeys } from './keys.ts';
 import { createFpsMeter } from './fps-meter.ts';
 import { courtGpu, loadCourtGpu, useCourtGpu } from './gpu/loader.ts';
 
-const DROP_TICKS = 50;
+/** Quanto tempo fica a carta ganha no ecrã, em segundos de `momentTime` (como os avisos). */
+const DROP_SECONDS = 2.5;
 const MAX_STEPS_PER_FRAME = 40;
 /** O primeiro toque no relógio só o arma; desarma sozinho ao fim deste tempo, sem parar o jogo. Igual ao `3s` do style.css. */
 const TIMEOUT_CONFIRM_MS = 3000;
@@ -355,7 +356,7 @@ function placeTownUi(): void {
   });
 }
 
-function announce(message: string, long = false): void {
+function announce(message: string): void {
   announced.add(message);
   banner.textContent = message;
   banner.hidden = false;
@@ -363,8 +364,8 @@ function announce(message: string, long = false): void {
   banner.classList.remove('show');
   void banner.offsetWidth;
   banner.classList.add('show');
-  // Um movimento especial fica até ao fim da jogada; os outros avisos, o tempo de sempre.
-  bannerUntil = view!.s.tick + (long ? ANNOUNCE_TICKS * 2 : ANNOUNCE_TICKS);
+  // Todos o mesmo tempo, no relógio dos avisos do jogo: um movimento ficava o dobro e sobrevivia à jogada seguinte.
+  bannerUntil = view!.momentTime + ANNOUNCE_SECONDS;
   speak(message, 1);
 }
 
@@ -459,7 +460,7 @@ function showDrop(card: CardId): void {
   found.push(card);
   drop.innerHTML = `<img src="${cardImage(card, CARDS[card].category)}" alt=""><span>${CARDS[card].name}</span>`;
   drop.hidden = false;
-  dropUntil = view!.s.tick + DROP_TICKS;
+  dropUntil = view!.momentTime + DROP_SECONDS;
   soundsPlayed.add('card');
   if (started && speed <= 2) audio.play('card');
   if (tab === 'cards') refreshContent();
@@ -1201,8 +1202,8 @@ function frame(now: number): void {
   flushLive(now);
   const courtLabel = stage === 'match' && current ? `Jogo: ${current.s.teams[0].short} ${current.s.score[0]} – ${current.s.score[1]} ${current.s.teams[1].short}, ${periodName(current.s.period)}, ${clockText(current.s.clock)}` : stage === 'town' ? 'Mapa da cidade' : 'Pocket Basketball';
   if (canvas.getAttribute('aria-label') !== courtLabel) canvas.setAttribute('aria-label', courtLabel);
-  if (current && !banner.hidden && current.s.tick >= bannerUntil) banner.hidden = true;
-  if (current && !drop.hidden && current.s.tick >= dropUntil) drop.hidden = true;
+  if (current && !banner.hidden && current.momentTime >= bannerUntil) banner.hidden = true;
+  if (current && !drop.hidden && current.momentTime >= dropUntil) drop.hidden = true;
   const start = performance.now();
   hudElement.hidden = stage !== 'match' || replay !== undefined || (titleStage !== null && !finished) || (view?.closeUp() ?? false);
   if (replay) {

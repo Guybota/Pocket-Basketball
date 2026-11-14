@@ -6,6 +6,8 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
 
 - `src/ui/synth.ts`: funções puras que calculam cada som num `Float32Array`. Não usa Web Audio, por isso os testes correm em Node.
 - `src/ui/audio.ts`: a classe `GameAudio`. Tem o grafo Web Audio, a cache de buffers, o `play()` de cada evento e o ambiente de cada pavilhão.
+- `src/ui/sound-recipes.ts`: as receitas dos sons pelo nome (`RECIPES`) e `cook(chave, n, receita)`, que as calcula com a semente da chave. O jogo e o Worker usam as mesmas, por isso o som sai igual amostra a amostra (teste em `sound-recipes.test.ts`).
+- `src/ui/sound-worker.ts`: o Web Worker que calcula os sons preparados de antemão, à parte do jogo.
 - `src/ui/music.ts`: as músicas, que pedem notas ao `MusicKit` (`note(instrumento, midi)`).
 - `src/ui/audio.test.ts`: testes com um `AudioContext` falso e testes diretos às funções do `synth.ts`.
 - O tipo `Sound`, com os nomes dos eventos, está em `src/ui/match-view.ts`. A lista de todos os sons, que serve para os testar, está em `playAllSounds`, em `src/ui/main.ts`.
@@ -35,8 +37,9 @@ Retrato do código em novembro de 2026, depois da revisão dos sons (limitador, 
 
 ## Como os sons chegam ao altifalante (`audio.ts`)
 
-- **Desbloqueio:** nada é calculado antes de `unlock()`, que corre num gesto do jogador. Depois, `warm()` calcula as bolsas uma a uma em `requestIdleCallback`. O que ainda não estiver pronto calcula-se na primeira vez que toca.
-- **Cache:** `set(chave, n, make)` guarda `n` variantes por chave. A semente é o hash da chave mais `i·7919`, por isso a mesma chave dá sempre os mesmos sons. As bolsas atuais são:
+- **Desbloqueio:** nada é calculado antes de `unlock()`, que corre num gesto do jogador. Depois, `warm()` encomenda as bolsas ao Worker (`sound-worker.ts`): os sons de todos os jogos primeiro, a bancada do pavilhão depois. Sem Worker (nos testes, na página única do `build-page`, ou se falhar), calcula-as uma a uma nos momentos livres (`requestIdleCallback`, ou `setTimeout` no Safari, que não o tem). O que ainda não estiver pronto calcula-se na primeira vez que toca, no fio do jogo.
+- **Porquê o Worker:** a bancada leva 40 a 90 ms por som; calculada no fio do jogo prendia frames nos primeiros segundos de cada jogo, sobretudo no iPhone.
+- **Cache:** `set(chave, n, receita)` guarda `n` variantes por chave; a receita é `[nome, ...argumentos]` de `RECIPES`, e não uma função, para poder ir ao Worker. A semente é o hash da chave mais `i·7919`, por isso a mesma chave dá sempre os mesmos sons. As bolsas atuais são:
 
   | Bolsa | Variantes |
   |---|---|
@@ -105,7 +108,7 @@ O ruído partilhado (`noiseBuffer`) e as escolhas no momento de tocar usam `Math
 
 1. Junta o nome ao tipo `Sound` em `match-view.ts`.
 2. Escreve o gerador em `synth.ts`, com um comentário de uma linha em português que diga o som físico.
-3. Cria a bolsa em `audio.ts`, com chave, número de variantes e um `warm` se tocar cedo.
+3. Junta a receita a `RECIPES` em `sound-recipes.ts` (o nome e os argumentos depois do gerador), e cria a bolsa em `audio.ts` com `set(chave, n, [nome, ...args])` e um `warm` se tocar cedo (vai para o Worker).
 4. Junta o `case` em `play()`.
 5. Junta o nome a `playAllSounds` em `main.ts`.
 6. Junta o som às listas de `audio.test.ts`: a lista de durações do bloco «synth» e a lista da cache.

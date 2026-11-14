@@ -28,6 +28,7 @@ npm run sound-wavs     # grava sons em WAV, secos e em cada sala, em dist-sounds
 npm run review         # folhas de sprites e cenários de teste para o revisor, em dist-check/revisao/: npm run review -- src/tools/cenas/poses-todas.json
 npm run gpu-check      # compara as bancadas desenhadas pela placa gráfica com o traçador de raios, píxel a píxel
 npm run campos         # fotografa cada campo de longe (o pavilhão inteiro) e com a câmara do jogo, em dist-check/campos/
+node src/tools/gravar.ts 3 ressalto  # grava o jogo em movimento a 30 fps, como o jogo o mostra, em dist-check/gravar/ (ver o skill visual-design)
 npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
 ```
 

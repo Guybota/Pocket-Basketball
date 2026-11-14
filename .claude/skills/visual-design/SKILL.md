@@ -93,6 +93,8 @@ Os relatórios marcam o que não foi verificado, como [NV] ou [não verificado].
   - um passe longo ou picado tem arco, e quem o tenta intercetar salta;
   - a altura no ápice cresce com a distância.
 - **Arredondamento:** arredonda a âncora do boneco (os pés) e desenha as articulações a partir dela, para nada tremer. Um objeto lento move-se de píxel em píxel, sempre com a mesma regra de arredondamento.
+  - **No jogo, na placa gráfica, arredonda-se ao píxel do ecrã, e não ao da arte** (`anchor` em `sprite-layer.ts`): o chão desliza com a câmara, e um boneco aos saltos de um píxel da arte (2–5 do ecrã) tremia em cima dele. Só o ponto de apoio se arredonda, com a largura fixa; tudo o que é do boneco (sombra, reflexo, bola na mão) partilha o mesmo apoio, e o que a tela 2D desenha por cima dele (nome, seta, balões) junta a mesma fração com `followSprite` (certo ao píxel sem zoom). Os pormenores e as tentativas que falharam estão em `references/codigo.md`.
+  - **As caras dos objetos (placares, mesas) são texturas** pintadas uma vez e coladas ao objeto (`face`, `corners`): nunca pintes texto à resolução do ecrã por cima do mundo, que parece seguir a câmara.
 - **O cenário em perspetiva que se mexe com a câmara** (linhas do campo, arestas, texturas do chão) não se resolve na resolução da arte. Já se experimentou, com a G2:
   - Linhas de 1 píxel de arte (Bresenham) rastejam aos blocos de 4 a 6 píxeis do ecrã.
   - Linhas suavizadas (Wu) ou pintadas na textura tremem menos, mas, ampliadas, ficam desfocadas ao longe e nas curvas.
@@ -183,6 +185,8 @@ O revisor:
 **Um crítico sem contexto encontra o que o autor não vê.** Além do revisor, para mudanças grandes (um cenário novo, um motor novo), lança um agente que não sabe o que mudou nem porquê. Diz-lhe só para comparar com o jogo e para medir tudo o que afirmar. Foi assim que se encontraram as dobras abertas e o sinal trocado no protótipo 3D.
 
 **Imagens para o utilizador:** em JPEG de até cerca de 350 KB. PNGs grandes falham no envio quando o utilizador está no telemóvel. Para comparar, põe as versões uma por cima da outra na mesma imagem.
+
+**No jogo a sério, em movimento: `node src/tools/gravar.ts <divisão> <momento>`** (`ressalto`, `afundanco`, `inicio`, `intervalo`, ou `varrimento` com a câmara a andar devagar e tudo parado). Desenha como o jogo, com a câmara, a perspetiva e a placa gráfica, ao contrário do `review`, que desenha sem perspetiva. As medidas que funcionaram e as armadilhas estão em `references/codigo.md`, secção «O que se verifica».
 
 **A ferramenta: `npm run review -- <descrição.json> [outra.json …]`.** Grava em `dist-check/revisao/<nome>/`. Há exemplos em `src/tools/cenas/`, e os formatos (`SheetSpec` e `SceneSpec`) estão em `src/ui/review.ts`.
 

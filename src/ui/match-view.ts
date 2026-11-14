@@ -243,8 +243,10 @@ const REFEREE_SIGNAL_TICKS = 22;
 const FADE_IN_TICKS = 20;
 // As palavras e os balões nunca sobem acima desta linha, onde estão a faixa e o marcador.
 const FLOATER_MIN_TOP = 40;
-// Quanto tempo fica um aviso no ecrã (o mesmo que bannerUntil em main.ts).
+// Um cesto até ao dobro disto, em passos, depois de um movimento da mesma equipa conta como dele (para o momento grande).
 export const ANNOUNCE_TICKS = 36;
+/** Quanto tempo fica um aviso de baixo no ecrã, em segundos de `momentTime` (ver bannerUntil em main.ts). */
+export const ANNOUNCE_SECONDS = 1.8;
 // A cerimónia do troféu, em tempo real (animacao.md §7 e §10): os vencedores correm para o meio campo e o capitão
 // levanta o troféu quando todos lá estão (no mínimo ao fim de CEREMONY_LIFT_SECONDS), a subir e descer a cada
 // CEREMONY_PUMP_SECONDS; depois há confetes durante CEREMONY_AFTER_LIFT. Os vencidos saem a passo do enquadramento.
@@ -349,9 +351,8 @@ interface Floater {
 export type Sound = 'swish' | 'rim' | 'whistle' | 'buzzer' | 'shotClockBuzzer' | 'horn' | 'bounce' | 'catch' | 'steal' | 'block' | 'cheer' | 'bigCheer' | 'bigMiss' | 'shame' | 'awayCheer' | 'awayMiss' | 'card' | 'bump';
 
 export interface ViewCallbacks {
-  /** Um aviso grande; `cards`, num movimento especial, são as cartas do combo que o ensinou. */
-  /** `long`: um movimento especial, que fica até ao fim da jogada. */
-  announce(message: string, long?: boolean): void;
+  /** Um aviso na faixa de baixo; dura `ANNOUNCE_SECONDS` no relógio dos avisos (`momentTime`). */
+  announce(message: string): void;
   sound(name: Sound): void;
   event(e: MatchEvent): void;
 }
@@ -447,6 +448,7 @@ export class MatchView {
   // O que a bancada diz, em balões por cima de um adepto da primeira fila.
   private readonly bubbles: { label: string; fan: number; born: number }[] = [];
   private moveAnnouncedAt = -Infinity;
+  private moveAnnouncedMoment = -Infinity;
   private moveTeam: TeamIndex | null = null;
   // Os momentos grandes: um a três cestos por jogo param a imagem um instante, com o resultado grande a meio do campo.
   private bigScore: { team: TeamIndex; start: number; before: [number, number]; after: [number, number]; card: string } | null = null;
@@ -490,6 +492,9 @@ export class MatchView {
   private animTime = 0;
   /** O tempo real, que para na pausa mas não acelera a 2× e 4×: para os efeitos de sensação, como a paragem no aro. */
   private realTime = 0;
+  /** O relógio dos avisos, dos momentos grandes e dos grandes planos (ver `render`), e quanto anda por segundo real. */
+  momentTime = 0;
+  private pace = 1;
   /** Quantos segundos de jogo passam por segundo real: 1, 2 ou 4. */
   private simPerReal = 1;
   private animTick = 0;
@@ -924,7 +929,7 @@ export class MatchView {
             this.view(body).override = { pose: 'handsHead', until: s.tick + 8 };
             const name = body.player.name.toUpperCase();
             const fouls = body.line.fouls;
-            this.foulMoment = { body, start: this.realTime, label: fouls >= B.foulOutAt ? `${name} SAI: ${fouls} FALTAS` : `FALTA DE ${name} - ${fouls} ${fouls === 1 ? 'FALTA' : 'FALTAS'}` };
+            this.foulMoment = { body, start: this.momentTime, label: fouls >= B.foulOutAt ? `${name} SAI: ${fouls} FALTAS` : `FALTA DE ${name} - ${fouls} ${fouls === 1 ? 'FALTA' : 'FALTAS'}` };
           }
           this.coachUpsetUntil[e.team] = s.tick + 12;
           if (e.team === this.crowdTeam) this.crowdSay(this.crowdPick('foul'));
@@ -969,8 +974,9 @@ export class MatchView {
           // Um crossover que deita o defensor ao chão é um momento vergonhoso: «Uuuuh».
           callbacks.sound(e.move === 'crossover' && s.events.some(k => k.tick === e.tick && k.type === 'knockdown') ? 'shame' : e.team === this.crowdTeam ? 'bigCheer' : 'awayCheer');
           // Só o nome do movimento: as cartas do combo que o ensina seriam um spoiler.
-          callbacks.announce(`${MOVE_INFO[e.move!].name}!`, true);
+          callbacks.announce(`${MOVE_INFO[e.move!].name}!`);
           this.moveAnnouncedAt = s.tick;
+          this.moveAnnouncedMoment = this.momentTime;
           this.moveTeam = e.team;
           break;
         case 'knockdown':
@@ -1194,9 +1200,9 @@ export class MatchView {
     // A festa é da casa; quando o adversário marca, só os adeptos de fora festejam, que são menos.
     callbacks.sound(e.team !== this.crowdTeam ? 'awayCheer' : loud && !poster ? 'bigCheer' : 'cheer');
     if (poster) callbacks.sound('shame');
-    // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada.
-    // O aviso de um movimento é longo (o dobro): enquanto está no ecrã, o cesto é dessa jogada e não leva outro aviso.
-    if (dunk && s.tick - this.moveAnnouncedAt > ANNOUNCE_TICKS * 2) callbacks.announce('Afundanço!');
+    // Se o aviso de um movimento especial (afundanço de força, alley-oop) ainda está no ecrã, o cesto é dessa jogada e não
+    // leva outro aviso; já apagado, leva o seu (senão ficava sem nenhum). No relógio dos avisos, como o próprio aviso.
+    if (dunk && this.momentTime - this.moveAnnouncedMoment >= ANNOUNCE_SECONDS) callbacks.announce('Afundanço!');
     if (s.clock <= 20) {
       callbacks.announce('Sobre o apito!');
       this.excitedUntil = s.tick + 60;
@@ -1221,7 +1227,7 @@ export class MatchView {
       before[e.team] -= e.points!;
       // A ficha de quem marcou, por baixo do resultado: o nome, os pontos de hoje e quem passou.
       const card = body ? `${body.player.name.toUpperCase()} - ${body.line.points} PONTOS${e.other ? `, ASSISTE ${e.other.toUpperCase()}` : ''}` : '';
-      this.bigScore = { team: e.team, start: this.realTime, before, after: [s.score[0], s.score[1]], card };
+      this.bigScore = { team: e.team, start: this.momentTime, before, after: [s.score[0], s.score[1]], card };
       // As palavras do campo que já lá estavam saem: escondidas, voltavam a aparecer depois, fora de tempo.
       this.floaters.length = 0;
     }
@@ -1230,12 +1236,12 @@ export class MatchView {
   /** O resultado que o marcador deve mostrar: num momento grande, o antigo até o número novo trocar no centro. */
   shownScore(): readonly [number, number] {
     const b = this.bigScore;
-    return b && !this.reducedMotion && this.realTime - b.start < 0.33 ? b.before : this.s.score;
+    return b && !this.reducedMotion && this.momentTime - b.start < 0.33 ? b.before : this.s.score;
   }
 
   /** Num momento grande, a imagem fica parada um instante: o jogo só volta a andar depois disto. */
   momentHold(): boolean {
-    return this.bigScore !== null && this.realTime - this.bigScore.start < BIG_HOLD_SECONDS;
+    return this.bigScore !== null && this.momentTime - this.bigScore.start < BIG_HOLD_SECONDS;
   }
 
   /**
@@ -1245,7 +1251,7 @@ export class MatchView {
   private drawBigScore(): void {
     const b = this.bigScore;
     if (!b) return;
-    const t = this.realTime - b.start;
+    const t = this.momentTime - b.start;
     if (t >= BIG_SHOW_SECONDS) {
       this.bigScore = null;
       return;
@@ -2163,6 +2169,11 @@ export class MatchView {
     this.frameSeconds = simSeconds > 0 ? simSeconds : realSeconds;
     this.animTime += this.frameSeconds;
     this.realTime += realSeconds;
+    // O relógio dos avisos e dos grandes planos: anda com o tempo real, mais depressa a x2 e a x4 (√2 e 2×), e pára na
+    // pausa. Em tempo real ficavam iguais a x4 (a falta enquanto o relógio andava 30 s); em tempo de jogo, um quarto.
+    if (realSeconds > 0 && simSeconds > 0) this.pace = Math.max(1, Math.min(2, Math.sqrt(simSeconds / realSeconds)));
+    const momentStep = realSeconds * this.pace;
+    this.momentTime += momentStep;
     this.lastRealSeconds = realSeconds;
     if (realSeconds > 0 && simSeconds > 0) this.simPerReal = simSeconds / realSeconds;
     this.animTick = Math.floor(this.animTime * 20);
@@ -2217,15 +2228,15 @@ export class MatchView {
       const name = shooter.player.name;
       const tries = s.events.filter(e => (e.type === 'freeThrowMade' || e.type === 'freeThrowMissed') && e.team === shooter.team && e.player === name);
       const made = tries.filter(e => e.type === 'freeThrowMade').length;
-      this.freeThrowUntil = this.realTime + 1.5;
-      this.foulMoment = { body: shooter, start: this.realTime - 0.3, label: `LANCE LIVRE: ${name.toUpperCase()} - ${made}/${tries.length} HOJE` };
+      this.freeThrowUntil = this.momentTime + 1.5;
+      this.foulMoment = { body: shooter, start: this.momentTime - 0.3, label: `LANCE LIVRE: ${name.toUpperCase()} - ${made}/${tries.length} HOJE` };
     }
     // Durante o momento grande, nem o grande plano da falta: o resultado tem a cena só para ele (a faixa espera por ele).
-    const fouling = this.foulMoment !== null && !this.bigScore && (this.realTime - this.foulMoment.start < FOUL_ZOOM_SECONDS || this.realTime < this.freeThrowUntil) && !this.holding();
+    const fouling = this.foulMoment !== null && !this.bigScore && (this.momentTime - this.foulMoment.start < FOUL_ZOOM_SECONDS || this.momentTime < this.freeThrowUntil) && !this.holding();
     if (tipping || fouling || ending) this.jumpZoom = true;
     const wantZoom = this.holding() || lifted || tipping || fouling || ending ? 2 : 1;
     // A aproximar e a afastar desliza em ~0,5 s, como o desconto: entrar de repente a 2× era um corte seco.
-    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-this.frameSeconds * (this.jumpZoom ? 6 : 4)));
+    this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-momentStep * (this.jumpZoom ? 6 : 4)));
     // O fim acaba mais cedo, a 5 % (o resto são escalas fracionárias); a cerimónia e o movimento reduzido não deslizam.
     if (Math.abs(this.zoom - wantZoom) < (this.jumpZoom ? 0.05 : 0.01) || this.ceremony || (this.jumpZoom && this.reducedMotion)) this.zoom = wantZoom;
     if (this.zoom === 1) this.jumpZoom = false;
@@ -2887,10 +2898,10 @@ export class MatchView {
     if (!f) return;
     // Com o resultado grande no ecrã, a faixa da falta espera por ele (e o grande plano da falta também).
     if (this.bigScore) {
-      f.start = this.realTime;
+      f.start = this.momentTime;
       return;
     }
-    const t = this.realTime - f.start;
+    const t = this.momentTime - f.start;
     if (t >= FOUL_STRIP_SECONDS) {
       this.foulMoment = null;
       return;

@@ -132,6 +132,21 @@ Retrato do código em novembro de 2026. As linhas mudam; confirma-as antes de me
   - `weatherFor(semana)` dá tom, neve e luzes. **Sem chuva, por decisão do utilizador.**
 - **As cenas** (`scenes.ts`): isométrico com `th` 6, `iso()`, `depthOrder` e atores com pequenas rotinas.
 
+## O jogo na placa gráfica (atualizado a 14 de novembro de 2026)
+
+O jogo conta com placa gráfica: o desenho sem ela (a tela 2D e o traçador de raios) é só reserva e não se afina, por decisão do dono.
+
+- **Câmara do jogo** (`GAME_TUNING` em `court.ts`): `cy 13,5`, `cz 13`, `LOOK_Y -1,8`, escolhida pelo dono. Os bonecos encolhem com o mundo em relação à câmara antiga (`SPRITE_DISTANCE`), e os saltos (`lift`) crescem e encolhem com o boneco (`depth`). Para experimentar outra: `npm run campos -- 2 --cam=cy,cz,lookY,focal`.
+- **Bonecos presos ao mundo** (`sprite-layer.ts`, `anchor`): cada coisa que vai para a placa gráfica traz o seu ponto de apoio (os pés) sem arredondar; só o apoio se arredonda **ao píxel do ecrã**, com a largura e a altura fixas, e o retângulo fica a uma distância fixa dele. Lições:
+  - arredondar ao píxel da arte fazia os bonecos andar aos saltos de 2–5 píxeis do ecrã sobre o chão, que desliza;
+  - não arredondar nada esborratava a pixel art (cada borda de texel a meio de um píxel);
+  - arredondar as duas bordas por si fazia a largura variar (N/N+1) e os texels mudarem;
+  - cada peça a arredondar o seu canto fazia a sombra, o reflexo e a bola tremerem em relação ao boneco: partilham o apoio dele. A bola solta encostada a alguém usa o apoio dele no ecrã (`anchorAt`) e a sua própria profundidade;
+  - o que a tela 2D desenha por cima de um boneco (nome, seta, marcas, balões) junta a mesma fração com `followSprite`.
+- **Caras dos objetos como texturas** (`face` em `match-view.ts`, `corners` em `sprite-layer.ts`): o placar, as caras da mesa (folhas, LED, seta, faltas, saiote, faixa) pintam-se uma vez com `FACE_TEXELS` (14 por metro) e colam-se aos quatro cantos do objeto, com a perspetiva da placa gráfica. Pintadas à resolução do ecrã a cada frame, o texto parecia seguir a câmara; um cartão retangular, visto de lado, punha uma ponta atrás do tampo. A ponta da esquerda do ecrã vem primeiro (sem `DoubleSide`, que dobrava as passagens dos meio transparentes). A faixa que corre mostra uma janela (`span`, `scroll`).
+- **Mesas por liga** (`TABLE_SPAN`, `TABLE_CREW`, `TABLE_FACES`, `tableBody` em `court.ts`): rua (mesa de campismo e marcador de folhas), escola (mesas dobráveis), Municipal (estrado, saiote, LED, seta da posse alternada a sério, faltas), Arena (transmissão com faixa de luzes). O placar das paredes do Municipal mostra o jogo (`scoreboardFace`, referências em `docs/referencias/marcadores/`).
+- **Momentos e avisos:** um só aviso por movimento (o de baixo); momentos grandes só nos cestos que decidem (último período ou prolongamento); com o resultado grande no ecrã não há palavras no campo nem grande plano da falta. Os avisos, os momentos grandes e os grandes planos contam no relógio `momentTime`: anda com o tempo real, pára na pausa e anda √2× e 2× a x2 e x4.
+
 ## Identidade
 
 - **Emblemas** (`kit.ts`):
@@ -181,7 +196,18 @@ Retrato do código em novembro de 2026. As linhas mudam; confirma-as antes de me
   - 12 retratos diferentes;
   - as definições de alto contraste, letra grande e movimento reduzido;
   - os acentos.
-- **`npm run anim-check`** grava as poses (24 das cerca de 70, por 3 aspetos), as jogadas especiais em tiras de 8 frames, os pavilhões, a cidade e o tempo. Só falha se a página der erro.
+- **`npm run anim-check`** grava as poses (24 das cerca de 70, por 3 aspetos), as jogadas especiais em tiras de 8 frames, os pavilhões, a cidade e o tempo. Falha se a página der erro ou se um movimento não der exatamente um aviso.
+- **`npm run campos [divisões]`** fotografa cada campo de longe e com a câmara do jogo nas duas pontas e ao meio (`--cam=` para experimentar outra câmara). Para comparar antes e depois, guarda as imagens e compara-as píxel a píxel.
+- **`node src/tools/gravar.ts <divisão> <momento>`** grava o jogo em movimento como o jogo o mostra, a 30 imagens por segundo (`ressalto`, `afundanco`, `inicio`, `intervalo`; `varrimento <x> <segundos> [passo]` anda a câmara 1 cm por imagem com tudo parado). Medidas que funcionaram:
+  - **cintilação:** num varrimento, píxeis que vão e voltam (A→B→A) em três imagens seguidas; contar só «saltos» apanha cada borda nítida a andar;
+  - **nitidez de um boneco:** píxeis exatamente da cor `INK` numa janela à volta dele, imagem a imagem: só pode mudar aos degraus;
+  - **peças presas:** a distância entre o boneco e a sombra (ou a bola) tem de ser constante.
+- **Armadilhas das ferramentas:**
+  - avançar a simulação sem desenhar (`pauseAt`, ou `stepSim` em ciclo) deixa os avisos e os momentos grandes desses passos à espera, e eles aparecem depois com o resultado antigo: não é defeito do jogo;
+  - o movimento reduzido corta os grandes planos de propósito: para medir zooms, grava sem ele (`withAnimPage(..., false)`);
+  - `withAnimPage` usa o SwiftShader (placa gráfica por software): serve para imagens, não para tempos; o Edge sem janela de `npm run sequences` usa a placa gráfica a sério;
+  - ler píxeis da tela a cada frame (`getImageData`) passa-a para o processador e estraga as medidas de tempo.
+- **`npm run sequences`** grava os percursos do jogo em vídeo para comparar com o Calciobit (`docs/referencias/pocket-basketball/comparacao-calciobit.md`).
 - **Testes de unidade de arte:** `cache`, `body`, `identity`, `court` (com `fillPolygon`) e `town`. **Não há testes** para os bonecos, os retratos, a fonte, os padrões de equipamento, as cartas nem os ícones.
 
 ## Convenções
