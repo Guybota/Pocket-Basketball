@@ -295,19 +295,8 @@ function municipalWall(u: number, z: number, t: CourtTheme): Rgb {
   if (z > 9.6 && z < 10.6) return frac(u / 1.5) < 0.12 ? [150, 156, 160] : [226, 236, 238];
   if (u < SIDE_WALL_SPAN) return block;
   const y = u - SIDE_WALL_SPAN + WALL_Y;
-  // O placar: moldura escura, os dois resultados e o relógio a meio, de segmentos.
-  if (y > -2.4 && y < 2.4 && z > 4.4 && z < 6.2) {
-    if (y < -2.3 || y > 2.3 || z < 4.5 || z > 6.1) return [40, 42, 48];
-    // Os segmentos apagados (um «88» escuro): o resultado e o tempo estão no ecrã do jogo, e um 00–00 pintado mentia.
-    const eight = (c: number): boolean => {
-      const dy = Math.abs(y - c);
-      if (dy > 0.32 || z < 4.8 || z > 5.8) return false;
-      return dy > 0.2 || z < 4.92 || z > 5.68 || Math.abs(z - 5.3) < 0.06;
-    };
-    if (eight(-1.75) || eight(-1.05) || eight(1.05) || eight(1.75)) return [44, 30, 30];
-    if (Math.abs(y) < 0.4 && z > 5.2 && z < 5.7 && (Math.abs(y) > 0.3 || z < 5.28 || z > 5.62)) return [46, 42, 30];
-    return [18, 20, 26];
-  }
+  // O placar: a moldura escura e o fundo do ecrã; o ecrã, com o jogo a correr, é a cara que a vista do jogo lhe cola.
+  if (y > -2.4 && y < 2.4 && z > 4.4 && z < 6.2) return y < -2.3 || y > 2.3 || z < 4.5 || z > 6.1 ? [40, 42, 48] : [18, 20, 26];
   // A porta de emergência, do lado de lá (onde a câmara a apanha inteira), com o sinal verde por cima.
   if (y > -8.6 && y < -7.2) {
     if (z < 2.15) return y < -8.55 || y > -7.25 || z > 2.1 ? [60, 66, 62] : Math.abs(y + 7.9) < 0.05 ? [40, 90, 60] : [62, 140, 92];
