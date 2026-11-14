@@ -364,7 +364,7 @@ export class CourtGpu {
     const key: unknown[] = [venue, crowdFrame, swish[0], swish[1], width, height, zoom, shift[0], shift[1], ...pose.position, pose.focal, pose.width, pose.height, ...pose.fwd];
     // Os bonecos entram na chave: com a câmara parada e o público quieto, a imagem já está na tela. Uma cópia de um desenho
     // pode ter mudado sem mudar de tela, por isso com cópias refaz-se sempre.
-    for (const s of sprites) key.push(s.image, s.left, s.top, s.width, s.flip, s.feet[0], s.feet[1], s.feet[2], s.dynamic ? ++this.frames : 0);
+    for (const s of sprites) key.push(s.image, s.left, s.top, s.width, s.flip, s.feet[0], s.feet[1], s.feet[2], s.scroll ?? 0, s.dynamic ? ++this.frames : 0);
     if (key.length === this.last.length && key.every((v, i) => v === this.last[i])) return this.canvas;
     this.last = key;
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false);

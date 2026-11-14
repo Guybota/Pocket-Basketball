@@ -3,7 +3,7 @@ import { DIVISIONS, levelOfHeight, teamRating } from '../sim/teamgen.ts';
 import { buildOf } from './art/body.ts';
 import { shadeOf, type ClubKit, type Emblem } from './art/kit.ts';
 import { BALANCE as B } from '../sim/balance.ts';
-import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, COURT_LENGTH, HUDDLE_CENTRE, huddleSpot, seconds } from '../sim/court.ts';
+import { BENCH_SPACING, BENCH_START_X, BENCH_Y, COURT_HALF_WIDTH, COURT_LENGTH, HUDDLE_CENTRE, TICKS_PER_SECOND, huddleSpot, seconds } from '../sim/court.ts';
 import { INK } from './art/palette.ts';
 import { createMatch, isSprinting, step, type Body, type MatchEvent, type MatchState, type TeamIndex } from '../sim/match.ts';
 import type { MoveId, Player, Team } from '../sim/types.ts';
@@ -62,20 +62,24 @@ interface Drawable {
   world?: Vec3;
   box?: Box;
   bias?: number;
-  /** Um cartão em pé com esta altura em metros (a cara de um objeto), em vez de deitado à profundidade dos pés. */
-  tall?: number;
-  /** Uma cópia que se guarda na sua tela (`slot`) e só se volta a pintar quando `key` muda. */
-  cache?: { slot: string; key: string };
-  /** Uma cara plana: os seus quatro cantos no mundo, para a placa gráfica (ver `WorldSprite.corners`). */
-  corners?: Corners;
+  /** Uma cara plana de um objeto: na placa gráfica, a imagem colada aos quatro cantos (ver `WorldSprite.corners`). */
+  plane?: { image: HTMLCanvasElement; corners: Corners; scroll: number; span: number; dynamic: boolean };
 }
 /** As cores das coisas da mesa: o papel das folhas, o vermelho das setas e das faltas, os algarismos de luz e a ardósia. */
 const PAPER = '#f4efe0';
 const TABLE_RED = '#e8402e';
 const LED_RED = '#ff5a3c';
 const LED_AMBER = '#ffc04a';
+const LED_GREEN = '#6ee07a';
+/** A caixa do placar de parede, o rebordo e o brilho de um canto. */
+const BOARD_BOX = '#11141a';
+const BOARD_RIM = '#2c3345';
+/** Os segmentos apagados de um placar de LED: vêem-se ténues, um quinto da cor acesa sobre a caixa. */
+const GHOST = 0.2;
 /** Quanto quem está no chão se aproxima da câmara, em metros, no mundo da placa gráfica: um nada, à frente da sua sombra. */
 const GROUND_BIAS = 0.05;
+/** Quantos texels por metro têm as caras dos objetos (o placar, a mesa): pintadas uma vez, como uma textura. */
+const FACE_TEXELS = 14;
 /** A sombra de raio `r` (píxeis da arte) numa imagem, para a placa gráfica: a mesma de `drawShadow`, guardada por tamanho. */
 const shadowImages = new Map<number, HTMLCanvasElement>();
 function shadowImage(r: number): HTMLCanvasElement {
@@ -114,6 +118,11 @@ function puffImage(step: number, side: number): HTMLCanvasElement {
     puffImages.set(key, image);
   }
   return image;
+}
+/** A cor `hex` acesa a `amount` (0 a 1) sobre a caixa do placar: um segmento de LED apagado. */
+function dim(hex: string, amount: number): string {
+  const channel = (color: string, i: number): number => parseInt(color.slice(1 + i * 2, 3 + i * 2), 16);
+  return `rgb(${[0, 1, 2].map(i => Math.round(channel(BOARD_BOX, i) + (channel(hex, i) - channel(BOARD_BOX, i)) * amount)).join()})`;
 }
 const artScaleOf = (canvas: HTMLCanvasElement): number => Math.max(1, Math.round(Number(canvas.dataset.artScale ?? 1)));
 
@@ -535,6 +544,8 @@ export class MatchView {
   private tableTalkUntil = 0;
   private tableBigUntil = 0;
   private boardCache = new Map<string, HTMLCanvasElement>();
+  /** O ecrã dos placares de parede, uma tela só repintada no sítio, e o que tem pintado. */
+  private scoreboard: { image: HTMLCanvasElement; key: string } | null = null;
   private swishUntil = 0;
   private swishHoop = HOOP_LEFT;
   private shakeUntil = 0;
@@ -1689,37 +1700,6 @@ export class MatchView {
       const turn = p.role === 'flip' && camera.project(boardX, -8.5)[0] < px;
       drawables.push({ y: py, world: [p.x, p.y, lift], draw: () => this.sprite(g, pose, p.look, px, py, turn, false, false) });
     });
-    // Uma imagem colada na frente da mesa (de x0 a x1, à altura z0–z1, no plano y), coluna a coluna.
-    // A imagem desenha-se com o tamanho que a frente tem no ecrã (`paint(colunas, linhas)`): esticada, as letras de 3×5 desfaziam-se.
-    const front = (x0: number, x1: number, y: number, z0: number, z1: number, paint: (w: number, h: number) => HTMLCanvasElement, scroll = 0): void => {
-      const [ax, ay] = camera.project(x0, y, z1);
-      const [cx, cy] = camera.project(x1, y, z1);
-      const [, ay2] = camera.project(x0, y, z0);
-      const [, cy2] = camera.project(x1, y, z0);
-      // A câmara olha para o fundo: o x do mundo cresce para a esquerda do ecrã.
-      const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
-      const dir = cx < ax ? -1 : 1;
-      const picture = paint(cols, Math.max(1, Math.round(Math.max(ay2 - ay, cy2 - cy))));
-      const key = `${this.canvasId(picture)}|${scroll}|${ax}|${ay}|${cx}|${cy}|${ay2}|${cy2}`;
-      // Na placa gráfica vai com os quatro cantos no mundo (`corners`), com 4 cm de margem à volta: a forma e a profundidade
-      // saem certas em qualquer ponto. Um retângulo direito no ecrã, visto de lado, dava à base de uma ponta a profundidade
-      // do cimo, e a faixa de 5 m da arena metia-se atrás do tampo, cortada na diagonal.
-      // A ponta da esquerda do ecrã primeiro, para os triângulos ficarem virados para a câmara.
-      const m = 0.04;
-      const [left, right] = dir < 0 ? [x1 + m, x0 - m] : [x0 - m, x1 + m];
-      const corners: Corners = [[left, y + 0.01, z0 - m], [left, y + 0.01, z1 + m], [right, y + 0.01, z0 - m], [right, y + 0.01, z1 + m]];
-      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, corners, cache: { slot: `${x0}|${y}|${z0}`, key }, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
-        g.imageSmoothingEnabled = false;
-        for (let c = 0; c < cols; c++) {
-          const f = c / cols;
-          const top = ay + (cy - ay) * f;
-          const bottom = ay2 + (cy2 - ay2) * f;
-          const source = Math.floor((dir < 0 ? 1 - f - 1e-6 : f) * cols);
-          // Para a esquerda, a coluna c fica à esquerda de ax: senão a cara inteira saía um píxel à direita do sítio.
-          g.drawImage(picture, (source + scroll) % picture.width, 0, 1, picture.height, Math.round(ax) + dir * c - (dir < 0 ? 1 : 0), Math.round(top), 1, Math.max(1, Math.round(bottom - top)));
-        }
-      } });
-    };
     // As caras dos objetos 3D de cima da mesa, pintadas à frente deles.
     for (const f of TABLE_FACES[kind]) {
       const paint = (w: number, h: number): HTMLCanvasElement =>
@@ -1728,14 +1708,137 @@ export class MatchView {
         : f.face === 'arrow' ? this.arrowFace(w, h, s.period % 2 === 0)
         : this.foulFace(w, h, s.teamFouls[f.face === 'foul0' ? 0 : 1]);
       // Uma moldura de um palmo: a cara ocupa a frente menos 3 cm à volta.
-      front(f.x - f.w / 2 + 0.03, f.x + f.w / 2 - 0.03, f.y + 0.005, f.z0 + 0.03, f.z0 + f.h - 0.03, paint);
+      this.face(drawables, [f.x - f.w / 2 + 0.03, f.y + 0.015], [f.x + f.w / 2 - 0.03, f.y + 0.015], f.z0 + 0.03, f.z0 + f.h - 0.03, paint);
     }
-    if (kind === 'official') front(11.85, 14.65, -8.14, 0.24, 1.0, (w, h) => this.skirtText(w, h));
+    if (kind === 'official') this.face(drawables, [11.85, -8.13], [14.65, -8.13], 0.24, 1.0, (w, h) => this.skirtText(w, h));
     else if (kind === 'broadcast') {
       // A frente de luzes da mesa toda.
       const shift = Math.floor(this.animTick / 2);
-      front(11.65, 16.75, -8.09, 0.12, 0.84, (w, h) => this.ledStrip(s.tick < this.tableHomeUntil, w, h), s.tick < this.tableHomeUntil ? 0 : shift);
+      this.face(drawables, [11.65, -8.08], [16.75, -8.08], 0.12, 0.84, (w, h) => this.ledStrip(s.tick < this.tableHomeUntil, w, h), s.tick < this.tableHomeUntil ? 0 : shift);
     }
+  }
+
+  /**
+   * Uma imagem colada numa face plana e em pé de um objeto (de `p0` a `p1` no chão, já à frente da superfície, à altura
+   * z0–z1), como uma textura: pintada uma vez, com `FACE_TEXELS` por metro (`paint(largura, altura)`), e presa ao objeto,
+   * com a perspetiva da placa gráfica. Pintada à resolução do ecrã a cada frame, o texto parecia seguir a câmara. Uma
+   * imagem mais larga (a faixa que corre) mostra a janela da largura pedida, a partir de `scroll`. `dynamic`: a imagem foi
+   * repintada no sítio e volta à placa gráfica.
+   */
+  private face(drawables: Drawable[], p0: readonly [number, number], p1: readonly [number, number], z0: number, z1: number, paint: (w: number, h: number) => HTMLCanvasElement, scroll = 0, dynamic = false): void {
+    const { camera } = this;
+    const [ax, ay] = camera.project(p0[0], p0[1], z1);
+    const [cx, cy] = camera.project(p1[0], p1[1], z1);
+    const [, ay2] = camera.project(p0[0], p0[1], z0);
+    const [, cy2] = camera.project(p1[0], p1[1], z0);
+    if (Math.max(ax, cx) < 0 || Math.min(ax, cx) > camera.width || Math.max(ay2, cy2) < 0 || Math.min(ay, cy) > camera.height) return;
+    const length = Math.sqrt((p1[0] - p0[0]) * (p1[0] - p0[0]) + (p1[1] - p0[1]) * (p1[1] - p0[1]));
+    const span = Math.max(1, Math.round(length * FACE_TEXELS));
+    const picture = paint(span, Math.max(1, Math.round((z1 - z0) * FACE_TEXELS)));
+    const shift = scroll % picture.width;
+    // A ponta da esquerda do ecrã primeiro: os triângulos ficam virados para a câmara e a imagem lê-se da esquerda.
+    const dir = cx < ax ? -1 : 1;
+    const [left, right] = dir < 0 ? [p1, p0] : [p0, p1];
+    const corners: Corners = [[left[0], left[1], z0], [left[0], left[1], z1], [right[0], right[1], z0], [right[0], right[1], z1]];
+    const mid: Vec3 = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, z0];
+    // Na tela 2D (sem placa gráfica), coluna a coluna do ecrã, com a coluna da imagem que lá cai.
+    const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
+    drawables.push({ y: camera.project(mid[0], mid[1], 0)[1], world: mid, bias: 0.02, plane: { image: picture, corners, scroll: shift, span, dynamic }, draw: g => {
+      g.imageSmoothingEnabled = false;
+      for (let c = 0; c < cols; c++) {
+        const f = c / cols;
+        const top = ay + (cy - ay) * f;
+        const bottom = ay2 + (cy2 - ay2) * f;
+        const source = Math.floor((dir < 0 ? 1 - f - 1e-6 : f) * span);
+        // Para a esquerda, a coluna c fica à esquerda de ax: senão a cara inteira saía um píxel à direita do sítio.
+        g.drawImage(picture, (source + shift) % picture.width, 0, 1, picture.height, Math.round(ax) + dir * c - (dir < 0 ? 1 : 0), Math.round(top), 1, Math.max(1, Math.round(bottom - top)));
+      }
+    } });
+  }
+
+  /**
+   * Os placares eletrónicos das paredes dos topos do pavilhão municipal (pintados em `municipalWall`, a 4,5–6,1 m): o
+   * ecrã por cima deles, com o jogo a correr. Cada um é uma cara plana encostada à parede, como as da mesa. O ecrã segue
+   * docs/referencias/marcadores: o tempo em âmbar em cima (segundos e décimas no último minuto), os pontos em vermelho dos
+   * lados, a casa à esquerda, com uma risca na cor de cada equipa, e o período em verde ao meio; por baixo, as faltas de
+   * equipa. Os segmentos apagados vêem-se ténues.
+   */
+  private addScoreboards(drawables: Drawable[]): void {
+    // Uma tela só para os dois, repintada no sítio quando o que mostram muda: uma tela nova a cada segundo (e a cada
+    // décima no último minuto) era uma textura nova na placa gráfica de cada vez.
+    const before = this.scoreboard?.key;
+    const image = this.scoreboardFace(Math.round(4.6 * FACE_TEXELS), Math.round(1.6 * FACE_TEXELS));
+    const changed = this.scoreboard?.key !== before;
+    this.face(drawables, [-3.98, -2.3], [-3.98, 2.3], 4.5, 6.1, () => image, 0, changed);
+    this.face(drawables, [31.98, 2.3], [31.98, -2.3], 4.5, 6.1, () => image, 0, changed);
+  }
+
+  /** O ecrã do placar de parede (64×22 texels): a caixa com o rebordo e o jogo a correr. */
+  private scoreboardFace(w: number, h: number): HTMLCanvasElement {
+    const s = this.s;
+    const [a, b] = this.shownScore();
+    const ticks = Math.max(0, s.clock);
+    // MM:SS, com os segundos arredondados para cima como o marcador de cima, e SS.d no último minuto: sempre cinco casas,
+    // com o separador na do meio.
+    const secs = Math.ceil(ticks / TICKS_PER_SECOND);
+    const time = ticks < 60 * TICKS_PER_SECOND ? `${String(Math.floor(ticks / TICKS_PER_SECOND)).padStart(2, ' ')}.${Math.floor((ticks * 10) / TICKS_PER_SECOND) % 10} ` : `${String(Math.floor(secs / 60)).padStart(2, ' ')}:${String(secs % 60).padStart(2, '0')}`;
+    // No prolongamento, «P», como o «PR» do marcador de cima.
+    const period = s.period > 4 ? 'P' : String(s.period);
+    const key = `${w}|${h}|${a}|${b}|${time}|${period}|${s.teamFouls.join()}|${this.tableColors.join()}`;
+    if (this.scoreboard?.key === key) return this.scoreboard.image;
+    let image = this.scoreboard?.image;
+    if (!image || image.width !== w || image.height !== h) {
+      image = document.createElement('canvas');
+      image.width = w;
+      image.height = h;
+    }
+    this.scoreboard = { image, key };
+    const c = image.getContext('2d')!;
+    c.fillStyle = BOARD_BOX;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = BOARD_RIM;
+    c.fillRect(0, 0, w, 1);
+    c.fillRect(0, h - 1, w, 1);
+    c.fillRect(0, 0, 1, h);
+    c.fillRect(w - 1, 0, 1, h);
+    c.fillStyle = '#5a6270';
+    c.fillRect(1, 1, 1, 1);
+    // Um algarismo aceso por cima do «8» apagado: o que não se escreve (um espaço) fica só apagado.
+    const digits = (value: string, x: number, top: number, color: string): void => {
+      [...value].forEach((ch, i) => {
+        if (ch === ':' || ch === '.') {
+          text(c, ch, x + i * 4, top, color, 1);
+          return;
+        }
+        text(c, '8', x + i * 4, top, dim(color, GHOST), 1);
+        if (ch !== ' ') text(c, ch, x + i * 4, top, color, 1);
+      });
+    };
+    // O tempo em cima ao meio; os pontos a 6 texels das pontas, a casa à esquerda; o período ao meio; as faltas por baixo.
+    const home = 6;
+    const away = w - 6 - 11;
+    digits(time, (w - 19) >> 1, 2, LED_AMBER);
+    c.fillStyle = this.tableColors[0]!;
+    c.fillRect(home, 9, 11, 1);
+    c.fillStyle = this.tableColors[1]!;
+    c.fillRect(away, 9, 11, 1);
+    digits(String(a).padStart(3, ' '), home, 11, LED_RED);
+    digits(period, (w - 3) >> 1, 11, LED_GREEN);
+    digits(String(b).padStart(3, ' '), away, 11, LED_RED);
+    for (const team of [0, 1] as const) {
+      // As faltas a partir do lado de fora: um ponto por falta até ao limite, e daí para a frente um quadrado vermelho.
+      const count = s.teamFouls[team];
+      if (count > B.teamFoulLimit) {
+        c.fillStyle = LED_RED;
+        c.fillRect(team === 0 ? home : away + 8, 17, 3, 3);
+        continue;
+      }
+      for (let i = 0; i < B.teamFoulLimit; i++) {
+        c.fillStyle = i < count ? LED_RED : dim(LED_RED, GHOST);
+        c.fillRect(team === 0 ? home + i * 2 : away + 10 - i * 2, 18, 1, 1);
+      }
+    }
+    return image;
   }
 
   /** A cara da seta da posse alternada: a seta vermelha, para a esquerda ou para a direita do ecrã, sobre escuro. */
@@ -1833,7 +1936,7 @@ export class MatchView {
 
   /** A cara do marcador eletrónico da mesa oficial: o resultado em vermelho, com um traço âmbar, num ecrã escuro. */
   private ledFace(w: number, h: number): HTMLCanvasElement {
-    const [a, b] = this.s.score;
+    const [a, b] = this.shownScore();
     const key = `led|${w}|${h}|${a}|${b}`;
     const cached = this.boardCache.get(key);
     if (cached) return cached;
@@ -1897,6 +2000,7 @@ export class MatchView {
       drawables.push(f.table ? { ...box, y: camera.project((f.x0 + f.x1) / 2, f.height <= 0.3 ? f.y0 : f.y1, 0)[1] } : box);
     }
     this.addTable(drawables);
+    if (this.textures.theme.local) this.addScoreboards(drawables);
     for (const team of [0, 1] as const) {
       const benchers = s.bodies.filter(b => b.team === team && b.slot === -1);
       const startX = team === 0 ? 4.4 : 20.3;
@@ -2344,9 +2448,12 @@ export class MatchView {
         for (const d of drawables) {
           if (d.cpuOnly) continue;
           this.spriteWorld = d.world ?? null;
-          if (d.box && d.world) {
-            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw, d.cache);
-            if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall, corners: d.corners } : copy);
+          if (d.plane && d.world) {
+            const { image, corners, scroll, span, dynamic } = d.plane;
+            world.push({ image, left: 0, top: 0, width: 0, height: 0, flip: false, feet: d.world, corners, scroll, span, dynamic, bias: d.bias ?? 0 });
+          } else if (d.box && d.world) {
+            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw);
+            if (copy) world.push(copy);
           } else d.draw(g);
           this.spriteWorld = null;
         }
@@ -2585,10 +2692,6 @@ export class MatchView {
   private readonly capturePool: HTMLCanvasElement[] = [];
   private captureUsed = 0;
   private readonly trees = new Map<number, { image: HTMLCanvasElement; cx: number; cy: number }>();
-  /** As caras da mesa, cada uma na sua tela: com a câmara parada e a cara igual, a imagem não volta à placa gráfica. */
-  private readonly faceSlots = new Map<string, { image: HTMLCanvasElement; key: string }>();
-  private readonly canvasIds = new WeakMap<HTMLCanvasElement, number>();
-  private nextCanvasId = 0;
 
   /** Limpa a tela inteira, que com a placa gráfica serve de rascunho. */
   private clearCanvas(): void {
@@ -2604,7 +2707,7 @@ export class MatchView {
    * resolução do ecrã, por isso sai igual ao que a tela do jogo teria. Pinta-se lá diretamente: pintar na tela do jogo e
    * copiar obrigava o browser a acabar a tela inteira a cada cópia, e com muita poeira o jogo afundava no iPhone.
    */
-  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void, cache?: { slot: string; key: string }): WorldSprite | null {
+  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void): WorldSprite | null {
     const { g } = this;
     const m = g.getTransform();
     const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
@@ -2614,23 +2717,17 @@ export class MatchView {
     if (x1 <= x0 || y1 <= y0) return null;
     const w = x1 - x0;
     const h = y1 - y0;
-    const sprite = (image: HTMLCanvasElement, dynamic: boolean): WorldSprite => ({ image, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic });
-    // Uma cópia guardada que não mudou (a câmara parada, a cara igual) já está na placa gráfica.
-    const slot = cache && this.faceSlots.get(cache.slot);
-    const key = cache && `${cache.key}|${x0}|${y0}|${w}|${h}|${m.a}|${m.d}|${m.e}|${m.f}`;
-    if (slot && slot.key === key) return sprite(slot.image, false);
     // A placa gráfica guarda o tamanho de uma imagem da primeira vez que a recebe: uma tela reaproveitada só cresce, em
     // degraus de 64, e usa-se o canto de baixo à esquerda (o primeiro texel da placa, com as imagens viradas).
-    let copy = cache ? slot?.image : this.capturePool[this.captureUsed];
+    let copy = this.capturePool[this.captureUsed];
     if (!copy || copy.width < w || copy.height < h) {
       if (copy) courtGpu()?.forget(copy);
       copy = document.createElement('canvas');
       copy.width = Math.ceil(w / 64) * 64;
       copy.height = Math.ceil(h / 64) * 64;
-      if (!cache) this.capturePool[this.captureUsed] = copy;
+      this.capturePool[this.captureUsed] = copy;
     }
-    if (cache) this.faceSlots.set(cache.slot, { image: copy, key: key! });
-    else this.captureUsed++;
+    this.captureUsed++;
     const c = copy.getContext('2d')!;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, copy.width, copy.height);
@@ -2640,14 +2737,7 @@ export class MatchView {
     c.globalAlpha = 1;
     paint(c);
     // De volta a píxeis da arte, antes da aproximação, como os bonecos.
-    return sprite(copy, true);
-  }
-
-  /** Um número para cada tela, para entrar nas chaves das cópias guardadas. */
-  private canvasId(image: HTMLCanvasElement): number {
-    let id = this.canvasIds.get(image);
-    if (id === undefined) this.canvasIds.set(image, (id = this.nextCanvasId++));
-    return id;
+    return { image: copy, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
   }
 
   /** Pinta `paint` na tela do jogo ou, no passe para a placa gráfica, numa imagem do mundo com o que cabe em `box`. */

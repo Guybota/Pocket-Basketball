@@ -16,8 +16,6 @@ export interface WorldSprite extends SpriteQuad {
   mirror?: boolean;
   /** Toda à profundidade de `feet`; sem isto, é um cartão em pé, com a de cima `TOP` metros acima. */
   flat?: boolean;
-  /** A altura do cartão em pé, em metros, em vez de `TOP` (a cara de um objeto, que só sobe o que ele tem). */
-  tall?: number;
   /** Quanto se aproxima da câmara, em metros, em vez de `FEET_BIAS` (as sombras e os reflexos ficam atrás de quem os faz). */
   bias?: number;
   /** A imagem muda de imagem para imagem (um desenho copiado): volta a ir para a placa gráfica. */
@@ -25,12 +23,15 @@ export interface WorldSprite extends SpriteQuad {
   /** Só o canto de baixo à esquerda da imagem, com esta largura e altura em texels (uma tela reaproveitada maior). */
   used?: readonly [number, number];
   /**
-   * Uma cara plana no mundo (a faixa da mesa), pelos seus quatro cantos: uma ponta em baixo e em cima, depois a outra. A
-   * placa gráfica projeta-os, e a forma e a profundidade saem certas em cada ponto; a imagem continua a ler-se no retângulo
-   * de sempre. Um cartão em pé, com a câmara de lado, tinha numa ponta a base à profundidade do cimo. A ponta da esquerda
-   * do ecrã vem primeiro, para os triângulos ficarem virados para a câmara.
+   * Uma cara plana de um objeto (o placar, a faixa da mesa), pelos seus quatro cantos no mundo: uma ponta em baixo e em
+   * cima, depois a outra. A imagem cola-se a ela como uma textura, com a perspetiva da placa gráfica, e o retângulo da
+   * tela 2D não conta. A ponta da esquerda do ecrã vem primeiro, para os triângulos ficarem virados para a câmara.
    */
   corners?: readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+  /** Numa cara (`corners`), quantos texels a imagem desliza para a esquerda, a dar a volta (a faixa de luzes a correr). */
+  scroll?: number;
+  /** Numa cara, quantos texels da imagem cabem nela de ponta a ponta, se não forem todos (a faixa, mais comprida, a correr). */
+  span?: number;
 }
 
 /**
@@ -56,22 +57,20 @@ uniform mat4 vp;
 uniform float flip;
 uniform float mirror;
 uniform float upright;
-uniform float tall;
 varying vec2 vUv;
 void main() {
+  if (plane > 0.5) {
+    // Uma textura no objeto: os cantos no mundo, e a imagem a acompanhar a perspetiva.
+    gl_Position = vp * vec4(mix(mix(c0, c1, position.y), mix(c2, c3, position.y), position.x), 1.0);
+    vUv = position.xy;
+    return;
+  }
   vec4 low = vp * vec4(feet, 1.0);
-  vec4 high = vp * vec4(feet + vec3(0.0, 0.0, tall), 1.0);
+  vec4 high = vp * vec4(feet + vec3(0.0, 0.0, ${TOP.toFixed(2)}), 1.0);
   vec2 p = mix(rect.xy, rect.zw, position.xy);
   float z = mix(low.z / low.w, high.z / high.w, position.y * upright);
-  if (plane > 0.5) {
-    // Já dividido por w: no ecrã, a profundidade de um plano e a posição na imagem variam em linha reta.
-    vec4 q = vp * vec4(mix(mix(c0, c1, position.y), mix(c2, c3, position.y), position.x), 1.0);
-    p = q.xy / q.w;
-    z = q.z / q.w;
-  }
-  vec2 inside = (p - rect.xy) / (rect.zw - rect.xy);
   gl_Position = vec4(p, clamp(z, -1.0, 1.0), 1.0);
-  vUv = vec2(flip > 0.5 ? 1.0 - inside.x : inside.x, mirror > 0.5 ? 1.0 - inside.y : inside.y);
+  vUv = vec2(flip > 0.5 ? 1.0 - position.x : position.x, mirror > 0.5 ? 1.0 - position.y : position.y);
 }`;
 
 // Texels nítidos (a borda entre dois num só píxel do ecrã). Recortado, o que fica e o que sai decide-se pelo texel em que o
@@ -81,9 +80,12 @@ uniform sampler2D map;
 uniform vec2 size;
 uniform vec2 used;
 uniform float alpha;
+uniform float scroll;
+uniform float span;
 varying vec2 vUv;
 void main() {
   vec2 t = vUv * used;
+  if (span > 0.0) t.x = mod(vUv.x * span + scroll, used.x);
   vec2 fw = clamp(fwidth(t), vec2(1e-4), vec2(1.0));
   vec2 seam = floor(t + 0.5);
   vec2 sharp = seam + clamp((t - seam) / fw, -0.5, 0.5);
@@ -156,7 +158,8 @@ export class SpriteLayer {
           flip: { value: 0 },
           mirror: { value: 0 },
           upright: { value: 1 },
-          tall: { value: 1.8 },
+          scroll: { value: 0 },
+          span: { value: 0 },
           map: { value: null },
           size: { value: new Vector2() },
           used: { value: new Vector2() },
@@ -202,7 +205,8 @@ export class SpriteLayer {
       u.flip!.value = s.flip ? 1 : 0;
       u.mirror!.value = s.mirror ? 1 : 0;
       u.upright!.value = s.flat ? 0 : 1;
-      u.tall!.value = s.tall ?? TOP;
+      u.scroll!.value = s.scroll ?? 0;
+      u.span!.value = s.corners ? (s.span ?? s.image.width) : 0;
       u.alpha!.value = s.alpha ?? -1;
       u.map!.value = this.texture(s.image, s.dynamic === true);
       (u.size!.value as Vector2).set(s.image.width, s.image.height);
