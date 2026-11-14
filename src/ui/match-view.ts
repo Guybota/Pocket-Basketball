@@ -53,7 +53,8 @@ type Box = readonly [number, number, number, number];
  */
 interface Drawable {
   y: number;
-  draw: () => void;
+  /** Pinta em `g`: a tela do jogo ou, com `box`, a tela pequena que vai para a placa gráfica. */
+  draw: (g: CanvasRenderingContext2D) => void;
   /** Só na tela 2D: com a placa gráfica, é um modelo 3D do cenário (os cestos, a mesa, os bancos). */
   cpuOnly?: boolean;
   world?: Vec3;
@@ -80,6 +81,31 @@ function shadowImage(r: number): HTMLCanvasElement {
     // `drawShadow` pinta de x - r - 1 a x + r - 1 e de y - 2 a y + 1, com x deslocado um píxel.
     drawShadow(image.getContext('2d')!, r - 1, 2, r);
     shadowImages.set(r, image);
+  }
+  return image;
+}
+/** Uma nuvem de poeira com a idade `age` (0 a 1), à volta do ponto (`x`, `y`) do chão. */
+function paintPuff(g: CanvasRenderingContext2D, x: number, y: number, age: number, side: number): void {
+  g.fillStyle = '#fff6e4';
+  const spread = 1 + age * 4;
+  const rise = age * 5;
+  const size = age < 0.4 ? 3 : 2;
+  g.fillRect(Math.round(x - spread) - 1, Math.round(y - rise) - 1, size, size);
+  g.fillRect(Math.round(x + spread * side), Math.round(y - rise * 1.5) - 2, size, size);
+  g.fillRect(Math.round(x), Math.round(y - rise * 0.5), 2, 1);
+}
+/** A imagem de uma nuvem (píxeis da arte), com o ponto do chão em (`PUFF_X`, `PUFF_Y`): guardada por passo e lado. */
+const [PUFF_X, PUFF_Y, PUFF_W, PUFF_H] = [10, 14, 20, 18];
+const puffImages = new Map<number, HTMLCanvasElement>();
+function puffImage(step: number, side: number): HTMLCanvasElement {
+  const key = step * 2 + (side > 0 ? 1 : 0);
+  let image = puffImages.get(key);
+  if (!image) {
+    image = document.createElement('canvas');
+    image.width = PUFF_W;
+    image.height = PUFF_H;
+    paintPuff(image.getContext('2d')!, PUFF_X, PUFF_Y, step / PUFF_TICKS, side);
+    puffImages.set(key, image);
   }
   return image;
 }
@@ -1666,7 +1692,7 @@ export class MatchView {
       const [, cy2] = camera.project(x1, y, z0);
       // Um cartão em pé da altura da cara, com os pés em baixo: a profundidade acompanha a cara, e quem passa à frente da
       // mesa fica à frente dela (com os pés em cima, toda à profundidade do cimo, pintava-se por cima de quem passava).
-      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: () => {
+      drawables.push({ y: camera.project((x0 + x1) / 2, y, 0)[1], world: [(x0 + x1) / 2, y + 0.01, z0], bias: 0.02, tall: z1 - z0, box: [Math.min(ax, cx) - 1, Math.min(ay, cy) - 1, Math.max(ax, cx) + 1, Math.max(ay2, cy2) + 1], draw: g => {
         g.imageSmoothingEnabled = false;
         // A câmara olha para o fundo: o x do mundo cresce para a esquerda do ecrã.
         const cols = Math.max(1, Math.round(Math.abs(cx - ax)));
@@ -2185,16 +2211,16 @@ export class MatchView {
       drawables.push({
         y: qy - 1,
         world: [q.x, q.y, 0],
-        box: [qx - 10, qy - 14, qx + 10, qy + 4],
-        draw: () => {
+        draw: g => {
+          if (this.spriteMode === 'collect') {
+            // Na placa gráfica, uma imagem guardada por passo e lado, como as sombras: numa transição há dezenas de nuvens,
+            // e pintá-las e reenviá-las à placa a cada frame afundava o iPhone. Esbate-se pela transparência da imagem.
+            const step = Math.min(PUFF_TICKS - 1, Math.floor(age * PUFF_TICKS));
+            this.spriteSink.push({ image: puffImage(step, q.side), left: (qx | 0) - PUFF_X, top: (qy | 0) - PUFF_Y, width: PUFF_W, height: PUFF_H, flip: false, feet: [q.x, q.y, 0], alpha: 0.9 * (1 - age), flat: true, bias: 0 });
+            return;
+          }
           g.globalAlpha = 0.9 * (1 - age);
-          g.fillStyle = '#fff6e4';
-          const spread = 1 + age * 4;
-          const rise = age * 5;
-          const size = age < 0.4 ? 3 : 2;
-          g.fillRect(Math.round(qx - spread) - 1, Math.round(qy - rise) - 1, size, size);
-          g.fillRect(Math.round(qx + spread * q.side), Math.round(qy - rise * 1.5) - 2, size, size);
-          g.fillRect(Math.round(qx), Math.round(qy - rise * 0.5), 2, 1);
+          paintPuff(g, qx, qy, age, q.side);
           g.globalAlpha = 1;
         },
       });
@@ -2226,7 +2252,7 @@ export class MatchView {
       const [bx, by] = this.placeBall(target, 'hand');
       this.trail.length = 0;
       // Na mão, a bola fica à frente de quem a leva.
-      drawables.push({ y: carrier.y + 0.001, world: [carrier.wx, carrier.wy, 0], box: [bx - 8 * k - 2, by - 8 * k - 2, bx + 8 * k + 2, by + 8 * k + 2], bias: GROUND_BIAS + 0.05, draw: () => this.drawBallAt(g, bx, by, k) });
+      drawables.push({ y: carrier.y + 0.001, world: [carrier.wx, carrier.wy, 0], box: [bx - 8 * k - 2, by - 8 * k - 2, bx + 8 * k + 2, by + 8 * k + 2], bias: GROUND_BIAS + 0.05, draw: g => this.drawBallAt(g, bx, by, k) });
     } else if (!lifted) {
       const x = this.ballPrevious.x + (this.ball.x - this.ballPrevious.x) * alpha;
       const y = this.ballPrevious.y + (this.ball.y - this.ballPrevious.y) * alpha;
@@ -2259,7 +2285,7 @@ export class MatchView {
         world: nearbyHoop === undefined ? [x, y, 0] : [x, y, z],
         bias: nearbyHoop === undefined ? GROUND_BIAS + 0.05 : 0,
         box: [Math.min(...xs) - 8, Math.min(...ys) - 8, Math.max(...xs) + 8, Math.max(...ys) + 8],
-        draw: () => {
+        draw: g => {
           this.trail.forEach(([tx, ty], i) => {
             g.fillStyle = `rgba(242,194,48,${(i + 1) / (TRAIL_LENGTH * 2.5)})`;
             g.fillRect((tx | 0) - 1, (ty | 0) - 1, 3, 3);
@@ -2305,12 +2331,11 @@ export class MatchView {
         for (const d of drawables) {
           if (d.cpuOnly) continue;
           this.spriteWorld = d.world ?? null;
-          d.draw();
-          this.spriteWorld = null;
           if (d.box && d.world) {
-            const copy = this.capture(d.box, d.world, d.bias ?? 0);
+            const copy = this.capture(d.box, d.world, d.bias ?? 0, d.draw);
             if (copy) world.push(d.tall ? { ...copy, flat: false, tall: d.tall } : copy);
-          }
+          } else d.draw(g);
+          this.spriteWorld = null;
         }
       } finally {
         this.flashFans = null;
@@ -2363,7 +2388,7 @@ export class MatchView {
       for (const d of drawables) {
         // O sítio no mundo, para quem entra no túnel se desvanecer (`tunnelFade`).
         this.spriteWorld = d.world ?? null;
-        d.draw();
+        d.draw(g);
       }
       this.spriteWorld = null;
     }
@@ -2557,10 +2582,11 @@ export class MatchView {
   }
 
   /**
-   * Copia o que se pintou na tela dentro de `box` (píxeis da arte) para uma imagem do mundo em `world`, e apaga-o da tela.
-   * A cópia fica à resolução do ecrã, por isso sai igual ao que a tela teria.
+   * Pinta `paint` numa tela pequena com o que cabe em `box` (píxeis da arte), para uma imagem do mundo em `world`. Fica à
+   * resolução do ecrã, por isso sai igual ao que a tela do jogo teria. Pinta-se lá diretamente: pintar na tela do jogo e
+   * copiar obrigava o browser a acabar a tela inteira a cada cópia, e com muita poeira o jogo afundava no iPhone.
    */
-  private capture(box: Box, world: Vec3, bias: number): WorldSprite | null {
+  private capture(box: Box, world: Vec3, bias: number, paint: (g: CanvasRenderingContext2D) => void): WorldSprite | null {
     const { g } = this;
     const m = g.getTransform();
     const x0 = Math.max(0, Math.floor(box[0] * m.a + m.e));
@@ -2582,20 +2608,24 @@ export class MatchView {
     }
     this.captureUsed++;
     const c = copy.getContext('2d')!;
+    c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, copy.width, copy.height);
-    c.drawImage(g.canvas, x0, y0, w, h, 0, copy.height - h, w, h);
-    g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(x0, y0, w, h);
-    g.restore();
+    // A transformação da tela do jogo, com o canto da caixa no canto de baixo à esquerda da cópia.
+    c.setTransform(m.a, 0, 0, m.d, m.e - x0, m.f - y0 + copy.height - h);
+    c.imageSmoothingEnabled = false;
+    c.globalAlpha = 1;
+    paint(c);
     // De volta a píxeis da arte, antes da aproximação, como os bonecos.
     return { image: copy, used: [w, h], left: (x0 - m.e) / m.a, top: (y0 - m.f) / m.d, width: w / m.a, height: h / m.d, flip: false, feet: world, alpha: 1, flat: true, bias, dynamic: true };
   }
 
-  /** No passe para a placa gráfica, copia para o mundo o que acabou de se pintar em `box`; fora dele, não faz nada. */
-  private toWorld(box: Box, world: Vec3, bias = 0, upright = false): void {
-    if (this.spriteMode !== 'collect') return;
-    const copy = this.capture(box, world, bias);
+  /** Pinta `paint` na tela do jogo ou, no passe para a placa gráfica, numa imagem do mundo com o que cabe em `box`. */
+  private toWorld(box: Box, world: Vec3, paint: (g: CanvasRenderingContext2D) => void, bias = 0, upright = false): void {
+    if (this.spriteMode !== 'collect') {
+      paint(this.g);
+      return;
+    }
+    const copy = this.capture(box, world, bias, paint);
     // `upright`: em pé como um boneco (uma bandeira), senão o degrau de trás cortava-a.
     if (copy) this.spriteSink.push(upright ? { ...copy, flat: false } : copy);
   }
@@ -3018,8 +3048,8 @@ export class MatchView {
     const { g, s, camera } = this;
     if (!this.street) return;
     for (const [tx, ty] of [[-9, -5], [-8.5, 6], [5, -15], [21, -16.5], [37, -3], [36.5, 7]] as const) {
-      const box = this.drawTree(tx, ty);
-      if (box) this.toWorld(box, [tx, ty, 0]);
+      const tree = this.tree(tx, ty);
+      if (tree) this.toWorld(tree.box, [tx, ty, 0], tree.paint);
     }
     const cheering = s.tick < this.fansCheerUntil;
     // Quem está do lado de fora da rede não se desvanece (`tunnelFade` é para quem entra ou sai do campo).
@@ -3036,13 +3066,17 @@ export class MatchView {
     this.outside = false;
   }
 
-  /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. Devolve a caixa onde a pintou, ou `null`. */
-  private drawTree(x: number, y: number): Box | null {
-    const { g, camera } = this;
-    const [sx, sy] = camera.project(x, y);
-    const [, topY] = camera.project(x, y, 5);
+  /** Uma árvore: tronco e três tufos, do tamanho que a distância lhe dá. A caixa e como a pintar, ou `null` fora do ecrã. */
+  private tree(x: number, y: number): { box: Box; paint: (g: CanvasRenderingContext2D) => void } | null {
+    const [sx, sy] = this.camera.project(x, y);
+    const [, topY] = this.camera.project(x, y, 5);
     const h = sy - topY;
-    if (sx < -40 || sx > camera.width + 40 || h < 6) return null;
+    if (sx < -40 || sx > this.camera.width + 40 || h < 6) return null;
+    const r = h * 0.3;
+    return { box: [sx - r * 1.9 - 3, sy - h * 0.72 - r - 3, sx + r * 1.9 + 3, sy + 3], paint: g => this.paintTree(g, sx, sy, h) };
+  }
+
+  private paintTree(g: CanvasRenderingContext2D, sx: number, sy: number, h: number): void {
     const trunk = Math.max(2, Math.round(h * 0.12));
     g.fillStyle = '#5a4632';
     g.fillRect(Math.round(sx - trunk / 2), Math.round(sy - h * 0.45), trunk, Math.round(h * 0.45));
@@ -3055,7 +3089,6 @@ export class MatchView {
         g.fillRect(Math.round(sx + ox - half), Math.round(sy + oy + dy), Math.round(half * 2), 1);
       }
     }
-    return [sx - r * 1.9 - 3, sy - h * 0.72 - r - 3, sx + r * 1.9 + 3, sy + 3];
   }
 
   /** O cão do bairro e o pombo do aro: entram na ordem de profundidade como os outros bonecos. Nada disto mexe no jogo. */
@@ -3079,7 +3112,7 @@ export class MatchView {
           y: oy,
           world: [owner.x, owner.y, 0],
           box: [ox - 16, oy - 24, ox + 16, oy + 4],
-          draw: () => {
+          draw: g => {
             this.shadow(g, ox, oy);
             this.sprite(g, owner.moving ? RUN_FRAMES[Math.floor(s.tick / 2.5) % 4]! : 'idle', look, ox | 0, oy | 0, owner.dx < 0, owner.dy < 0 && owner.moving, false);
             if (carried) drawDog(g, ox | 0, (oy | 0) - 9, owner.dx < 0, 0, false);
@@ -3092,7 +3125,7 @@ export class MatchView {
           y: dy,
           world: [dog.x, dog.y, 0],
           box: [dx - 14, dy - 16, dx + 14, dy + 4],
-          draw: () => {
+          draw: g => {
             this.shadow(g, dx, dy, 4);
             drawDog(g, dx | 0, dy | 0, dog.dx < 0, dog.moving ? beat : this.animTick >> 3, !dog.moving);
           },
@@ -3111,7 +3144,7 @@ export class MatchView {
         const f = Math.max(0, flying);
         const [px, py] = camera.project(hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09);
         const layer = camera.project(hoopX - inward * 0.5, 0, 0)[1] + HOOP_FRONT_OFFSET + 0.1;
-        drawables.push({ y: layer, world: [hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09], box: [px - 12, py - 14, px + 12, py + 4], draw: () => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
+        drawables.push({ y: layer, world: [hoopX + inward * f * 0.12, 0.28, 3.1 + f * 0.09], box: [px - 12, py - 14, px + 12, py + 4], draw: g => drawPigeon(g, px | 0, py | 0, inward < 0, flying < 0 ? -1 : beat, (this.animTick >> 3) % 5 === 0) });
       }
     }
   }
@@ -3171,14 +3204,15 @@ export class MatchView {
         const nod = !this.reducedMotion && (this.animTick >> 4) % 3 === 0 ? 1 : 0;
         this.sprite(g, 'sit', f.look, sx | 0, (sy | 0) + nod, f.flip, false, false);
         const top = (sy | 0) - this.tall(f.look, sy);
-        for (let k = 0; k < 3; k++) {
-          const p = this.reducedMotion ? k / 3 : ((this.animTick + k * 14) % 42) / 42;
-          const zx = (sx | 0) + 3 + Math.round(p * 6);
-          const zy = top - 4 - Math.round(p * 12);
-          text(g, 'Z', zx + 1, zy + 1, '#1b2230', 1);
-          text(g, 'Z', zx, zy, '#fbf6e2', 1);
-        }
-        this.toWorld([sx - 4, top - 22, sx + 16, top + 2], [f.x, f.y, f.z], 0.6);
+        this.toWorld([sx - 4, top - 22, sx + 16, top + 2], [f.x, f.y, f.z], g => {
+          for (let k = 0; k < 3; k++) {
+            const p = this.reducedMotion ? k / 3 : ((this.animTick + k * 14) % 42) / 42;
+            const zx = (sx | 0) + 3 + Math.round(p * 6);
+            const zy = top - 4 - Math.round(p * 12);
+            text(g, 'Z', zx + 1, zy + 1, '#1b2230', 1);
+            text(g, 'Z', zx, zy, '#fbf6e2', 1);
+          }
+        }, 0.6);
         continue;
       }
       // Cada adepto tem o seu entusiasmo: só se levanta se o momento valer mais do que ele pede, e os menos entusiastas
@@ -3195,9 +3229,10 @@ export class MatchView {
       if (this.flashFans?.has(i)) {
         // Uma fotografia: um píxel branco na cara de quem a tira.
         const face = (sy | 0) - this.tall(f.look, sy) + 3;
-        g.fillStyle = '#ffffff';
-        g.fillRect((sx | 0) + 1, face, 1, 1);
-        this.toWorld([sx - 1, face - 1, sx + 3, face + 2], [f.x, f.y, f.z], 0.8, true);
+        this.toWorld([sx - 1, face - 1, sx + 3, face + 2], [f.x, f.y, f.z], g => {
+          g.fillStyle = '#ffffff';
+          g.fillRect((sx | 0) + 1, face, 1, 1);
+        }, 0.8, true);
       }
     }
     this.spriteWorld = null;
