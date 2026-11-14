@@ -3132,7 +3132,9 @@ export class MatchView {
   /** A câmara no túnel: na ida para o balneário ao intervalo e na volta, até o último chegar (sem andar atrás da bola). */
   private tunnelShot(): boolean {
     if (this.street) return false;
-    return this.locker !== null || (this.returning !== null && this.animTime < this.returning.end);
+    // Na volta, só até o jogo recomeçar (o relógio a andar): os suplentes ainda a caminho do banco não seguram a câmara
+    // longe da jogada.
+    return this.locker !== null || (this.returning !== null && this.animTime < this.returning.end && this.s.clock >= seconds(B.periodSeconds));
   }
 
   /** A volta do balneário ao intervalo: do fundo do túnel até ao banco ou ao passeio do treinador, um de cada vez. */

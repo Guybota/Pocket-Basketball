@@ -4,7 +4,59 @@ Comparação feita com as [28 sequências do Pocket Basketball](README.md) e as 
 
 A regra continua: copia-se a ideia (o ritmo, a ordem, a gramática da câmara), nunca o aspeto. E um golo do Calciobit não é um cesto qualquer: num jogo de basquetebol há dezenas de cestos, por isso o par de um golo é um momento raro.
 
-## Em resumo
+## Nova gravação, 14 de novembro de 2026
+
+O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sério, depois de muitas mudanças: um só ecrã horizontal, a câmara mais alta, os pavilhões refeitos, as mesas por liga, o placar vivo do Municipal e os bonecos presos ao mundo. Os vídeos ficam em `dist-check/sequencias/`; as sequências de `sequencias/` continuam a ser as da gravação anterior.
+
+**Defeitos antigos:** resolvidos o 1, o 2, o 4 e o 5. O 3 continua: um movimento ainda tem dois avisos com nomes diferentes («AFUNDANÇO» por cima do jogador e «Afundanço de Força!» em baixo).
+
+**Lacunas 1 a 23:**
+- **Resolvidas:** 10, 14, 16, 18, 20, 21, 22 e 23; quase todas a 2 (faltam o clarão, os suplentes a saltar e os vencidos) e a 11 (falta o retrato).
+- **Feita com defeito:** a 3 (o grande plano da falta entra por corte).
+- **Parciais:** 1, 5, 6, 8, 9, 13 e 15.
+- **Por fazer:** a 12 (o lance livre continua no plano largo, sem nome nem percentagem).
+- **Por confirmar:** a 7 (nenhum movimento gravado mostrou as cartas; o jogo gravado era entre dois rivais), a 4 e a 19 (a 5 fps não se veem).
+- **Fora do plano:** a 17, por decisão do dono.
+
+**Corrigido logo a seguir à gravação:** depois do intervalo, a câmara ficava cerca de 8 s parada no túnel enquanto se jogava no outro cesto, à espera de que os suplentes chegassem ao banco. Agora segura o túnel só até o jogo recomeçar.
+
+**Não é do jogo:** nas gravações, os momentos grandes e as faixas de falta apareciam atrasados e com o resultado de outro lance. Vem da gravação: para saltar de momento em momento, `pauseAt` avança a simulação sem desenhar, e os avisos que nascem nesse salto só aparecem quando se volta a desenhar. A jogar, mesmo a x4, cada passo é desenhado.
+
+### Defeitos novos
+
+**Média**
+- **N3. Textos empilhados.** Num afundanço com falta que é também momento grande ficam até sete textos no ecrã ao mesmo tempo (a palavra do movimento, «+2», o resultado grande, «FALTA», a ficha de quem marcou, o aviso do movimento e a faixa da falta). *Ideia:* uma ordem de prioridade com uma só zona de faixas; o momento grande esconde as palavras do mundo.
+- **N4. Momentos grandes a mais.** Três num jogo, dois no primeiro período, todos depois de um movimento especial. *Ideia:* exigir também peso no jogo (último período, diferença curta, reviravolta) ou um limite por jogo.
+- **N5. Grandes planos por corte.** A falta e a bola ao alto entram por corte seco, e o zoom do desconto leva cerca de 0,15 s. *Ideia:* aproximar e afastar em 0,4–0,6 s.
+- **N6. O aviso do movimento fica demasiado tempo.** «Crossover!» fica cerca de 5 s e sobrevive ao cesto e à posse seguinte. *Ideia:* esconder no fim da jogada, no máximo cerca de 2 s.
+- **N7. A palavra do movimento tapa o resultado grande e a mesa dos oficiais.**
+- **N8. No combo do treino, a janela da direita fica vazia durante 2,8 s.**
+- **N9. Na apresentação, a janela do cinco inicial tapa metade do prognóstico, e a barra fica depois 5 s por cima do campo.**
+
+**Baixa**
+- **N10.** A coluna dos botões do jogo é uma faixa opaca que corta cerca de 8 % do campo à direita; no Calciobit os botões flutuam sobre a cena.
+- **N11.** Os botões do jogo continuam à vista no placar do título e na foto de equipa.
+- **N12.** Na foto de equipa, a taça tapa a cara de um jogador e os pés do capitão saem da moldura.
+- **N14.** Na federação, um quadradinho no fim de «Iniciados» e listas cortadas no fundo sem sinal de que rolam.
+- **N15.** No escritório, as legendas colam-se aos botões redondos.
+- **N16.** No balneário ao intervalo, «Intervalo» aparece duas vezes.
+- **N17.** A x4, as faixas e o momento grande não encurtam.
+- **N18.** No intervalo da final ficam cerca de 3 s de campo vazio antes do fundido.
+- **N19.** Num cesto com falta, «+2» e «FALTA» aparecem separados, sem dizer 2+1.
+
+### Lacunas novas face ao Calciobit
+
+- O dia de jogo tem o mesmo ritmo dos menus: entrar no pavilhão leva o mesmo fundido de qualquer ecrã.
+- O fim de um jogo normal não mostra o resultado final em grande.
+- O título não tem clarão.
+
+### O que gravar a seguir
+
+- Um movimento especial da nossa equipa que dê cesto, para a lacuna 7.
+- Os toques e a ida para o jogo a 30 fps, para as lacunas 4 e 19.
+- Um lance livre com o jogo apertado, a quinta falta, uma derrota e um prolongamento.
+
+## Em resumo (gravação anterior)
 
 O Pocket Basketball já tem a mesma câmara de base e a mesma secura nos jogos normais. A diferença maior é de **ritmo**: faz tudo três a cinco vezes mais depressa e quase nunca para o jogo para marcar um momento. O Calciobit abranda, passa pelo preto e dá palco aos momentos raros: o golo, a falta, o título e a descoberta de um treino. O Pocket Basketball trata quase tudo ao mesmo nível.
 
