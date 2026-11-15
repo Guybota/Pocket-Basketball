@@ -1161,13 +1161,14 @@ try {
       return {
         // O campo tem o ecrã todo; o painel é uma janela por cima, dentro do ecrã.
         fills: Math.abs(screen.width - innerWidth) < 2 && panel.bottom <= innerHeight && panel.top >= 0,
-        // O enquadramento é sempre o mesmo: a tela tem 360×216 de arte e cabe no espaço do campo, com barras no que sobra.
-        canvasCovers: canvas.width <= screen.width + 1 && canvas.height <= screen.height + 1 && window.__pocket.state().canvas.width === 360 && window.__pocket.state().canvas.height === 216,
+        // A altura é sempre a mesma (216 de arte, os bonecos do mesmo tamanho); só com o campo, a tela alarga até ao ecrã todo
+        // (pelo menos os 360 de sempre) e os botões flutuam por cima, sem coluna reservada.
+        canvasCovers: canvas.width <= screen.width + 1 && canvas.height <= screen.height + 1 && window.__pocket.state().canvas.width >= 360 && window.__pocket.state().canvas.height === 216,
         overflow: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
         art: `${window.__pocket.state().canvas.width}x${window.__pocket.state().canvas.height}`,
       };
     });
-    check(`Em ${name}, o campo ocupa o ecrã com o enquadramento de sempre e a janela cabe`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
+    check(`Em ${name}, o campo ocupa o ecrã com a altura de sempre e a janela cabe`, layout.fills && layout.canvasCovers && !layout.overflow, `arte ${layout.art}`);
     if (name !== 'telemovel-deitado') {
       const benchFits = await wide.evaluate(() => {
         const content = document.getElementById('tabContent')!.getBoundingClientRect();

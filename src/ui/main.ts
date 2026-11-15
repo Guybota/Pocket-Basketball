@@ -206,7 +206,14 @@ function saveClub(): void {
 const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud: hudElement, topUi }, {
   canvasResized: () => {
     view?.resize();
+    // A repetição também: nasce com a tela da janela do resultado (360 de largura) e a tela alarga logo a seguir.
+    replay?.resize();
     demo.resize();
+    // Os botões redondos flutuam por cima da borda direita do campo: os balões e as palavras não vão para lá.
+    const bar = document.querySelector('#panel .coachbar')?.getBoundingClientRect();
+    const court = canvas.getBoundingClientRect();
+    const inset = bar && bar.width > 0 && bar.left < court.right ? court.right - bar.left : 0;
+    for (const v of [view, replay]) v?.coverRight(inset / Math.max(1, court.width));
   },
   topResized: menusResized,
 });
@@ -1251,8 +1258,9 @@ function frame(now: number): void {
     current.render(Math.min(1, accumulator), simSeconds, paused ? 0 : elapsed);
     hud.update(current, club!.emblem);
   }
-  // O fundo das margens copia o campo umas vezes por segundo: desfocado, não precisa de mais.
-  const showBackdrop = stage === 'match';
+  // O fundo das margens copia o campo umas vezes por segundo: desfocado, não precisa de mais. Só quando há margens: com o
+  // campo no ecrã todo, a tela tapa-o e copiá-lo era trabalho à toa (no telemóvel, uma camada desfocada a ecrã inteiro).
+  const showBackdrop = stage === 'match' && (canvas.clientWidth < innerWidth - 2 || canvas.clientHeight < innerHeight - 2);
   if (backdrop.classList.contains('on') !== showBackdrop) {
     backdrop.classList.toggle('on', showBackdrop);
     // Ao entrar num jogo, desenha logo, para não mostrar o último fotograma do anterior.

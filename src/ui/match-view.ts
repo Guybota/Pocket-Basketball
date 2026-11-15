@@ -494,6 +494,13 @@ export class MatchView {
   private realTime = 0;
   /** O relógio dos avisos, dos momentos grandes e dos grandes planos (ver `render`), e quanto anda por segundo real. */
   momentTime = 0;
+  /** Quantos píxeis da arte, à direita, ficam por baixo dos botões redondos (`coverRight`): os balões e as palavras não vão para lá. */
+  private rightInset = 0;
+
+  /** A fração da largura do campo, à direita, que os botões redondos tapam. */
+  coverRight(fraction: number): void {
+    this.rightInset = Math.ceil(fraction * this.camera.width);
+  }
   private pace = 1;
   /** Quantos segundos de jogo passam por segundo real: 1, 2 ou 4. */
   private simPerReal = 1;
@@ -735,7 +742,9 @@ export class MatchView {
     // Só se olha à frente quando o ataque já passou o meio campo: na transição a câmara segue a bola sem saltar 6 m para o
     // outro lado a cada mudança de posse, que era o que a fazia correr e rodar a cada ataque.
     const settled = attacksRight ? ballX > COURT_LENGTH / 2 + 2 : ballX < COURT_LENGTH / 2 - 2;
-    const ahead = settled ? (attacksRight ? 3 : -3) : 0;
+    // Para o lado direito do ecrã (o x menor do mundo) olha-se menos à frente: os botões redondos flutuam nessa borda, e o
+    // cesto atacado ficava debaixo deles.
+    const ahead = settled ? (attacksRight ? 3 : -1.5) : 0;
     return [Math.max(5.4, Math.min(22.6, ballX + ahead)), lookY];
   }
 
@@ -3409,7 +3418,7 @@ export class MatchView {
     if (smooth) g.font = SPEECH_FONT;
     const w = Math.ceil(smooth ? g.measureText(label).width : textWidth(label, 2)) + 10;
     const h = smooth ? 15 : 21;
-    const x = Math.max(6, Math.min(camera.width - w - 6, (fx | 0) - (w >> 1)));
+    const x = Math.max(6, Math.min(camera.width - this.rightInset - w - 6, (fx | 0) - (w >> 1)));
     // A ponta da seta fica 6 píxeis acima da cabeça, ou 1 abaixo dos pés; a seta tem 3 de altura.
     const above = head - 9 - h >= minTop;
     // Por baixo não sobe: a seta pisava os pés de quem fala.
@@ -3535,7 +3544,7 @@ export class MatchView {
       const below = word && y < camera.height * 0.38;
       const top = Math.min(camera.height - 12, below ? (y | 0) + 8 + rise : Math.max(FLOATER_MIN_TOP, (y | 0) - 14 - rise));
       // Num canto, a palavra encosta à margem em vez de sair do ecrã.
-      const left = word ? Math.max(2, Math.min(camera.width - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
+      const left = word ? Math.max(2, Math.min(camera.width - this.rightInset - width - 2, (x | 0) - (width >> 1))) : (x | 0) + (x < camera.width / 2 ? 14 : -38);
       // A caixa ocupada: os acentos sobem 3 linhas, a cedilha desce 1 e a sombra mais 1 píxel.
       const accent = /[ÁÀÂÃÉÊÍÓÔÕÚ]/.test(f.label) ? 3 * scale : 0;
       this.drawn.labels.push([left, top - accent, width + 1, accent + height]);

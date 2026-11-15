@@ -12,11 +12,10 @@ const LANDSCAPE_TOWN_HEIGHT = 360;
 const MENU_STAGE_WIDTH = 360;
 const MENU_STAGE_HEIGHT = 270;
 // O campo vê-se sempre com o mesmo enquadramento, em qualquer ecrã e rotação: a câmara tem a distância focal fixa, por isso
-// uma tela maior mostrava mais campo. A tela do jogo é sempre esta, ampliada por um inteiro, com barras no que sobra.
+// uma tela maior mostrava mais campo. A tela do jogo tem esta altura, ampliada por um inteiro; a largura é esta com o
+// painel ao lado, e a do ecrã todo só com o campo (um pouco mais de campo dos lados, com os botões por cima).
 const MATCH_STAGE_WIDTH = 360;
 const MATCH_STAGE_HEIGHT = 216;
-// A largura da coluna de botões redondos do jogo (56 px, mais as margens), em píxeis CSS antes do zoom do painel.
-const BUTTON_COLUMN = 76;
 
 /** A cidade, a cidade sem etiquetas do ecrã de criar clube, os menus e o jogo em si. */
 export type Stage = 'town' | 'title' | 'menu' | 'match';
@@ -157,20 +156,19 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     // Nos outros ecrãs, a escala é um múltiplo inteiro de píxeis do ecrã, para a arte ficar sempre nítida.
     // No jogo, a tela tem sempre o mesmo tamanho lógico, para a câmara e os bonecos ficarem iguais em qualquer ecrã, e enche
     // o espaço com qualquer escala, sem saltos: desenha-se ampliada por um inteiro e o browser ajusta-a com suavização
-    // (o «sharp bilinear» dos jogos de pixel art). Fica de fora a coluna dos botões redondos, à direita: o campo centra-se
-    // no espaço que sobra, sem ficar por baixo deles.
-    const buttons = onlyCourt ? BUTTON_COLUMN * ui : 0;
+    // (o «sharp bilinear» dos jogos de pixel art). Só com o campo no ecrã, a tela alarga até à largura toda e os botões
+    // redondos flutuam por cima dela, como no Calciobit: a coluna reservada à direita tapava ~8 % do campo.
     // A demonstração do ecrã inicial desenha-se como o jogo: o mesmo enquadramento, a mesma resolução e os bonecos do mesmo
     // tamanho. Com a tela da cidade mostrava mais campo, e os bonecos encolhidos numa tela pequena saíam com outras proporções.
     const court = stage === 'match' || (stage === 'title' && demo === true);
     const scale = court
-      ? Math.max(1 / dpr, Math.min((stageWidth - buttons) / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT))
+      ? Math.max(1 / dpr, Math.min(stageWidth / MATCH_STAGE_WIDTH, stageHeight / MATCH_STAGE_HEIGHT))
       : stage === 'town' || stage === 'title'
         ? Math.max(1, Math.floor((viewHeight * dpr) / LANDSCAPE_TOWN_HEIGHT)) / dpr
         : Math.ceil((stageHeight * dpr) / LANDSCAPE_ART_HEIGHT) / dpr;
     // A demonstração enche o lado do ecrã inicial sem barras: no mínimo o campo do jogo, e mais bancada ou chão onde sobra,
     // sempre com a mesma escala de arte (os bonecos não mudam de tamanho em relação ao campo).
-    const width = stage === 'match' ? MATCH_STAGE_WIDTH : court ? Math.max(MATCH_STAGE_WIDTH, Math.floor(stageWidth / scale)) : Math.ceil(stageWidth / scale);
+    const width = stage === 'match' && !onlyCourt ? MATCH_STAGE_WIDTH : court ? Math.max(MATCH_STAGE_WIDTH, Math.floor(stageWidth / scale)) : Math.ceil(stageWidth / scale);
     const height = stage === 'match' ? MATCH_STAGE_HEIGHT : court ? Math.max(MATCH_STAGE_HEIGHT, Math.floor(stageHeight / scale)) : Math.ceil(stageHeight / scale);
     // No jogo, a tela tem a resolução do ecrã: a arte amplia-se por este inteiro, e os bonecos podem ter qualquer tamanho,
     // maiores à frente e mais pequenos atrás, como no Calciobit. Nos outros ecrãs, a tela é da arte e o CSS amplia-a.
@@ -183,7 +181,7 @@ export function createLayout(els: LayoutElements, hooks: LayoutHooks): Layout {
     setCanvasSize(width * artScale, height * artScale, width * scale, height * scale);
     // O marcador e as etiquetas ficam sobre o campo, não sobre as barras.
     const bar = Math.max(0, (viewHeight - height * scale) / 2);
-    const side = Math.max(0, (stageWidth - buttons - width * scale) / 2);
+    const side = Math.max(0, (stageWidth - width * scale) / 2);
     canvas.style.marginTop = `${bar}px`;
     canvas.style.marginLeft = `${side}px`;
     hud.style.top = `${bar}px`;
