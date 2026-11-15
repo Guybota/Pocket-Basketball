@@ -9,7 +9,7 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 - **[fluxos-ui.md](fluxos-ui.md):** o caminho entre ecrãs, que botões há em cada menu e a ordem antes, durante e depois de um jogo.
 - **[camara-e-estilo.md](camara-e-estilo.md):** a câmara do jogo, o marcador, os golos e o estilo visual (cores, molduras, tipografia).
 - **Uma pasta por ecrã**, em `menu/`, `jogo/` e `cena/`. Cada uma tem um `README.md` com cada imagem, a descrição, as etiquetas e a origem, mais uma `_folha.jpg` com todas as imagens juntas. Para um agente, a folha basta para ver o ecrã de uma vez.
-- **[sequencias/](#sequências):** 36 sequências de frames tiradas dos vídeos, com as animações, os movimentos de câmara e as transições. Cada uma tem uma `_folha.jpg` numerada e um `README.md` frame a frame.
+- **[sequencias/](#sequências):** 46 sequências de frames tiradas dos vídeos, com as animações, os movimentos de câmara e as transições. Cada uma tem uma `_folha.jpg` numerada e um `README.md` frame a frame.
 - **[catalogo-completo.jsonl](catalogo-completo.jsonl):** as 1141 imagens classificadas, incluindo as que não ficaram aqui, com a ligação à miniatura original no YouTube. Uma linha JSON por imagem: `categoria`, `ecra`, `etiquetas`, `descricao`, `qualidade`, `overlay`, `video`, `miniatura`.
 
 ## Como foi feito (e os limites)
@@ -29,12 +29,12 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 
 ## Sequências
 
-Sequências de frames tiradas dos vídeos, para estudar o que as imagens soltas não mostram: animações, movimentos de câmara e transições entre ecrãs. Foram extraídas em 10 de novembro de 2026 de 17 vídeos de oito canais, descarregados a 720p e apagados no fim.
+Sequências de frames tiradas dos vídeos, para estudar o que as imagens soltas não mostram: animações, movimentos de câmara e transições entre ecrãs. Foram extraídas em 10 de novembro de 2026 de 17 vídeos de oito canais, descarregados a 720p e apagados no fim. Em 15 de novembro de 2026 juntaram-se dez sequências do treino, de mais dois vídeos (UN9g62Rw7M4 e CbFU3oY9Al0, descarregados a 360p e 480p e também apagados).
 
 - **Organização:** `sequencias/<area>/<nome>/`, com `frame-0001.jpg`… a 640×360, uma `_folha.jpg` com os frames numerados e um `README.md`.
 - **README de cada sequência:** o que acontece frame a frame, a duração, o fps e a origem, com a ligação ao segundo do vídeo e as etiquetas.
 - **fps:** 10 para movimentos de câmara e transições, 30 para animações curtas. Para medir uma duração, conta os frames e divide pelo fps.
-- **Total:** 36 sequências, cerca de 32 MB. As conclusões estão em [fluxos-ui.md](fluxos-ui.md) e [camara-e-estilo.md](camara-e-estilo.md).
+- **Total:** 46 sequências, cerca de 62 MB. As conclusões estão em [fluxos-ui.md](fluxos-ui.md) e [camara-e-estilo.md](camara-e-estilo.md).
 
 ### Jogo e câmara
 
@@ -99,6 +99,16 @@ Em [sequencias/menus-transicoes/](sequencias/menus-transicoes/): as mudanças de
 | [Regresso ao mapa da cidade e o cartão do próximo jogo](sequencias/menus-transicoes/regresso-cidade-proximo-jogo/README.md) | 2,3 s | 10 | 23 | [ver](sequencias/menus-transicoes/regresso-cidade-proximo-jogo/_folha.jpg) |
 | [Treino: três cartas fazem um combo e abrem o «SPECIAL MENU»](sequencias/menus-transicoes/treino-combo-cartas-special-menu/README.md) | 8,9 s | 10 | 89 | [ver](sequencias/menus-transicoes/treino-combo-cartas-special-menu/_folha.jpg) |
 | [Treino: «SPECIAL MENU» descoberto](sequencias/menus-transicoes/treino-special-menu-descoberto/README.md) | 2,8 s | 10 | 28 | [ver](sequencias/menus-transicoes/treino-special-menu-descoberto/_folha.jpg) |
+| [Treino: do mapa ao centro de treino e à fila de jogadores](sequencias/menus-transicoes/treino-entrada-centro-e-fila/README.md) | 8,0 s | 10 | 80 | [ver](sequencias/menus-transicoes/treino-entrada-centro-e-fila/_folha.jpg) |
+| [Treino: a fila de jogadores e a troca de jogador](sequencias/menus-transicoes/treino-fila-trocar-jogador/README.md) | 3,0 s | 10 | 30 | [ver](sequencias/menus-transicoes/treino-fila-trocar-jogador/_folha.jpg) |
+| [Treino: abrir a ficha do jogador e ver as barras](sequencias/menus-transicoes/treino-ficha-jogador/README.md) | 5,6 s | 10 | 56 | [ver](sequencias/menus-transicoes/treino-ficha-jogador/_folha.jpg) |
+| [Treino: abrir uma gaveta de cartas e trocar de gaveta](sequencias/menus-transicoes/treino-gavetas-abrir-e-trocar/README.md) | 3,1 s | 10 | 31 | [ver](sequencias/menus-transicoes/treino-gavetas-abrir-e-trocar/_folha.jpg) |
+| [Treino: arrastar cartas para cima da gaveta](sequencias/menus-transicoes/treino-colocar-cartas-e-trocar-gaveta/README.md) | 5,2 s | 10 | 52 | [ver](sequencias/menus-transicoes/treino-colocar-cartas-e-trocar-gaveta/_folha.jpg) |
+| [Treino normal: uma carta, sem combo](sequencias/menus-transicoes/treino-normal-uma-carta/README.md) | 13,5 s | 10 | 135 | [ver](sequencias/menus-transicoes/treino-normal-uma-carta/_folha.jpg) |
+| [Treino normal: ilustração animada e jogador já treinado](sequencias/menus-transicoes/treino-normal-jogador-ja-treinado/README.md) | 11,0 s | 10 | 110 | [ver](sequencias/menus-transicoes/treino-normal-jogador-ja-treinado/_folha.jpg) |
+| [Treino normal saltado, e sair do treino para o mapa](sequencias/menus-transicoes/treino-normal-saltar-e-sair-para-mapa/README.md) | 9,5 s | 10 | 95 | [ver](sequencias/menus-transicoes/treino-normal-saltar-e-sair-para-mapa/_folha.jpg) |
+| [Treino: a «SPリスト» (lista de treinos especiais)](sequencias/menus-transicoes/treino-sp-lista/README.md) | 7,4 s | 10 | 74 | [ver](sequencias/menus-transicoes/treino-sp-lista/_folha.jpg) |
+| [Treino: do «SPECIAL MENU» à fila, e da fila ao centro de treino](sequencias/menus-transicoes/treino-regresso-fila-e-centro/README.md) | 3,7 s | 10 | 37 | [ver](sequencias/menus-transicoes/treino-regresso-fila-e-centro/_folha.jpg) |
 
 ## Ecrãs
 ### Menus e ecrãs de gestão

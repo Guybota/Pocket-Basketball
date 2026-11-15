@@ -13,7 +13,7 @@ const MATCH_KEYS: Record<string, string> = { ' ': '#pauseBtn', d: '#timeoutBtn',
 const TOWN_KEYS: Record<string, string> = { p: '#arenaChip', e: '#officeBtn', t: '#trainBtn', f: '#federationBtn', r: '#towerChip', a: '#airportChip', enter: '#skipWeekBtn' };
 // Por ordem: a ficha, as trocas e as táticas do jogo, a repetição, e o Voltar dos menus.
 const CLOSE = '[data-card="close"], [data-subs-close], #matchTacticsClose, #replayBack, .back';
-const PRIMARY = '.primary, .mbar.go';
+const PRIMARY = '.primary, .mbar.go, .cc-say';
 const ROWS = '.prow, .trow';
 const LABELS: Record<string, string> = { ' ': 'Espaço', enter: 'Enter', escape: 'Esc' };
 

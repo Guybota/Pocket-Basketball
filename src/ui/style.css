@@ -1047,19 +1047,18 @@ html.reduce-motion .say { animation: none; }
 .after { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* O combo: as três cartas juntam-se no meio, há um clarão e aparece o nome. Sem animação, vê-se logo o fim. */
-.combofx { position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; min-height: 0; border: 0; box-shadow: none; background: #241a45; overflow: hidden; color: #fff; }
+.combofx { container-type: size; position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; min-height: 0; border: 0; box-shadow: none; background: #241a45; overflow: hidden; color: #fff; }
 .combofx:active { transform: none; box-shadow: none; }
 /* O combo leva cerca de 3,5 s: as cartas entram uma a uma (0–1 s), a bola de luz passa por elas (1–1,9 s), juntam-se
  * (1,9–2,5 s) e vem o clarão, os raios na cor da categoria que domina, as faíscas e o nome. Um toque salta tudo. */
-.fx-rays { position: absolute; inset: -40%; background: repeating-conic-gradient(color-mix(in srgb, var(--ray, #7246c4) 75%, #fff) 0 11.25deg, var(--ray, #7246c4) 0 22.5deg); animation: fx-rays-in .3s 2.5s both, fx-spin 14s linear 2.5s infinite; }
+/* Um quadrado maior do que a diagonal da cena (cqmax: o lado maior do .combofx), para os cantos nunca ficarem a descoberto ao rodar. */
+.fx-rays { position: absolute; left: 50%; top: 50%; width: 120cqmax; height: 120cqmax; margin: -60cqmax 0 0 -60cqmax; background: repeating-conic-gradient(color-mix(in srgb, var(--ray, #7246c4) 75%, #fff) 0 11.25deg, var(--ray, #7246c4) 0 22.5deg); animation: fx-rays-in .3s 2.5s both, fx-spin 14s linear 2.5s infinite; }
 .fx-card { position: absolute; left: 50%; top: 50%; width: 80px; height: 88px; margin: -44px 0 0 -40px; image-rendering: pixelated; border: 2px solid var(--ink); opacity: 0; animation: fx-enter .3s var(--d) ease-out both, fx-gather .6s 1.9s cubic-bezier(.5, 0, .9, .4) forwards; }
 .fx-orb { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #fff; box-shadow: 0 0 0 3px var(--gold); opacity: 0; animation: fx-orb .9s 1s steps(9) both; }
 @keyframes fx-enter { from { opacity: 0; transform: translateX(var(--x)) translateY(-40px); } to { opacity: 1; transform: translateX(var(--x)); } }
 @keyframes fx-orb { 0% { opacity: 1; transform: translateX(var(--x0)); } 45% { opacity: 1; transform: translateX(var(--x1)); } 90% { opacity: 1; transform: translateX(var(--x2)); } 100% { opacity: 0; transform: translateX(var(--x2)); } }
 .fx-flash { position: absolute; inset: 0; background: #fff; opacity: 0; animation: fx-flash .55s 2.4s both; }
 .fx-spark { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; background: var(--gold); opacity: 0; animation: fx-spark .7s 2.5s ease-out both; }
-.fx-text { position: absolute; inset: 0; display: grid; justify-items: center; align-content: center; gap: 6px; text-align: center; animation: fx-text .4s 2.7s both; }
-.fx-text .k { color: var(--gold); }
 .fx-scene { position: absolute; left: 50%; top: 1%; width: 180px; height: 100px; margin-left: -90px; image-rendering: pixelated; pointer-events: none; }
 .combofx.done .fx-scene { display: none; }
 .confetti { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
@@ -1067,9 +1066,6 @@ html.reduce-motion .say { animation: none; }
 .mvp.farewell { justify-content: flex-start; text-align: left; }
 .mvp.farewell img { width: 40px; height: 40px; border: 2px solid var(--ink); }
 .mvp.farewell b { font-weight: 400; color: var(--ball-ink); }
-.fx-text .n { font: 400 36px/.9 var(--display); padding-inline: 8px; }
-.fx-text .cs { display: flex; gap: 6px; }
-.fx-text .cs img { width: 40px; height: 44px; image-rendering: pixelated; border: 2px solid var(--ink); }
 @keyframes fx-gather {
   /* Sem rodar: as cartas inclinadas partiam a grelha de píxeis. */
   0% { opacity: 1; transform: translateX(var(--x)); }
@@ -1081,15 +1077,12 @@ html.reduce-motion .say { animation: none; }
 @keyframes fx-rays-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fx-spin { to { transform: rotate(360deg); } }
 @keyframes fx-spark { 0% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
-@keyframes fx-text { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
-.after.delayed { animation: fx-after .3s 2.8s both; }
 @keyframes fx-after { from { opacity: 0; } to { opacity: 1; } }
-.after.done { animation: none; }
 .combofx.done .fx-card, .combofx.done .fx-spark, .combofx.done .fx-flash, .combofx.done .fx-orb { animation: none; opacity: 0; }
-.combofx.done .fx-rays, .combofx.done .fx-text { animation: none; opacity: 1; }
+.combofx.done .fx-rays { animation: none; opacity: 1; }
 html.reduce-motion :is(.fx-card, .fx-spark, .fx-flash, .fx-orb) { animation: none; opacity: 0; }
 html.reduce-motion .after.delayed { animation: none; }
-html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
+html.reduce-motion .fx-rays { animation: none; opacity: 1; }
 
 /* «Menos movimento» é a classe reduce-motion, posta pelo settings.ts: segue o sistema por omissão e pode-se forçar nas Definições. */
 
@@ -1200,11 +1193,40 @@ html.reduce-motion :is(.fx-rays, .fx-text) { animation: none; opacity: 1; }
 /* O resultado do treino: uma janela ao centro do ecrã, por cima da ficha e das cartas. */
 .trainpop { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 8px; background: rgba(27, 34, 48, .45); }
 .trainpop .box { width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 4px 4px 0 var(--ink); }
-/* Num combo, a caixa fica em baixo e sem o véu escuro, para o nome do combo continuar à vista e legível por cima dela. */
-.trainpop.delayed { align-items: flex-end; background: none; }
 .trainpop.delayed:not(.done) { animation: fx-after .3s 2.8s both, fx-pop-wait 3.1s both; }
 .trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 3.1s; }
+html.reduce-motion .trainpop.delayed:not(.done) :is(.fill, .track img) { transition-delay: .3s; }
 @keyframes fx-pop-wait { from, 99% { pointer-events: none; } to { pointer-events: auto; } }
+
+/* O cartão do combo, como o «SPECIAL MENU» do Calciobit: a cerimónia ocupa o ecrã todo, sem a janela, e acaba neste
+ * cartão por cima dos raios. O quadro leva a ilustração (por agora as cartas), o nome numa faixa inclinada e a mini-ficha. */
+#panel:has(.combocard) { visibility: hidden; }
+#game.floating:has(.combocard) #topUi .combofx { left: 0; right: 0; }
+.trainpop.combocard { visibility: visible; display: block; padding: 0; background: none; }
+.cc-any { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+.cc-any:hover, .cc-any:active { background: none; transform: none; box-shadow: none; }
+.cc { position: relative; pointer-events: none; height: 100%; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 6px; padding: 10px 12px 8px; }
+.cc-title { font: 400 30px/1 var(--display); color: var(--gold); text-shadow: 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink); }
+.cc-frame { position: relative; align-self: center; width: min(58vw, 560px, calc((100dvh - 190px) * 1.8)); aspect-ratio: 9 / 5; background: var(--chalk-2); border: 4px solid var(--paper); box-shadow: 4px 4px 0 var(--ink); }
+.cc-art { position: absolute; inset: 6% 4% 24%; display: flex; gap: 4%; justify-content: center; align-items: center; }
+/* As cartas a 3× (40×44 na origem), a 2× nos ecrãs baixos. */
+.cc-art img { width: 120px; height: 132px; image-rendering: pixelated; border: 3px solid var(--ink); }
+.cc-name { position: absolute; left: -10px; bottom: 14px; padding: 4px 18px 4px 12px; background: var(--ink); color: var(--paper); font: 400 24px/1 var(--display); transform: skewX(-12deg); }
+/* Mini-ficha com largura fixa: as barras a metade (os ícones a 1×), a sair do quadro para a direita. */
+.cc-mini { position: absolute; right: -128px; bottom: -4%; width: 170px; padding: 4px; background: var(--paper); border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+.cc-who { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; font: 400 14px/1 var(--ui); color: var(--ink); }
+.cc-who img { width: 20px; height: 20px; image-rendering: pixelated; border: 1px solid var(--ink); }
+.cc-mini .bars { zoom: .5; overflow: hidden; }
+.cc-mini .bar7 .gr { font-size: 26px; }
+.cc-say { pointer-events: auto; width: 100%; max-width: 900px; min-height: 44px; display: flex; gap: 10px; align-items: center; padding: 8px 12px; text-align: left; background: var(--ink); color: var(--paper); border: 2px solid var(--paper); box-shadow: none; font: 400 15px/1.35 var(--small); }
+.cc-say > span:first-child { flex: 1; }
+.cc-say .learned { display: inline; padding: 0; background: none; border: 0; color: var(--gold); font: inherit; }
+.cc-say i { font-style: normal; color: var(--gold); }
+.cc-say:hover, .cc-say:focus-visible { background: var(--ink); outline: 2px solid var(--gold); }
+@media (max-height: 500px) { .cc-art img { width: 80px; height: 88px; } .cc-title { font-size: 24px; } }
+/* A 640×360 o quadro tem ~300 px: a mini-ficha sai mais para a direita, para não tapar a terceira carta. */
+@media (max-height: 380px) { .cc-mini { right: -150px; } }
+html.reduce-motion .fx-scene { display: none; }
 
 /* A ficha de um clube na federação: treinador, épocas e mapa de jogo, e por baixo o plantel. */
 .fedsheet .inner { gap: 6px; }

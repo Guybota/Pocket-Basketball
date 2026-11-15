@@ -113,6 +113,7 @@ Todas respeitam o determinismo. Ficam depois de D.1.
 | D15 | **Personalidade dos jogadores** (ex.: «Frio no fim», «Líder»). 📜 | M | Muda o formato da equipa. |
 | D16 | **Química** entre jogadores que jogam juntos. 📜 | L | Muda o formato. |
 | D17 | **Juniores / formação.** 📜 | L | Afasta-se do NPFC, que não tem formação. |
+| D18 | **A altura faz de posição, como a posição no Calciobit** (ideia do dono, 15 de novembro de 2026). Altura 1 pode jogar de 1 ou 2; altura 2, de 3 ou 4; altura 3, de 4 ou 5 (as posições do basquetebol, de base a poste). A altura passa a dizer onde o jogador rende, como o GK/DF/MF/FW do Calciobit. | M | Para implementar e afinar mais tarde. Mexe com a decisão «sem posições fixas» (o lugar na lista é o papel em campo): falta decidir o que acontece a quem joga fora das suas posições (rende menos? não pode?) e como se vê na lista, nas trocas e no mercado. A posição 4 serve as alturas 2 e 3. Os números ficam em `balance.ts`. |
 
 ❓ **D9–D17:** quais queres? Proponho D9, D10 e D11 já, e os outros depois de testes com pessoas.
 

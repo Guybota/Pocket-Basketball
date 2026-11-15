@@ -109,6 +109,7 @@ Retrato do código em novembro de 2026. As linhas mudam; confirma-as antes de me
   - na cidade: neve, luzes de Natal e janelas à noite;
   - nas cenas: vapor e uma lâmpada a piscar;
   - no CSS: `banner-in steps(4)` e os efeitos dos combos.
+  - **O combo do treino** (`reportScreen` e `comboCard` em menus.ts): a cerimónia (`.combofx`) ocupa o ecrã todo, sem a janela, e acaba no cartão `.combocard` (título, quadro com o nome numa faixa inclinada, mini-ficha com as barras e uma faixa de texto que é o botão de seguir; toca-se em qualquer lado para seguir, e o Enter vai para a faixa). As barras e as frases chegam ao cartão em separado (não se corta o HTML). O quadro ainda mostra as três cartas; cada combo deve ter a sua ilustração própria, como no Calciobit.
 - **Movimento reduzido:** `reducedMotion()` em `settings.ts` lê a definição do jogo ou o sistema.
   - **O que congela:** o público, os adeptos e a chuva; tiram-se os flashes e o tremor.
   - **O que fica:** as barras de ganho do treino continuam, de propósito.

@@ -69,8 +69,23 @@ flowchart TD
 
 ## Treino com cartas ([menu/treino](menu/treino/README.md), [menu/cartas-habilidades](menu/cartas-habilidades/README.md))
 
-- **Plantel:** os jogadores ficam de pé em fila sobre a relva, de corpo inteiro.
-- **Gavetas de cartas:** em baixo, uma por categoria e cor: Tactical, Technical, Physical e Support.
+- **Centro de treino:** do mapa passa-se pelo preto (0,2 s) para uma vista isométrica do campo com o plantel a correr em pixel art. À direita entram a rolar quatro botões redondos: dados dos jogadores, onze inicial, «特訓» (treino especial) e tática. Só o «特訓» leva à fila; à saída, o voltar da fila regressa aqui e outro voltar regressa ao mapa, sempre por preto ([treino-entrada-centro-e-fila](sequencias/menus-transicoes/treino-entrada-centro-e-fila/README.md), [treino-regresso-fila-e-centro](sequencias/menus-transicoes/treino-regresso-fila-e-centro/README.md), [treino-normal-saltar-e-sair-para-mapa](sequencias/menus-transicoes/treino-normal-saltar-e-sair-para-mapa/README.md)).
+- **Plantel:** os jogadores ficam de pé em fila sobre a relva, de corpo inteiro. É um carrossel: o da frente é grande, à esquerda, e a ficha curta dele está em cima. Arrastar troca o da frente em 0,1–0,2 s, sem ressalto. Cada um tem uma etiqueta com posição, nome e estrelas ([treino-fila-trocar-jogador](sequencias/menus-transicoes/treino-fila-trocar-jogador/README.md)).
+- **Ficha:** tocar no jogador da frente abre a ficha completa em fade com um pouco de escala (0,3 s). Um botão redondo troca a carreira pelas barras dos atributos, num corte seco ([treino-ficha-jogador](sequencias/menus-transicoes/treino-ficha-jogador/README.md)).
+- **Gavetas de cartas:** em baixo, uma por categoria e cor: Tactical, Technical, Physical e Support. Fechadas são separadores com as cartas em miniatura. Tocar abre a gaveta, que sobe da borda de baixo em 0,2 s, e a fila desce para trás dela. Cada carta mostra quantas restam ([treino-gavetas-abrir-e-trocar](sequencias/menus-transicoes/treino-gavetas-abrir-e-trocar/README.md)).
+- **Escolher cartas:** arrasta-se a carta para cima da gaveta. As escolhidas ficam em fila ali, ao lado de um botão redondo «特訓開始» com um apito. Pode-se trocar de gaveta e juntar cartas de cores diferentes ([treino-colocar-cartas-e-trocar-gaveta](sequencias/menus-transicoes/treino-colocar-cartas-e-trocar-gaveta/README.md)).
+- **«SPリスト»:** um botão redondo abre a lista dos treinos especiais já descobertos, num ecrã cinzento-escuro: a ilustração, as cartas que o treino pede ligadas por «+», e uma fila de miniaturas com «NEW» na mais recente. O «特訓開始» daqui vai direto à cerimónia do combo ([treino-sp-lista](sequencias/menus-transicoes/treino-sp-lista/README.md)).
+- **Treino normal** (uma carta sem combo; [treino-normal-uma-carta](sequencias/menus-transicoes/treino-normal-uma-carta/README.md), [treino-normal-jogador-ja-treinado](sequencias/menus-transicoes/treino-normal-jogador-ja-treinado/README.md)), cerca de 7 s ao todo, sem favos, títulos nem clarão:
+  1. depois do toque em «特訓開始», corte seco: a fila, as gavetas e os botões desaparecem e fica o campo de treino vazio, 0,1–0,4 s;
+  2. a carta aparece de uma vez ao centro e fica parada 1,2 s;
+  3. vira-se como uma moeda (0,3–0,4 s até ser uma risca, 0,2 s de nada), e do outro lado sai a ilustração do treino, estreita e depois grande, num quadro com o nome numa faixa escura (0,3 s);
+  4. a ilustração fica grande 0,8 s. Algumas são animadas, com duas poses em ciclo rápido (por exemplo «アジリティー»);
+  5. encolhe para o canto de cima à esquerda em 0,4 s;
+  6. no canto de baixo à direita aparece a mini-ficha do jogador (um retângulo cresce em 0,1 s): sete linhas com os ícones à altura de cada atributo, as notas em letras e os ganhos ao lado («+1», «+6»). Os valores já vêm no fim: não há barras a subir nem contagem;
+  7. fica tudo parado à espera de um toque (2,5–3,5 s nos vídeos). Não há texto do adjunto;
+  8. corte seco para a fila: o jogador que treinou fica escurecido, quase uma silhueta azul-escura ou castanha, com a etiqueta branca «特訓済» (já treinado) no peito.
+  Um toque durante a carta salta a volta e a ilustração grande e vai direto para a mini-ficha.
+- **Jogador já treinado:** cada jogador treina uma vez por semana. Tocar num jogador «特訓済» esconde as gavetas e mostra em baixo uma faixa de texto «(nome)、今週の特訓を終えました。», sem retrato; um toque fecha-a.
 - **Treino especial:** juntar certas cartas abre o «SPECIAL MENU». É um cartão com uma ilustração cómica do treino, o nome, uma mini-ficha com barras e notas, e o ganho em cada atributo. Também se pode descobrir sem cartas, por um aviso de que chegou um vídeo do patrocinador ([treino-special-menu-descoberto](sequencias/menus-transicoes/treino-special-menu-descoberto/README.md)).
 - **O combo, por ordem** ([treino-combo-cartas-special-menu](sequencias/menus-transicoes/treino-combo-cartas-special-menu/README.md), cerca de 9 s ao todo):
   1. um fundo de favos (amarelo; azul num combo de duas cartas) entra num fade de 0,6 s;
@@ -80,7 +95,7 @@ flowchart TD
   5. as bolas pulsam três vezes para o centro e voltam, em cerca de 1,8 s;
   6. apagam-se uma a uma, em cerca de 1 s;
   7. uma faísca, o título «SPECIAL MENU» e o clarão, em cerca de 1,9 s: um oval branco cresce do centro sobre raios amarelos e laranja até o ecrã ficar branco. Um corte seco mostra a ilustração com o nome numa faixa escura inclinada.
-- **Subir de nível:** não se viu animação. Depois do SPECIAL MENU volta-se à fila de jogadores e as notas mudam sem efeito visível.
+- **Subir de nível:** não há animação própria, nem no treino normal nem no combo. Os ganhos aparecem já feitos na mini-ficha, e na fila as notas mudam sem efeito visível; o único sinal que fica é o jogador escurecido com «特訓済».
 - **Cartas novas:** depois dos jogos o adjunto pode dar cartas novas, mostradas como cartões ilustrados.
 
 ## Federação: N.LEAGUE ([menu/classificacao-liga](menu/classificacao-liga/README.md), [menu/torneio-taca](menu/torneio-taca/README.md))

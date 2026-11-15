@@ -348,7 +348,7 @@ function reportScreen(): Rendered {
     const next = ceiling >= 100 ? 'S' : gradeOf(ceiling);
     return `<div class="bar7${result.gains[key] ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}"><b class="gr gr-${next} next" title="Nota seguinte">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
   }).join('');
-  const rows = `<div class="bars">${bars}</div><div class="gainlines">${ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
+  const sentences = ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
     const gain = result.gains[key]!;
     const [article, name] = ATTRIBUTE_PHRASES[key];
     const how = gain < 0 ? 'desceu' : 'subiu';
@@ -357,15 +357,19 @@ function reportScreen(): Rendered {
     const was = gradeOf(before.attributes[key]);
     const now = gradeOf(result.player.attributes[key]);
     const step = was === now ? `continua ${now}` : `${was} → ${now}`;
-    return `<div>${article} <b style="color:color-mix(in srgb, ${ATTRIBUTE_COLORS[key]} 60%, #fff)">${name}</b> ${how}${much}: ${step}.</div>`;
-  }).join('') || '<div>Nenhum atributo mudou.</div>'}<div class="gainhint">Em cima, a nota seguinte; em baixo, a de agora. Só mudaram os atributos destacados.</div></div>`;
-  const learned = [
+    return `${article} <b style="color:color-mix(in srgb, ${ATTRIBUTE_COLORS[key]} 60%, #fff)">${name}</b> ${how}${much}: ${step}.`;
+  });
+  if (!sentences.length) sentences.push('Nenhum atributo mudou.');
+  const barsHtml = `<div class="bars">${bars}</div>`;
+  const rows = `${barsHtml}<div class="gainlines">${sentences.map(line => `<div>${line}</div>`).join('')}<div class="gainhint">Em cima, a nota seguinte; em baixo, a de agora. Só mudaram os atributos destacados.</div></div>`;
+  const learnedLines = [
     result.newMove ? `Aprendeu ${MOVE_INFO[result.newMove].name}` : '',
     result.moveBlocked ? 'Já sabe 2 movimentos: não aprendeu mais nenhum' : '',
     combo?.offBall ? `Sem bola passa a ${OFF_BALL_INFO[combo.offBall].name}` : '',
     combo?.onBall ? `Com bola passa a ${ON_BALL_INFO[combo.onBall].name}` : '',
     combo && !combo.move && !combo.offBall && !combo.onBall ? `${combo.name}: estas cartas juntas valem mais do que separadas` : '',
-  ].filter(Boolean).map(line => `<div class="learned">${line}</div>`).join('');
+  ].filter(Boolean);
+  const learned = learnedLines.map(line => `<div class="learned">${line}</div>`).join('');
   const xs = cards.map((_, n) => place[cards.length === 2 ? n * 2 : n]! * (cards.length === 1 ? 0 : 1));
   // As cartas entram uma a uma; depois uma bola de luz passa por elas, da primeira à última, antes de se juntarem.
   const heroCards = cards.map((id, n) => `<img class="fx-card" style="--x:${xs[n]}px;--d:${n * 0.35}s" alt="${CARDS[id].name}" src="${cardImage(id, CARDS[id].category)}">`).join('');
@@ -383,20 +387,46 @@ function reportScreen(): Rendered {
           ${orb}
           ${sparks}
           <span class="fx-flash"></span>
-          <span class="fx-text"><span class="k">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</span><span class="n">${esc(combo.name)}</span><span class="cs">${cards.map(id => `<img alt="" src="${cardImage(id, CARDS[id].category)}">`).join('')}</span></span>
         </button>`
       : inside(playerCard(index, `<div class="slots">${cards.map(id => `<div class="slot"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></div>`).join('')}</div>`)),
-    bottom: `<div class="trainpop after${combo ? ' delayed' : ''}"><div class="box"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>${combo ? esc(combo.name) : 'Sem combo'}</b></div><div class="gains">${rows}${learned}</div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}</div></div>`,
+    bottom: combo ? comboCard(combo.name, isNew, before.name, lookFor(result.player), cards, barsHtml, sentences, learnedLines) : `<div class="trainpop after"><div class="box"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>Sem combo</b></div><div class="gains">${rows}${learned}</div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}</div></div>`,
     // As barras sobem depois de o ecrã aparecer, senão não havia nada a subir.
     // As barras precisam de ter o estilo inicial calculado antes de receberem a classe final, senão saltam sem transição:
     // ler a altura força esse cálculo. Com requestAnimationFrame, num computador rápido a classe chegava antes do primeiro
     // cálculo de estilo e a barra aparecia já no fim.
-    after: () => document.querySelectorAll<HTMLElement>('.bar7').forEach(el => {
-      void el.offsetHeight;
-      el.classList.add('go');
-    }),
+    after: () => {
+      document.querySelectorAll<HTMLElement>('.bar7').forEach(el => {
+        void el.offsetHeight;
+        el.classList.add('go');
+      });
+      // Quando o cartão do combo aparece sozinho, o foco passa para a faixa, para o Enter seguir logo.
+      if (combo) window.setTimeout(() => {
+        if (document.activeElement?.closest('.combofx')) host.panel.querySelector<HTMLElement>('.cc-say')?.focus({ preventScroll: true });
+      }, reducedMotion() ? 0 : COMBO_CARD_MS);
+    },
   };
 }
+
+/**
+ * O cartão do combo, como o «SPECIAL MENU» do Calciobit: depois do clarão, o título, o quadro do treino com o nome numa
+ * faixa inclinada, a mini-ficha do jogador com as barras a subir e, em baixo, o que mudou numa faixa que se toca para seguir.
+ * shortcut: o quadro mostra as cartas do combo; cada combo deve ter a sua ilustração própria (ver comparacao-calciobit.md).
+ */
+function comboCard(name: string, isNew: boolean, who: string, look: Look, cards: readonly CardId[], bars: string, sentences: readonly string[], learned: readonly string[]): string {
+  const art = cards.map(id => `<img alt="${esc(CARDS[id].name)}" src="${cardImage(id, CARDS[id].category)}">`).join('');
+  // Frases separadas por um espaço a sério e com o ponto no texto, para o leitor de ecrã não as colar.
+  const said = [...sentences, ...learned.map(line => `<b class="learned">${line}.</b>`)].join(' ');
+  // Como no Calciobit, toca-se em qualquer lado para seguir; o botão de baixo é o que o teclado e o leitor de ecrã usam.
+  return `<div class="trainpop after delayed combocard"><button type="button" class="cc-any" data-go="train" tabindex="-1" aria-label="Continuar"></button><div class="cc">
+    <div class="cc-title">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</div>
+    <div class="cc-frame"><div class="cc-art">${art}</div><b class="cc-name">${esc(name)}</b>
+      <div class="cc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look)}"><span>${esc(who)}</span></div>${bars}</div></div>
+    <button type="button" class="cc-say" data-go="train"><span>${said}</span><i aria-hidden="true">▶</i><span class="sr-only">Continuar</span></button>
+  </div></div>`;
+}
+
+/** Quando o cartão do combo aparece, em ms (o `fx-after` de .trainpop.delayed em style.css: 2,8 s mais 0,3 s). */
+const COMBO_CARD_MS = 3100;
 
 /** Pouco, normal ou bastante: o tamanho de uma subida, sem nunca dizer o número. */
 const gainSize = (gain: number): number => (Math.abs(gain) < 0.8 ? 1 : Math.abs(gain) < 2 ? 2 : 3);
@@ -1283,8 +1313,12 @@ function onClick(event: Event): void {
   } else if (data.act === 'trainNow') {
     trainNow();
   } else if (data.act === 'skipFx') {
+    // Com o cartão já à vista, o toque (ou o Enter) na cerimónia segue em frente.
+    if (target.classList.contains('done')) return host.panel.querySelector<HTMLElement>('.cc-say')?.click();
     target.classList.add('done');
     host.panel.querySelector('.after')?.classList.add('done');
+    // A cerimónia saltada já não faz nada: o Enter seguinte tem de seguir em frente, como o «Continuar» de antes.
+    host.panel.querySelector<HTMLElement>('.cc-say')?.focus({ preventScroll: true });
   } else if (data.act === 'teamExport') {
     downloadFile(`pocket-basketball-equipa-${club.team.short.replace(/[^\w-]/g, '') || 'clube'}.json`, teamFile(club));
     airportNote = 'A equipa foi para um ficheiro: manda-o a quem quiser jogar contra ela.';

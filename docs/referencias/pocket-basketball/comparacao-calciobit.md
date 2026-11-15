@@ -24,7 +24,8 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 
 ### Defeitos novos
 
-> **Resolvidos a 15 de novembro de 2026:** N9 e N10.
+> **Resolvidos a 15 de novembro de 2026:** N8, N9 e N10.
+> - No combo do treino, a cerimónia ocupa o ecrã todo, sem a janela, e acaba num cartão como o «SPECIAL MENU» do Calciobit: o título, o quadro do treino com o nome numa faixa inclinada, a mini-ficha com as barras a subir e, em baixo, uma faixa com o que mudou, que se toca para seguir. O treino sem combo fica como estava.
 > - Na apresentação, o prognóstico fica no espaço à esquerda da janela do cinco inicial e as duas faixas dos clubes ficam encostadas à esquerda, uma por baixo da outra; o prognóstico sai com a bola ao alto, junto com as faixas.
 > - Os botões do jogo flutuam sobre o campo inteiro, sem a coluna à direita.
 
@@ -59,6 +60,7 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 - O dia de jogo tem o mesmo ritmo dos menus: entrar no pavilhão leva o mesmo fundido de qualquer ecrã.
 - O fim de um jogo normal não mostra o resultado final em grande.
 - O título não tem clarão.
+- **Cada combo deve ter uma ilustração única**, como cada treino especial do Calciobit (um desenho cómico do treino, por exemplo `menu/treino/treino-03.jpg` a `treino-07.jpg`). Hoje o quadro do cartão do combo (`comboCard` em `src/ui/menus.ts`) mostra as três cartas usadas, como remedeio. Falta desenhar uma cena por combo, em pixel art gerada por código, a passar pela revisão do skill visual-design.
 
 ### O que gravar a seguir
 
