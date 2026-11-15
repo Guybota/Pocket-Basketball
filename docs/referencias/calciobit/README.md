@@ -9,7 +9,7 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 - **[fluxos-ui.md](fluxos-ui.md):** o caminho entre ecrãs, que botões há em cada menu e a ordem antes, durante e depois de um jogo.
 - **[camara-e-estilo.md](camara-e-estilo.md):** a câmara do jogo, o marcador, os golos e o estilo visual (cores, molduras, tipografia).
 - **Uma pasta por ecrã**, em `menu/`, `jogo/` e `cena/`. Cada uma tem um `README.md` com cada imagem, a descrição, as etiquetas e a origem, mais uma `_folha.jpg` com todas as imagens juntas. Para um agente, a folha basta para ver o ecrã de uma vez.
-- **[sequencias/](#sequências):** 46 sequências de frames tiradas dos vídeos, com as animações, os movimentos de câmara e as transições. Cada uma tem uma `_folha.jpg` numerada e um `README.md` frame a frame.
+- **[sequencias/](#sequências):** 50 sequências de frames tiradas dos vídeos, com as animações, os movimentos de câmara e as transições. Cada uma tem uma `_folha.jpg` numerada e um `README.md` frame a frame.
 - **[catalogo-completo.jsonl](catalogo-completo.jsonl):** as 1141 imagens classificadas, incluindo as que não ficaram aqui, com a ligação à miniatura original no YouTube. Uma linha JSON por imagem: `categoria`, `ecra`, `etiquetas`, `descricao`, `qualidade`, `overlay`, `video`, `miniatura`.
 
 ## Como foi feito (e os limites)
@@ -29,12 +29,12 @@ Imagens do **Calciobit A** (カルチョビットA, iOS e Android), o jogo japon
 
 ## Sequências
 
-Sequências de frames tiradas dos vídeos, para estudar o que as imagens soltas não mostram: animações, movimentos de câmara e transições entre ecrãs. Foram extraídas em 10 de novembro de 2026 de 17 vídeos de oito canais, descarregados a 720p e apagados no fim. Em 15 de novembro de 2026 juntaram-se dez sequências do treino, de mais dois vídeos (UN9g62Rw7M4 e CbFU3oY9Al0, descarregados a 360p e 480p e também apagados).
+Sequências de frames tiradas dos vídeos, para estudar o que as imagens soltas não mostram: animações, movimentos de câmara e transições entre ecrãs. Foram extraídas em 10 de novembro de 2026 de 17 vídeos de oito canais, descarregados a 720p e apagados no fim. Em 15 de novembro de 2026 juntaram-se dez sequências do treino, de mais dois vídeos (UN9g62Rw7M4 e CbFU3oY9Al0, descarregados a 360p e 480p e também apagados), e mais quatro de treinos normais com duas e três cartas, de três vídeos (PiWp6WVzqQA, a_AwLG5P3KM e CtR9CmLxZ9I, descarregados a 360p ou só o troço a 480p e apagados).
 
 - **Organização:** `sequencias/<area>/<nome>/`, com `frame-0001.jpg`… a 640×360, uma `_folha.jpg` com os frames numerados e um `README.md`.
 - **README de cada sequência:** o que acontece frame a frame, a duração, o fps e a origem, com a ligação ao segundo do vídeo e as etiquetas.
 - **fps:** 10 para movimentos de câmara e transições, 30 para animações curtas. Para medir uma duração, conta os frames e divide pelo fps.
-- **Total:** 46 sequências, cerca de 62 MB. As conclusões estão em [fluxos-ui.md](fluxos-ui.md) e [camara-e-estilo.md](camara-e-estilo.md).
+- **Total:** 50 sequências, cerca de 79 MB. As conclusões estão em [fluxos-ui.md](fluxos-ui.md) e [camara-e-estilo.md](camara-e-estilo.md).
 
 ### Jogo e câmara
 
@@ -105,6 +105,10 @@ Em [sequencias/menus-transicoes/](sequencias/menus-transicoes/): as mudanças de
 | [Treino: abrir uma gaveta de cartas e trocar de gaveta](sequencias/menus-transicoes/treino-gavetas-abrir-e-trocar/README.md) | 3,1 s | 10 | 31 | [ver](sequencias/menus-transicoes/treino-gavetas-abrir-e-trocar/_folha.jpg) |
 | [Treino: arrastar cartas para cima da gaveta](sequencias/menus-transicoes/treino-colocar-cartas-e-trocar-gaveta/README.md) | 5,2 s | 10 | 52 | [ver](sequencias/menus-transicoes/treino-colocar-cartas-e-trocar-gaveta/_folha.jpg) |
 | [Treino normal: uma carta, sem combo](sequencias/menus-transicoes/treino-normal-uma-carta/README.md) | 13,5 s | 10 | 135 | [ver](sequencias/menus-transicoes/treino-normal-uma-carta/_folha.jpg) |
+| [Treino normal: duas cartas, sem combo](sequencias/menus-transicoes/treino-normal-duas-cartas/README.md) | 8,6 s | 10 | 86 | [ver](sequencias/menus-transicoes/treino-normal-duas-cartas/_folha.jpg) |
+| [Treino normal: três cartas sem combo, sem saltar nada](sequencias/menus-transicoes/treino-normal-tres-cartas-completo/README.md) | 10,0 s | 10 | 100 | [ver](sequencias/menus-transicoes/treino-normal-tres-cartas-completo/_folha.jpg) |
+| [Treino normal: três cartas táticas, sem combo](sequencias/menus-transicoes/treino-normal-tres-cartas-taticas/README.md) | 5,5 s | 10 | 55 | [ver](sequencias/menus-transicoes/treino-normal-tres-cartas-taticas/_folha.jpg) |
+| [Treino normal: três cartas de gavetas diferentes, sem combo](sequencias/menus-transicoes/treino-normal-tres-cartas-mistas/README.md) | 4,6 s | 10 | 46 | [ver](sequencias/menus-transicoes/treino-normal-tres-cartas-mistas/_folha.jpg) |
 | [Treino normal: ilustração animada e jogador já treinado](sequencias/menus-transicoes/treino-normal-jogador-ja-treinado/README.md) | 11,0 s | 10 | 110 | [ver](sequencias/menus-transicoes/treino-normal-jogador-ja-treinado/_folha.jpg) |
 | [Treino normal saltado, e sair do treino para o mapa](sequencias/menus-transicoes/treino-normal-saltar-e-sair-para-mapa/README.md) | 9,5 s | 10 | 95 | [ver](sequencias/menus-transicoes/treino-normal-saltar-e-sair-para-mapa/_folha.jpg) |
 | [Treino: a «SPリスト» (lista de treinos especiais)](sequencias/menus-transicoes/treino-sp-lista/README.md) | 7,4 s | 10 | 74 | [ver](sequencias/menus-transicoes/treino-sp-lista/_folha.jpg) |

@@ -164,6 +164,8 @@ function playerCard(index: number, extra?: string): string {
   const p = club.team.roster[index]!;
   const stats = club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 };
   const recent = club.recentTraining[p.name] ?? [];
+  // No treino, quem já treinou esta semana fica escurecido e com a etiqueta, como o «já treinado» do Calciobit.
+  const trained = screen === 'train' && club.trainedThisWeek.includes(p.name);
   // As últimas 4 semanas, da mais antiga para esta: um visto nas que treinou, um X vermelho nas que esteve lesionado.
   const history = [3, 2, 1, 0].map(n => {
     const week = club.season * 100 + club.week - n;
@@ -173,7 +175,7 @@ function playerCard(index: number, extra?: string): string {
   return `<div class="pcard">
     <header>${ownCrest()}<span>${index < 5 ? SLOT_NAMES[index] : 'Suplente'}</span><b>${esc(p.name)}</b>${bodyStars(p)}</header>
     <div class="pbody">
-      <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookFor(p))}">
+      <img class="pportrait${trained ? ' trained' : ''}" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookFor(p))}">${trained ? '<span class="ptrained">Treinado</span>' : ''}
       <div class="pshirt" aria-label="Camisola ${shirtOf(p)}">${shirtOf(p)}</div>
       <div>
         <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
@@ -204,7 +206,7 @@ const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.fi
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
   const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= B.matchSquad ? ' reserve' : index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
-      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(liveTactics().options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
+      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${screen === 'train' && club.trainedThisWeek.includes(p.name) ? '<em class="ptag">Treinado</em>' : ''}${esc(p.name)}${optionMark(liveTactics().options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
   const rows = club.team.roster.map(row);
   // Para lá da ficha de jogo ficam os reservas: trocam-se para dentro com o ⇄, como os outros.
@@ -346,7 +348,10 @@ function reportScreen(): Rendered {
     const start = from < floor ? 0 : from >= ceiling ? 100 : ((from - floor) / (ceiling - floor)) * 100;
     const end = ((to - floor) / (ceiling - floor)) * 100;
     const next = ceiling >= 100 ? 'S' : gradeOf(ceiling);
-    return `<div class="bar7${result.gains[key] ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}"><b class="gr gr-${next} next" title="Nota seguinte">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
+    // Por cima da barra, o tamanho da subida em setas, sem nunca dizer o número (como as frases).
+    const gain = result.gains[key];
+    const arrows = gain ? `<i class="gain${gain < 0 ? ' down' : ''}" aria-hidden="true">${(gain > 0 ? '▲' : '▼').repeat(gainSize(gain))}</i>` : '';
+    return `<div class="bar7${gain ? ' changed' : ''}" style="--from:${start.toFixed(0)}%;--to:${end.toFixed(0)}%;--c:${ATTRIBUTE_COLORS[key]}">${arrows}<b class="gr gr-${next} next" title="Nota seguinte">${next}</b><div class="track"><i class="fill"></i><img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}"></div>${grade(to)}</div>`;
   }).join('');
   const sentences = ATTRIBUTE_KEYS.filter(key => result.gains[key]).map(key => {
     const gain = result.gains[key]!;
@@ -361,7 +366,6 @@ function reportScreen(): Rendered {
   });
   if (!sentences.length) sentences.push('Nenhum atributo mudou.');
   const barsHtml = `<div class="bars">${bars}</div>`;
-  const rows = `${barsHtml}<div class="gainlines">${sentences.map(line => `<div>${line}</div>`).join('')}<div class="gainhint">Em cima, a nota seguinte; em baixo, a de agora. Só mudaram os atributos destacados.</div></div>`;
   const learnedLines = [
     result.newMove ? `Aprendeu ${MOVE_INFO[result.newMove].name}` : '',
     result.moveBlocked ? 'Já sabe 2 movimentos: não aprendeu mais nenhum' : '',
@@ -369,7 +373,6 @@ function reportScreen(): Rendered {
     combo?.onBall ? `Com bola passa a ${ON_BALL_INFO[combo.onBall].name}` : '',
     combo && !combo.move && !combo.offBall && !combo.onBall ? `${combo.name}: estas cartas juntas valem mais do que separadas` : '',
   ].filter(Boolean);
-  const learned = learnedLines.map(line => `<div class="learned">${line}</div>`).join('');
   const xs = cards.map((_, n) => place[cards.length === 2 ? n * 2 : n]! * (cards.length === 1 ? 0 : 1));
   // As cartas entram uma a uma; depois uma bola de luz passa por elas, da primeira à última, antes de se juntarem.
   const heroCards = cards.map((id, n) => `<img class="fx-card" style="--x:${xs[n]}px;--d:${n * 0.35}s" alt="${CARDS[id].name}" src="${cardImage(id, CARDS[id].category)}">`).join('');
@@ -388,8 +391,8 @@ function reportScreen(): Rendered {
           ${sparks}
           <span class="fx-flash"></span>
         </button>`
-      : inside(playerCard(index, `<div class="slots">${cards.map(id => `<div class="slot"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></div>`).join('')}</div>`)),
-    bottom: combo ? comboCard(combo.name, isNew, before.name, lookFor(result.player), cards, barsHtml, sentences, learnedLines) : `<div class="trainpop after"><div class="box"><div class="matchhead"><span>Treino de ${esc(before.name)}</span><b>Sem combo</b></div><div class="gains">${rows}${learned}</div>${bar('<button type="button" class="primary" data-go="train">Continuar</button>')}</div></div>`,
+      : trainShow(cards),
+    bottom: combo ? comboCard(combo.name, isNew, before.name, lookFor(result.player), cards, barsHtml, sentences, learnedLines) : trainCard(cards.length, before.name, lookFor(result.player), barsHtml, sentences, learnedLines),
     // As barras sobem depois de o ecrã aparecer, senão não havia nada a subir.
     // As barras precisam de ter o estilo inicial calculado antes de receberem a classe final, senão saltam sem transição:
     // ler a altura força esse cálculo. Com requestAnimationFrame, num computador rápido a classe chegava antes do primeiro
@@ -399,10 +402,10 @@ function reportScreen(): Rendered {
         void el.offsetHeight;
         el.classList.add('go');
       });
-      // Quando o cartão do combo aparece sozinho, o foco passa para a faixa, para o Enter seguir logo.
-      if (combo) window.setTimeout(() => {
-        if (document.activeElement?.closest('.combofx')) host.panel.querySelector<HTMLElement>('.cc-say')?.focus({ preventScroll: true });
-      }, reducedMotion() ? 0 : COMBO_CARD_MS);
+      // Quando o resultado aparece sozinho, o foco passa para a faixa, para o Enter seguir logo.
+      window.setTimeout(() => {
+        if (document.activeElement?.closest('.combofx, .trainfx')) host.panel.querySelector<HTMLElement>('.cc-say')?.focus({ preventScroll: true });
+      }, reducedMotion() ? 0 : combo ? COMBO_CARD_MS : (trainWait(cards.length) + 0.3) * 1000);
     },
   };
 }
@@ -421,6 +424,38 @@ function comboCard(name: string, isNew: boolean, who: string, look: Look, cards:
     <div class="cc-title">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</div>
     <div class="cc-frame"><div class="cc-art">${art}</div><b class="cc-name">${esc(name)}</b>
       <div class="cc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look)}"><span>${esc(who)}</span></div>${bars}</div></div>
+    <button type="button" class="cc-say" data-go="train"><span>${said}</span><i aria-hidden="true">▶</i><span class="sr-only">Continuar</span></button>
+  </div></div>`;
+}
+
+/**
+ * O treino sem combo, como no Calciobit: as cartas aparecem juntas no pavilhão de treino e viram-se como moedas; a
+ * ilustração de cada uma sai em grande, uma a uma; no fim ficam pequenas, em escada. Um toque salta tudo.
+ * shortcut: a ilustração é a imagem da carta ampliada; cada carta deve ter a sua (ver comparacao-calciobit.md).
+ */
+function trainShow(cards: readonly CardId[]): string {
+  const n = cards.length;
+  const xs = n === 1 ? [50] : n === 2 ? [30, 70] : [27, 50, 73];
+  // A escada final do Calciobit: com três, a 1.ª em cima à direita, a 2.ª em cima ao meio e a 3.ª em baixo à esquerda.
+  const steps = n === 3 ? [[56, 2], [28, 12], [3, 44]] : n === 2 ? [[3, 4], [10, 44]] : [[3, 6]];
+  const look = (id: CardId): string => `--art:url(${cardImage(id, CARDS[id].category)});--cat:${CATEGORY_INFO[CARDS[id].category].color}`;
+  return `<button type="button" class="trainfx" data-act="skipFx" aria-label="Ver já o resultado" style="--wait:${trainWait(n)}s;--n:${n}">
+    ${cards.map((id, i) => `<span class="tf-card" style="--x:${xs[i]}%"><b>${esc(CARDS[id].name)}</b><img alt="" src="${cardImage(id, CARDS[id].category)}"></span>`).join('')}
+    ${cards.map((id, i) => `<span class="tf-big" style="${look(id)};--d:${TRAIN_FLIP + i * TRAIN_EACH}s"><b class="tf-name">${esc(CARDS[id].name)}</b></span>`).join('')}
+    ${cards.map((id, i) => `<span class="tf-small" style="${look(id)};left:${steps[i]![0]}%;top:${steps[i]![1]}%"><b class="tf-name">${esc(CARDS[id].name)}</b></span>`).join('')}
+  </button>`;
+}
+
+/** Em segundos: quando as cartas acabam de se virar, quanto leva cada ilustração, e quando aparece o resultado (os mesmos tempos do CSS de .trainfx). */
+const TRAIN_FLIP = 1.8;
+const TRAIN_EACH = 1.2;
+const trainWait = (n: number): number => TRAIN_FLIP + n * TRAIN_EACH + 0.3;
+
+/** O resultado do treino sem combo: a mini-ficha no canto e a faixa do que mudou, como o cartão do combo mas sem título nem quadro. */
+function trainCard(n: number, who: string, look: Look, bars: string, sentences: readonly string[], learned: readonly string[]): string {
+  const said = [...sentences, ...learned.map(line => `<b class="learned">${line}.</b>`)].join(' ');
+  return `<div class="trainpop after delayed trainshow" style="--wait:${trainWait(n)}s"><button type="button" class="cc-any" data-go="train" tabindex="-1" aria-label="Continuar"></button><div class="cc">
+    <div></div><div class="tc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look)}"><span>${esc(who)}</span></div>${bars}</div>
     <button type="button" class="cc-say" data-go="train"><span>${said}</span><i aria-hidden="true">▶</i><span class="sr-only">Continuar</span></button>
   </div></div>`;
 }
@@ -1317,6 +1352,12 @@ function onClick(event: Event): void {
     if (target.classList.contains('done')) return host.panel.querySelector<HTMLElement>('.cc-say')?.click();
     target.classList.add('done');
     host.panel.querySelector('.after')?.classList.add('done');
+    // As barras já tinham a transição marcada com o atraso da cerimónia: recomeça-se, para subirem logo.
+    host.panel.querySelectorAll<HTMLElement>('.bar7').forEach(el => {
+      el.classList.remove('go');
+      void el.offsetHeight;
+      el.classList.add('go');
+    });
     // A cerimónia saltada já não faz nada: o Enter seguinte tem de seguir em frente, como o «Continuar» de antes.
     host.panel.querySelector<HTMLElement>('.cc-say')?.focus({ preventScroll: true });
   } else if (data.act === 'teamExport') {

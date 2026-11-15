@@ -60,6 +60,7 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 - O dia de jogo tem o mesmo ritmo dos menus: entrar no pavilhão leva o mesmo fundido de qualquer ecrã.
 - O fim de um jogo normal não mostra o resultado final em grande.
 - O título não tem clarão.
+- **O treino sem combo** passou a ser como no Calciobit (15 de novembro de 2026): cartas juntas, ilustração de cada carta em grande, uma a uma, escada final com a mini-ficha e a faixa, e «Treinado» na lista. **Cada carta também deve ter uma ilustração própria**: hoje mostra a imagem da carta ampliada, como remedeio.
 - **Cada combo deve ter uma ilustração única**, como cada treino especial do Calciobit (um desenho cómico do treino, por exemplo `menu/treino/treino-03.jpg` a `treino-07.jpg`). Hoje o quadro do cartão do combo (`comboCard` em `src/ui/menus.ts`) mostra as três cartas usadas, como remedeio. Falta desenhar uma cena por combo, em pixel art gerada por código, a passar pela revisão do skill visual-design.
 
 ### O que gravar a seguir
@@ -67,6 +68,34 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 - Um movimento especial da nossa equipa que dê cesto, para a lacuna 7.
 - Os toques e a ida para o jogo a 30 fps, para as lacunas 4 e 19.
 - Um lance livre com o jogo apertado, a quinta falta, uma derrota e um prolongamento.
+
+## A cidade contra o mapa do Calciobit, 15 de novembro de 2026
+
+Comparação para ajuste futuro; nada mudou ainda. Capturas em [cidade/](cidade/): [pré-época](cidade/pre-epoca-1280x720.png), [semana de jogo](cidade/semana-de-jogo-1280x720.png) e [no telemóvel](cidade/semana-de-jogo-844x390.png). O Calciobit está em [fluxos-ui.md](../calciobit/fluxos-ui.md) («O mapa da cidade») e [cena/cidade-mapa](../calciobit/cena/cidade-mapa/README.md).
+
+| | Calciobit | Pocket Basketball |
+|---|---|---|
+| Mapa | Cidade isométrica, 5 edifícios com etiqueta | Igual, com 6 sítios, jogadores a passear, carros e uma grua: mais vida |
+| Estações e hora | Primavera com cerejeiras, verão, outono dourado, inverno; amarelado ao fim do dia | Luz do dia e noite; estações por confirmar (as capturas são todas de setembro) |
+| Data | Mês e semana grandes em dois círculos, em cima à esquerda, com ▶ ao lado para passar a semana | «Setembro · Semana 3» em letra normal na faixa de cima; «Passar a semana ›» num botão ao centro |
+| Próximo jogo | Cartão por baixo da data: equipas, lugar de cada uma na liga, «faltam N semanas» | Cartão em cima ao centro: emblemas, jornada, «Daqui a 2 semanas», casa ou fora; falta o lugar na liga |
+| Semana de jogo | Bandeiras das duas equipas no estádio; o adjunto em retrato grande pergunta se vamos ao estádio (sim/não) | O cartão diz «Esta semana» e o «Passar a semana» desaparece; ninguém pergunta, é preciso saber que se toca no Pavilhão |
+| Quem fala | O adjunto em retrato grande, numa caixa de diálogo | A secretária num cartão pequeno em baixo à esquerda, com a dica e uma linha de estado |
+| Passar a semana | Corte pelo preto; a semana muda às escuras | O mapa escurece e volta (parecido) |
+| Voltar ao mapa | O cartão do próximo jogo entra com um salto de escala (0,4 s) | Aparece sem animação |
+| Rodapé | Uma dica a passar em letra pequena | Não há; a dica é a da secretária |
+
+**Defeitos do nosso:**
+- Na semana de jogo nada diz «vai jogar»: o caminho para o jogo, a coisa mais importante da semana, está escondido.
+- No telemóvel o cartão da secretária tapa um quarto da cidade, e a cidade fica pequena no meio da floresta.
+- A linha de estado da secretária repete o cartão de cima (jornada, casa ou fora) e mistura-se com a dica.
+
+**Propostas, por ordem:**
+1. Semana de jogo como no Calciobit: bandeiras das duas equipas no Pavilhão e o adjunto (ou a secretária) em retrato grande a perguntar «Há jogo esta semana. Vamos para o pavilhão?», com Sim e Não.
+2. Data maior: mês e semana em destaque em cima à esquerda, com o ▶ de passar a semana ao lado, em vez do botão ao centro.
+3. Cartão do próximo jogo com o lugar de cada equipa na liga e o salto ao aparecer.
+4. Secretária mais leve: só a dica, numa faixa em baixo, sem a linha de estado repetida.
+5. Estações no mapa, se ainda não houver (arte nova, para mais tarde).
 
 ## Em resumo (gravação anterior)
 

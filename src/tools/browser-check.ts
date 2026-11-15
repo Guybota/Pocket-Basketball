@@ -421,13 +421,28 @@ try {
   check('O combo ensina um movimento especial', trainedClub.team.roster[0]!.moves.length === movesBefore + 1 && trainedClub.knownCombos.includes('brokenAnkles'), trainedClub.team.roster[0]!.moves.join(', '));
   check('Só o jogador escolhido é que treinou', trainedClub.trainedThisWeek.length === 1);
   await coach.click('[data-go="train"]');
+  // O treino sem combo: as cartas e as ilustrações no ecrã todo, um toque salta para o resultado e outro volta à lista.
+  await coach.click('[data-player="1"]');
+  await coach.click('[data-act="openCards"]');
+  await coach.locator('.gcard:not([disabled])').first().click();
+  await coach.click('[data-act="trainNow"]');
+  await coach.waitForSelector('.trainfx');
+  await coach.waitForTimeout(1200);
+  await coach.screenshot({ path: `${OUT}/treino-normal-animacao.png` }); // a meio da animação, de propósito
+  await coach.click('.trainfx');
+  await coach.waitForTimeout(500);
+  await shot(coach, `${OUT}/treino-normal.png`);
+  check('O treino sem combo mostra o resultado depois de saltar', await coach.locator('.trainshow .cc-say').isVisible());
+  await coach.keyboard.press('Enter');
+  await coach.waitForSelector('.prow');
+  check('Quem já treinou fica marcado na lista', (await coach.locator('.prow .ptag').count()) === 2);
   await coach.click('[data-go="combos"]');
   await shot(coach, `${OUT}/treino-combos.png`);
   await coach.click('.back');
   await coach.click('.back');
   await reloadClub(coach);
   await coach.waitForSelector('#arenaChip');
-  check('O treino fica guardado ao recarregar a página', await coach.evaluate(() => window.__pocket.club()!.trainedThisWeek.length === 1 && window.__pocket.club()!.knownCombos.includes('brokenAnkles')));
+  check('O treino fica guardado ao recarregar a página', await coach.evaluate(() => window.__pocket.club()!.trainedThisWeek.length === 2 && window.__pocket.club()!.knownCombos.includes('brokenAnkles')));
   await coach.click('#trainBtn');
   await coach.click('[data-player="0"]');
   check('Cada jogador só treina uma vez por semana', await coach.locator('[data-act="openCards"]').isDisabled());

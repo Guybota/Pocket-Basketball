@@ -564,8 +564,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* Só a carta nova (a última) vira: a lista reescreve-se a cada carta que cai, e as que já lá estavam viravam outra vez. */
 .found-card:last-child img { animation: card-in .35s both; }
 @keyframes card-in { from { opacity: 0; transform: rotateY(90deg); } to { opacity: 1; transform: none; } }
-.gainrow > .gr:nth-of-type(2) { animation: grade-pop .4s .25s both; }
-@keyframes grade-pop { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
 html.reduce-motion :is(#game.stage-in, #game.stage-in-slow, .found-card:last-child img, .gainrow > .gr:nth-of-type(2)) { animation: none; }
 /* A apresentação antes do jogo: os cinco de cada lado entram um a um. */
 .intro { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: linear-gradient(var(--paint), var(--paint-dk)); color: var(--paper); }
@@ -1008,7 +1006,6 @@ html.reduce-motion .say { animation: none; }
 .prow.trained { box-shadow: inset 4px 0 0 var(--good); }
 .prow.trained .name { color: var(--good); }
 .prow.trained[aria-pressed="true"] .name { color: var(--ink); }
-.gains { padding: 4px 6px; display: grid; gap: 3px; align-content: start; }
 /* O resultado do treino: sete barras que sobem até à nota seguinte, com o ícone a trepar. */
 .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 6px 4px; background: var(--paper-2); border: 2px solid var(--ink); }
 
@@ -1031,18 +1028,9 @@ html.reduce-motion .say { animation: none; }
 .bar7.go .track img { bottom: calc(var(--to) - 16px); }
 
 
-.gainlines { display: grid; gap: 4px; padding: 6px; background: var(--ink); color: var(--paper); font: 400 18px/1.2 var(--ui); }
-
-.gainlines b { font-weight: 400; }
-.gainhint { font: 400 14px/1.15 var(--small); opacity: .8; }
 
 /* As barras do treino sobem mesmo com as animações reduzidas no sistema: é o resultado do treino, não um efeito — sem isto, no Windows com os efeitos de animação desligados, nunca se via a subida. */
 
-.gainrow { display: grid; grid-template-columns: 18px 1fr 18px 8px 18px 44px; gap: 4px; align-items: center; padding: 2px 4px; background: var(--paper-2); font: 400 17px/1 var(--ui); }
-.gainrow img { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
-.gainrow i { font-style: normal; text-align: center; color: var(--muted); }
-.gainrow > b:last-child { font-weight: 400; text-align: right; color: var(--good); }
-.gainrow.down > b:last-child { color: var(--bad); }
 .learned { padding: 3px 6px; background: var(--gold); border: 2px solid var(--ink); font: 400 15px/1 var(--small); }
 .after { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
@@ -1190,13 +1178,67 @@ html.reduce-motion .fx-rays { animation: none; opacity: 1; }
 .chalkarrow:disabled { opacity: .3; }
 .edot.target { background: var(--away); border-radius: 0; transform: rotate(45deg); }
 
-/* O resultado do treino: uma janela ao centro do ecrã, por cima da ficha e das cartas. */
+/* O resultado do treino, por cima de tudo: o cartão do combo (.combocard) ou o do treino sem combo (.trainshow). */
 .trainpop { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 8px; background: rgba(27, 34, 48, .45); }
-.trainpop .box { width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px; box-shadow: 4px 4px 0 var(--ink); }
 .trainpop.delayed:not(.done) { animation: fx-after .3s 2.8s both, fx-pop-wait 3.1s both; }
 .trainpop.delayed:not(.done) .fill, .trainpop.delayed:not(.done) .track img { transition-delay: 3.1s; }
-html.reduce-motion .trainpop.delayed:not(.done) :is(.fill, .track img) { transition-delay: .3s; }
+html.reduce-motion .trainpop.delayed:not(.done) :is(.fill, .track img), html.reduce-motion .trainpop.trainshow:not(.done) :is(.fill, .track img) { transition-delay: .3s; }
 @keyframes fx-pop-wait { from, 99% { pointer-events: none; } to { pointer-events: auto; } }
+
+/* O treino sem combo, como no Calciobit (ver trainShow em menus.ts; os tempos são TRAIN_FLIP e TRAIN_EACH): as cartas
+ * aparecem juntas no pavilhão de treino (0,2–1,4 s) e viram-se como moedas (até 1,8 s); cada ilustração sai em grande,
+ * uma a uma (1,2 s cada); no fim ficam pequenas, em escada, e aparece o resultado. Um toque salta para o fim. */
+#panel:has(.trainshow) { visibility: hidden; }
+#game.floating:has(.trainshow) #topUi .trainfx { left: 0; right: 0; }
+.trainfx { container-type: size; position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; min-height: 0; border: 0; box-shadow: none; background: none; overflow: hidden; }
+.trainfx:hover, .trainfx:active { background: none; transform: none; box-shadow: none; }
+/* Medidas em cq (o tamanho da cena): a parte de cima tem zoom, e os px e os vw cresciam com ele. */
+/* shortcut: a carta ampliada não fica a escala inteira (2,9× a 8,6× conforme o ecrã); serve até haver uma ilustração por carta, desenhada ao tamanho do quadro. */
+.tf-card { position: absolute; left: var(--x); top: 42%; width: 18cqw; margin-left: -9cqw; transform: translateY(-50%); text-align: center; opacity: 0; animation: tf-card 1.6s .2s both; }
+.tf-card b { display: block; margin-bottom: 4px; padding: 3px 0; background: var(--paper); border: 3px solid var(--ink); font: 400 20px/1 var(--display); color: var(--ink); }
+.tf-card img { display: block; width: 100%; aspect-ratio: 40 / 44; height: auto; image-rendering: pixelated; border: 3px solid var(--ink); }
+.tf-big, .tf-small { position: absolute; background: var(--art) center / contain no-repeat, var(--cat); image-rendering: pixelated; }
+.tf-big { left: 50%; top: 48%; width: min(66cqw, 90cqh * 1.6); aspect-ratio: 16 / 10; margin-left: calc(min(66cqw, 90cqh * 1.6) / -2); translate: 0 -50%; border: 6px solid var(--paper); box-shadow: 6px 6px 0 var(--ink); transform: scaleX(0); animation: tf-big 1.2s var(--d) both; }
+.tf-small { width: calc(34cqw - var(--n, 1) * 2cqw); aspect-ratio: 16 / 10; border: 4px solid var(--paper); box-shadow: 4px 4px 0 var(--ink); opacity: 0; animation: tf-small .3s calc(var(--wait) - .3s) both; }
+.tf-name { position: absolute; left: -10px; bottom: 14px; padding: 6px 24px 6px 14px; background: var(--ink); color: var(--paper); font: 400 30px/1 var(--display); transform: skewX(-12deg); }
+.tf-small .tf-name { font-size: 20px; bottom: 8px; padding: 4px 16px 4px 10px; }
+@keyframes tf-card { 0% { opacity: 0; } 8% { opacity: 1; } 85% { opacity: 1; transform: translateY(-50%) scaleX(1); } 100% { opacity: 1; transform: translateY(-50%) scaleX(0); } }
+@keyframes tf-big { 0% { transform: scaleX(0); } 25% { transform: scaleX(1); } 83% { transform: scale(1); opacity: 1; } 100% { transform: scale(.3); opacity: 0; } }
+@keyframes tf-small { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: none; } }
+.trainfx.done :is(.tf-card, .tf-big) { animation: none; opacity: 0; }
+.trainfx.done .tf-small { animation: none; opacity: 1; }
+html.reduce-motion :is(.tf-card, .tf-big) { animation: none; opacity: 0; }
+html.reduce-motion .tf-small { animation: none; opacity: 1; }
+.trainpop.trainshow { visibility: visible; display: block; padding: 0; background: none; }
+.trainpop.trainshow:not(.done) { animation: fx-after .3s var(--wait) both, fx-pop-wait calc(var(--wait) + .3s) both; }
+.trainpop.trainshow:not(.done) :is(.fill, .track img) { transition-delay: calc(var(--wait) + .3s); }
+/* A faixa não se toca nem recebe o foco enquanto está invisível: um toque ou um Enter nela saía do treino sem o resultado. */
+@keyframes cc-hold { from, 99% { visibility: hidden; pointer-events: none; } to { visibility: visible; pointer-events: auto; } }
+.trainpop.delayed:not(.done) .cc-say { animation: cc-hold 2.8s both; }
+.trainpop.trainshow:not(.done) .cc-say { animation: cc-hold var(--wait) both; }
+html.reduce-motion .trainpop .cc-say { animation: none; }
+.tc-mini { align-self: end; justify-self: end; margin-right: 2%; width: 330px; padding: 6px; background: var(--paper); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+.tc-mini .cc-who { gap: 8px; margin-bottom: 6px; font: 400 22px/1 var(--display); }
+.tc-mini .cc-who img { width: 48px; height: 48px; border-width: 2px; }
+@media (max-height: 500px) {
+  .tf-card b { font-size: 15px; }
+  .tf-small { width: calc(30cqw - var(--n, 1) * 2cqw); } .tf-small .tf-name { font-size: 14px; } .tf-name { font-size: 22px; }
+  .tc-mini { width: 190px; } .tc-mini .bars { zoom: .5; } .tc-mini .bar7 .gr { font-size: 26px; }
+  .tc-mini .cc-who { font-size: 15px; } .tc-mini .cc-who img { width: 28px; height: 28px; }
+}
+/* As setas do tamanho da subida, por cima de cada barra que mudou. */
+.bar7 { position: relative; }
+.bar7 .gain { position: absolute; left: 0; right: 0; top: -14px; text-align: center; font: 400 12px/1 var(--small); font-style: normal; color: var(--good); }
+.bar7 .gain.down { color: var(--bad); }
+.bars:has(.gain) { padding-top: 16px; }
+/* Nas mini-fichas a metade (zoom .5), as setas a dobrar para continuarem a ler-se. */
+.cc-mini .bar7 .gain { font-size: 22px; top: -24px; } .cc-mini .bars:has(.gain) { padding-top: 28px; }
+@media (max-height: 500px) { .tc-mini .bar7 .gain { font-size: 22px; top: -24px; } .tc-mini .bars:has(.gain) { padding-top: 28px; } }
+/* Na lista e na ficha do treino, quem já treinou esta semana: a etiqueta e a cara escurecida. */
+.ptag { margin-right: 6px; padding: 1px 4px; background: var(--ink); color: var(--paper); font: 400 12px/1 var(--small); font-style: normal; vertical-align: middle; }
+.pportrait.trained { filter: brightness(.45) saturate(.4); }
+.pbody { position: relative; }
+.ptrained { position: absolute; left: 6px; top: 58px; padding: 2px 6px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); font: 400 14px/1 var(--ui); }
 
 /* O cartão do combo, como o «SPECIAL MENU» do Calciobit: a cerimónia ocupa o ecrã todo, sem a janela, e acaba neste
  * cartão por cima dos raios. O quadro leva a ilustração (por agora as cartas), o nome numa faixa inclinada e a mini-ficha. */

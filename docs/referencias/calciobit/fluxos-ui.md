@@ -85,6 +85,16 @@ flowchart TD
   7. fica tudo parado à espera de um toque (2,5–3,5 s nos vídeos). Não há texto do adjunto;
   8. corte seco para a fila: o jogador que treinou fica escurecido, quase uma silhueta azul-escura ou castanha, com a etiqueta branca «特訓済» (já treinado) no peito.
   Um toque durante a carta salta a volta e a ilustração grande e vai direto para a mini-ficha.
+- **Treino normal com duas ou três cartas** (sem combo; [treino-normal-duas-cartas](sequencias/menus-transicoes/treino-normal-duas-cartas/README.md), [treino-normal-tres-cartas-completo](sequencias/menus-transicoes/treino-normal-tres-cartas-completo/README.md), [treino-normal-tres-cartas-taticas](sequencias/menus-transicoes/treino-normal-tres-cartas-taticas/README.md), [treino-normal-tres-cartas-mistas](sequencias/menus-transicoes/treino-normal-tres-cartas-mistas/README.md)): o mesmo campo vazio e a mesma volta, mas com uma ilustração por carta e uma só mini-ficha. Com três cartas, sem toques, são cerca de 8,5 s:
+  1. corte seco para o campo vazio (0,2–0,7 s);
+  2. as cartas aparecem todas de uma vez, em fila acima do meio, com a moldura da cor da gaveta. Com duas ficam bem afastadas, nos lugares da primeira e da terceira. Ficam paradas cerca de 1,1–1,4 s;
+  3. viram-se todas ao mesmo tempo (0,2 s até serem riscas, 0,2–0,3 s de nada);
+  4. as ilustrações saem uma a uma, ao centro, em grande: a primeira sai da volta (0,3 s), fica 0,7 s, encolhe no sítio (0,2 s) e vira-se como uma moeda na seguinte, que cresce (0,2 s), sem voltar ao campo vazio. Cerca de 1,2 s por ilustração;
+  5. a última encolhe para o centro (0,5 s) e as três abrem-se em leque para os seus lugares (0,3 s): com três, uma escada (a primeira em cima à direita, a segunda em cima ao meio, a terceira em baixo à esquerda); com duas, empilhadas à esquerda, a primeira em cima. Todas do mesmo tamanho, cerca de um terço da largura;
+  6. um retângulo verde cresce em baixo à direita (0,1 s) e aparece a mini-ficha, uma só para o jogador. Os ganhos vêm já somados: um número por atributo («+6 +1 +3» com duas cartas, «+2 +3 +1 +2 +2» com três), não um por carta;
+  7. quando um atributo passa de letra, cerca de 1,3 s depois, a letra velha some da fila e a nova aparece pequena por cima do ícone, no alto da linha; a fila fica com um buraco. Sem brilho nem contagem;
+  8. espera pelo toque (1,8–3,5 s nos vídeos) e corte seco para a fila, com o jogador escurecido e «特訓済».
+  Um toque a meio salta para o quadro final (passo 6) de uma vez, sem a volta nem as ilustrações grandes; com toque, do «特訓開始» ao fim são 3–4,5 s.
 - **Jogador já treinado:** cada jogador treina uma vez por semana. Tocar num jogador «特訓済» esconde as gavetas e mostra em baixo uma faixa de texto «(nome)、今週の特訓を終えました。», sem retrato; um toque fecha-a.
 - **Treino especial:** juntar certas cartas abre o «SPECIAL MENU». É um cartão com uma ilustração cómica do treino, o nome, uma mini-ficha com barras e notas, e o ganho em cada atributo. Também se pode descobrir sem cartas, por um aviso de que chegou um vídeo do patrocinador ([treino-special-menu-descoberto](sequencias/menus-transicoes/treino-special-menu-descoberto/README.md)).
 - **O combo, por ordem** ([treino-combo-cartas-special-menu](sequencias/menus-transicoes/treino-combo-cartas-special-menu/README.md), cerca de 9 s ao todo):
@@ -95,7 +105,7 @@ flowchart TD
   5. as bolas pulsam três vezes para o centro e voltam, em cerca de 1,8 s;
   6. apagam-se uma a uma, em cerca de 1 s;
   7. uma faísca, o título «SPECIAL MENU» e o clarão, em cerca de 1,9 s: um oval branco cresce do centro sobre raios amarelos e laranja até o ecrã ficar branco. Um corte seco mostra a ilustração com o nome numa faixa escura inclinada.
-- **Subir de nível:** não há animação própria, nem no treino normal nem no combo. Os ganhos aparecem já feitos na mini-ficha, e na fila as notas mudam sem efeito visível; o único sinal que fica é o jogador escurecido com «特訓済».
+- **Subir de nível:** não há animação própria, nem no treino normal nem no combo. Os ganhos aparecem já feitos na mini-ficha, e na fila as notas mudam sem efeito visível; o único sinal que fica é o jogador escurecido com «特訓済». A exceção pequena é a nota que muda de letra: na mini-ficha, a letra velha some da fila e a nova aparece por cima do ícone (visto em treinos de três cartas, [treino-normal-tres-cartas-taticas](sequencias/menus-transicoes/treino-normal-tres-cartas-taticas/README.md)).
 - **Cartas novas:** depois dos jogos o adjunto pode dar cartas novas, mostradas como cartões ilustrados.
 
 ## Federação: N.LEAGUE ([menu/classificacao-liga](menu/classificacao-liga/README.md), [menu/torneio-taca](menu/torneio-taca/README.md))
