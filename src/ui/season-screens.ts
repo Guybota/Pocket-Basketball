@@ -229,8 +229,8 @@ export interface IntroSide {
 }
 
 /**
- * As faixas dos dois clubes por cima do campo, na apresentação: a da casa entra pela esquerda, a de fora pela direita,
- * um pouco depois. Cada uma diz casa ou fora, o lugar na liga e os últimos resultados, se já houver jogos.
+ * As faixas dos dois clubes por cima do campo, na apresentação: a da casa e, por baixo e um pouco depois, a de fora,
+ * as duas pela esquerda (à direita fica a janela do cinco inicial). Cada uma diz casa ou fora, o lugar na liga e os últimos resultados, se já houver jogos.
  */
 export function introBars(club: ClubState, sides: readonly [IntroSide, IntroSide]): string {
   const table = leagueTable(club);
@@ -241,7 +241,7 @@ export function introBars(club: ClubState, sides: readonly [IntroSide, IntroSide
     const detail = played ? `${where} · ${at + 1}.º na ${divisionName(club.division)}` : where;
     const form = played ? leagueForm(club, side.id!) : [];
     const formHtml = form.length ? `<span class="ib-form" role="img" aria-label="Últimos jogos: ${form.map(r => (r === 'V' ? 'vitória' : 'derrota')).join(', ')}">${form.map(r => `<em class="${r === 'V' ? 'won' : 'lost'}">${r}</em>`).join('')}</span>` : '';
-    return `<div class="intro-bar team-${side.team} ${n === 0 ? 'from-left' : 'from-right'}"><i></i><img class="emblem" alt="" src="${emblemImage(side.emblem)}"><span class="ib-text"><b>${escapeHtml(side.name)}</b><small>${detail}</small></span>${formHtml}</div>`;
+    return `<div class="intro-bar team-${side.team}${n === 0 ? '' : ' second'}"><i></i><img class="emblem" alt="" src="${emblemImage(side.emblem)}"><span class="ib-text"><b>${escapeHtml(side.name)}</b><small>${detail}</small></span>${formHtml}</div>`;
   };
   const ordered = sides[0].home ? sides : [sides[1], sides[0]] as const;
   return ordered.map(bar).join('');

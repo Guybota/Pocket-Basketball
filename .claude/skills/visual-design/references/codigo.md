@@ -55,7 +55,7 @@ Retrato do código em novembro de 2026. As linhas mudam; confirma-as antes de me
 - **Escala sempre inteira** (`layout.ts`):
   - No vertical, a escala é `floor(min(largura/360, altura/640) · dpr) / dpr`, aplicada como `zoom` CSS.
   - Passa a horizontal quando a largura dividida pela altura chega a 1,2.
-  - O campo base tem 360×216 píxeis. Só com o campo no ecrã (o jogo), a tela alarga até à largura toda (384 em 16:9, ~467 no telemóvel deitado), com a mesma altura, e os botões redondos flutuam por cima da borda direita: os balões e as palavras não vão para lá (`coverRight`).
+  - O campo base tem 360×216 píxeis. Só com o campo no ecrã (o jogo), a tela alarga até à largura toda (384 em 16:9, ~467 no telemóvel deitado), com a mesma altura, e os botões redondos flutuam por cima da borda direita: os balões e as palavras não vão para lá (`coverRight`). Na apresentação, a janela do cinco inicial tapa a direita do campo: o prognóstico, desenhado na tela, fica no espaço livre à esquerda (`forecastBeside`, medido em `measureIntroWindow`), e as faixas dos clubes ficam as duas encostadas à esquerda. Regra: o que se desenha na tela por cima do campo mede as janelas e os botões do HTML e fica fora deles.
   - `setCanvasSize` volta a pôr `imageSmoothingEnabled = false` sempre que muda o tamanho.
 - **`fillPolygon`** (`court.ts`) pinta cada píxel cujo centro (y + 0,5) cai dentro do polígono. Assim, duas faces que partilham uma aresta não deixam buracos nem se sobrepõem, e uma aresta isométrica sobe sempre 2 píxeis por linha. Está testado em `court.test.ts`.
   - **Usa-o** em vez de `fill()` do canvas, que faz anti-aliasing.

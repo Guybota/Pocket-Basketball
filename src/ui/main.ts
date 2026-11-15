@@ -220,6 +220,8 @@ const layout = createLayout({ game, screen: screen_, canvas, context, panel, hud
 
 function fit(): void {
   layout.fit({ stage, resultOpen, menuPanel, courtOnly: true, demo: demoRunning });
+  // Depois do layout: dentro de canvasResized a janela ainda tinha o tamanho antigo.
+  measureIntroWindow();
   // As faixas da apresentação ficam no mesmo retângulo que o marcador: o do campo.
   for (const side of ['top', 'left', 'right'] as const) introBarsBox.style[side] = hudElement.style[side];
   // Medir o canvas apaga-o: a cena desenha-se já na imagem seguinte, sem esperar pela vez das 30 por segundo.
@@ -931,6 +933,7 @@ function showIntro(): void {
   const current = club!;
   const label = gameKind === 'official' ? officialLabel(current) : gameKind === 'practice' ? 'Jogo-treino' : rivalOf === GUEST_RIVAL ? 'Amigável' : 'Particular';
   panel.innerHTML = introScreen(view!, label);
+  measureIntroWindow();
   clearTimeout(introBarsTimer);
   introBarsBox.classList.remove('out');
   const { s } = view!;
@@ -945,11 +948,20 @@ function showIntro(): void {
   introTimer = window.setTimeout(beginPlay, 3500);
 }
 
+/** O prognóstico fica à esquerda da janela do cinco inicial, onde ela não o tapa. */
+function measureIntroWindow(): void {
+  const box = document.querySelector('#panel .intro') ? panel.getBoundingClientRect() : null;
+  const court = canvas.getBoundingClientRect();
+  const inset = box && box.width > 0 && box.left < court.right ? court.right - box.left : 0;
+  view?.forecastBeside(inset / Math.max(1, court.width));
+}
+
 function beginPlay(): void {
   if (started) return;
   clearTimeout(introTimer);
   started = true;
-  // As faixas saem a acelerar, cada uma pelo lado por onde entrou.
+  view?.hideForecast();
+  // As faixas saem a acelerar pela esquerda, por onde entraram; o prognóstico sai logo.
   introBarsBox.classList.add('out');
   introBarsTimer = window.setTimeout(() => {
     introBarsBox.innerHTML = '';

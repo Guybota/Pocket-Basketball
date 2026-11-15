@@ -477,6 +477,12 @@ export class MatchView {
   private fansSadUntil = 0;
   // O prognóstico, mostrado durante a entrada das equipas; com a confiança alta, os adeptos festejam de bandeira na mão.
   private forecast: { ours: number; confident: boolean } | null = null;
+  /** O prognóstico sai com a bola ao alto; a bancada continua a festejar enquanto as equipas entram. */
+  private forecastHidden = false;
+  /** Quando apareceu, em `realTime`: na apresentação o jogo está parado (tick 0), por isso a barra anda em tempo real. */
+  private forecastStart = 0;
+  /** Quantos píxeis da arte, à direita, a janela do cinco inicial tapa: o prognóstico fica no espaço livre à esquerda. */
+  private forecastInset = 0;
   /** Quantas pessoas vieram ver o jogo: as que se veem nas bancadas, mais as do lado da câmara, que nunca aparece. */
   get spectators(): number {
     return Math.round((this.fans.length + this.outsiders.length) * HIDDEN_SIDE);
@@ -1309,19 +1315,36 @@ export class MatchView {
   /** Antes da bola ao alto: a hipótese de ganharmos, e a bancada já a festejar se a confiança estiver alta. */
   showForecast(ours: number, confident: boolean): void {
     this.forecast = { ours, confident };
+    this.forecastHidden = false;
+    this.forecastStart = this.realTime;
     if (confident) this.fansReact(true, 120);
+  }
+
+  /** Tira o prognóstico do campo (com a bola ao alto). */
+  hideForecast(): void {
+    this.forecastHidden = true;
+  }
+
+  /** A fração da largura do campo, à direita, que a janela do cinco inicial tapa. */
+  forecastBeside(fraction: number): void {
+    this.forecastInset = Math.ceil(fraction * this.camera.width);
   }
 
   /** O prognóstico por cima do campo, com as barras a crescer. */
   private drawForecast(): void {
     const { g, s, camera, forecast } = this;
-    if (!forecast || s.phase !== 'intro' || s.period !== 1) return;
+    if (!forecast || this.forecastHidden || s.phase !== 'intro' || s.period !== 1) return;
     // A barra começa dividida ao meio e a fronteira desliza, a abrandar, até ao prognóstico; os números acompanham-na.
-    const t = Math.min(1, (s.tick + 4) / 30);
+    const t = Math.min(1, (this.realTime - this.forecastStart) / 1.5);
     const eased = 1 - (1 - t) * (1 - t);
     const share = 50 + (forecast.ours - 50) * eased;
-    const w = Math.min(camera.width - 16, 300);
-    const x = (camera.width - w) >> 1;
+    // No espaço à esquerda da janela do cinco inicial, para ela não o tapar.
+    const free = camera.width - this.forecastInset;
+    const w = Math.min(free - 16, 300);
+    // A 640×360 sobram ~130 píxeis: as percentagens à escala 2 já não cabem lado a lado.
+    const big = w >= 140 ? 2 : 1;
+    if (w < 80) return;
+    const x = (free - w) >> 1;
     // No fundo do campo: no meio tapava o círculo central e o emblema, que são o que a entrada das equipas mostra.
     const y = camera.height - 58;
     g.fillStyle = 'rgba(27,34,48,0.88)';
@@ -1330,10 +1353,10 @@ export class MatchView {
     g.fillRect(x, y, w, 2);
     text(g, 'PROGNÓSTICO', x + ((w - textWidth('PROGNÓSTICO', 1)) >> 1), y + 6, '#f2c230', 1);
     const ours = Math.round(share);
-    text(g, `${s.teams[0].short} ${ours}%`, x + 6, y + 14, '#fbf6e2', 2);
+    text(g, `${s.teams[0].short} ${ours}%`, x + 6, y + 14, '#fbf6e2', big);
     const right = `${100 - ours}% ${s.teams[1].short}`;
-    text(g, right, x + w - 6 - textWidth(right, 2), y + 14, '#fbf6e2', 2);
-    const barY = y + 32;
+    text(g, right, x + w - 6 - textWidth(right, big), y + 14, '#fbf6e2', big);
+    const barY = y + (big === 2 ? 32 : 26);
     const inner = w - 12;
     const split = Math.round((inner * share) / 100);
     g.fillStyle = '#2b5fd9';

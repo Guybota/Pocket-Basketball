@@ -24,6 +24,10 @@ O jogo foi gravado outra vez com `npm run sequences`, com a placa gráfica a sé
 
 ### Defeitos novos
 
+> **Resolvidos a 15 de novembro de 2026:** N9 e N10.
+> - Na apresentação, o prognóstico fica no espaço à esquerda da janela do cinco inicial e as duas faixas dos clubes ficam encostadas à esquerda, uma por baixo da outra; o prognóstico sai com a bola ao alto, junto com as faixas.
+> - Os botões do jogo flutuam sobre o campo inteiro, sem a coluna à direita.
+
 > **Resolvidos a 14 de novembro de 2026:** o defeito antigo 3 e os novos N3, N4, N5 e N7.
 > - Cada movimento tem um só aviso, o de baixo, com o nome completo; a palavra por cima do jogador saiu (e com ela o N7).
 > - Com o resultado grande no ecrã, não há palavras no campo nem grande plano da falta; a faixa da falta espera por ele.
