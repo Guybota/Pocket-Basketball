@@ -392,22 +392,28 @@ try {
   check('Uma cópia com mais de 7 dias dá aviso na Torre', (await towerCopy()).includes('mais de uma semana') && (await coach.locator('#towerCopy.stale').count()) === 1, await towerCopy());
   await shot(coach, `${OUT}/torre-copia-velha.png`);
   await coach.click('#trainBtn');
-  await coach.waitForSelector('.prow');
+  await coach.waitForSelector('.trainhall');
   await shot(coach, `${OUT}/treino-lista.png`);
-  check('A lista do treino mostra as notas de cada jogador', (await coach.locator('.prow').first().locator('.gr').count()) === 7);
+  check('A ficha curta do treino mostra as sete notas', (await coach.locator('.th-card .gr').count()) === 7);
+  check('A fila do treino mostra os outros jogadores', (await coach.locator('.th-mate').count()) >= 4);
+  // Uma carta é escolhida na gaveta da sua categoria.
+  const pickCard = async (card: string, category: string): Promise<void> => {
+    if ((await coach.locator(`.th-open [data-card="${card}"]`).count()) === 0) await coach.click(`[data-drawer="${category}"]`);
+    await coach.click(`[data-card="${card}"]`);
+  };
   // Escolher outro jogador redesenha a ficha, mas o fundo é a mesma tela: uma tela nova ficava vazia uma imagem e piscava.
   await coach.evaluate(() => { (document.getElementById('scene') as HTMLCanvasElement & { kept?: boolean }).kept = true; });
   await coach.click('[data-player="1"]');
   check('Escolher um jogador da lista não faz piscar o fundo', await coach.evaluate(() => (document.getElementById('scene') as (HTMLCanvasElement & { kept?: boolean }) | null)?.kept === true));
   await coach.click('[data-player="0"]');
-  await coach.click('[data-act="openCards"]');
+  await coach.click('[data-drawer="technique"]');
   check('Sem cartas escolhidas não se pode treinar', await coach.locator('[data-act="trainNow"]').isDisabled());
-  await coach.click('[data-card="dribble"]');
-  await coach.click('[data-card="sprints"]');
+  await pickCard('dribble', 'technique');
+  await pickCard('sprints', 'physical');
   await shot(coach, `${OUT}/treino-jogador-a-meio.png`);
-  await coach.click('[data-card="readDefense"]');
+  await pickCard('readDefense', 'tactic');
   await shot(coach, `${OUT}/treino-jogador.png`);
-  check('A pré-visualização não revela o combo', !((await coach.locator('.info').textContent()) ?? '').toLowerCase().includes('tornozelo'));
+  check('A pré-visualização não revela o combo', !((await coach.locator('.th-info').textContent()) ?? '').toLowerCase().includes('tornozelo'));
   check('Não se pode pôr mais de 3 cartas', await coach.locator('.gcard[aria-pressed="false"]').evaluateAll(cards => cards.every(c => (c as HTMLButtonElement).disabled)));
   check('O treino não sai do ecrã do telemóvel', await coach.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   const movesBefore = await coach.evaluate(() => window.__pocket.club()!.team.roster[0]!.moves.length);
@@ -423,7 +429,7 @@ try {
   await coach.click('[data-go="train"]');
   // O treino sem combo: as cartas e as ilustrações no ecrã todo, um toque salta para o resultado e outro volta à lista.
   await coach.click('[data-player="1"]');
-  await coach.click('[data-act="openCards"]');
+  await coach.click('[data-drawer="technique"]');
   await coach.locator('.gcard:not([disabled])').first().click();
   await coach.click('[data-act="trainNow"]');
   await coach.waitForSelector('.trainfx');
@@ -434,8 +440,8 @@ try {
   await shot(coach, `${OUT}/treino-normal.png`);
   check('O treino sem combo mostra o resultado depois de saltar', await coach.locator('.trainshow .cc-say').isVisible());
   await coach.keyboard.press('Enter');
-  await coach.waitForSelector('.prow');
-  check('Quem já treinou fica marcado na lista', (await coach.locator('.prow .ptag').count()) === 2);
+  await coach.waitForSelector('.trainhall');
+  check('Quem já treinou fica escurecido na fila', (await coach.locator('.th-front.trained, .th-mate.trained').count()) === 2);
   await coach.click('[data-go="combos"]');
   await shot(coach, `${OUT}/treino-combos.png`);
   await coach.click('.back');
@@ -444,8 +450,10 @@ try {
   await coach.waitForSelector('#arenaChip');
   check('O treino fica guardado ao recarregar a página', await coach.evaluate(() => window.__pocket.club()!.trainedThisWeek.length === 2 && window.__pocket.club()!.knownCombos.includes('brokenAnkles')));
   await coach.click('#trainBtn');
-  await coach.click('[data-player="0"]');
-  check('Cada jogador só treina uma vez por semana', await coach.locator('[data-act="openCards"]').isDisabled());
+  await coach.waitForSelector('.trainhall');
+  // O escolhido (à frente) pode já ser o primeiro: aí não está na fila.
+  if (await coach.locator('.th-mate[data-player="0"]').count()) await coach.click('[data-player="0"]');
+  check('Cada jogador só treina uma vez por semana', await coach.locator('[data-drawer]').first().isDisabled());
   await coach.click('.back');
 
   // O emblema e os equipamentos ficam guardados, e o equipamento chega ao campo.
@@ -830,7 +838,7 @@ try {
   await prefs.click('#settingsClose');
   await shot(prefs, `${OUT}/cidade-contraste-letra.png`);
   await prefs.click('#trainBtn');
-  await prefs.waitForSelector('.prow');
+  await prefs.waitForSelector('.trainhall');
   await shot(prefs, `${OUT}/treino-contraste-letra.png`);
   check('Sem erros nas definições', prefsProblems.length === 0, prefsProblems.join(' | '));
   await prefsContext.close();
@@ -1148,13 +1156,12 @@ try {
     await shot(wide, `${OUT}/landscape-${name}-treino-lista.png`);
     await measureTaps('treino-lista');
     await wide.click('[data-player="1"]');
-    await wide.click('[data-act="openCards"]');
+    await wide.click('[data-drawer="technique"]');
     await wide.click('[data-card="shooting"]');
     await wide.waitForTimeout(100);
     await shot(wide, `${OUT}/landscape-${name}-treino.png`);
     await measureTaps('treino');
     check(`Em ${name}, os menus cabem na janela`, await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight));
-    await wide.click('.back');
     await wide.click('.back');
     await wide.click('#arenaChip');
     await wide.waitForTimeout(150);
@@ -1219,9 +1226,9 @@ try {
   await keys.waitForTimeout(100);
   check('E abre o escritório e Esc volta à cidade', office && (await visible('#arenaChip')));
   await keys.keyboard.press('t');
-  await keys.locator('.prow').first().focus();
-  await keys.keyboard.press('ArrowDown');
-  check('Na lista do treino, a seta passa para a linha seguinte', (await keys.evaluate(() => (document.activeElement as HTMLElement).dataset.player)) === '1');
+  await keys.locator('.th-mate').first().focus();
+  await keys.keyboard.press('ArrowRight');
+  check('Na fila do treino, a seta passa para o jogador seguinte', (await keys.evaluate(() => (document.activeElement as HTMLElement).dataset.player)) === (await keys.locator('.th-mate').nth(1).getAttribute('data-player')));
   await keys.keyboard.press('Escape');
   await keys.waitForSelector('#arenaChip');
   await keys.keyboard.press('p');

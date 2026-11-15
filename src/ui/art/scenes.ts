@@ -12,7 +12,8 @@ function projector(ox: number, oy: number, th: number): (i: number, j: number, k
   return (i, j, k = 0) => [ox + (i - j) * th * 2, oy + (i + j) * th - k * th * 2];
 }
 
-export type SceneKind = 'lockerPre' | 'lockerHalf' | 'gym' | 'office' | 'fired' | 'relegated';
+/** `gymEmpty`: o pavilhão de treino sem ninguém, para a fila de jogadores do treino ficar sozinha à frente. */
+export type SceneKind = 'lockerPre' | 'lockerHalf' | 'gym' | 'gymEmpty' | 'office' | 'fired' | 'relegated';
 
 /** `lower` desce a sala no ecrã, para uma etiqueta por cima não tapar as paredes. */
 function iso(g: CanvasRenderingContext2D, H: number, W: number, lower = 0) {
@@ -642,13 +643,14 @@ export function drawSceneFrame(canvas: HTMLCanvasElement, kind: SceneKind, roste
     base.width = W;
     base.height = H;
     const b = base.getContext('2d')!;
-    if (kind === 'gym') paintGym(b, W, H);
+    if (kind === 'gym' || kind === 'gymEmpty') paintGym(b, W, H);
     else if (kind === 'office' || kind === 'fired') paintOffice(b, W, H, kit, kind === 'fired');
     else paintLocker(b, W, H, kit);
     remember(sceneCache, key, base, 6);
   }
   g.imageSmoothingEnabled = false;
   g.drawImage(base, 0, 0);
+  if (kind === 'gymEmpty') return;
   if (kind === 'office' || kind === 'fired') {
     drawOffice(g, W, H, kind === 'fired', roster, kit, now, confidence);
     return;

@@ -12,7 +12,7 @@ export const KEY_HELP: readonly (readonly [string, readonly (readonly [string, s
 const MATCH_KEYS: Record<string, string> = { ' ': '#pauseBtn', d: '#timeoutBtn', t: '#subsBtn', a: '#matchTacticsBtn', s: '#muteBtn', v: '#speedBtn' };
 const TOWN_KEYS: Record<string, string> = { p: '#arenaChip', e: '#officeBtn', t: '#trainBtn', f: '#federationBtn', r: '#towerChip', a: '#airportChip', enter: '#skipWeekBtn' };
 // Por ordem: a ficha, as trocas e as táticas do jogo, a repetição, e o Voltar dos menus.
-const CLOSE = '[data-card="close"], [data-subs-close], #matchTacticsClose, #replayBack, .back';
+const CLOSE = '[data-card="close"], [data-subs-close], #matchTacticsClose, #replayBack, .th-drawer[aria-pressed="true"], .back';
 const PRIMARY = '.primary, .mbar.go, .cc-say';
 const ROWS = '.prow, .trow';
 const LABELS: Record<string, string> = { ' ': 'Espaço', enter: 'Enter', escape: 'Esc' };
@@ -74,6 +74,13 @@ function onKey(event: KeyboardEvent): void {
     event.preventDefault();
     if (!event.repeat) target.click();
   };
+  // Na fila do treino, as setas para os lados passam de jogador em jogador.
+  if ((key === 'arrowright' || key === 'arrowleft') && active instanceof HTMLElement && active.matches('.th-mate')) {
+    const mates = [...active.parentElement!.querySelectorAll<HTMLElement>('.th-mate')].filter(shown);
+    event.preventDefault();
+    mates[mates.indexOf(active) + (key === 'arrowright' ? 1 : -1)]?.focus();
+    return;
+  }
   if ((key === 'arrowdown' || key === 'arrowup') && active instanceof HTMLElement && active.matches(ROWS)) {
     const rows = [...active.parentElement!.querySelectorAll<HTMLElement>(ROWS)].filter(shown);
     const next = rows[rows.indexOf(active) + (key === 'arrowdown' ? 1 : -1)];

@@ -25,7 +25,7 @@ import { ANNOUNCE_SECONDS, MatchView, type Sound } from './match-view.ts';
 import { BALL_SIZE, drawBall } from './art/ball.ts';
 import { decisiveTick, escapeHtml, introScreen, panelContent, playerCard, playerCardLive, resultScreen, subsPanel, type LiveLeague, type PanelTab, optionsControls, pickOption } from './panel.ts';
 import { assistantResult, say, secretaryFarewell } from './staff.ts';
-import { portraitImage } from './art/portrait.ts';
+import { portraitSvgImage } from './art/figure-svg.ts';
 import { TICKS_PER_SECOND } from '../sim/court.ts';
 import { createDemo } from './demo.ts';
 import { createHud } from './hud.ts';
@@ -597,7 +597,7 @@ function showFarewell(report: SeasonRecord): void {
   showTopNote('Despedida', `Época ${report.season}`, say('secretary', ...secretaryFarewell(farewells.map(f => f.player.name))));
   audio.music('farewell');
   panel.innerHTML = `<div class="result"><div class="winner">Até sempre</div>
-    ${farewells.map(f => `<div class="mvp farewell"><img class="face" alt="" src="${portraitImage({ ...lookOf(f.player, 'blue'), custom: activeKit(club!) }, 'sad')}"><span><b>${escapeHtml(f.player.name)}</b><br>${f.seasons} ${f.seasons === 1 ? 'época' : 'épocas'} no clube · ${f.games} jogos · ${f.points} pontos</span></div>`).join('')}
+    ${farewells.map(f => `<div class="mvp farewell"><img class="face" alt="" src="${portraitSvgImage({ ...lookOf(f.player, 'blue'), custom: activeKit(club!) }, 'sad', true)}"><span><b>${escapeHtml(f.player.name)}</b><br>${f.seasons} ${f.seasons === 1 ? 'época' : 'épocas'} no clube · ${f.games} jogos · ${f.points} pontos</span></div>`).join('')}
     <p class="hint">O Potencial chegou ao fim. O que aprendeu, levou; o lugar no balneário fica para quem vier.</p></div>
     <div class="end-actions"><button type="button" class="primary" id="farewellContinue">Adeus</button></div>`;
   element('farewellContinue').addEventListener('click', () => {
@@ -689,7 +689,7 @@ function refreshContent(): void {
   if (tacticsOpen) {
     content.dataset.shown = '';
     // Só se redesenha quando muda, para a lista das opções não voltar ao início a meio de a percorrer.
-    const html = `${tacticsControls(view!.s.tactics[0])}${optionsControls(view!.s.teams[0].roster, view!.s.tactics[0], optionPicking, p => portraitImage({ ...lookOf(p, 'blue'), custom: activeKit(club!) }))}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
+    const html = `${tacticsControls(view!.s.tactics[0])}${optionsControls(view!.s.teams[0].roster, view!.s.tactics[0], optionPicking, p => portraitSvgImage({ ...lookOf(p, 'blue'), custom: activeKit(club!) }, 'neutral', true))}<button type="button" class="primary" id="matchTacticsClose">Fechar</button>`;
     if (content.dataset.shown === html) return;
     content.dataset.shown = html;
     content.innerHTML = html;

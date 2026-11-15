@@ -3,9 +3,11 @@ import type { CardId } from '../sim/training.ts';
 import { ATTRIBUTE_KEYS, gradeOf, type Attributes, type Player } from '../sim/types.ts';
 import { clubIdentity } from './art/identity.ts';
 import { emblemImage } from './art/kit.ts';
-import { portraitImage } from './art/portrait.ts';
+import { portraitSvgImage as portraitImage } from './art/figure-svg.ts';
+/** A cara pequena das listas do jogo (banco, trocas, cinco inicial, melhor em campo), no mesmo estilo dos retratos. */
+const faceImage = (look: Look): string => portraitImage(look, 'neutral', true);
 import { heightIcon, attributeIcon, energyIcon, optionStar } from './art/icons.ts';
-import { faceImage, type Look } from './art/sprites.ts';
+import type { Look } from './art/sprites.ts';
 import { BALANCE as B } from '../sim/balance.ts';
 import { TICKS_PER_SECOND } from '../sim/court.ts';
 import { emptyState, foundCards } from './club-screens.ts';

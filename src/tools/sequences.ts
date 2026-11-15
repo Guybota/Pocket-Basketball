@@ -105,15 +105,15 @@ try {
     await p.waitForTimeout(3000);
     mark('cidade-para-treino');
     await p.click('#trainBtn');
-    await p.waitForSelector('.prow');
+    await p.waitForSelector('.trainhall');
     await p.waitForTimeout(1200);
     mark('treino-abrir-jogador');
-    await p.click('[data-player="0"]');
-    await p.waitForTimeout(1000);
-    await p.click('[data-act="openCards"]');
+    await p.click('.th-front');
+    await p.click('.back');
     await p.waitForTimeout(1000);
     mark('treino-escolher-cartas');
-    for (const card of ['dribble', 'sprints', 'readDefense']) {
+    for (const [card, drawer] of [['dribble', 'technique'], ['sprints', 'physical'], ['readDefense', 'tactic']]) {
+      await p.click(`[data-drawer="${drawer}"]`);
       await p.click(`[data-card="${card}"]`);
       await p.waitForTimeout(600);
     }

@@ -9,6 +9,8 @@ const HEAD_Y = 4;
 const HEAD_ROWS = 17;
 const NECK_Y = HEAD_Y + HEAD_ROWS;
 const JERSEY_Y = NECK_Y + 1;
+/** O lado do retrato pixel art, para a ferramenta que o compara com o SVG (src/tools/retratos-svg.ts). */
+export const PORTRAIT_SIZE = SIZE;
 
 /** Meia-largura da cabeça em cada linha, de cima para baixo. */
 const FACE_SHAPES: readonly (readonly number[])[] = [
@@ -34,10 +36,21 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
   const key = `${kitId(look)}|${look.skin}|${look.hair}|${look.style}|${look.build}|${look.face}|${mood}`;
   const cached = cache.get(key);
   if (cached) return cached;
+  const url = paintGrid(portraitGrid(look, mood), SIZE, SIZE);
+  remember(cache, key, url, 600);
+  return url;
+}
 
-  const grid: (string | null)[] = new Array<string | null>(SIZE * SIZE).fill(null);
+/**
+ * O retrato em píxeis soltos (`SIZE` de largura, por linhas), antes do contorno. Com `pad`, a grelha tem mais `pad`
+ * linhas em cima e tudo desce: o afro e o corte alto passam do topo do retrato, que a moldura da ficha esconde.
+ */
+export function portraitGrid(look: Look, mood: Mood = 'neutral', pad = 0): (string | null)[] {
+  const rows = SIZE + pad;
+  const grid: (string | null)[] = new Array<string | null>(SIZE * rows).fill(null);
   const put = (x: number, y: number, color: string): void => {
-    if (x >= 0 && y >= 0 && x < SIZE && y < SIZE) grid[y * SIZE + x] = color;
+    y += pad;
+    if (x >= 0 && y >= 0 && x < SIZE && y < rows) grid[y * SIZE + x] = color;
   };
   const rect = (x: number, y: number, w: number, h: number, color: string): void => {
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(x + i, y + j, color);
@@ -284,15 +297,19 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
     }
   }
 
-  // Contorno automático, igual ao dos bonecos.
+  return grid;
+}
+
+/** Pinta uma grelha de píxeis com o contorno automático, igual ao dos bonecos, e devolve-a como imagem. */
+export function paintGrid(grid: readonly (string | null)[], width: number, height: number): string {
   const canvas = document.createElement('canvas');
-  canvas.width = SIZE;
-  canvas.height = SIZE;
+  canvas.width = width;
+  canvas.height = height;
   const g = canvas.getContext('2d')!;
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const i = y * SIZE + x;
-      const near = (x > 0 && grid[i - 1]) || (x < SIZE - 1 && grid[i + 1]) || (y > 0 && grid[i - SIZE]) || (y < SIZE - 1 && grid[i + SIZE]);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const near = (x > 0 && grid[i - 1]) || (x < width - 1 && grid[i + 1]) || (y > 0 && grid[i - width]) || (y < height - 1 && grid[i + width]);
       const color = grid[i] ?? (near ? INK : null);
       if (color) {
         g.fillStyle = color;
@@ -300,7 +317,5 @@ export function portraitImage(look: Look, mood: Mood = 'neutral'): string {
       }
     }
   }
-  const url = canvas.toDataURL();
-  remember(cache, key, url, 600);
-  return url;
+  return canvas.toDataURL();
 }

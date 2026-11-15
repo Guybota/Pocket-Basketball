@@ -14,7 +14,7 @@ import { clubIdentity, kitAgainst } from './art/identity.ts';
 import { EMBLEM_BORDER_LIST, EMBLEM_PATTERN_LIST, EMBLEM_SHAPE_LIST, EMBLEM_SYMBOL_LIST, KIT_PATTERNS, PALETTE, emblemCanvas, emblemImage, emblemLetters, type ClubKit, type Emblem, type KitPattern } from './art/kit.ts';
 import { attributeIcon, controlIcon, iconFrom, subsIcon } from './art/icons.ts';
 import { leagueIcon } from './art/leagues.ts';
-import { portraitImage } from './art/portrait.ts';
+import { figureImage, portraitSvgImage as portraitImage } from './art/figure-svg.ts';
 import { drawSceneFrame, drawTacticsBoard, type SceneKind } from './art/scenes.ts';
 import { drawFlagScene } from './art/flag.ts';
 import { drawMatchPoster, drawWardrobe, kitImage } from './art/wardrobe.ts';
@@ -33,7 +33,7 @@ import { downloadFile, pickFile } from './save.ts';
 import { assistantReport, assistantPreGame, presidentBoard, presidentRenewals, say } from './staff.ts';
 
 export type GameKind = 'official' | 'friendly' | 'practice';
-type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'trainCards' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office' | 'airport';
+type Screen = 'create' | 'market' | 'renewals' | 'rival' | 'squad' | 'train' | 'combos' | 'report' | 'emblem' | 'kitEdit' | 'offers' | 'pre' | 'tactics' | 'kit' | 'halfStats' | 'federation' | 'office' | 'airport';
 type GoTo = Screen | 'town';
 type OfficeItem = 'board' | 'trophies' | 'records' | 'facilities' | 'history' | 'reset';
 
@@ -66,7 +66,8 @@ let selected = 0;
 let swapping: number | null = null;
 // Treina-se um jogador de cada vez: estas são as cartas dele, até carregar em Treinar.
 let picked: CardId[] = [];
-let focusCard: CardId | null = null;
+/** A gaveta de cartas aberta no treino. */
+let drawer: CardCategory | null = null;
 let lastTraining: { before: Player; result: TrainingResult; cards: CardId[]; isNew: boolean; index: number } | null = null;
 let federationTab: 'table' | 'calendar' | 'round' | 'cup' | 'playoffs' = 'table';
 // A divisão que se está a ver na federação, e o jogador escolhido no plantel de um clube.
@@ -164,8 +165,6 @@ function playerCard(index: number, extra?: string): string {
   const p = club.team.roster[index]!;
   const stats = club.stats[p.name] ?? { games: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0 };
   const recent = club.recentTraining[p.name] ?? [];
-  // No treino, quem já treinou esta semana fica escurecido e com a etiqueta, como o «já treinado» do Calciobit.
-  const trained = screen === 'train' && club.trainedThisWeek.includes(p.name);
   // As últimas 4 semanas, da mais antiga para esta: um visto nas que treinou, um X vermelho nas que esteve lesionado.
   const history = [3, 2, 1, 0].map(n => {
     const week = club.season * 100 + club.week - n;
@@ -175,7 +174,7 @@ function playerCard(index: number, extra?: string): string {
   return `<div class="pcard">
     <header>${ownCrest()}<span>${index < 5 ? SLOT_NAMES[index] : 'Suplente'}</span><b>${esc(p.name)}</b>${bodyStars(p)}</header>
     <div class="pbody">
-      <img class="pportrait${trained ? ' trained' : ''}" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookFor(p))}">${trained ? '<span class="ptrained">Treinado</span>' : ''}
+      <img class="pportrait" alt="Retrato de ${esc(p.name)}" src="${portraitImage(lookFor(p))}">
       <div class="pshirt" aria-label="Camisola ${shirtOf(p)}">${shirtOf(p)}</div>
       <div>
         <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="" title="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
@@ -205,8 +204,8 @@ function playerCard(index: number, extra?: string): string {
 const attributeHead = ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('');
 
 function squadRows(renderEnd: (p: Player, index: number) => string): string {
-  const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= B.matchSquad ? ' reserve' : index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}${screen === 'train' && club.trainedThisWeek.includes(p.name) ? ' trained' : ''}" data-player="${index}" aria-pressed="${selected === index}">
-      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${screen === 'train' && club.trainedThisWeek.includes(p.name) ? '<em class="ptag">Treinado</em>' : ''}${esc(p.name)}${optionMark(liveTactics().options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
+  const row = (p: Player, index: number): string => `<button type="button" class="prow${index >= B.matchSquad ? ' reserve' : index >= 5 ? ' bench' : ''}${swapping === index ? ' swapfrom' : ''}" data-player="${index}" aria-pressed="${selected === index}">
+      ${slotBadge(index)}<span class="pnum">${shirtOf(p)}</span><span class="name">${esc(p.name)}${optionMark(liveTactics().options, p.name)}</span>${dot(p)}${renderEnd(p, index)}
     </button>`;
   const rows = club.team.roster.map(row);
   // Para lá da ficha de jogo ficam os reservas: trocam-se para dentro com o ⇄, como os outros.
@@ -270,46 +269,67 @@ function squadScreen(): Rendered {
   };
 }
 
-function trainSlots(): string {
-  return `<div class="slots">${Array.from({ length: MAX_CARDS_PER_PLAYER }, (_, n) => {
-    const id = picked[n];
-    return id
-      ? `<button type="button" class="slot" data-remove="${id}" aria-label="Tirar ${CARDS[id].name}"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></button>`
-      : '<div class="slot empty">Vazio</div>';
-  }).join('')}</div>`;
-}
-
 const leftOf = (id: CardId): number => (club.cards[id] ?? 0) - picked.filter(c => c === id).length;
 
-/** A lista: as notas de todos, como no plantel. Escolhe-se um jogador e treina-se esse. */
-function trainScreen(): Rendered {
-  const player = club.team.roster[selected]!;
-  const done = club.trainedThisWeek.includes(player.name);
-  const hurt = (player.injuryWeeks ?? 0) > 0;
-  return {
-    top: inside(playerCard(selected)),
-    bottom: `${legendHead('thead', `<span>Pos</span><span>#</span><span>Jogador</span><span aria-label="Legenda">?</span>${attributeHead}<span class="num">Alt</span>`)}
-      <div class="scroll">${squadRows(p => ATTRIBUTE_KEYS.map(key => grade(p.attributes[key])).join('') + heightStar(p.height))}</div>
-      ${totalCards(club) === 0 ? emptyState('Não há cartas para treinar. Ganham-se nos jogos: a jornada, um particular ou um jogo-treino.') : ''}
-      ${bar(backBtn('town'), `<button type="button" class="icon" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>`, `<button type="button" class="icon" data-go="tactics" aria-label="Táticas" title="Táticas"><img class="ink" alt="" src="${controlIcon('board')}"></button>`, `<button type="button" class="icon" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img class="ink" alt="" src="${controlIcon('book')}"><b class="badge">${club.knownCombos.length}/${COMBOS.length}</b></button>`, `<button type="button" class="icon primary" data-act="openCards" aria-label="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" title="${hurt ? 'Lesionado' : done ? 'Já treinou' : `Treinar ${esc(player.name)}`}" ${done || hurt || totalCards(club) === 0 ? 'disabled' : ''}><img class="ink" alt="" src="${controlIcon('train')}"></button>`)}`,
-  };
+/** Uma carta da gaveta: toca-se para a pôr ou tirar do treino. */
+function cardButton(id: CardId): string {
+  const { category } = CARDS[id];
+  const left = leftOf(id);
+  const chosen = picked.includes(id);
+  return `<button type="button" class="gcard" style="--cat:${CATEGORY_INFO[category].color}" data-card="${id}" aria-pressed="${chosen}" aria-label="${CARDS[id].name}, ${Math.max(0, left)} disponíveis" ${!chosen && (left <= 0 || picked.length >= MAX_CARDS_PER_PLAYER) ? 'disabled' : ''}><b>${SHORT_NAMES[id]}</b><img alt="" src="${cardImage(id, category)}"><em>×${Math.max(0, left)}</em></button>`;
 }
 
-/** As cartas deste jogador. O treino acontece logo aqui, só para ele. */
-function trainCardsScreen(): Rendered {
-  const preview = previewGains(club.team.roster[selected]!, picked, club.knownCombos);
+/**
+ * O treino, como no Calciobit: o plantel de pé no pavilhão, o escolhido grande à frente e os outros em fila; a ficha curta
+ * em cima; as gavetas das cartas em baixo. Abre-se uma gaveta, põem-se até três cartas e toca-se em «Treinar».
+ */
+function trainScreen(): Rendered {
+  const roster = club.team.roster;
+  const player = roster[selected]!;
+  const done = club.trainedThisWeek.includes(player.name);
+  const hurt = (player.injuryWeeks ?? 0) > 0;
+  const canTrain = !done && !hurt && totalCards(club) > 0;
+  const figure = (p: Player): string => figureImage(lookFor(p), { trained: club.trainedThisWeek.includes(p.name), number: shirtOf(p) });
+  // Os outros, pela ordem do plantel, numa janela à volta do escolhido: tocar num das pontas faz a fila andar.
+  // Quantos cabem na fila: cada boneco tem 34 % da altura da cena e uns 0,2 alturas de largura com a etiqueta, e a fila
+  // ocupa três quartos da largura. A janela fica centrada no escolhido.
+  const [sceneW, sceneH] = host.topSize();
+  const count = Math.max(3, Math.min(7, Math.floor((0.74 * sceneW) / (0.2 * sceneH))));
+  const others = roster.map((_, i) => i).filter(i => i !== selected);
+  const after = others.findIndex(i => i > selected);
+  const from = Math.max(0, Math.min(others.length - count, (after < 0 ? others.length : after) - (count >> 1)));
+  const mates = others.slice(from, from + count);
+  const prev = (selected + roster.length - 1) % roster.length;
+  const next = (selected + 1) % roster.length;
+  const state = (p: Player): string => `${club.trainedThisWeek.includes(p.name) ? ', já treinou' : ''}${p.injuryWeeks ? ', lesionado' : ''}`;
+  const status = hurt ? 'Lesionado' : done ? 'Já treinou esta semana' : totalCards(club) === 0 ? 'Não há cartas: ganham-se nos jogos' : '';
+  const preview = previewGains(player, picked, club.knownCombos);
   // Nunca se diz quanto: só que sobe, e se é pouco ou muito.
   const gains = ATTRIBUTE_KEYS.filter(key => preview[key]).map(key => `${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]} <b>${(preview[key]! > 0 ? '+' : '-').repeat(gainSize(preview[key]!))}</b>`).join(' · ');
-  const frameFor = (category: CardCategory): string => `<div class="frame"><span>${CATEGORY_INFO[category].name}</span>${CARD_IDS.filter(id => CARDS[id].category === category).map(id => {
-    const left = leftOf(id);
-    const chosen = picked.includes(id);
-    return `<button type="button" class="gcard" style="--cat:${CATEGORY_INFO[category].color}" data-card="${id}" aria-pressed="${chosen}" aria-label="${CARDS[id].name}, ${Math.max(0, left)} disponíveis" ${!chosen && (left <= 0 || picked.length >= MAX_CARDS_PER_PLAYER) ? 'disabled' : ''}><b>${SHORT_NAMES[id]}</b><img alt="" src="${cardImage(id, category)}"><em>×${Math.max(0, left)}</em></button>`;
-  }).join('')}</div>`;
+  const open = canTrain && drawer ? drawer : null;
+  const owned = (category: CardCategory): CardId[] => CARD_IDS.filter(id => CARDS[id].category === category && (club.cards[id] ?? 0) > 0);
   return {
-    top: inside(playerCard(selected, trainSlots())),
-    bottom: `<div class="whiteboard">${CATEGORIES.map(frameFor).join('')}</div>
-      <div class="info">${focusCard ? `<b>${CARDS[focusCard].name}</b>. ` : ''}${gains || 'Escolhe até três cartas diferentes. Há combinações secretas por descobrir.'}</div>
-      ${bar(backBtn('train'), `<button type="button" class="primary" data-act="trainNow" ${picked.length ? '' : 'disabled'}>Treinar</button>`)}`,
+    top: `<div class="trainhall${open ? ' open' : ''}">
+      <div class="th-card">
+        <header>${slotBadge(selected)}<b>${shirtOf(player)}</b><span>${esc(player.name)}</span>${dot(player)}${heightStar(player.height)}</header>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => `<img alt="${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" title=""${ATTRIBUTE_LABELS.find(([k]) => k === key)![1]}" src="${attributeIcon(key)}">`).join('')}</div>
+        <div class="grades">${ATTRIBUTE_KEYS.map(key => grade(player.attributes[key])).join('')}</div>
+        ${status ? `<small>${status}</small>` : ''}
+      </div>
+      <button type="button" class="th-front${done ? ' trained' : ''}${swapping !== null ? ' swapfrom' : ''}" data-squad="train" aria-label="Plantel e ficha de ${esc(player.name)}${state(player)}" ${open ? 'tabindex="-1"' : ''}><img alt="" src="${figure(player)}"></button>
+      <div class="th-row"><button type="button" class="th-step" data-player="${prev}" aria-label="Jogador anterior">‹</button>${mates.map(i => `<button type="button" class="th-mate${swapping === i ? ' swapfrom' : ''}${club.trainedThisWeek.includes(roster[i]!.name) ? ' trained' : ''}" data-player="${i}" aria-label="${slotCode(i)} ${shirtOf(roster[i]!)} ${esc(roster[i]!.name)}${state(roster[i]!)}"><span class="th-tag"><span>${shirtOf(roster[i]!)}${roster[i]!.injuryWeeks ? dot(roster[i]!) : ''}</span><b>${esc(roster[i]!.name)}</b></span><img alt="" src="${figure(roster[i]!)}"></button>`).join('')}<button type="button" class="th-step" data-player="${next}" aria-label="Jogador seguinte">›</button></div>
+      ${swapping !== null ? '<div class="th-hint">Toca em quem troca de lugar com ele</div>' : ''}
+      <div class="th-tools">
+        <button type="button" class="th-round" data-act="swap" aria-pressed="${swapping !== null}" aria-label="${swapping === null ? 'Trocar de lugar' : 'Cancelar a troca'}" title="Trocar"><img alt="" src="${subsIcon()}"></button>
+        <button type="button" class="th-round" data-go="tactics" aria-label="Táticas" title="Táticas"><img alt="" src="${controlIcon('board')}"></button>
+        <button type="button" class="th-round" data-go="combos" aria-label="Combos: ${club.knownCombos.length} de ${COMBOS.length}" title="Combos"><img alt="" src="${controlIcon('book')}"><small>${club.knownCombos.length}/${COMBOS.length}</small></button>
+      </div>
+      ${open ? `<div class="th-open" style="--cat:${CATEGORY_INFO[open].color}"><b class="th-tab">${CATEGORY_INFO[open].name}</b><div class="th-cards">${CARD_IDS.filter(id => CARDS[id].category === open).map(cardButton).join('')}</div><span class="th-info">${gains || 'Até três cartas diferentes. Há combinações secretas por descobrir.'}</span>
+      <div class="th-picked">${picked.map(id => `<button type="button" class="slot" data-remove="${id}" aria-label="Tirar ${CARDS[id].name}"><img alt="" src="${cardImage(id, CARDS[id].category)}"><span>${CARDS[id].name}</span></button>`).join('')}
+        <button type="button" class="th-go primary" data-act="trainNow" aria-label="Treinar ${esc(player.name)}" title="Treinar" ${picked.length ? '' : 'disabled'}><img alt="" src="${controlIcon('train')}"></button></div></div>` : ''}
+      <div class="th-drawers">${CATEGORIES.map(category => `<button type="button" class="th-drawer" style="--cat:${CATEGORY_INFO[category].color}" data-drawer="${open === category ? 'none' : category}" data-cat="${category}" aria-pressed="${open === category}" aria-label="Cartas de ${CATEGORY_INFO[category].name}" ${canTrain ? '' : 'disabled'}><b>${CATEGORY_INFO[category].name}</b>${owned(category).map(id => `<img alt="" src="${cardImage(id, category)}">`).join('')}</button>`).join('')}</div>
+    </div>`,
+    bottom: `<div class="trainhall-panel"></div>${bar(backBtn('town'))}`,
   };
 }
 
@@ -423,7 +443,7 @@ function comboCard(name: string, isNew: boolean, who: string, look: Look, cards:
   return `<div class="trainpop after delayed combocard"><button type="button" class="cc-any" data-go="train" tabindex="-1" aria-label="Continuar"></button><div class="cc">
     <div class="cc-title">${isNew ? 'Combo secreto descoberto!' : 'Combo!'}</div>
     <div class="cc-frame"><div class="cc-art">${art}</div><b class="cc-name">${esc(name)}</b>
-      <div class="cc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look)}"><span>${esc(who)}</span></div>${bars}</div></div>
+      <div class="cc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look, 'neutral', true)}"><span>${esc(who)}</span></div>${bars}</div></div>
     <button type="button" class="cc-say" data-go="train"><span>${said}</span><i aria-hidden="true">▶</i><span class="sr-only">Continuar</span></button>
   </div></div>`;
 }
@@ -455,7 +475,7 @@ const trainWait = (n: number): number => TRAIN_FLIP + n * TRAIN_EACH + 0.3;
 function trainCard(n: number, who: string, look: Look, bars: string, sentences: readonly string[], learned: readonly string[]): string {
   const said = [...sentences, ...learned.map(line => `<b class="learned">${line}.</b>`)].join(' ');
   return `<div class="trainpop after delayed trainshow" style="--wait:${trainWait(n)}s"><button type="button" class="cc-any" data-go="train" tabindex="-1" aria-label="Continuar"></button><div class="cc">
-    <div></div><div class="tc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look)}"><span>${esc(who)}</span></div>${bars}</div>
+    <div></div><div class="tc-mini"><div class="cc-who"><img alt="" src="${portraitImage(look, 'neutral', true)}"><span>${esc(who)}</span></div>${bars}</div>
     <button type="button" class="cc-say" data-go="train"><span>${said}</span><i aria-hidden="true">▶</i><span class="sr-only">Continuar</span></button>
   </div></div>`;
 }
@@ -725,7 +745,7 @@ function tacticsScreen(): Rendered {
 }
 
 function optionsRow(): string {
-  return optionsControls(club.team.roster, liveTactics(), optionPicking, p => portraitImage(lookFor(p)));
+  return optionsControls(club.team.roster, liveTactics(), optionPicking, p => portraitImage(lookFor(p), 'neutral', true));
 }
 
 /** Parecido demais com o equipamento creme do adversário? */
@@ -1087,12 +1107,12 @@ function officeScreen(): Rendered {
 }
 
 const SCREENS: Record<Screen, () => Rendered> = {
-  create: createScreen, market: marketScreen, renewals: renewalsScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, trainCards: trainCardsScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
+  create: createScreen, market: marketScreen, renewals: renewalsScreen, rival: rivalScreen, squad: squadScreen, train: trainScreen, combos: combosScreen, report: reportScreen, emblem: emblemScreen, kitEdit: kitEditScreen,
   offers: offersScreen, airport: airportScreen, pre: preScreen, tactics: tacticsScreen, kit: kitScreen, halfStats: halfStatsScreen, federation: federationScreen, office: officeScreen,
 };
 
 /** A cena por trás das fichas de cada ecrã; undefined é o balneário. Sem entrada, o escritório (o plantel aberto no balneário fica no balneário). */
-const BACKDROPS: Partial<Record<Screen, SceneKind | undefined>> = { train: 'gym', trainCards: 'gym', combos: 'gym', report: 'gym', rival: undefined, offers: 'gym' };
+const BACKDROPS: Partial<Record<Screen, SceneKind | undefined>> = { train: 'gymEmpty', combos: 'gym', report: 'gym', rival: undefined, offers: 'gym' };
 
 /** Um padrão de bolas muito discreto atrás das fichas, feito aqui. */
 let patternUrl = '';
@@ -1137,7 +1157,7 @@ function render(): void {
   // Ecrã único: as fichas e as notas ficam numa janela por cima da cena do sítio, escurecida; os ecrãs com cena própria
   // (balneário, escritório, quadro tático, vitrina…) já a têm. O escritório e o balneário mostram as opções em botões redondos.
   // As cenas de conteúdo (classe «full fit») ficam à frente da sala escurecida, como as fichas; a sala é a de onde se veio.
-  const room: SceneKind | undefined = screen === 'kit' ? 'lockerPre' : screen === 'tactics' ? (tacticsBack === 'pre' ? 'lockerPre' : tacticsBack === 'train' ? 'gym' : 'office') : screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : 'office';
+  const room: SceneKind | undefined = screen === 'kit' ? 'lockerPre' : screen === 'tactics' ? (tacticsBack === 'pre' ? 'lockerPre' : tacticsBack === 'train' ? 'gym' : 'office') : screen in BACKDROPS ? BACKDROPS[screen] : screen === 'squad' && backFromSquad === 'pre' ? undefined : screen === 'squad' && backFromSquad === 'train' ? 'gymEmpty' : 'office';
   const backdrop = top.includes('class="full"') ? '' : fullCanvas('scene', room);
   setHtmlKeepingScenes(top_, backdrop + top);
   top_.classList.toggle('backdrop', backdrop !== '');
@@ -1165,6 +1185,11 @@ function go(next: GoTo): void {
   const changed = !active || screen !== next;
   if (!active) for (const key of Object.keys(focusBack)) delete focusBack[key as Screen];
   if (active && changed) focusBack[screen] = focusKey(document.activeElement);
+  // Entrar no treino vindo de outro ecrã começa com as gavetas fechadas e sem cartas escolhidas.
+  if (next === 'train' && screen !== 'train') {
+    drawer = null;
+    picked = [];
+  }
   screen = next;
   swapping = null;
   selling = false;
@@ -1181,7 +1206,7 @@ function trainNow(): void {
   commit(trained);
   lastTraining = { before, result, cards, isNew: isNewCombo, index: selected };
   picked = [];
-  focusCard = null;
+  drawer = null;
   host.sound(isNewCombo ? 'bigCheer' : 'cheer');
   if (isNewCombo) host.music('combo');
   go('report');
@@ -1227,17 +1252,24 @@ function onClick(event: Event): void {
       commit(swapPlayers(club, swapping, index));
       swapping = null;
     }
+    // Outro jogador à frente: as cartas escolhidas eram para o anterior.
+    if (selected !== index) {
+      picked = [];
+      drawer = null;
+    }
     selected = index;
     selling = false;
     render();
+    // No treino, o tocado passa para a frente e o botão dele sai da fila: o foco vai com ele.
+    if (screen === 'train' && !document.activeElement?.closest('.trainhall')) host.top.querySelector<HTMLElement>('.th-front')?.focus({ preventScroll: true });
   } else if (data.card) {
     const id = data.card as CardId;
     picked = picked.includes(id) ? picked.filter(c => c !== id) : [...picked, id];
-    focusCard = id;
     render();
   } else if (data.remove) {
     picked = picked.filter(c => c !== data.remove);
     render();
+    if (!document.activeElement?.closest('.trainhall')) host.top.querySelector<HTMLElement>('.th-open .gcard:not([disabled])')?.focus({ preventScroll: true });
   } else if (data.act === 'editKit') {
     kitEditBack = screen;
     kitEditing = screen === 'kit' ? club.kitChoice : kitEditing;
@@ -1341,10 +1373,11 @@ function onClick(event: Event): void {
   } else if (data.act === 'swap') {
     swapping = swapping === null ? selected : null;
     render();
-  } else if (data.act === 'openCards') {
-    picked = [];
-    focusCard = null;
-    go('trainCards');
+  } else if (data.drawer) {
+    drawer = data.drawer === 'none' ? null : (data.drawer as CardCategory);
+    render();
+    // O botão da gaveta muda de data-drawer ao abrir e fechar: o foco segue-o pela categoria.
+    document.querySelector<HTMLElement>(`[data-cat="${data.cat}"]`)?.focus({ preventScroll: true });
   } else if (data.act === 'trainNow') {
     trainNow();
   } else if (data.act === 'skipFx') {

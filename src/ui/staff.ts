@@ -2,7 +2,8 @@
 import { teamRating } from '../sim/teamgen.ts';
 import { NEUTRAL_TACTICS, type Tactics, type Team } from '../sim/types.ts';
 import type { MatchState } from '../sim/match.ts';
-import { portraitImage, type Mood } from './art/portrait.ts';
+import type { Mood } from './art/portrait.ts';
+import { portraitSvgImage } from './art/figure-svg.ts';
 import type { Look } from './art/sprites.ts';
 import { surplus, type ClubState, type FacilityId, type Objective, type SeasonRecord } from './club.ts';
 import { escapeHtml } from './panel.ts';
@@ -23,7 +24,7 @@ export const STAFF: Record<StaffId, { name: string; look: Look }> = {
 /** Um balão com o retrato de quem fala. */
 export function say(who: StaffId, mood: Mood, line: string, id = ''): string {
   const { name, look } = STAFF[who];
-  return `<div class="say"${id ? ` id="${id}"` : ''}><img alt="" src="${portraitImage(look, mood)}"><div><b>${name}</b><span class="t">${escapeHtml(line)}</span></div></div>`;
+  return `<div class="say"${id ? ` id="${id}"` : ''}><img alt="" src="${portraitSvgImage(look, mood, true)}"><div><b>${name}</b><span class="t">${escapeHtml(line)}</span></div></div>`;
 }
 
 export const secretaryMood = (club: ClubState, line: string): Mood =>
