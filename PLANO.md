@@ -1,55 +1,60 @@
 # Plano da equipa
 
-Montado a 25 nov 2026 a partir da [comparação com o Calciobit](docs/referencias/pocket-basketball/comparacao-calciobit.md) (gravação de 14 nov) e dos commits seguintes (base `59e0b13`). O plano longo e o histórico das fases estão em [docs/02-plano-desenvolvimento.md](docs/02-plano-desenvolvimento.md); este ficheiro diz só o que vem a seguir.
+Revisto pelo Manager a 25 nov 2026, a partir dos levantamentos de cada chat (base `c5018f6`). A primeira versão vinha das listas de 14 nov e estava atrás do código; os levantamentos mostraram que estas já estão feitas: momentos grandes com peso e limite (N4), textos empilhados (N3, N7), grandes planos a deslizar (N5), aviso do movimento curto (N6), marcador por baixo dos balões (defeito 1), cena com o painel (defeito 2), resultado sem nova contagem (defeito 4), resposta ao toque (lacuna 4), contagem no intervalo (16), filme do jogo (10), retorno ao contratar (13), suplentes a saltar e vencidos de cabeça baixa (parte da 2), N8, N9 e N10. O ramo `claude/game-halftime-freeze-boyo3j` já não faz falta (Q2).
+
+O plano longo e o histórico das fases estão em [docs/02-plano-desenvolvimento.md](docs/02-plano-desenvolvimento.md). Os levantamentos completos de cada chat estão nas notas das sessões; o essencial está aqui.
 
 Como se usa:
 - Cada tarefa tem um código, é de **um só chat** e diz de que depende. O Manager lança os chats de uma onda e junta os ramos (ver «Trabalho em equipa» no `AGENTS.md`).
-- Quando uma tarefa acaba, o Manager risca-a aqui (~~assim~~) no mesmo commit em que junta o ramo. As tarefas acabadas saem do ficheiro na onda seguinte.
+- Quando uma tarefa acaba, o Manager risca-a aqui no mesmo commit em que junta o ramo; as riscadas saem na onda seguinte.
 - Uma tarefa visual começa sempre por um mockup aprovado pelo utilizador.
-- O utilizador decide a ordem das ondas; o Manager propõe.
+- `match-view.ts` tem 3700 linhas e quase todo o trabalho da Arte passa por lá: nunca duas tarefas nele ao mesmo tempo.
 
-Chats: **Sim** (`src/sim/`), **UI** (menus e ecrãs), **Arte** (campo, bonecos, pavilhões, câmara), **Som**, **QA** (grava, mede e escreve testes; não muda o jogo).
+Chats: **Sim**, **UI**, **Arte**, **Som**, **QA**.
 
-## Onda 1: os defeitos que se veem em todos os jogos
+## Onda 1: o que está partido ou mal feito
+
+| # | Chat | Tarefa | Onde |
+|---|---|---|---|
+| U1 | UI | A 640×360, o tamanho mínimo: no escritório os botões redondos tapam a janela (grelha de 3 colunas); na cidade o cartão da secretária tapa «Aeroporto» e «Torre»; no treino a mini-ficha e os botões cortam-se e as etiquetas das gavetas ficam com ~8 px (mínimo 12). | `style.css:1504`, `season-screens.ts:84-97`, treino |
+| U2 | UI | Os pequenos: botões do jogo à vista no placar do título (N11); o quadradinho de «Iniciados» e a tabela da federação sem sinal de que rola (N14); legendas coladas no escritório (N15); «Intervalo» duas vezes e a faixa a cortar o título (N16); 3 s de campo vazio antes do fundido do intervalo (N18); «Adversário» e «Estatísticas» com o mesmo ícone; a secretária diz «Semana da Taça» depois de se sair da taça; o ressalto do cartão do próximo jogo perde-se no fundido (lacuna 19). | `main.ts`, `menus.ts`, `season-screens.ts`, `style.css` |
+| A1 | Arte | Cesto com falta como «2+1» num só sítio (N19); a faixa da falta encosta-se à zona das faixas em vez de tapar a jogada; «Reviravolta!» não sai num desempate (`lead <= e.points`); o lance livre deixa de filtrar `s.events` a cada imagem. | `match-view.ts:941`, `:1198`, `:1226`, `:2261` |
+| O1 | Som | Níveis: o som do jogo está ~12–15 dB abaixo do alvo de −18 LUFS (estimativa); a rede soa mais baixa do que a festa e o encontrão; o encontrão está fora da faixa de corpo (centróide 2,4 kHz); o grito solto (−51 dB) não se ouve; `roomImpulse` e os metais calculam-se no fio do jogo. O utilizador ouve os WAV antes do merge. | `synth.ts`, `audio.ts` |
+| Q3 | QA | Testes que teriam apanhado regressões já vistas: um teste de sobreposição a 640×360 (nenhum botão redondo sobre a janela ou as etiquetas); o `browser-check` espera pelo fim do `stage-in` (a `cidade.png` sai azul); coisas a piscar quando um ecrã se reescreve (falas, cartas, nota da secretária); a câmara presa no túnel depois do intervalo; os defeitos do `c0b0899`. | `src/tools/browser-check.ts`, testes |
+
+## Onda 2: o dia de jogo e o fim do jogo
 
 | # | Chat | Tarefa | Depende de |
 |---|---|---|---|
-| Q1 | QA | Gravar de novo (`npm run sequences`) e atualizar a comparação: confirmar o que os últimos commits fecharam (N8, N9, N10) e gravar o que falta (lacunas 4, 7 e 19). | |
-| A1 | Arte | Textos empilhados (N3, N7, N19): uma ordem de prioridade com uma só zona de faixas; o momento grande esconde as palavras do mundo; «+2» e «FALTA» juntam-se em «2+1». | |
-| A2 | Arte | Grandes planos a entrar e sair em 0,4–0,6 s, sem corte (N5, defeito 3 da falta). | |
-| A3 | Arte | O aviso do movimento acaba com a jogada, no máximo ~2 s (N6), e um só aviso por jogada (defeito 3). | |
-| A4 | Arte | A barra do marcador deixa de tapar os balões da bancada (defeito 1). | |
-| S1 | Sim | Momentos grandes com peso no jogo: último período, diferença curta ou reviravolta, e um limite por jogo (N4). | |
-| U1 | UI | A cena desenha-se antes do painel ao abrir o mapa, o escritório e o balneário (defeito 2), e as transições ganham ritmo (lacuna 15). | |
-| U2 | UI | Os pequenos de interface: N11, N14, N15, N16, N17 e N18. | |
+| U3 | UI | Data em destaque em cima à esquerda com ▶ (sai o botão do centro), o lugar de cada equipa no cartão do próximo jogo, a secretária só com a dica. | U1 |
+| U4 | UI | Transições com escurecer, trocar às escuras e clarear; mais lentas à volta do jogo (lacuna 15). | Q3 (o `browser-check` tem de esperar pelo fundido) |
+| A2 | Arte | Fim de um jogo normal: o resultado final em grande a seguir ao grande plano do apito (`drawBigScore`). | A1 |
+| A3 | Arte | Lance livre apertado: os círculos dos lances na faixa do grande plano lateral. | A1 |
+| U7 | UI | Semana de jogo: o adjunto em retrato grande pergunta «Vamos para o pavilhão?», Sim e Não. | U3, A7 |
+| A7 | Arte | As bandeiras das duas equipas no Pavilhão da cidade, na semana de jogo. | |
+| A4 | Arte | Estações no mapa: folhagem de outono, inverno sem folhas e com neve, primavera em flor (a estação entra na chave da cache do chão). | |
+| U5 | UI | «Rever» depois de um momento grande e repetição mais curta (está em `main.ts`, por isso é da UI). | |
 
-## Onda 2: o dia de jogo
-
-| # | Chat | Tarefa | Depende de |
-|---|---|---|---|
-| U3 | UI | Semana de jogo como no Calciobit: bandeiras no Pavilhão e o adjunto a perguntar «Vamos para o pavilhão?» (cidade 1, lacuna 17). | |
-| U4 | UI | Data em destaque com ▶, o cartão do próximo jogo com o lugar na liga e o ressalto, a secretária mais leve (cidade 2–4, lacuna 19). | |
-| A5 | Arte | Lance livre apertado com a câmara atrás do lançador, nome, percentagem e círculos (lacuna 12). | |
-| A6 | Arte | As mini-cartas do combo ao lado do aviso do movimento especial (lacuna 7). | Q1 |
-| A7 | Arte | Fim de um jogo normal: grande plano no apito e o resultado final em grande (lacuna 8). | A2 |
-| U5 | UI | Toque com resposta à vista: um frame de destaque em qualquer botão (lacuna 4). Confirmar com o dedo, num telemóvel. | Q1 |
-| U6 | UI | O resultado não volta a contar depois da repetição (defeito 4); o intervalo mostra a contagem (lacuna 16). | |
-
-## Onda 3: o que dá charme
+## Onda 3: charme e decisões do utilizador
 
 | # | Chat | Tarefa | Depende de |
 |---|---|---|---|
-| A8 | Arte | O título completo: clarão, suplentes a saltar, vencidos de cabeça baixa, o retrato na ficha de quem marcou (lacunas 2 e 11). | A1 |
-| A9 | Arte | Uma ilustração própria para cada carta e cada combo, com revisão do skill `visual-design`. | |
-| A10 | Arte | Repetição mais curta, com fundido, e «Rever» depois de um momento grande (lacunas 9 e 21). | A2 |
-| U7 | UI | «Filme do jogo» com os três a cinco lances que mudaram o jogo (lacuna 10). | A10 |
-| U8 | UI | Contratar com retorno: a secretária confirma e o dinheiro conta para baixo (lacuna 13). | |
-| A11 | Arte | Estações no mapa da cidade (cidade 5). | |
-| O1 | Som | Gravar e medir o som de um jogo inteiro (nunca foi gravado) e tratar o que a medida mostrar. | |
+| A5 | Arte | O título: um brilho à volta da taça (o skill proíbe clarões no ecrã inteiro) e o retrato SVG na ficha do momento grande. | A2 |
+| A6 | Arte | Uma ilustração em SVG para cada carta (22) e cada combo (33), em lotes revistos; primeiro um mockup com 3 cartas e 1 combo. | |
+| U6 | UI | O mercado, a federação e o plantel passam de duas colunas a janelas sobre a cena, e o ecrã de título deixa os dois painéis, como diz o AGENTS.md. Contratar pergunta sim/não. | U1 |
+
+## Decisões do utilizador (25 nov 2026)
+
+- **A pergunta do adjunto volta** na semana de jogo: retrato grande e «Vamos para o pavilhão?», com Sim e Não; com Não fica a cidade. Tarefa U7 (onda 2), com as bandeiras das duas equipas no Pavilhão pela Arte (A7).
+- **As mini-cartas do combo não voltam** ao aviso do movimento especial.
+- **As ilustrações das cartas e dos combos são em SVG**, como os retratos (A6).
+- **O lance livre fica com o grande plano lateral** e ganha só os círculos dos lances (A3); nada de câmara atrás do lançador.
 
 ## Arrumação (quando houver folga)
 
 | # | Chat | Tarefa |
 |---|---|---|
-| Q2 | QA | Ver o commit de `origin/claude/game-halftime-freeze-boyo3j` que não está no `fase-1` (o único ramo remoto antigo com trabalho por juntar; os outros já estão todos no `fase-1`). |
-| Q3 | QA | Lacunas conhecidas do som em `sound-design/references/motor.md`: `addBurst` com `SR` fixo, a lista de `playAllSounds` escrita à mão. |
+| M1 | Manager | `visual-design/references/codigo.md` está desatualizado: a chuva e o `crowdColor` já não são código morto. |
+| Q4 | QA | O `gpu-check` não cobre o zoom a 2×, a câmara rodada nem os objetos 3D; o `anim-check` podia afirmar a continuidade da bola ao sair da mão. |
+| O2 | Som | O critério de «salto entre amostras» da `mistura.md` §17.1 dá falsos alarmes em sons agudos; a lista de `playAllSounds` é escrita à mão; `addBurst` usa sempre `SR`. |
+| S1 | Sim | Passar a decisão dos momentos grandes de `match-view.ts` para uma função pura em `src/sim/`, com teste de frequência. Só se houver razão: hoje funciona. |
