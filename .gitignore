@@ -7,3 +7,8 @@ dist-page
 dist-sounds/
 .claude/*
 !.claude/skills/
+!.claude/agents/
+
+# Pacotes de artefactos gerados a partir dos mockups
+docs/mockups/*.tar.gz
+docs/mockups/galeria-ipad/

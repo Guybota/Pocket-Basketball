@@ -1,0 +1,75 @@
+import { chromium } from 'playwright-core';
+import { fileURLToPath } from 'node:url';
+import { readFileSync, mkdirSync } from 'node:fs';
+
+// Verificação do protótipo; não importa nem modifica o jogo.
+new Function(readFileSync(new URL('./menus.html', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0]);
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const output = new URL('./capturas/', import.meta.url);
+mkdirSync(output, { recursive: true });
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+const click = action => page.locator(`[data-action="${action}"]`).first().click();
+const jump = screen => page.locator(`nav [data-action="go:${screen}"]`).click();
+const shot = name => page.screenshot({ path: fileURLToPath(new URL(name + '.png', output)), fullPage: true });
+const assert = (ok, message) => { if (!ok) throw new Error(message); };
+try {
+  await page.goto(new URL('./menus.html', import.meta.url).href);
+  await shot('01-clube');
+  await jump('training');
+  await shot('02-treino');
+  for (const action of ['card:0:0', 'card:1:0', 'card:2:0', 'card:3:0']) await click(action);
+  assert((await page.locator('#message').textContent()).includes('ocupados'), 'Limite de três cartas');
+  await click('remove:1');
+  await click('card:3:0');
+  await click('train');
+  await page.locator('#dialogAction').click();
+  assert(await page.locator('.slot.filled').count() === 0, 'Limpar seleção após treino');
+  await jump('offers');
+  await click('opponent:2');
+  await shot('03-jogos-treino');
+  await click('invite');
+  await page.locator('#dialogAction').click();
+  assert((await page.locator('#top').textContent()).includes('União da Serra'), 'Manter adversário');
+  await shot('04-pre-jogo');
+  await click('squad:prematch');
+  await click('roster:1');
+  await click('roster:5');
+  await shot('05-plantel');
+  await page.locator('.footer [data-action="go:prematch"]').last().click();
+  await click('tactics:prematch');
+  await page.selectOption('#pace', 'Transição');
+  await page.locator('.footer [data-action="go:prematch"]').last().click();
+  await click('tactics:prematch');
+  assert(await page.locator('#pace').inputValue() === 'Transição', 'Persistir tática');
+  await page.locator('.footer [data-action="go:prematch"]').last().click();
+  await click('go:kits');
+  await click('kit:1');
+  await shot('06-equipamentos');
+  await page.locator('.footer [data-action="go:prematch"]').last().click();
+  await click('start:prematch');
+  await page.locator('#dialogAction').click();
+  await shot('07-intervalo');
+  await jump('federation');
+  await shot('08-federacao');
+  await click('fed:Calendário');
+  await click('fed:Clubes');
+  await jump('office');
+  await shot('09-escritorio');
+  await click('go:identity');
+  await click('go:kits');
+  await page.locator('.footer [data-action="go:identity"]').last().click();
+  assert((await page.locator('#bottom h1').textContent()) === 'As nossas cores', 'Voltar a identidade');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await jump('training');
+  await shot('10-telemovel-treino');
+  for (const screen of ['hub','roster','offers','prematch','halftime','federation','office','finances','market','identity','mail','stats']) {
+    await page.evaluate(screen => go(screen), screen);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Sem transbordo: ' + screen);
+  }
+  await jump('prematch');
+  await shot('11-telemovel-pre-jogo');
+  assert(errors.length === 0, errors.join('\n'));
+  console.log('OK: percursos, cartas, trocas, táticas, equipamentos, menus, telemóvel e ausência de erros JavaScript.');
+} finally { await browser.close(); }

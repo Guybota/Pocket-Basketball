@@ -6,6 +6,7 @@ Jogo de gestão de basquetebol com a estrutura do Nintendo Pocket Football Club.
 
 Lê antes de começar:
 
+- [PLANO.md](PLANO.md): o que vem a seguir, em ondas, com o chat dono de cada tarefa.
 - [Pesquisa sobre o original](docs/01-pesquisa-npfc.md)
 - [Plano e fases](docs/02-plano-desenvolvimento.md)
 - [Estudo visual](docs/03-estudo-visual.html)
@@ -30,6 +31,7 @@ npm run gpu-check      # compara as bancadas desenhadas pela placa gráfica com 
 npm run campos         # fotografa cada campo de longe (o pavilhão inteiro) e com a câmara do jogo, em dist-check/campos/
 node src/tools/gravar.ts 3 ressalto  # grava o jogo em movimento a 30 fps, como o jogo o mostra, em dist-check/gravar/ (ver o skill visual-design)
 npm run build-page     # junta o jogo numa só página, em dist/pocket-basketball.html
+npm run skills         # copia .claude/skills para .agents/skills (a cópia do Codex); um teste falha se forem diferentes
 ```
 
 Se mudares algo em `src/ui/`, corre `npm run browser-check` e olha para as imagens. No Windows usa o Edge; noutra máquina usa o Chromium do Playwright, ou o browser que indicares em `BROWSER_PATH` (caminho) ou `BROWSER_CHANNEL` (por exemplo `chrome`).
@@ -56,11 +58,47 @@ Um teste automático faz cumprir as regras de proibição e de importação.
 - Para criar ou afinar sons segue o skill [sound-design](.claude/skills/sound-design/SKILL.md), que tem as diretrizes e a pesquisa de acústica, síntese e mistura.
 - Para arte, animação, pixel art, cor, ícones, emblemas e interface segue o skill [visual-design](.claude/skills/visual-design/SKILL.md). Qualquer animação ou asset visual novo passa pela revisão de um agente revisor, como lá se descreve.
 
-## Trabalho a dois
+## Trabalho em equipa
 
-- Um agente escreve a tarefa e o outro revê.
-- Os dois nunca alteram os mesmos ficheiros ao mesmo tempo, e cada um trabalha no seu ramo.
+Há um chat **Manager** e chats especialistas, um por área. O Manager lê o [PLANO.md](PLANO.md), propõe a onda seguinte ao utilizador, lança os chats dessa onda (cada um no seu worktree e no seu ramo, a partir do `fase-1`), revê e junta os ramos no `fase-1`, e avança o `main` para o GitHub Pages. Os especialistas não juntam ramos nem fazem push.
+
+### Território
+
+Cada chat só mexe na sua área. Os agentes em `.claude/agents/` têm o território e o que correr antes de entregar.
+
+| Chat | Agente | Pode mexer em |
+|---|---|---|
+| Sim | `sim` | `src/sim/` |
+| UI | `ui` | `src/ui/` fora da arte e do som: menus, ecrãs, painéis, HUD, toque, saves, Aeroporto, `style.css` |
+| Arte | `arte` | `src/ui/art/`, `src/ui/gpu/`, `match-view.ts`, `title-stage.ts`, `anim-page.ts`, `review.ts`, `mock-*.ts`, `src/tools/cenas/` |
+| Som | `som` | `synth.ts`, `audio.ts`, `music.ts`, `sound-recipes.ts`, `sound-worker.ts` |
+| QA | `reviewer` para rever | testes (`*.test.ts`), `src/tools/`, `docs/referencias/`; não muda o jogo |
+
+- Quem precisa de algo de outra área descreve-o no relatório; o Manager passa ao chat certo.
 - Os testes e o formato dos dados são o contrato. Mudar um deles exige dizê-lo explicitamente na entrega.
+- `AGENTS.md`, `PLANO.md` e os skills são do Manager; um especialista que aprende uma lição escreve-a no relatório, e o Manager atualiza o skill no commit em que junta o ramo.
+
+### Antes de juntar um ramo
+
+O Manager só junta quando:
+
+1. `npm run check` passa; se a mudança toca `src/sim/` ou `src/ui/club.ts`, também `npm run balance`.
+2. A mudança foi verificada como diz «Testes», abaixo.
+3. Houve review por **dois** agentes `reviewer`, os dois a criticar ao máximo: um com o contexto da conversa (fork) e um sem. Corrigem-se os erros e revê-se de novo até não haver nada que bloqueie. Um erro é um bug ou uma regra deste ficheiro ou dos skills que não se cumpre; as sugestões de gosto ficam anotadas e não prendem o merge.
+4. Uma mudança visual teve o mockup aprovado pelo utilizador antes de ser feita.
+5. Os skills e este ficheiro dizem a verdade depois da mudança (ferramentas novas, lições, regras), e `npm run skills` foi corrido se um skill mudou.
+
+### Testes
+
+Testa-se em três camadas:
+
+1. **Testes automáticos:** `npm run check` (vitest). Lógica nova não trivial leva um teste; a simulação leva também o equilíbrio (`npm run balance`).
+2. **Ver em movimento:** o que se vê no ecrã verifica-se com `npm run browser-check`, `npm run anim-check`, `npm run review` ou `node src/tools/gravar.ts`, e quem o corre olha para as imagens. Um defeito que arrasta com a câmara só aparece em movimento.
+3. **O utilizador joga:** o que só uma pessoa sente (o ritmo, se um momento é emocionante, se um som cansa, o toque no telemóvel) vai numa lista curta, de cerca de 5 minutos, que o Manager entrega ao utilizador com o ramo.
+
+### Um só browser de verificação
+
+Dois chats a correr `browser-check`, `gravar` ou `npm run balance` ao mesmo tempo atrasam-se um ao outro. O Manager não lança mais de três chats de código ao mesmo tempo, e o `npm run balance` corre-se no fim, não a cada passo.
 
 ## Original, não cópia
 
