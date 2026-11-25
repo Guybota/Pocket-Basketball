@@ -70,7 +70,7 @@ Cada chat só mexe na sua área. Os agentes em `.claude/agents/` têm o territó
 |---|---|---|
 | Sim | `sim` | `src/sim/` |
 | UI | `ui` | `src/ui/` fora da arte e do som: menus, ecrãs, painéis, HUD, toque, saves, Aeroporto, `style.css` |
-| Arte | `arte` | `src/ui/art/`, `src/ui/gpu/`, `match-view.ts`, `title-stage.ts`, `anim-page.ts`, `review.ts`, `mock-*.ts`, `src/tools/cenas/` |
+| Arte | `arte` | `src/ui/art/`, `src/ui/gpu/`, `match-view.ts`, `title-stage.ts`, `anim-page.ts`, `review.ts`, `src/tools/cenas/` |
 | Som | `som` | `synth.ts`, `audio.ts`, `music.ts`, `sound-recipes.ts`, `sound-worker.ts` |
 | QA | `reviewer` para rever | testes (`*.test.ts`), `src/tools/`, `docs/referencias/`; não muda o jogo |
 

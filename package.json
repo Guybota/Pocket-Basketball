@@ -22,7 +22,6 @@
     "campos": "node src/tools/campos.ts",
     "sequences": "node src/tools/sequences.ts",
     "build-page": "node src/tools/build-page.ts",
-    "build-mock": "node src/tools/build-mock.ts",
     "build-icon": "node src/tools/build-icon.ts",
     "skills": "node -e \"const fs=require('fs');fs.rmSync('.agents/skills',{recursive:true,force:true});fs.cpSync('.claude/skills','.agents/skills',{recursive:true})\"",
     "balance": "vitest run --tagsFilter slow",
